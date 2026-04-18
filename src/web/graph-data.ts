@@ -16,9 +16,9 @@ export interface GraphPayload {
   sourceHash: string;
 }
 
-const CACHE_KEY = 'graph:v1';
+const CACHE_KEY = 'graph:v2';
 const SIMILARITY_TOP_K = 4;
-const SIMILARITY_MIN_SCORE = 0.55;
+const SIMILARITY_MIN_SCORE = 0.5;
 
 async function computeSourceHash(env: Env): Promise<string> {
   const n = await env.DB.prepare(`SELECT COALESCE(MAX(updated_at), 0) m, COUNT(*) c FROM notes`).first<{ m: number; c: number }>();
@@ -57,17 +57,19 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   if (notes.length > 0) {
     const ids = notes.map((n) => n.id);
     try {
-      for (let i = 0; i < ids.length; i += 100) {
-        const chunk = ids.slice(i, i + 100);
+      // Cloudflare Vectorize caps getByIds at 20 ids per call (error 40007).
+      for (let i = 0; i < ids.length; i += 20) {
+        const chunk = ids.slice(i, i + 20);
         const res = await env.VECTORIZE.getByIds(chunk);
         for (const v of res) {
           if (v.values) noteVectors.push({ id: v.id, values: Array.from(v.values) });
         }
       }
-    } catch {
-      // If Vectorize is unavailable (dev/test), fall back to zero similarity edges.
+    } catch (err) {
+      console.error('graph-data: Vectorize.getByIds failed', err);
       noteVectors = [];
     }
+    console.log(`graph-data: fetched ${noteVectors.length} vectors for ${notes.length} notes`);
   }
 
   let similarityEdges: Array<{ source: string; target: string; score: number }> = [];
@@ -76,7 +78,8 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
       topK: SIMILARITY_TOP_K,
       minScore: SIMILARITY_MIN_SCORE,
     });
-  } catch {
+  } catch (err) {
+    console.error('graph-data: computeSimilarityEdges failed', err);
     similarityEdges = [];
   }
 
@@ -142,6 +145,14 @@ export async function handleGraphData(req: Request, env: Env): Promise<Response>
   }
 
   const payload = await buildPayload(env);
-  await env.GRAPH_CACHE.put(CACHE_KEY, JSON.stringify(payload));
+  // Don't cache obviously degraded payloads: if we have notes but zero similar
+  // edges, either Vectorize failed or the index is still populating. Skip the
+  // write so the next request auto-heals instead of serving the bad payload
+  // until notes/edges mutate and sourceHash changes.
+  const hasSimilar = payload.edges.some((e) => e.type === 'similar');
+  const notesCount = payload.nodes.length;
+  if (notesCount === 0 || hasSimilar) {
+    await env.GRAPH_CACHE.put(CACHE_KEY, JSON.stringify(payload));
+  }
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
 }

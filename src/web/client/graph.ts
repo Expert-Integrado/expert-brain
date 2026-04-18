@@ -216,9 +216,11 @@ async function main() {
   const physicsSettings = {
     ...fa2Settings,
     barnesHutOptimize: true,
-    scalingRatio: 10,
-    gravity: 1.5,
-    slowDown: 8,
+    // Trust inferSettings for gravity/scaling (tuned to graph order). Only
+    // halve slowDown so ~240 RAF frames × REVEAL_LERP=0.06 actually converge
+    // to a round-ish cluster inside 4s — otherwise strongGravityMode keeps
+    // collapsing the layout along the weaker axis and we get a vertical strip.
+    slowDown: Math.max(2, (fa2Settings.slowDown ?? 1) / 2),
   };
 
   // Instead of applying force-atlas2 steps at full speed (which snaps small
@@ -232,13 +234,15 @@ async function main() {
   let physicsUntil = 0;
   let rafHandle = 0;
 
-  // Force Sigma to re-fit its camera to whatever bbox the graph currently has.
-  // Without this, the camera stays zoomed on the initial ±1 cluster and the
-  // nodes that force-atlas2 pushes outward fall off the right edge of the
-  // viewport (they're still drawn, just outside the visible area).
+  // Sigma normalizes coords into [0,1]² using max(dx,dy) — preserving aspect —
+  // then applies a correctionRatio so the cluster touches the short viewport
+  // axis. Camera at {x:0.5,y:0.5,ratio:1} is therefore the canonical fit.
+  // refresh() recomputes normalization against the live node bbox (which
+  // expands as FA2 runs); ratio:1.05 adds a tiny breathing margin without
+  // re-introducing the hardcoded zoom that caused the clipping bug.
   function refitCamera() {
     renderer.refresh();
-    renderer.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.1 });
+    renderer.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
   }
 
   function runPhysics(durationMs: number) {
@@ -279,7 +283,8 @@ async function main() {
         rafHandle = requestAnimationFrame(loop);
       } else {
         rafHandle = 0;
-        refitCamera();
+        renderer.refresh();
+        void renderer.getCamera().animatedReset({ duration: 400 });
       }
     };
     rafHandle = requestAnimationFrame(loop);
@@ -294,14 +299,14 @@ async function main() {
   renderer.setSetting('nodeReducer', (n, attrs) => {
     if (!hoveredNeighbors) return attrs;
     if (hoveredNeighbors.has(n)) return attrs;
-    return { ...attrs, color: 'rgba(180, 140, 255, 0.18)', label: '' };
+    return { ...attrs, color: 'rgba(60, 50, 90, 0.35)', label: '' };
   });
   renderer.setSetting('edgeReducer', (edge, attrs) => {
     if (!hoveredNeighbors) return attrs;
     const [s, t] = graph.extremities(edge);
     return hoveredNeighbors.has(s) && hoveredNeighbors.has(t)
       ? attrs
-      : { ...attrs, color: 'rgba(180, 140, 255, 0.1)' };
+      : { ...attrs, color: 'rgba(180, 140, 255, 0.04)' };
   });
 
   // -----------------------------------------------------------------------
