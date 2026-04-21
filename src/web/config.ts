@@ -56,6 +56,9 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <button type="button" data-copy="code-add">Copy command</button>
         </div>
       </details>
+      <p style="margin-top:16px;padding:12px 14px;background:rgba(140,200,255,0.07);border:1px solid rgba(140,200,255,0.18);border-radius:8px;font-size:13px;color:var(--text-dim)">
+        <strong style="color:var(--accent-cyan)">No API key needed.</strong> When Claude connects to this URL, it opens a browser window asking you to log in — use the <em>same email and passphrase</em> you use to access this dashboard. Authentication is OAuth 2.1, the token is stored by Claude automatically.
+      </p>
     </div>
 
     <div class="card">

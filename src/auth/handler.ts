@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { handleRoot, handleProvision, handleStatus, isSetup } from './setup.js';
 import { verifyPassword } from './password.js';
-import { BASE_CSS } from '../static/styles.js';
+import { NEBULA_CSS, FONT_LINKS } from '../web/styles.js';
 import { esc } from '../util/html.js';
 import { handleApp } from '../web/handler.js';
 
@@ -52,13 +52,31 @@ export const authHandler = {
 
 function renderLogin(error: string | null, qs: string): Response {
   return new Response(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Login</title><style>${BASE_CSS}</style></head>
-<body><main><h1>Mind Vault</h1><p>Log in to authorize MCP access.</p>
-${error ? `<p style="color:#ff6b6b">${esc(error)}</p>` : ''}
+    `<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Authorize · Mind Vault</title>
+${FONT_LINKS}
+<style>${NEBULA_CSS}</style></head>
+<body><div class="login-wrap">
+<h1>Mind Vault</h1>
+<p class="subtitle">Authorize Claude to access your vault.</p>
+${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/authorize${esc(qs)}">
-<p><label>Email<br><input type="email" name="email" required></label></p>
-<p><label>Passphrase<br><input type="password" name="password" required></label></p>
-<button type="submit">Authorize</button></form></main></body></html>`,
-    { headers: { 'content-type': 'text/html; charset=utf-8' } }
+<label>Email<input type="email" name="email" required autofocus></label>
+<label>Passphrase<input type="password" name="password" required></label>
+<button type="submit">Authorize</button>
+</form></div></body></html>`,
+    {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        'content-security-policy':
+          "default-src 'self'; " +
+          "script-src 'self'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src 'self' https://fonts.gstatic.com; " +
+          "img-src 'self' data:; " +
+          "connect-src 'self'",
+      },
+    }
   );
 }
