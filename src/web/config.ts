@@ -4,18 +4,18 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse } from './render.js';
 import { getVaultStatus } from '../auth/setup.js';
 
-const PREFS_BLOCK = `Mind Vault is connected as an MCP server. When I am discussing
-concepts, ideas, insights, decisions, or learnings — across any
-domain — proactively think in terms of the latticework method:
-- Check the vault via MindVault:recall before relying only on your
-  own knowledge, especially for cross-domain analogies.
-- When I share something worth remembering, offer to save it and,
-  if I agree, atomize it into one concept per note, tag it with
-  specific domain(s), sweep other domains for analogies, and
-  create edges with substantive why justifications.
-- When I ask about a topic that might be in the vault, prefer
-  recall + expand over generic answers. The value of the vault
-  comes from being read, not just written.`;
+const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP. Quando eu estiver discutindo
+conceitos, ideias, insights, decisões ou aprendizados — em qualquer
+domínio — pense proativamente no método latticework:
+- Consulte o vault via ExpertBrain:recall antes de depender apenas do seu
+  próprio conhecimento, especialmente para analogias cross-domain.
+- Quando eu compartilhar algo que vale lembrar, ofereça salvar e,
+  se eu concordar, atomize em um conceito por nota, marque com
+  domínio(s) específico(s), varra outros domínios em busca de analogias, e
+  crie edges com justificativas why substantivas.
+- Quando eu perguntar sobre um tópico que pode estar no vault, prefira
+  recall + expand a respostas genéricas. O valor do vault
+  vem de ser lido, não só escrito.`;
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -51,7 +51,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <details style="margin-top:12px">
         <summary style="cursor:pointer;color:var(--text-dim)">Using Claude Code (CLI)?</summary>
         <div class="row" style="margin-top:8px">
-          <div id="code-add" class="url-box">claude mcp add --transport http mind-vault &lt;URL&gt;</div>
+          <div id="code-add" class="url-box">claude mcp add --transport http expert-brain &lt;URL&gt;</div>
           <button type="button" data-copy="code-add">Copy command</button>
         </div>
       </details>
@@ -84,7 +84,7 @@ export function configPageScript(): string {
   var urlEl = document.getElementById('mcp-url');
   if (urlEl) urlEl.textContent = url;
   var codeEl = document.getElementById('code-add');
-  if (codeEl) codeEl.textContent = 'claude mcp add --transport http mind-vault ' + url;
+  if (codeEl) codeEl.textContent = 'claude mcp add --transport http expert-brain ' + url;
 
   async function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {

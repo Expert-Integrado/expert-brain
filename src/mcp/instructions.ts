@@ -1,17 +1,20 @@
-export const SERVER_INSTRUCTIONS = `Mind Vault — a personal latticework knowledge graph backed by Cloudflare D1 + Vectorize.
+export const SERVER_INSTRUCTIONS = `Expert Brain — grafo de conhecimento pessoal latticework, rodando no Cloudflare D1 + Vectorize. Pertence a Eric Luciano (CEO da Expert Integrado, educador, empreendedor — trabalha nos domínios de gestão, vendas, educação, IA aplicada, liderança, produto e empreendedorismo).
 
-When to use:
-- The user discusses concepts, ideas, insights, decisions, or prior learnings.
-- The user references something they "already thought about" or asks "what do we have on X".
-- The user asks to edit, refine, or remove a previously-saved note.
-- The user asks for an overview of the vault ("how many notes", "what are my top domains").
+Quando usar:
+- O usuário discute conceitos, ideias, insights, decisões ou aprendizados anteriores.
+- O usuário referencia algo que "já pensou sobre" ou pergunta "o que temos sobre X".
+- O usuário pede pra editar, refinar ou remover uma nota salva.
+- O usuário quer um panorama do vault ("quantas notas", "quais meus top domínios").
 
-Recommended flow:
-1. Before answering topical questions, call \`recall\` with a short query. Read ALL returned domains; the valuable match often comes from the unexpected domain.
-2. Before calling \`save_note\`, call \`recall\` first to sweep for cross-domain analogies.
-3. Atomize: one note = one concept. If the title contains "and/e", split into separate calls.
-4. Each edge needs a substantive \`why\` explaining the shared MECHANISM (min 20 chars). Vague whys are rejected.
-5. Prefer \`same_mechanism_as\` over \`analogous_to\` when you can justify the underlying mechanism.
-6. \`kind\` is REQUIRED on save_note — pick from the 7 canonical values (concept | decision | insight | fact | pattern | principle | question).
-7. To edit a note, call \`update_note\` with the id and only the fields that change. To remove one, call \`delete_note\` with \`confirm: true\` — ask the USER to confirm first.
-8. \`stats\` gives a panorama of the vault; use it when the user asks about composition or growth.`;
+Fluxo recomendado:
+1. Antes de responder perguntas temáticas, chame \`recall\` com uma query curta. Leia TODOS os domínios retornados; o match valioso frequentemente vem do domínio inesperado.
+2. Antes de chamar \`save_note\`, chame \`recall\` primeiro pra varrer analogias cross-domain.
+3. Atomize: uma nota = um conceito. Se o título contém "and/e/e também", divida em chamadas separadas.
+4. Cada edge precisa de um \`why\` substantivo explicando o MECANISMO compartilhado (mín 20 chars). Whys vagos são rejeitados.
+5. Prefira \`same_mechanism_as\` sobre \`analogous_to\` quando conseguir justificar o mecanismo subjacente.
+6. \`kind\` é OBRIGATÓRIO no save_note — escolha entre os 7 valores canônicos (concept | decision | insight | fact | pattern | principle | question).
+7. Para editar uma nota, chame \`update_note\` com o id e só os campos que mudam. Para remover, chame \`delete_note\` com \`confirm: true\` — pergunte ao USUÁRIO antes.
+8. \`stats\` dá um panorama do vault; use quando o usuário perguntar sobre composição ou crescimento.
+
+Domínios sugeridos para o contexto do Eric (use esses; aceita outros em kebab-case inglês):
+management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science`;

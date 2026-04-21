@@ -8,12 +8,12 @@ import { htmlResponse } from './render.js';
 function renderLoginPage(error: string | null, next: string): string {
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Log in · Mind Vault</title>
+<title>Log in · Expert Brain</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style></head>
 <body><div class="login-wrap">
-<h1>Mind Vault</h1>
-<p class="subtitle">Your personal latticework of ideas.</p>
+<h1>Expert Brain</h1>
+<p class="subtitle">Seu cérebro de pensamento cross-domain.</p>
 ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/app/login">
 <input type="hidden" name="next" value="${esc(next)}">

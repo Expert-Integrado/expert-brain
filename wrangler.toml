@@ -1,39 +1,35 @@
-name = "mind-vault"
+name = "expert-brain"
 main = "src/index.ts"
 compatibility_date = "2025-02-01"
 compatibility_flags = ["nodejs_compat"]
+account_id = "d9aad183ce3765208b996bb904910466"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Mind Vault — shared wrangler config (placeholders)
-#
-# This file is committed. Replace the REPLACE_ME_* placeholders with the IDs
-# your agent (or you) creates in step 2 of CLAUDE.md. If you need a private
-# override for your own environment (custom domain, real IDs without editing
-# this file), create wrangler.local.toml — it is gitignored — and run wrangler
-# with: `wrangler deploy --config wrangler.local.toml`.
+# Expert Brain — configuração Cloudflare
+# Fork de orobsonn/segundo-cerebro — crédito ao autor original
 # ──────────────────────────────────────────────────────────────────────────────
 
 [[d1_databases]]
 binding = "DB"
-database_name = "mind-vault"
-database_id = "REPLACE_ME_D1_ID"
+database_name = "expert-brain"
+database_id = "cbf896e9-3188-4e17-9532-9cff87bbd87e"
 migrations_dir = "src/db/migrations"
 
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "mind-vault-embeddings"
+index_name = "expert-brain-embeddings"
 
 [ai]
 binding = "AI"
 
 [durable_objects]
 bindings = [
-  { name = "MCP_OBJECT", class_name = "MindVaultMCP" }
+  { name = "MCP_OBJECT", class_name = "ExpertBrainMCP" }
 ]
 
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["MindVaultMCP"]
+new_sqlite_classes = ["ExpertBrainMCP"]
 
 [assets]
 directory = "./assets"
@@ -41,8 +37,8 @@ binding = "ASSETS"
 
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "REPLACE_ME_OAUTH_KV_ID"
+id = "6cf333ea4d61428d8049d2f2f62f12bc"
 
 [[kv_namespaces]]
 binding = "GRAPH_CACHE"
-id = "REPLACE_ME_GRAPH_CACHE_ID"
+id = "71670793dfa147d5b327d78cc37454ca"

@@ -50,11 +50,11 @@ function renderLogin(error: string | null, qs: string): Response {
   return new Response(
     `<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize · Mind Vault</title>
+<title>Authorize · Expert Brain</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style></head>
 <body><div class="login-wrap">
-<h1>Mind Vault</h1>
+<h1>Expert Brain</h1>
 <p class="subtitle">Authorize Claude to access your vault.</p>
 ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/authorize${esc(qs)}">

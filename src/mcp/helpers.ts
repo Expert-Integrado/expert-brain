@@ -20,14 +20,14 @@ export function safeToolHandler<A extends unknown[]>(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('D1_ERROR') || msg.includes('SQLITE_ERROR')) {
-        console.error('MindVault D1 error:', msg);
+        console.error('ExpertBrain D1 error:', msg);
         return toolError(
           `Internal error in the vault database (D1). Probably transient — wait a few seconds and try again. ` +
           `If it persists, report the timestamp ${new Date().toISOString()} and the attempted action to the maintainer.`
         );
       }
       if (msg.includes('VECTORIZE') || msg.includes('Vectorize') || msg.includes('vectorize')) {
-        console.error('MindVault Vectorize error:', msg);
+        console.error('ExpertBrain Vectorize error:', msg);
         return toolError(
           `Vectorize (the semantic search index) returned an error: ${msg}. ` +
           `This can be transient (index is eventually consistent and occasionally throttles). ` +
@@ -36,14 +36,14 @@ export function safeToolHandler<A extends unknown[]>(
         );
       }
       if (msg.includes('@cf/baai') || msg.includes('Workers AI') || msg.includes('AiError')) {
-        console.error('MindVault Workers AI error:', msg);
+        console.error('ExpertBrain Workers AI error:', msg);
         return toolError(
           `Workers AI (the embedding model) returned an error: ${msg}. ` +
           `This is usually transient. The note was NOT saved because embedding failed before the database write (save_note validates inputs and generates the vector before committing). ` +
           `Wait a few seconds and retry the exact same save_note call — it is safe, there are no partial writes.`
         );
       }
-      console.error('MindVault tool error:', msg);
+      console.error('ExpertBrain tool error:', msg);
       return toolError(`Unexpected error: ${msg}. Check the input and try again. If the problem persists, this is probably a bug — report the timestamp ${new Date().toISOString()} to the maintainer.`);
     }
   };

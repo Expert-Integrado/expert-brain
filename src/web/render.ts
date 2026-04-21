@@ -11,14 +11,14 @@ export function renderShell(opts: {
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(opts.title)} · Mind Vault</title>
+<title>${esc(opts.title)} · Expert Brain</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style>
 ${opts.extraHead ?? ''}
 </head><body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="logo">Mind Vault</div>
+    <div class="logo">Expert Brain</div>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph">Graph</a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notes</a>
     <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config">Config</a>

@@ -1,12 +1,12 @@
 import OAuthProvider from '@cloudflare/workers-oauth-provider';
-import { MindVaultMCP } from './mcp/agent.js';
+import { ExpertBrainMCP } from './mcp/agent.js';
 import { authHandler } from './auth/handler.js';
 
-export { MindVaultMCP };
+export { ExpertBrainMCP };
 
 export default new OAuthProvider({
   apiRoute: '/mcp',
-  apiHandler: MindVaultMCP.serve('/mcp') as any,
+  apiHandler: ExpertBrainMCP.serve('/mcp') as any,
   defaultHandler: authHandler as any,
   authorizeEndpoint: '/authorize',
   tokenEndpoint: '/token',

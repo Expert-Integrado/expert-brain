@@ -12,20 +12,20 @@ export const FONT_LINKS = `
 // gradient, soft grain, lavender-accented cards with hover-lift, focus-visible rings.
 export const NEBULA_CSS = `
 :root {
-  --bg: #08051a;
-  --bg-mid: #140c33;
-  --bg-accent: #1e1548;
-  --text: #ecdfff;
-  --text-dim: rgba(236, 223, 255, 0.58);
-  --text-faint: rgba(236, 223, 255, 0.35);
-  --border: rgba(180, 140, 255, 0.14);
-  --border-strong: rgba(180, 140, 255, 0.32);
+  --bg: #070a13;
+  --bg-mid: #0b0f19;
+  --bg-accent: #111827;
+  --text: #f8fafc;
+  --text-dim: rgba(248, 250, 252, 0.58);
+  --text-faint: rgba(248, 250, 252, 0.35);
+  --border: rgba(60, 131, 246, 0.14);
+  --border-strong: rgba(60, 131, 246, 0.32);
   --surface: rgba(255, 255, 255, 0.035);
   --surface-raised: rgba(255, 255, 255, 0.06);
-  --accent-lav: #b48cff;
-  --accent-cyan: #8cc8ff;
-  --accent-pink: #ff9ad5;
-  --accent-violet: #a78bfa;
+  --accent-lav: #3c83f6;
+  --accent-cyan: #1abc9c;
+  --accent-pink: #60a5fa;
+  --accent-violet: #2563eb;
   --danger: #ff7a90;
   --radius-sm: 8px;
   --radius: 12px;
@@ -51,8 +51,8 @@ html, body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   background:
-    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(180, 140, 255, 0.18) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(140, 200, 255, 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(60, 131, 246, 0.18) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(26, 188, 156, 0.12) 0%, transparent 55%),
     radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
   background-attachment: fixed;
 }
@@ -72,7 +72,7 @@ body::before {
 a { color: var(--accent-lav); text-decoration: none; transition: color 180ms var(--ease); }
 a:hover { color: var(--text); }
 
-::selection { background: rgba(180, 140, 255, 0.35); color: var(--text); }
+::selection { background: rgba(60, 131, 246, 0.35); color: var(--text); }
 
 /* ---- Shell ---- */
 .shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
@@ -85,7 +85,7 @@ a:hover { color: var(--text); }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: linear-gradient(180deg, rgba(180, 140, 255, 0.04), transparent 30%);
+  background: linear-gradient(180deg, rgba(60, 131, 246, 0.04), transparent 30%);
 }
 .sidebar .logo {
   font-family: var(--font-display);
@@ -105,7 +105,7 @@ a:hover { color: var(--text); }
   height: 10px;
   border-radius: 50%;
   background: radial-gradient(circle at 30% 30%, var(--accent-pink), var(--accent-lav) 60%, var(--accent-violet));
-  box-shadow: 0 0 16px rgba(180, 140, 255, 0.65);
+  box-shadow: 0 0 16px rgba(60, 131, 246, 0.65);
 }
 .sidebar .nav-item {
   padding: 10px 14px;
@@ -126,12 +126,12 @@ a:hover { color: var(--text); }
   background: transparent;
   transition: background 180ms var(--ease);
 }
-.sidebar .nav-item:hover { color: var(--text); background: rgba(180, 140, 255, 0.06); }
+.sidebar .nav-item:hover { color: var(--text); background: rgba(60, 131, 246, 0.06); }
 .sidebar .nav-item.active {
-  background: rgba(180, 140, 255, 0.12);
+  background: rgba(60, 131, 246, 0.12);
   color: var(--text);
 }
-.sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 8px rgba(180, 140, 255, 0.7); }
+.sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 8px rgba(60, 131, 246, 0.7); }
 
 .sidebar .bottom { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-faint); }
 .sidebar .bottom > div { margin-bottom: 6px; font-family: var(--font-body); }
@@ -182,7 +182,7 @@ a:hover { color: var(--text); }
   text-transform: uppercase;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(180, 140, 255, 0.12);
+  background: rgba(60, 131, 246, 0.12);
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
 }
@@ -230,9 +230,9 @@ a:hover { color: var(--text); }
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(180, 140, 255, 0.12);
+  background: rgba(60, 131, 246, 0.12);
   color: var(--accent-lav);
-  border: 1px solid rgba(180, 140, 255, 0.22);
+  border: 1px solid rgba(60, 131, 246, 0.22);
   margin-right: 6px;
 }
 
@@ -240,7 +240,7 @@ a:hover { color: var(--text); }
 .note-body {
   line-height: 1.75;
   font-size: 16px;
-  color: rgba(236, 223, 255, 0.86);
+  color: rgba(248, 250, 252, 0.86);
   max-width: 68ch;
 }
 .note-body h1, .note-body h2, .note-body h3 {
@@ -290,12 +290,12 @@ a:hover { color: var(--text); }
   max-width: 400px;
   margin: 12vh auto;
   padding: 40px 36px;
-  background: rgba(20, 12, 51, 0.5);
+  background: rgba(7, 10, 19, 0.5);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.65), 0 0 40px -10px rgba(180, 140, 255, 0.25);
+  box-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.65), 0 0 40px -10px rgba(60, 131, 246, 0.25);
   position: relative;
   z-index: 1;
 }
@@ -334,14 +334,14 @@ a:hover { color: var(--text); }
 }
 .login-wrap input:focus {
   border-color: var(--accent-lav);
-  background: rgba(180, 140, 255, 0.05);
+  background: rgba(60, 131, 246, 0.05);
 }
 .login-wrap button {
   width: 100%;
   padding: 13px;
   margin-top: 8px;
   background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  color: #140930;
+  color: #ffffff;
   border: none;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -350,9 +350,9 @@ a:hover { color: var(--text); }
   cursor: pointer;
   font-family: inherit;
   transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-  box-shadow: 0 8px 24px -6px rgba(180, 140, 255, 0.55);
+  box-shadow: 0 8px 24px -6px rgba(60, 131, 246, 0.55);
 }
-.login-wrap button:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(180, 140, 255, 0.7); }
+.login-wrap button:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(60, 131, 246, 0.7); }
 .login-wrap button:active { transform: translateY(0); }
 
 .error { color: var(--danger); font-size: 13px; margin-bottom: 14px; text-align: center; }
@@ -396,7 +396,7 @@ a:hover { color: var(--text); }
 .row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
 .row button {
   padding: 10px 14px;
-  background: rgba(180, 140, 255, 0.12);
+  background: rgba(60, 131, 246, 0.12);
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -406,7 +406,7 @@ a:hover { color: var(--text); }
   cursor: pointer;
   transition: background 180ms var(--ease);
 }
-.row button:hover { background: rgba(180, 140, 255, 0.22); }
+.row button:hover { background: rgba(60, 131, 246, 0.22); }
 
 .badge-pill {
   display: inline-block;
