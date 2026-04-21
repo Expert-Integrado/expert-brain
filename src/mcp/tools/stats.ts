@@ -11,7 +11,7 @@ const DESCRIPTION = `Overview of the vault: total counts, distribution by domain
 Returns:
 - total_notes, total_edges
 - notes_by_domain: [{ domain, count }] sorted by count desc, capped at top_domains_limit (default 50)
-- notes_by_kind: [{ kind, count }] for the 7 canonical kinds
+- notes_by_kind: [{ kind, count }] — includes an explicit { kind: null } bucket for legacy notes saved before kind became required. If that bucket is non-zero, the vault has notes that need curation (update_note with a kind).
 - recent_7d, recent_30d: number of notes created in the last 7 / 30 days
 
 Use stats when:
@@ -22,7 +22,7 @@ Use stats when:
 Read-only. Cheap. No side effects.`;
 
 interface DomainRow { domain: string; count: number; }
-interface KindRow { kind: string; count: number; }
+interface KindRow { kind: string | null; count: number; }
 
 interface StatsInput { top_domains_limit?: number; }
 
@@ -61,12 +61,15 @@ export function registerStats(server: any, env: Env): void {
            ORDER BY count DESC, domain ASC
            LIMIT ?`
         ).bind(limit).all<DomainRow>(),
+        // Include the kind IS NULL bucket too — legacy notes from before kind
+        // became required show up as { kind: null, count: N }. Hiding them
+        // makes the response look inconsistent with total_notes. ORDER BY puts
+        // null last so it reads like a backlog indicator, not a primary kind.
         env.DB.prepare(
           `SELECT kind, count(*) AS count
            FROM notes
-           WHERE kind IS NOT NULL
            GROUP BY kind
-           ORDER BY count DESC, kind ASC`
+           ORDER BY (kind IS NULL) ASC, count DESC, kind ASC`
         ).all<KindRow>(),
       ]);
 

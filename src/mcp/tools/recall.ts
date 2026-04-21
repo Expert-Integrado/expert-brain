@@ -26,6 +26,10 @@ INDEXING LATENCY: Cloudflare Vectorize is eventually consistent — a note saved
 
 interface RecallHit {
   id: string; title: string; domain: string; kind: string | null; tldr: string;
+  // Full list of domains on the note, used for filter matching. The `domain`
+  // field above is still the primary (domains[0]) — kept for the balancing
+  // logic and the external response shape. `allDomains` is only for filtering.
+  allDomains: string[];
 }
 
 interface RecallInput { query: string; limit?: number; domains_filter?: string[]; }
@@ -70,6 +74,7 @@ export function registerRecall(server: any, env: Env): void {
         byId.set(r.id, {
           id: r.id, title: r.title, tldr: r.tldr, kind: r.kind,
           domain: domains[0] ?? 'unknown',
+          allDomains: domains,
         });
       }
 
@@ -79,23 +84,31 @@ export function registerRecall(server: any, env: Env): void {
 
       let pool: RecallHit[] = merged.map((id) => byId.get(id)!).filter(Boolean);
       if (input.domains_filter?.length) {
+        // Match on ANY domain in the note, not just the primary. A note with
+        // domains: ["systems-thinking", "evolutionary-biology"] should pass the
+        // filter ["evolutionary-biology"] even though it's not the primary —
+        // otherwise asking "show me everything in X" misses notes that were
+        // tagged with X as a secondary domain.
         const allow = new Set(input.domains_filter);
-        pool = pool.filter((h) => allow.has(h.domain));
+        pool = pool.filter((h) => h.allDomains.some((d) => allow.has(d)));
       }
 
       const perDomain = new Map<string, number>();
       const distinctDomains = new Set<string>();
-      const results: RecallHit[] = [];
+      const picked: RecallHit[] = [];
       for (const h of pool) {
         const count = perDomain.get(h.domain) ?? 0;
         if (count >= 3) continue;
         if (!distinctDomains.has(h.domain) && distinctDomains.size >= 5) continue;
         perDomain.set(h.domain, count + 1);
         distinctDomains.add(h.domain);
-        results.push(h);
-        if (results.length >= limit) break;
+        picked.push(h);
+        if (picked.length >= limit) break;
       }
 
+      // Strip allDomains before returning — it's only used internally for
+      // filter matching. External response shape stays {id, title, domain, kind, tldr}.
+      const results = picked.map(({ allDomains: _drop, ...rest }) => rest);
       return toolSuccess({ results });
     }) as any
   );

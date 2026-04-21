@@ -117,4 +117,29 @@ describe('stats', () => {
     const parsed = JSON.parse(r.content[0].text);
     expect(parsed.notes_by_domain.length).toBe(3);
   });
+
+  it('notes_by_kind includes a {kind: null} bucket for legacy notes', async () => {
+    const now = Date.now();
+    await seed('new1', ['biology'], 'concept', now);
+    await seed('new2', ['biology'], 'insight', now);
+    // Legacy note inserted directly with kind=null (pre-kind-required era).
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`
+    ).bind('legacy1', 't', 'b', 'a tldr long enough', '["biology"]', null, now, now).run();
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`
+    ).bind('legacy2', 't', 'b', 'a tldr long enough', '["biology"]', null, now, now).run();
+
+    const r = await reg().stats({});
+    const parsed = JSON.parse(r.content[0].text);
+    const nullBucket = parsed.notes_by_kind.find((k: any) => k.kind === null);
+    expect(nullBucket).toBeDefined();
+    expect(nullBucket.count).toBe(2);
+    // Valid kinds should still be present.
+    const kindNames = parsed.notes_by_kind.map((k: any) => k.kind);
+    expect(kindNames).toContain('concept');
+    expect(kindNames).toContain('insight');
+    // Null bucket must come last (ORDER BY kind IS NULL ASC).
+    expect(parsed.notes_by_kind[parsed.notes_by_kind.length - 1].kind).toBeNull();
+  });
 });

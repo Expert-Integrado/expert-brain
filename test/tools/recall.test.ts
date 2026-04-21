@@ -70,4 +70,35 @@ describe('recall', () => {
     const r = await registered.recall({ query: 'coevolution', domains_filter: ['evolutionary-biology'] });
     expect(r.isError).toBeUndefined();
   });
+
+  it('domains_filter matches any domain on the note, not just primary', async () => {
+    // Seed one extra note where evolutionary-biology is the SECONDARY domain.
+    await E.DB.prepare(
+      `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0)`
+    ).bind('f', 'Secondary evo', 'b', 'selection as feedback', '["systems-thinking","evolutionary-biology"]').run();
+    // Mock vector match to surface the new note.
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'f', score: 0.95 }] }));
+
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+    const r = await registered.recall({ query: 'feedback', domains_filter: ['evolutionary-biology'] });
+    const parsed = JSON.parse(r.content[0].text);
+    // Note 'f' has evolutionary-biology as the SECOND domain. Old code would
+    // drop it (primary is systems-thinking); fixed code keeps it.
+    const ids = parsed.results.map((x: any) => x.id);
+    expect(ids).toContain('f');
+  });
+
+  it('response does not leak internal allDomains field', async () => {
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+    const r = await registered.recall({ query: 'coevolution' });
+    const parsed = JSON.parse(r.content[0].text);
+    for (const hit of parsed.results) {
+      expect(hit.allDomains).toBeUndefined();
+      expect(Object.keys(hit).sort()).toEqual(['domain', 'id', 'kind', 'title', 'tldr']);
+    }
+  });
 });
