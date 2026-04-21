@@ -3,6 +3,7 @@ import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
 import { handleGraphData } from './graph-data.js';
+import { handleConfigPage, configPageScript } from './config.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -10,7 +11,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (!path.startsWith('/app')) return null;
 
   if (path === '/app' || path === '/app/') {
-    return new Response(null, { status: 302, headers: { location: '/app/notes' } });
+    return new Response(null, { status: 302, headers: { location: '/app/graph' } });
   }
   if (path === '/app/login' && req.method === 'GET') return handleLoginGet(req);
   if (path === '/app/login' && req.method === 'POST') return handleLoginPost(req, env);
@@ -25,6 +26,16 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   if (path === '/app/graph/bundle.js' && req.method === 'GET') {
     return env.ASSETS.fetch(new Request(new URL('/graph.bundle.js', url.origin)));
+  }
+
+  if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
+  if (path === '/app/config/bundle.js' && req.method === 'GET') {
+    return new Response(configPageScript(), {
+      headers: {
+        'content-type': 'application/javascript; charset=utf-8',
+        'cache-control': 'public, max-age=3600',
+      },
+    });
   }
 
   return new Response('Not found', { status: 404 });

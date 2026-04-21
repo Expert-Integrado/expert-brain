@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { runMigrations } from '../db/migrate.js';
-import { renderLanding, renderNotConfigured } from '../static/wizard.js';
+import { renderNotConfigured } from '../static/wizard.js';
 
 export function isSetup(env: Env): boolean {
   return Boolean(env.OWNER_EMAIL && env.OWNER_PASSWORD_HASH && env.SESSION_SECRET);
@@ -52,10 +52,10 @@ export async function handleRoot(_req: Request, env: Env): Promise<Response> {
   if (!isSetup(env)) {
     return new Response(renderNotConfigured(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   }
-  const status = await getVaultStatus(env);
-  return new Response(renderLanding(status), {
-    headers: { 'content-type': 'text/html; charset=utf-8' },
-  });
+  // Root now funnels configured vaults into the dashboard login. The old
+  // landing page (status + MCP URL + skill + personalization) moved to
+  // /app/config, accessible only after login.
+  return new Response(null, { status: 302, headers: { location: '/app/login' } });
 }
 
 export async function handleStatus(env: Env): Promise<Response> {

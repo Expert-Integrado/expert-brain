@@ -22,7 +22,7 @@ describe('/app/login', () => {
       redirect: 'manual',
     });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/notes');
+    expect(res.headers.get('location')).toBe('/app/graph');
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toMatch(/^mv_session=/);
     expect(setCookie).toContain('HttpOnly');
@@ -66,7 +66,7 @@ describe('/app/login', () => {
       redirect: 'manual',
     });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/notes');
+    expect(res.headers.get('location')).toBe('/app/graph');
   });
 
   it('POST /app/logout clears the cookie', async () => {

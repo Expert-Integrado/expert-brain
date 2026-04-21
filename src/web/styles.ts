@@ -379,4 +379,45 @@ a:hover { color: var(--text); }
   font-size: 12px;
   border: 1px solid var(--border);
 }
+
+/* ---- Config page ---- */
+.url-box {
+  flex: 1;
+  min-width: 260px;
+  word-break: break-all;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--text);
+}
+.row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.row button {
+  padding: 10px 14px;
+  background: rgba(180, 140, 255, 0.12);
+  color: var(--accent-lav);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms var(--ease);
+}
+.row button:hover { background: rgba(180, 140, 255, 0.22); }
+
+.badge-pill {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  margin-left: 12px;
+}
+.badge-ok { background: rgba(111, 227, 154, 0.12); color: #6fe39a; border: 1px solid rgba(111, 227, 154, 0.3); }
+.badge-warn { background: rgba(255, 184, 112, 0.12); color: #ffb870; border: 1px solid rgba(255, 184, 112, 0.3); }
 `;

@@ -3,7 +3,7 @@ import { NEBULA_CSS, FONT_LINKS } from './styles.js';
 
 export function renderShell(opts: {
   title: string;
-  active: 'notes' | 'graph';
+  active: 'notes' | 'graph' | 'config';
   email: string;
   body: string;
   extraHead?: string;
@@ -19,8 +19,9 @@ ${opts.extraHead ?? ''}
 <div class="shell">
   <aside class="sidebar">
     <div class="logo">Mind Vault</div>
-    <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notes</a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph">Graph</a>
+    <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notes</a>
+    <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config">Config</a>
     <div class="bottom">
       <div>${esc(opts.email)}</div>
       <form method="post" action="/app/logout"><button type="submit">Log out</button></form>

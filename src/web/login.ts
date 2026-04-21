@@ -25,7 +25,7 @@ ${error ? `<p class="error">${esc(error)}</p>` : ''}
 
 export async function handleLoginGet(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const next = url.searchParams.get('next') ?? '/app/notes';
+  const next = url.searchParams.get('next') ?? '/app/graph';
   return htmlResponse(renderLoginPage(null, next));
 }
 
@@ -44,7 +44,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   const form = await req.formData();
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
-  const next = String(form.get('next') ?? '/app/notes');
+  const next = String(form.get('next') ?? '/app/graph');
 
   const emailMatch = email === env.OWNER_EMAIL;
   const passwordOk = emailMatch && (await verifyPassword(password, env.OWNER_PASSWORD_HASH));
@@ -56,7 +56,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   const safeNext =
     next.startsWith('/app/') && !next.includes('//') && !next.includes('..')
       ? next
-      : '/app/notes';
+      : '/app/graph';
   return new Response(null, {
     status: 302,
     headers: {
