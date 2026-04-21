@@ -1,8 +1,8 @@
-# Mind Vault — um grafo de conhecimento pessoal pro Claude, rodando no Cloudflare
+# Segundo Cérebro — um grafo de conhecimento pessoal pro Claude, rodando no Cloudflare
 
-![Mind Vault em ação](docs/media/tela-gravacao.gif)
+![Segundo Cérebro em ação](docs/media/tela-gravacao.gif)
 
-**A ferramenta de pensamento latticework pra quem conversa com o Claude.** Mind Vault é um grafo de conhecimento self-hosted, de usuário único, que roda 100% na sua conta Cloudflare e conecta no Claude Code, Claude Desktop ou Claude Web como servidor MCP. Você conversa com o Claude sobre uma ideia, ele decide o que vale guardar, atomiza o conceito, varre o vault atrás de analogias entre domínios diferentes, e salva a nota com edges que nomeiam o *mecanismo* compartilhado — não só "relacionado".
+**A ferramenta de pensamento latticework pra quem conversa com o Claude.** Segundo Cérebro é um grafo de conhecimento self-hosted, de usuário único, que roda 100% na sua conta Cloudflare e conecta no Claude Code, Claude Desktop ou Claude Web como servidor MCP. Você conversa com o Claude sobre uma ideia, ele decide o que vale guardar, atomiza o conceito, varre o vault atrás de analogias entre domínios diferentes, e salva a nota com edges que nomeiam o *mecanismo* compartilhado — não só "relacionado".
 
 **Não é um app de notas. É uma ferramenta de pensamento.**
 
@@ -19,37 +19,37 @@
 - **Quem procura uma alternativa "Claude-native" ao Obsidian ou Notion** pra capturar ideias — especificamente no estilo cross-domain, guiado por analogia, do latticework de modelos mentais do Charlie Munger ou do Zettelkasten do Luhmann.
 - **Escritores, pesquisadores, pensadores** que leem entre áreas e querem um segundo cérebro que *obriga* a procurar a sobreposição estrutural em vez de enterrar as notas em pastas.
 
-Mind Vault **não é** substituto pra app de captura diária. Ele é pro subconjunto do seu pensamento que vale preservar com rigor — as ideias que você vai querer reencontrar, num contexto diferente, daqui a alguns anos.
+Segundo Cérebro **não é** substituto pra app de captura diária. Ele é pro subconjunto do seu pensamento que vale preservar com rigor — as ideias que você vai querer reencontrar, num contexto diferente, daqui a alguns anos.
 
 ## Quando faz sentido (e quando não)
 
-Mind Vault é uma ferramenta opinativa. Não é "notas pro Claude" — é uma disciplina embrulhada num servidor MCP. Antes de instalar, bate as duas listas abaixo.
+Segundo Cérebro é uma ferramenta opinativa — é uma disciplina embrulhada num servidor MCP. Antes de instalar, vale bater as duas listas abaixo.
 
-### ✅ Use o Mind Vault se…
+### ✅ Vai te servir bem se…
 
 - **Você lê ou trabalha entre múltiplos domínios** e quer que as analogias estruturais entre eles apareçam sozinhas. O ponto do vault é notar que um padrão que você acabou de ver em engenharia de software é a mesma forma de algo que você leu em biologia evolutiva ano passado.
-- **Você já vive dentro do Claude Code, Claude Desktop ou cliente compatível com Claude.** Mind Vault é um servidor MCP — o valor vem de estar ao alcance sem sair da conversa.
+- **Você já vive dentro do Claude Code, Claude Desktop ou cliente compatível com Claude.** Segundo Cérebro é um servidor MCP — o valor vem de estar ao alcance sem sair da conversa.
 - **Você toma decisões de julgamento cujo raciocínio vale preservar** — decisões de design, conclusões de pesquisa, apostas estratégicas. O vault protege o *porquê* pra você revisitar depois.
 - **Você tá no Pro, Max ou na API** e pode arcar com os ~2.400 tokens de overhead por requisição fria. No Max 5x/20x isso é desprezível.
 - **Você compra o método Munger/Luhmann**: um conceito por nota, links com *whys* substantivos, estrutura cross-domain em vez de pastas. Se você não compra o método, a ferramenta vai parecer atrito.
 
-### ❌ Pula o Mind Vault se…
+### ⚠️ Talvez não seja pra você agora se…
 
-- **Você tá no Claude Free.** O overhead do MCP come ~27% da sua janela de 5h antes de você digitar qualquer coisa. Não compensa.
-- **Você quer diário ou lista de tarefa.** O vault é rigoroso por design — rejeita captura efêmera. Usa Obsidian, Notion ou Apple Notes.
+- **Você tá no Claude Free.** O overhead do MCP come ~27% da sua janela de 5h antes de você digitar qualquer coisa. Volta quando subir pra Pro.
+- **O que você quer é diário ou lista de tarefa.** O vault é rigoroso por design — rejeita captura efêmera. Pra esse uso, Obsidian, Notion ou Apple Notes resolvem melhor.
 - **Você trabalha só num domínio estreito.** A proposta de valor é recall cross-domain. Quem atua num domínio só extrai quase tudo de uma pasta de markdown simples + `grep`.
 - **Você não usa o Claude como interface principal.** O vault é navegável por um dashboard web, mas a disciplina de *escrita* só funciona quando tem um LLM mediando o fluxo de save. Sem isso, você vai voltar a despejar notas.
-- **Você quer um segundo cérebro que captura tudo.** Mind Vault pune saves de baixo sinal — notas relaxadas poluem recalls futuros. Se você não consegue articular um tldr de uma frase, a nota não tá pronta.
+- **Você ainda está no modo "quero capturar tudo".** Segundo Cérebro pune saves de baixo sinal — notas relaxadas poluem recalls futuros. Se você não consegue articular um tldr de uma frase, talvez valha amadurecer a ideia antes de guardar.
 - **Você precisa de acesso offline ou armazenamento local.** O vault roda no D1 + Vectorize da Cloudflare. Suas notas saem da sua máquina.
 - **Você se importa em preservar a forma exata do que escreveu.** O vault empurra pra atomização e reescrita — é ferramenta de pensamento, não de arquivo.
 
 ### A frase honesta
 
-Mind Vault vale a pena quando você trata ele como **uma disciplina pras ideias que você vai querer de volta**, não como lugar pra despejar coisa. Se essa distinção não ressoa, você provavelmente ainda não precisa dele.
+Segundo Cérebro vale a pena quando você trata ele como **uma disciplina pras ideias que você vai querer de volta**, não como lugar pra despejar coisa. Se essa distinção não ressoa, talvez o próximo mês seja uma hora melhor.
 
 ## 💰 Custo: R$ 0 — roda inteiro no free tier da Cloudflare
 
-Antes de sair deployando, lê isso: **você não vai ser cobrado**. Mind Vault roda no free tier da Cloudflare, que é generoso o suficiente pra um vault pessoal nunca chegar perto dos limites:
+Antes de sair deployando, lê isso: **você não vai ser cobrado**. Segundo Cérebro roda no free tier da Cloudflare, que é generoso o suficiente pra um vault pessoal nunca chegar perto dos limites:
 
 | Serviço | Free tier | O que um vault pessoal consome |
 |---|---|---|
@@ -63,7 +63,7 @@ Antes de sair deployando, lê isso: **você não vai ser cobrado**. Mind Vault r
 
 ## ⚠️ O custo real: tokens do Claude
 
-A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de vista do orçamento de tokens. Você precisa entender isso antes de decidir se Mind Vault vale pro seu padrão de uso.
+A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de vista do orçamento de tokens. Você precisa entender isso antes de decidir se Segundo Cérebro vale pro seu padrão de uso.
 
 ### O que custa
 
@@ -74,7 +74,7 @@ A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de
 | Resposta do `recall` | 100–300 | Por chamada (retorna só os tldrs, nunca o corpo — barato por design) |
 | Resposta do `get_note` | 500–2.000 | Por chamada (corpo completo) |
 
-Os ~2.400 tokens vêm das descrições de tool e instruções de uso que o MCP injeta no system prompt ([`src/mcp/instructions.ts`](src/mcp/instructions.ts) + os 6 schemas de tool). Eles carregam em **toda** requisição enquanto o MCP tá conectado, use você o vault naquele turno ou não. O cache de prompt (TTL de 5 min) torna isso quase grátis em conversa contínua, mas você repaga em todo cold start.
+Os ~2.400 tokens vêm das descrições de tool e instruções de uso que o MCP injeta no system prompt ([`src/mcp/instructions.ts`](src/mcp/instructions.ts) + os 9 schemas de tool). Eles carregam em **toda** requisição enquanto o MCP tá conectado, use você o vault naquele turno ou não. O cache de prompt (TTL de 5 min) torna isso quase grátis em conversa contínua, mas você repaga em todo cold start.
 
 ### Impacto por plano do Claude
 
@@ -82,7 +82,7 @@ A Anthropic não publica quotas exatas pros planos de consumidor, mas a leitura 
 
 | Plano | Janela de uso | Orçamento observado | Overhead MCP como % da janela |
 |---|---|---|---|
-| **Free** | 5h rolling | muito apertado (~9k tok efetivos) | ~27% — **não use** Mind Vault no Free |
+| **Free** | 5h rolling | muito apertado (~9k tok efetivos) | ~27% — **não use** Segundo Cérebro no Free |
 | **Pro** (US$ 20/mês) | 5h rolling + limite semanal | ~44k tok por janela de 5h | ~5,5% por requisição fria |
 | **Max 5x** (US$ 100/mês) | 5h rolling + limite semanal | ~220k tok por janela de 5h | ~1,1% |
 | **Max 20x** (US$ 200/mês) | 5h rolling + limite semanal | ~880k tok por janela de 5h | ~0,3% |
@@ -91,7 +91,7 @@ A Anthropic não publica quotas exatas pros planos de consumidor, mas a leitura 
 Pontos importantes sobre as janelas dos planos:
 
 - **Todos os planos pagos usam janela rolling de 5h**, não reset diário. Mensagens caem 5h depois do envio. Confere em `/usage` no Claude Code ou em `claude.ai/settings/usage` pra ver o contador ao vivo.
-- **Limites semanais foram adicionados em agosto/2025** no Pro e Max pra usuários pesados, além da janela de 5h. O overhead fixo do Mind Vault também conta pro semanal.
+- **Limites semanais foram adicionados em agosto/2025** no Pro e Max pra usuários pesados, além da janela de 5h. O overhead fixo do Segundo Cérebro também conta pro semanal.
 - **Horário de pico queima mais rápido**: em dia de semana, 5–11h PT / 13–19h GMT, a Anthropic aperta os limites da sessão de 5h durante alta demanda. Uma sessão com MCP conectado e 10 turnos frios no pico pode comer um pedaço notável da janela Pro.
 - **Billing da API é o modelo oposto**: sem janela, mas cada token é medido. Aqui o overhead do MCP vira linha de custo real. Disciplina de cache importa mais.
 
@@ -109,7 +109,7 @@ Pra metodologia completa e o breakdown por tool, veja [docs/token-cost.md](docs/
 
 ## Quickstart — deixa sua IDE agêntica fazer o trabalho
 
-Mind Vault é configurado pela sua IDE agêntica (Claude Code, Cursor, Windsurf, etc), não por wizard web. O repo traz um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta. **A única coisa que você digita é email e passphrase.** Tudo o mais — provisionar D1, Vectorize, KV, hashear a passphrase, gerar o session secret, subir os secrets, fazer deploy, aplicar o schema — é feito pra você.
+Segundo Cérebro é configurado pela sua IDE agêntica (Claude Code, Cursor, Windsurf, etc), não por wizard web. O repo traz um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta. **A única coisa que você digita é email e passphrase.** Tudo o mais — provisionar D1, Vectorize, KV, hashear a passphrase, gerar o session secret, subir os secrets, fazer deploy, aplicar o schema — é feito pra você.
 
 **O que você precisa:**
 
@@ -120,20 +120,20 @@ Mind Vault é configurado pela sua IDE agêntica (Claude Code, Cursor, Windsurf,
 **O fluxo:**
 
 ```bash
-git clone https://github.com/orobsonn/mind-vault.git
-cd mind-vault
+git clone https://github.com/orobsonn/segundo-cerebro.git
+cd segundo-cerebro
 npm install
 npx wrangler login   # abre o browser → clica "Allow" → pronto
 ```
 
 Agora abre a pasta na sua IDE e diz:
 
-> Configura o Mind Vault.
+> Configura o Segundo Cérebro.
 
 O agente lê o [CLAUDE.md](CLAUDE.md), te pede email e passphrase (12+ caracteres), e roda o runbook completo. Quando termina, ele te devolve a URL do Worker e a linha pra conectar o Claude Code ao MCP:
 
 ```bash
-claude mcp add --transport http mind-vault https://<seu-worker>.workers.dev/mcp
+claude mcp add --transport http segundo-cerebro https://<seu-worker>.workers.dev/mcp
 ```
 
 Instala a skill `using-mind-vault` (o agente te passa o link) e cola o bloco de personalização que ele mostra.
@@ -144,7 +144,7 @@ Abre o Claude e joga uma ideia:
 
 > "Acabei de sacar que tech debt se comporta como juros compostos — quanto mais você ignora, pior fica a taxa."
 
-O Claude chama `MindVault:recall` pra varrer o vault atrás de analogias, aí oferece salvar a nota com `MindVault:save_note`, atomizando em um conceito por nota e criando edges com justificativas *why* substantivas. Você vê as chamadas de tool MCP acontecendo na UI da conversa.
+O Claude chama `recall` pra varrer o vault atrás de analogias, aí oferece salvar a nota com `save_note`, atomizando em um conceito por nota e criando edges com justificativas *why* substantivas. Você vê as chamadas de tool MCP acontecendo na UI da conversa.
 
 ### O que você vai ver
 
@@ -156,6 +156,34 @@ O Claude chama `MindVault:recall` pra varrer o vault atrás de analogias, aí of
 
 *Tela de grafo — física force-directed com reveal no estilo Obsidian. Linhas roxas sólidas são edges explícitos; tracejadas em teal são edges de similaridade semântica emergidos pelo modelo de embedding; nós são coloridos por domínio.*
 
+## 🎯 As 3 regras de ouro do Segundo Cérebro
+
+Se você esquecer tudo nesse README, lembra dessas três. É o método inteiro em 3 bullets:
+
+### 1. Uma ideia por nota
+
+Se o título tem "e" (ou "and"), **quebra em duas notas**. Uma nota = um conceito atômico. O teste: você consegue escrever um tldr de uma frase só? Se não, ela ainda tem mais de uma ideia misturada — atomiza.
+
+Exemplo ruim: *"Feedback loops e economia comportamental"* — dois conceitos.
+Exemplo bom: *"Feedback loop negativo com atraso oscila"* + *"Viés de disponibilidade supera dados em decisão sob estresse"* — duas notas, um edge entre elas.
+
+### 2. Todo link precisa de `why`
+
+O Segundo Cérebro rejeita edges com `why` menor que 20 caracteres. Não é frescura — é que um edge sem mecanismo explicado é lixo pro recall futuro. "Related" não ajuda ninguém.
+
+O `why` tem que nomear o **mecanismo compartilhado**:
+
+- ❌ *"Ambos são sobre crescimento"* → rejeitado. Vago.
+- ✅ *"Ambos têm feedback negativo com atraso, então ambos oscilam em vez de convergir"* → aceito. Mecanismo nomeado.
+
+### 3. Sempre `recall` antes de `save`
+
+Antes de salvar qualquer nota, o Claude chama `recall` pra varrer o vault atrás de analogias em outros domínios. **É aqui que o segundo cérebro se diferencia de um arquivo de notas.**
+
+Você acha que a ideia é nova. O `recall` traz uma nota sua de 8 meses atrás sobre sucessão ecológica que tem a mesma forma estrutural. Agora você tem dois pontos num grid, e eles se iluminam um ao outro.
+
+**Isso é o diferencial do método:** não é sobre guardar bem, é sobre *forçar a conexão cross-domain no momento do save*.
+
 ## Arquitetura
 
 ```mermaid
@@ -164,7 +192,7 @@ flowchart LR
     Claude[Claude Code<br/>Desktop / Web]
     Worker[Cloudflare Worker<br/>endpoint único]
     OAuth[OAuth 2.1<br/>grants em KV]
-    MCP[Servidor MCP<br/>6 tools]
+    MCP[Servidor MCP<br/>9 tools]
     D1[(D1<br/>notas + edges<br/>FTS5)]
     Vec[(Vectorize<br/>1024-dim<br/>cosine)]
     AI[Workers AI<br/>bge-m3 multilíngue]
@@ -218,11 +246,15 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 
 | Tool | Função |
 |---|---|
-| `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, slugs de domínio contra regex, existência do edge target. |
+| `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, slugs de domínio contra regex, existência do edge target, e `kind` contra o enum fechado. |
+| `update_note` | Edita título/body/tldr/domínios/kind/tags de uma nota existente. Re-embed automático se o `tldr` mudou. |
+| `delete_note` | Remove a nota do D1 (cascata em edges/tags) e o vetor correspondente do Vectorize. Irreversível. |
 | `recall` | Busca híbrida: embedding Workers AI + FTS5, mesclados e **balanceados por domínio** (máx 3 por domínio, até 5 domínios distintos). Retorna só `{id, title, domain, kind, tldr}` — nunca o corpo. |
 | `expand` | Vizinhos de 1 hop de uma nota no grafo. |
 | `get_note` | Corpo completo + tags + edges de uma nota por id. |
 | `link` | Cria um edge entre duas notas existentes (pra quando o Claude detecta conexão entre saves anteriores no meio da conversa). |
+| `stats` | Panorama do vault: total de notas/edges, distribuição por domínio e por kind, notas dos últimos 7 e 30 dias. |
+| `reembed` | Regenera o embedding de uma nota (rescue pra quando o upsert vetorial falhou no save). |
 
 As descrições de tool são escritas em inglês com instruções de fluxo obrigatório ("chama `recall` antes de `save_note`") e mensagens de erro pedagógicas ("se a conversa tá em português e você ia usar `biologia-evolutiva`, usa `evolutionary-biology` no lugar") que ensinam o Claude a se recuperar de erro em um shot.
 
@@ -280,7 +312,7 @@ O framing público é **pensamento latticework / grafo de conhecimento multi-mod
 
 > **Pula essa seção se você não tem certeza de que precisa.** O Quickstart acima (com `wrangler login` + `wrangler deploy`) já basta pra uso pessoal — você só re-deploya quando muda o código, e dá pra rodar `wrangler deploy` de novo no terminal.
 
-Esse repo traz um **workflow do GitHub Actions** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) que faz auto-deploy pro seu Worker a cada push em `master` ou `main`. Útil se você pretende modificar o Mind Vault e quer suas mudanças subindo automático ao dar push no GitHub.
+Esse repo traz um **workflow do GitHub Actions** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) que faz auto-deploy pro seu Worker a cada push em `master` ou `main`. Útil se você pretende modificar o Segundo Cérebro e quer suas mudanças subindo automático ao dar push no GitHub.
 
 Pra habilitar no seu fork:
 
@@ -291,7 +323,7 @@ Pra habilitar no seu fork:
    - `CLOUDFLARE_ACCOUNT_ID` = o account ID do passo 2
 4. Dá push de qualquer commit em `master`. O workflow roda `npm run typecheck` + `npm test` + `npm run build:skill` antes do deploy, então teste quebrando bloqueia o deploy.
 
-Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/mind-vault/actions`.
+Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/segundo-cerebro/actions`.
 
 ## Desenvolvimento
 
@@ -317,6 +349,54 @@ No momento **não tem rate limit de login**. Pull requests bem-vindos.
 ## Free tier
 
 Os free tiers de D1 + Vectorize + Workers AI bastam pra uso pessoal. Confirma os limites atuais nas páginas de preço da Cloudflare antes de contar com eles pra vaults grandes.
+
+## FAQ
+
+### E se eu perder a passphrase?
+
+Seus dados sobrevivem — eles vivem no D1, que é uma tabela na sua conta Cloudflare. O que você perde é o acesso ao dashboard web. Pra recuperar:
+
+1. Roda o script de hash de novo com a nova passphrase: `node scripts/hash-password.mjs "nova-passphrase"`
+2. Atualiza o secret: `echo "<novo-hash>" | npx wrangler secret put OWNER_PASSWORD_HASH`
+3. Redeploy: `npx wrangler deploy`
+
+Seus Claude Desktop / Claude Code que já estavam conectados via MCP continuam funcionando (eles usam tokens OAuth separados, não a passphrase).
+
+### Posso migrar do Obsidian ou Notion?
+
+Não tem importer automático (ainda). Mas funciona bem assim: você conversa com o Claude sobre uma nota do Obsidian por vez, e pede pra ele salvar no vault — ele atomiza, chama `recall` pra buscar analogias, e salva. Esse processo de "repensar cada nota antes de salvar" é intencional — migrar em lote defeita o método.
+
+### Funciona no Windows?
+
+Sim. Wrangler e Node rodam no Windows normal. Na hora do setup, se você usa WSL, melhor — Git Bash ou PowerShell também funcionam, só atenção à sintaxe de `echo` nos comandos de `wrangler secret put` (pode precisar trocar as aspas).
+
+### Posso exportar meu vault?
+
+Sim. Três opções:
+
+1. **Export rápido via API:** `curl <seu-worker-url>/status` traz totais; pra dump completo, abre o D1 no dashboard Cloudflare e exporta como SQL.
+2. **CLI:** `npx wrangler d1 export mind-vault --output=dump.sql` gera um dump SQL da sua vault.
+3. **Dashboard web:** a tela de grafo serve como índice visual; clicar na nota abre o conteúdo.
+
+### Posso desligar o MCP sem perder dados?
+
+Sim. Desconectar do Claude só remove o MCP do contexto daquela sessão — todos os seus dados continuam no D1/Vectorize da sua Cloudflare. Quando reconectar, tá tudo lá.
+
+### O vault cresce indefinidamente? Vou estourar o free tier?
+
+Cálculo rápido: free tier do Vectorize dá 5M vetores. Uma nota = um vetor. Pra chegar a 5M notas, você teria que salvar uma nota a cada 10 segundos, sem parar, por 1 ano e meio. É efetivamente ilimitado pra uso pessoal.
+
+### Dá pra rodar dois vaults separados (pessoal + trabalho, por exemplo)?
+
+Sim, mas cada um precisa do próprio Worker. Forka o repo, cria recursos novos no Cloudflare com nomes diferentes (`mind-vault-work`, etc), e faz deploy pra cada um. Não tem suporte nativo a múltiplos vaults no mesmo Worker (design single-user).
+
+### O Claude vê minhas notas em outras conversas automaticamente?
+
+Só se você mantiver o MCP conectado. Quando conectado, o Claude pode chamar `recall` a qualquer momento — em geral ele chama quando a conversa bate em conceito ou ideia, não aleatoriamente. Desconecta quando quiser que o Claude não tenha acesso.
+
+### E se o Workers AI mudar o modelo de embedding?
+
+Se o modelo atual (`bge-m3`) for descontinuado ou substituído por algo melhor, dá pra fazer migration rodando `reembed` em batch em todas as notas. O código já aguenta isso por design — o `reembed` existe exatamente pra esse caso.
 
 ---
 
