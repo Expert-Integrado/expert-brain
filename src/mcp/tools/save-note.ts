@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
-import { EDGE_TYPES, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
+import { EDGE_TYPES, NOTE_KINDS, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 
@@ -17,7 +17,9 @@ const inputSchema = {
   body: z.string().min(1).describe('Body in markdown'),
   tldr: z.string().min(10).max(280).describe('One sentence. Feynman test.'),
   domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3)'),
-  kind: z.string().optional(),
+  kind: z.enum(NOTE_KINDS as unknown as [string, ...string[]]).describe(
+    'concept | decision | insight | fact | pattern | principle | question'
+  ),
   tags: z.array(z.string()).optional(),
   edges: z.array(edgeSchema).optional(),
 };
@@ -35,6 +37,15 @@ Write title/body/tldr in the CONVERSATION LANGUAGE (if the user is speaking Port
 
 The domains field MUST always use canonical English kebab-case slugs (e.g. 'evolutionary-biology', 'behavioral-economics', 'systems-thinking'), regardless of conversation language. Domains are schema — do NOT translate them.
 
+The kind field is REQUIRED and must be one of 7 values — pick the one that best fits the note's epistemic status:
+- 'concept'   — an abstract idea, model, or framework (most common default)
+- 'decision'  — a choice made with preserved reasoning (design decision, strategic bet)
+- 'insight'   — a personal observation or discovery ("I just realized...")
+- 'fact'      — an objective data point or citable reference
+- 'pattern'   — a recurring structure observed across instances
+- 'principle' — a personal rule or axiom the user lives by
+- 'question'  — an open question worth revisiting (not yet answered)
+
 IMPORTANT: the why field of each edge is rejected if it has fewer than 20 characters, and edges pointing to non-existent ids are rejected. If you do not have the target note id, call recall() first. Domains that do not match the canonical slug format are rejected with an explanation.
 
 INDEXING LATENCY: Cloudflare Vectorize is eventually consistent. After save_note returns successfully, the newly-saved note is immediately queryable via its id (get_note, expand) because D1 is strongly consistent, but the VECTOR may take up to ~1-2 minutes to become queryable via recall. If the user asks you to recall a concept right after saving it and recall returns empty or misses the fresh note, that is NOT a bug — explain the delay to the user and suggest trying again in a minute, or use get_note/expand on the id you just received if you need to reference the content immediately.`;
@@ -44,7 +55,7 @@ interface SaveNoteInput {
   body: string;
   tldr: string;
   domains: string[];
-  kind?: string;
+  kind: NoteKind;
   tags?: string[];
   edges?: Array<{ to_id: string; relation_type: string; why: string }>;
 }
@@ -101,7 +112,7 @@ export function registerSaveNote(server: any, env: Env): void {
         body: input.body,
         tldr: input.tldr,
         domains: JSON.stringify(input.domains),
-        kind: input.kind ?? null,
+        kind: input.kind,
         created_at: now,
         updated_at: now,
       });
@@ -124,7 +135,7 @@ export function registerSaveNote(server: any, env: Env): void {
       // via recall until re-embedded. get_note(id) and expand(id) still work.
       await upsertNoteVector(env, id, vec, {
         domains: input.domains,
-        kind: input.kind ?? null,
+        kind: input.kind,
         created_at: now,
       });
 

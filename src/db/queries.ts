@@ -9,6 +9,15 @@ export const EDGE_TYPES: readonly EdgeType[] = [
   'causes','depends_on','contradicts','evidence_for','refines',
 ] as const;
 
+export type NoteKind =
+  | 'concept' | 'decision' | 'insight' | 'fact'
+  | 'pattern' | 'principle' | 'question';
+
+export const NOTE_KINDS: readonly NoteKind[] = [
+  'concept','decision','insight','fact',
+  'pattern','principle','question',
+] as const;
+
 export interface NoteRow {
   id: string; title: string; body: string; tldr: string;
   domains: string; kind: string | null;
@@ -38,6 +47,42 @@ export async function insertTags(env: Env, noteId: string, tags: string[]): Prom
   if (tags.length === 0) return;
   const stmt = env.DB.prepare(`INSERT OR IGNORE INTO tags (note_id, tag) VALUES (?, ?)`);
   await env.DB.batch(tags.map((t) => stmt.bind(noteId, t)));
+}
+
+export interface NotePatch {
+  title?: string;
+  body?: string;
+  tldr?: string;
+  domains?: string;
+  kind?: NoteKind;
+  updated_at: number;
+}
+
+export async function updateNote(env: Env, id: string, patch: NotePatch): Promise<void> {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (patch.title !== undefined) { fields.push('title = ?'); values.push(patch.title); }
+  if (patch.body !== undefined) { fields.push('body = ?'); values.push(patch.body); }
+  if (patch.tldr !== undefined) { fields.push('tldr = ?'); values.push(patch.tldr); }
+  if (patch.domains !== undefined) { fields.push('domains = ?'); values.push(patch.domains); }
+  if (patch.kind !== undefined) { fields.push('kind = ?'); values.push(patch.kind); }
+  fields.push('updated_at = ?'); values.push(patch.updated_at);
+  values.push(id);
+  await env.DB.prepare(
+    `UPDATE notes SET ${fields.join(', ')} WHERE id = ?`
+  ).bind(...values).run();
+}
+
+export async function deleteNote(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM notes WHERE id = ?`).bind(id).run();
+}
+
+export async function replaceTags(env: Env, noteId: string, tags: string[]): Promise<void> {
+  await env.DB.prepare(`DELETE FROM tags WHERE note_id = ?`).bind(noteId).run();
+  if (tags.length > 0) {
+    const stmt = env.DB.prepare(`INSERT OR IGNORE INTO tags (note_id, tag) VALUES (?, ?)`);
+    await env.DB.batch(tags.map((t) => stmt.bind(noteId, t)));
+  }
 }
 
 export async function getNoteById(env: Env, id: string): Promise<NoteRow | null> {

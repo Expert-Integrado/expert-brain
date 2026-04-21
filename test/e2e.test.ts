@@ -18,9 +18,9 @@ describe('e2e: all tools wired', () => {
       query: vi.fn(async () => ({ matches: [] })),
     };
     await runMigrations(E);
-    await E.DB.exec('DELETE FROM edges');
-    await E.DB.exec('DELETE FROM tags');
-    await E.DB.exec('DELETE FROM notes');
+    await E.DB.prepare('DELETE FROM edges').run();
+    await E.DB.prepare('DELETE FROM tags').run();
+    await E.DB.prepare('DELETE FROM notes').run();
     const s: any = { registerTool: (n: string, _m: any, h: any) => { tools[n] = h; } };
     registerSaveNote(s, E); registerRecall(s, E); registerGetNote(s, E);
     registerExpand(s, E); registerLink(s, E);
@@ -31,11 +31,13 @@ describe('e2e: all tools wired', () => {
       title: 'Red Queen', body: 'coevolution body',
       tldr: 'coevolution forces constant running just to stay in place',
       domains: ['evolutionary-biology'],
+      kind: 'concept',
     });
     const b = await tools.save_note({
       title: 'Tech debt spiral', body: 'compounding',
       tldr: 'unpaid debt accrues interest via slower future work',
       domains: ['software-engineering'],
+      kind: 'pattern',
     });
     const aId = JSON.parse(a.content[0].text).id;
     const bId = JSON.parse(b.content[0].text).id;
