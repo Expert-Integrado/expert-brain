@@ -1,185 +1,185 @@
-# Mind Vault — a personal knowledge graph for Claude, built on Cloudflare
+# Mind Vault — um grafo de conhecimento pessoal pro Claude, rodando no Cloudflare
 
-![Mind Vault in action](docs/media/tela-gravacao.gif)
+![Mind Vault em ação](docs/media/tela-gravacao.gif)
 
-**The latticework thinking tool for people who talk to Claude.** Mind Vault is a single-user, self-hosted knowledge graph that runs entirely in your own Cloudflare account and plugs into Claude Code, Claude Desktop, or Claude Web as an MCP server. You talk to Claude about ideas, Claude decides what is worth keeping, atomizes the concept, sweeps the vault for cross-domain analogies, and saves the note with edges that name the shared *mechanism* — not just "related".
+**A ferramenta de pensamento latticework pra quem conversa com o Claude.** Mind Vault é um grafo de conhecimento self-hosted, de usuário único, que roda 100% na sua conta Cloudflare e conecta no Claude Code, Claude Desktop ou Claude Web como servidor MCP. Você conversa com o Claude sobre uma ideia, ele decide o que vale guardar, atomiza o conceito, varre o vault atrás de analogias entre domínios diferentes, e salva a nota com edges que nomeiam o *mecanismo* compartilhado — não só "relacionado".
 
-**Not a notes app. A thinking tool.**
+**Não é um app de notas. É uma ferramenta de pensamento.**
 
-- ✅ **Concepts, not pages.** Every note is one idea, titled in one line, summarized in one sentence (Feynman test).
-- ✅ **Edges with substance.** 9 typed relations (`analogous_to`, `same_mechanism_as`, `contradicts`, `refines`, …) each requiring a 20-character minimum *why* — the mechanism behind the connection.
-- ✅ **Cross-domain by design.** Recall is domain-balanced — the vault surfaces the unexpected match from another field, because that's where insight lives.
-- ✅ **Multilingual.** Write in Portuguese, English, or whatever the conversation is in. The embedding model (`bge-m3`) retrieves across 100+ languages.
-- ✅ **Sovereign.** Everything lives in your Cloudflare account — D1 (SQLite), Vectorize (embeddings), Workers AI. No third party, no lock-in, no subscription.
-- ✅ **OAuth 2.1 + dynamic client registration.** Claude Desktop and Claude Web plug in with just the URL; no token juggling.
+- ✅ **Conceitos, não páginas.** Cada nota é uma ideia só, título em uma linha, resumida numa frase (teste Feynman).
+- ✅ **Edges com substância.** 9 tipos de relação (`analogous_to`, `same_mechanism_as`, `contradicts`, `refines`, …), cada uma exigindo um *why* de no mínimo 20 caracteres — o mecanismo por trás da conexão.
+- ✅ **Cross-domain por design.** O recall é balanceado por domínio — o vault entrega a conexão inesperada de outro campo, porque é ali que o insight mora.
+- ✅ **Multilíngue.** Escreva em português, inglês, ou o que for da conversa. O modelo de embedding (`bge-m3`) recupera em 100+ idiomas.
+- ✅ **Soberano.** Tudo vive na sua conta Cloudflare — D1 (SQLite), Vectorize (embeddings), Workers AI. Zero terceiros, zero lock-in, zero assinatura.
+- ✅ **OAuth 2.1 + registro dinâmico de cliente.** Claude Desktop e Claude Web plugam só com a URL; sem malabarismo de token.
 
-## Who is this for?
+## Pra quem é isso?
 
-- **Developers who live in Claude Code** and want their learnings to compound across sessions instead of evaporating at the end of each conversation.
-- **Anyone looking for a "Claude-native" alternative to Obsidian or Notion** for idea capture — specifically the cross-domain, analogy-driven style from Charlie Munger's latticework of mental models or Luhmann's Zettelkasten.
-- **Writers, researchers, thinkers** who read across fields and want a second brain that *forces* them to look for the structural overlap instead of burying notes in folders.
+- **Quem vive no Claude Code** e quer que o que aprende se acumule entre sessões, em vez de evaporar no fim de cada conversa.
+- **Quem procura uma alternativa "Claude-native" ao Obsidian ou Notion** pra capturar ideias — especificamente no estilo cross-domain, guiado por analogia, do latticework de modelos mentais do Charlie Munger ou do Zettelkasten do Luhmann.
+- **Escritores, pesquisadores, pensadores** que leem entre áreas e querem um segundo cérebro que *obriga* a procurar a sobreposição estrutural em vez de enterrar as notas em pastas.
 
-Mind Vault is **not** a replacement for a daily-capture notes app. It is for the subset of your thinking worth preserving with rigor — the ideas you want to find again, in a different context, years later.
+Mind Vault **não é** substituto pra app de captura diária. Ele é pro subconjunto do seu pensamento que vale preservar com rigor — as ideias que você vai querer reencontrar, num contexto diferente, daqui a alguns anos.
 
-## When Mind Vault makes sense (and when it doesn't)
+## Quando faz sentido (e quando não)
 
-Mind Vault is an opinionated tool. It is not "notes for Claude" — it is a discipline wrapped in an MCP server. Before installing it, check yourself against these lists.
+Mind Vault é uma ferramenta opinativa. Não é "notas pro Claude" — é uma disciplina embrulhada num servidor MCP. Antes de instalar, bate as duas listas abaixo.
 
-### ✅ Use Mind Vault if…
+### ✅ Use o Mind Vault se…
 
-- **You read or work across multiple domains** and want the structural analogies between them to surface automatically. The whole point of the vault is to notice that a pattern you just hit in software engineering is the same shape as a pattern you read about in evolutionary biology last year.
-- **You already live inside Claude Code, Claude Desktop, or a Claude-compatible client.** Mind Vault is an MCP server — its value comes from being reachable without leaving the conversation.
-- **You make judgment calls with reasoning worth preserving** — design decisions, research conclusions, strategic bets. The vault protects the *why* so you can revisit it later.
-- **You are on Pro, Max, or the API** and can afford the ~2,400-token overhead per cold request. On Max 5x/20x this is negligible.
-- **You believe in the Munger/Luhmann method**: atomize one concept per note, link with substantive whys, prefer cross-domain structure over folders. If you don't buy the method, the tool will feel like friction.
+- **Você lê ou trabalha entre múltiplos domínios** e quer que as analogias estruturais entre eles apareçam sozinhas. O ponto do vault é notar que um padrão que você acabou de ver em engenharia de software é a mesma forma de algo que você leu em biologia evolutiva ano passado.
+- **Você já vive dentro do Claude Code, Claude Desktop ou cliente compatível com Claude.** Mind Vault é um servidor MCP — o valor vem de estar ao alcance sem sair da conversa.
+- **Você toma decisões de julgamento cujo raciocínio vale preservar** — decisões de design, conclusões de pesquisa, apostas estratégicas. O vault protege o *porquê* pra você revisitar depois.
+- **Você tá no Pro, Max ou na API** e pode arcar com os ~2.400 tokens de overhead por requisição fria. No Max 5x/20x isso é desprezível.
+- **Você compra o método Munger/Luhmann**: um conceito por nota, links com *whys* substantivos, estrutura cross-domain em vez de pastas. Se você não compra o método, a ferramenta vai parecer atrito.
 
-### ❌ Skip Mind Vault if…
+### ❌ Pula o Mind Vault se…
 
-- **You're on Claude Free.** The MCP overhead eats ~27% of your 5-hour window before you type anything. Not worth it.
-- **You want a daily journal or task list.** The vault is ruthless by design — it rejects ephemeral capture. Use Obsidian, Notion, or Apple Notes.
-- **You only work within one narrow domain.** The value proposition is cross-domain recall. A single-domain user gets most of the benefit from a plain markdown folder and `grep`.
-- **You don't use Claude as your primary interface.** The vault is readable from a web dashboard, but the *writing* discipline only works when an LLM is mediating the save flow. Without that, you'll drift back to dumping notes.
-- **You want a second brain that captures everything.** Mind Vault punishes low-signal saves — sloppy notes pollute future recalls. If you can't articulate a one-sentence tldr, the note isn't ready.
-- **You need offline access or local-only storage.** The vault runs on Cloudflare D1 + Vectorize. Your notes leave your machine.
-- **You care about preserving the exact surface wording of what you wrote.** The vault nudges toward atomization and rewriting — it is a thinking tool, not an archival tool.
+- **Você tá no Claude Free.** O overhead do MCP come ~27% da sua janela de 5h antes de você digitar qualquer coisa. Não compensa.
+- **Você quer diário ou lista de tarefa.** O vault é rigoroso por design — rejeita captura efêmera. Usa Obsidian, Notion ou Apple Notes.
+- **Você trabalha só num domínio estreito.** A proposta de valor é recall cross-domain. Quem atua num domínio só extrai quase tudo de uma pasta de markdown simples + `grep`.
+- **Você não usa o Claude como interface principal.** O vault é navegável por um dashboard web, mas a disciplina de *escrita* só funciona quando tem um LLM mediando o fluxo de save. Sem isso, você vai voltar a despejar notas.
+- **Você quer um segundo cérebro que captura tudo.** Mind Vault pune saves de baixo sinal — notas relaxadas poluem recalls futuros. Se você não consegue articular um tldr de uma frase, a nota não tá pronta.
+- **Você precisa de acesso offline ou armazenamento local.** O vault roda no D1 + Vectorize da Cloudflare. Suas notas saem da sua máquina.
+- **Você se importa em preservar a forma exata do que escreveu.** O vault empurra pra atomização e reescrita — é ferramenta de pensamento, não de arquivo.
 
-### The honest one-liner
+### A frase honesta
 
-Mind Vault is worth it when you treat it as **a discipline for the ideas you'll actually want again**, not as a place to dump things. If that distinction doesn't resonate, you probably don't need it yet.
+Mind Vault vale a pena quando você trata ele como **uma disciplina pras ideias que você vai querer de volta**, não como lugar pra despejar coisa. Se essa distinção não ressoa, você provavelmente ainda não precisa dele.
 
-## 💰 Cost: $0 — runs entirely on Cloudflare's free tier
+## 💰 Custo: R$ 0 — roda inteiro no free tier da Cloudflare
 
-Before you deploy anything, read this: **you will not be charged**. Mind Vault runs on Cloudflare's free tier, which is generous enough that a personal vault never comes close to the limits:
+Antes de sair deployando, lê isso: **você não vai ser cobrado**. Mind Vault roda no free tier da Cloudflare, que é generoso o suficiente pra um vault pessoal nunca chegar perto dos limites:
 
-| Service | Free tier | What a personal vault uses |
+| Serviço | Free tier | O que um vault pessoal consome |
 |---|---|---|
-| Workers (the server) | 100,000 requests/day | ~50 reqs/day in active use |
-| D1 (the database) | 5 GB storage, 5M reads/day, 100k writes/day | A few MB, hundreds of reads |
-| Vectorize (the search) | 5M stored vectors, 30M queries/month | A few thousand at most |
-| Workers AI (embeddings) | 10,000 neurons/day | A few hundred |
-| KV (OAuth tokens + graph cache) | 100k reads/day, 1k writes/day (per namespace) | Single-digit reads per login + cached graph layout |
+| Workers (o servidor) | 100.000 requisições/dia | ~50 reqs/dia em uso ativo |
+| D1 (o banco) | 5 GB de armazenamento, 5M leituras/dia, 100k escritas/dia | Alguns MB, centenas de leituras |
+| Vectorize (a busca) | 5M vetores armazenados, 30M queries/mês | Alguns milhares no máximo |
+| Workers AI (embeddings) | 10.000 neurônios/dia | Algumas centenas |
+| KV (tokens OAuth + cache do grafo) | 100k leituras/dia, 1k escritas/dia (por namespace) | Poucas leituras por login + layout de grafo cacheado |
 
-**No credit card required** to create a Cloudflare account. You can sign up with just an email at [cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up), verify the email, and you're ready. Even if you exceeded the free tier (you won't), Cloudflare shows warnings before charging anything — never a surprise bill.
+**Não precisa de cartão de crédito** pra criar conta na Cloudflare. Dá pra cadastrar só com email em [cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up), confirmar o email, e pronto. Mesmo se você estourasse o free tier (não vai), a Cloudflare mostra aviso antes de cobrar qualquer coisa — nunca uma fatura surpresa.
 
-## ⚠️ The real cost: Claude tokens
+## ⚠️ O custo real: tokens do Claude
 
-The infrastructure is free, but connecting the MCP to Claude is **not** free from the token budget's perspective. You need to understand this before deciding if Mind Vault is worth it for your usage pattern.
+A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de vista do orçamento de tokens. Você precisa entender isso antes de decidir se Mind Vault vale pro seu padrão de uso.
 
-### What it costs
+### O que custa
 
-| Cost | Tokens | When you pay |
+| Custo | Tokens | Quando você paga |
 |---|---|---|
-| MCP always-on overhead | **~2,400** | Every request while the MCP is connected (cacheable, 5-min TTL) |
-| `using-mind-vault` skill | ~1,300 | Only when the skill is invoked (don't invoke if MCP is connected — it duplicates the tool descriptions) |
-| `recall` response | 100–300 | Per call (returns tldrs only, never bodies — cheap by design) |
-| `get_note` response | 500–2,000 | Per call (full body) |
+| Overhead sempre-ligado do MCP | **~2.400** | Toda requisição enquanto o MCP tiver conectado (cacheável, TTL de 5 min) |
+| Skill `using-mind-vault` | ~1.300 | Só quando a skill é invocada (não invoque se o MCP tá conectado — duplica as descrições de tool) |
+| Resposta do `recall` | 100–300 | Por chamada (retorna só os tldrs, nunca o corpo — barato por design) |
+| Resposta do `get_note` | 500–2.000 | Por chamada (corpo completo) |
 
-The ~2,400 tokens come from the tool descriptions and usage instructions that the MCP injects into the system prompt ([`src/mcp/instructions.ts`](src/mcp/instructions.ts) + the 6 tool schemas). They load on **every** request while the MCP is connected, whether or not you actually use the vault that turn. The prompt cache (5-min TTL) makes this near-free during active back-and-forth, but you re-pay it on every cold start.
+Os ~2.400 tokens vêm das descrições de tool e instruções de uso que o MCP injeta no system prompt ([`src/mcp/instructions.ts`](src/mcp/instructions.ts) + os 6 schemas de tool). Eles carregam em **toda** requisição enquanto o MCP tá conectado, use você o vault naquele turno ou não. O cache de prompt (TTL de 5 min) torna isso quase grátis em conversa contínua, mas você repaga em todo cold start.
 
-### Impact by Claude plan
+### Impacto por plano do Claude
 
-Anthropic doesn't publish exact token quotas for consumer plans, but here's the practical read based on community-observed numbers:
+A Anthropic não publica quotas exatas pros planos de consumidor, mas a leitura prática baseada em números observados pela comunidade:
 
-| Plan | Usage window | Observed budget | MCP overhead as % of window |
+| Plano | Janela de uso | Orçamento observado | Overhead MCP como % da janela |
 |---|---|---|---|
-| **Free** | 5h rolling | very tight (~9k tok effective) | ~27% — **don't use** Mind Vault on Free |
-| **Pro** ($20/mo) | 5h rolling + weekly cap | ~44k tok per 5h window | ~5.5% per cold request |
-| **Max 5x** ($100/mo) | 5h rolling + weekly cap | ~220k tok per 5h window | ~1.1% |
-| **Max 20x** ($200/mo) | 5h rolling + weekly cap | ~880k tok per 5h window | ~0.3% |
-| **API** (Claude Code / SDK) | no window, pay per token | unlimited | billed directly (~$0.036/cold turn on Opus, ~$0.0036 cached) |
+| **Free** | 5h rolling | muito apertado (~9k tok efetivos) | ~27% — **não use** Mind Vault no Free |
+| **Pro** (US$ 20/mês) | 5h rolling + limite semanal | ~44k tok por janela de 5h | ~5,5% por requisição fria |
+| **Max 5x** (US$ 100/mês) | 5h rolling + limite semanal | ~220k tok por janela de 5h | ~1,1% |
+| **Max 20x** (US$ 200/mês) | 5h rolling + limite semanal | ~880k tok por janela de 5h | ~0,3% |
+| **API** (Claude Code / SDK) | sem janela, paga por token | ilimitado | cobrado direto (~US$ 0,036/turno frio no Opus, ~US$ 0,0036 com cache) |
 
-Key things to know about the plan windows:
+Pontos importantes sobre as janelas dos planos:
 
-- **All paid plans use a 5-hour rolling window**, not a daily reset. Messages fall off 5 hours after you sent them. Check `/usage` in Claude Code or `claude.ai/settings/usage` to see live counters.
-- **Weekly caps were added in August 2025** to Pro and Max for heavy users, on top of the 5h window. Mind Vault's fixed overhead contributes to this weekly counter too.
-- **Peak hours burn faster**: on weekdays 5–11am PT / 1–7pm GMT, Anthropic tightens the 5h session limits during high demand. An MCP-connected session with 10 cold turns in peak hours can eat a noticeable chunk of a Pro window.
-- **API billing is the opposite model**: no window, but every token is metered. Here the MCP overhead becomes a real line item. Cache discipline matters most.
+- **Todos os planos pagos usam janela rolling de 5h**, não reset diário. Mensagens caem 5h depois do envio. Confere em `/usage` no Claude Code ou em `claude.ai/settings/usage` pra ver o contador ao vivo.
+- **Limites semanais foram adicionados em agosto/2025** no Pro e Max pra usuários pesados, além da janela de 5h. O overhead fixo do Mind Vault também conta pro semanal.
+- **Horário de pico queima mais rápido**: em dia de semana, 5–11h PT / 13–19h GMT, a Anthropic aperta os limites da sessão de 5h durante alta demanda. Uma sessão com MCP conectado e 10 turnos frios no pico pode comer um pedaço notável da janela Pro.
+- **Billing da API é o modelo oposto**: sem janela, mas cada token é medido. Aqui o overhead do MCP vira linha de custo real. Disciplina de cache importa mais.
 
-### Practical recommendations
+### Recomendações práticas
 
-1. **Free plan**: don't bother. The MCP overhead eats too much of your tiny window.
-2. **Pro plan**: connect the MCP selectively. For conversations that are going to touch the vault, keep it on. For an hour of UI work or debugging, disconnect it — you'll get noticeably more headroom in the 5h window.
-3. **Max 5x / 20x**: leave it connected. The overhead is <1% of your window and the discipline encoded in the tool descriptions pays for itself the first time it prevents a bad note.
-4. **API / Claude Code**: leave it connected in vault-centric sessions, disconnect in others. You're paying per token either way; cache warmth is your best lever.
-5. **Never invoke the `using-mind-vault` skill while the MCP is connected** — it duplicates ~1,300 tokens of guidance the MCP already loaded. The skill exists for fallback environments (Gemini, Codex, etc.) without MCP support.
-6. **Batch vault interactions** inside a single session. Five recalls in a row stay cached and are nearly free. Five recalls spread across the day pay cold-start each time.
-7. **Prefer `recall` over `get_note`.** Read full bodies only when the tldr is insufficient. A 2k-token note read 5 times in a session is 10k tokens gone.
+1. **Plano Free**: nem vale. O overhead do MCP come muito da sua janela minúscula.
+2. **Plano Pro**: conecta o MCP seletivamente. Em conversa que vai mexer no vault, deixa ligado. Em uma hora de UI ou debug, desconecta — você ganha bem mais folga na janela de 5h.
+3. **Max 5x / 20x**: deixa ligado. O overhead é <1% da janela e a disciplina codificada nas descrições de tool se paga na primeira vez que ela impede uma nota ruim.
+4. **API / Claude Code**: deixa ligado em sessões focadas no vault, desconecta em outras. Você paga por token de qualquer jeito; calor do cache é a sua melhor alavanca.
+5. **Nunca invoca a skill `using-mind-vault` com o MCP conectado** — duplica ~1.300 tokens de orientação que o MCP já carregou. A skill existe pra ambientes de fallback (Gemini, Codex, etc) sem suporte a MCP.
+6. **Agrupa as interações com o vault** numa mesma sessão. Cinco recalls seguidos ficam em cache e são quase de graça. Cinco recalls espalhados pelo dia pagam cold start cada um.
+7. **Prefere `recall` a `get_note`.** Lê o corpo completo só quando o tldr não der conta. Uma nota de 2k tokens lida 5 vezes numa sessão são 10k tokens indo embora.
 
-For the full methodology and per-tool breakdown, see [docs/token-cost.md](docs/token-cost.md).
+Pra metodologia completa e o breakdown por tool, veja [docs/token-cost.md](docs/token-cost.md).
 
-## Quickstart — let your agentic IDE do the work
+## Quickstart — deixa sua IDE agêntica fazer o trabalho
 
-Mind Vault is set up by your agentic IDE (Claude Code, Cursor, Windsurf, etc), not by a web wizard. The repo ships with a deterministic runbook at [CLAUDE.md](CLAUDE.md) that the agent follows end-to-end. **The only thing you type is an email and a passphrase.** Everything else — provisioning D1, Vectorize, KV, hashing the passphrase, generating the session secret, pushing secrets, deploying, applying the schema — is done for you.
+Mind Vault é configurado pela sua IDE agêntica (Claude Code, Cursor, Windsurf, etc), não por wizard web. O repo traz um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta. **A única coisa que você digita é email e passphrase.** Tudo o mais — provisionar D1, Vectorize, KV, hashear a passphrase, gerar o session secret, subir os secrets, fazer deploy, aplicar o schema — é feito pra você.
 
-**What you need:**
+**O que você precisa:**
 
-- A computer with Node.js 20+ installed ([nodejs.org](https://nodejs.org))
-- A free Cloudflare account ([sign up](https://dash.cloudflare.com/sign-up) — no credit card)
-- An agentic IDE connected to Claude
+- Um computador com Node.js 20+ ([nodejs.org](https://nodejs.org))
+- Uma conta Cloudflare gratuita ([cadastro](https://dash.cloudflare.com/sign-up) — sem cartão)
+- Uma IDE agêntica conectada ao Claude
 
-**The flow:**
+**O fluxo:**
 
 ```bash
 git clone https://github.com/orobsonn/mind-vault.git
 cd mind-vault
 npm install
-npx wrangler login   # opens browser → click "Allow" → done
+npx wrangler login   # abre o browser → clica "Allow" → pronto
 ```
 
-Now open the folder in your IDE and say:
+Agora abre a pasta na sua IDE e diz:
 
-> Set up Mind Vault.
+> Configura o Mind Vault.
 
-The agent reads [CLAUDE.md](CLAUDE.md), asks you for an email and a passphrase (12+ chars), and runs the full runbook. When it finishes it hands you back the Worker URL plus the one-liner to connect Claude Code to the MCP:
+O agente lê o [CLAUDE.md](CLAUDE.md), te pede email e passphrase (12+ caracteres), e roda o runbook completo. Quando termina, ele te devolve a URL do Worker e a linha pra conectar o Claude Code ao MCP:
 
 ```bash
-claude mcp add --transport http mind-vault https://<your-worker>.workers.dev/mcp
+claude mcp add --transport http mind-vault https://<seu-worker>.workers.dev/mcp
 ```
 
-Install the `using-mind-vault` skill (the agent gives you the link) and paste the personalization block it shows you.
+Instala a skill `using-mind-vault` (o agente te passa o link) e cola o bloco de personalização que ele mostra.
 
-### First conversation
+### Primeira conversa
 
-Open Claude and share an idea:
+Abre o Claude e joga uma ideia:
 
-> "I just realized tech debt behaves like compound interest — the longer you ignore it, the worse the rate gets."
+> "Acabei de sacar que tech debt se comporta como juros compostos — quanto mais você ignora, pior fica a taxa."
 
-Claude calls `MindVault:recall` to sweep the vault for analogies, then offers to save the note with `MindVault:save_note`, atomizing it into one concept per note and creating edges with substantive *why* justifications. You'll see the MCP tool calls in the conversation UI.
+O Claude chama `MindVault:recall` pra varrer o vault atrás de analogias, aí oferece salvar a nota com `MindVault:save_note`, atomizando em um conceito por nota e criando edges com justificativas *why* substantivas. Você vê as chamadas de tool MCP acontecendo na UI da conversa.
 
-### What you'll see
+### O que você vai ver
 
-![Notes view](docs/media/tela-notas.png)
+![Tela de notas](docs/media/tela-notas.png)
 
-*Notes view — each concept atomized, tldr as the Feynman test, domains as narrow as possible.*
+*Tela de notas — cada conceito atomizado, tldr como teste Feynman, domínios o mais estreitos possível.*
 
-![Graph view](docs/media/tela-grafos.png)
+![Tela de grafo](docs/media/tela-grafos.png)
 
-*Graph view — force-directed physics with Obsidian-style reveal. Solid purple lines are explicit edges; dashed teal lines are semantic-similarity edges surfaced by the embedding model; nodes are colored by domain.*
+*Tela de grafo — física force-directed com reveal no estilo Obsidian. Linhas roxas sólidas são edges explícitos; tracejadas em teal são edges de similaridade semântica emergidos pelo modelo de embedding; nós são coloridos por domínio.*
 
-## Architecture
+## Arquitetura
 
 ```mermaid
 flowchart LR
-    User([You])
+    User([Você])
     Claude[Claude Code<br/>Desktop / Web]
-    Worker[Cloudflare Worker<br/>single endpoint]
-    OAuth[OAuth 2.1<br/>KV grants]
-    MCP[MCP Server<br/>6 tools]
-    D1[(D1<br/>notes + edges<br/>FTS5)]
+    Worker[Cloudflare Worker<br/>endpoint único]
+    OAuth[OAuth 2.1<br/>grants em KV]
+    MCP[Servidor MCP<br/>6 tools]
+    D1[(D1<br/>notas + edges<br/>FTS5)]
     Vec[(Vectorize<br/>1024-dim<br/>cosine)]
-    AI[Workers AI<br/>bge-m3 multilingual]
-    Web[Web Dashboard<br/>graph view]
+    AI[Workers AI<br/>bge-m3 multilíngue]
+    Web[Dashboard Web<br/>visualização do grafo]
 
     User -->|chat| Claude
-    User -->|browse| Web
+    User -->|navega| Web
     Claude -->|OAuth| Worker
-    Web -->|session| Worker
+    Web -->|sessão| Worker
     Worker --> OAuth
     Worker --> MCP
     MCP -->|SQL + FTS5| D1
     MCP -->|embed query| AI
-    MCP -->|vector search| Vec
-    AI -.->|on save| Vec
+    MCP -->|busca vetorial| Vec
+    AI -.->|no save| Vec
 
     classDef edge fill:#f4f4f5,stroke:#71717a,color:#18181b
     classDef store fill:#ecfdf5,stroke:#10b981,color:#064e3b
@@ -189,70 +189,70 @@ flowchart LR
     class Worker,MCP,AI compute
 ```
 
-A single Cloudflare Worker serves three responsibilities on the same URL:
+Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 
-| Path | Function |
+| Rota | Função |
 |---|---|
-| `/` | Landing page — when configured, shows vault status with connection badge + copy-pasteable MCP URL + skill download + personalization prompt. When not configured, shows a static "finish setup from your agentic IDE" page pointing at [CLAUDE.md](CLAUDE.md). |
-| `/authorize`, `/token`, `/register` | OAuth 2.1 via `@cloudflare/workers-oauth-provider` with dynamic client registration |
-| `/mcp` | MCP endpoint protected by OAuth, served by `McpAgent` (`agents/mcp`) wrapping `McpServer` from `@modelcontextprotocol/sdk` |
-| `/skill/using-mind-vault.zip` | The skill ZIP served as a static asset |
-| `/status` | JSON vault status (notes, edges, OAuth clients, active tokens, connection state) |
+| `/` | Landing page — quando configurado, mostra status do vault com badge de conexão + URL MCP pronta pra copiar + download da skill + prompt de personalização. Quando não configurado, mostra uma página estática "termine o setup pela sua IDE agêntica" apontando pro [CLAUDE.md](CLAUDE.md). |
+| `/authorize`, `/token`, `/register` | OAuth 2.1 via `@cloudflare/workers-oauth-provider` com registro dinâmico de cliente |
+| `/mcp` | Endpoint MCP protegido por OAuth, servido por `McpAgent` (`agents/mcp`) envolvendo `McpServer` do `@modelcontextprotocol/sdk` |
+| `/skill/using-mind-vault.zip` | O ZIP da skill servido como asset estático |
+| `/status` | Status do vault em JSON (notas, edges, clientes OAuth, tokens ativos, estado de conexão) |
 
-**Bindings (all in `wrangler.toml`):**
-- `DB` — D1 (SQLite) for notes, edges, tags, FTS5
-- `VECTORIZE` — 1024-dim cosine index, one vector per note
-- `AI` — Workers AI, model `@cf/baai/bge-m3` for multilingual embeddings
-- `OAUTH_KV` — KV namespace for OAuth grants/tokens/client registrations
-- `GRAPH_CACHE` — KV namespace caching the precomputed graph layout for the web dashboard
-- `ASSETS` — static assets (skill ZIP)
+**Bindings (tudo no `wrangler.toml`):**
+- `DB` — D1 (SQLite) pra notas, edges, tags, FTS5
+- `VECTORIZE` — índice 1024-dim cosine, um vetor por nota
+- `AI` — Workers AI, modelo `@cf/baai/bge-m3` pra embeddings multilíngues
+- `OAUTH_KV` — namespace KV pra grants/tokens/registros de cliente OAuth
+- `GRAPH_CACHE` — namespace KV cacheando o layout pré-computado do grafo pro dashboard web
+- `ASSETS` — assets estáticos (ZIP da skill)
 
-**Schema (5 tables):**
+**Schema (5 tabelas):**
 - `notes(id, title, body, tldr, domains JSON, kind, created_at, updated_at)`
-- `notes_fts` (virtual FTS5 on title + tldr + body, auto-synced via triggers)
-- `tags(note_id, tag)` (escape hatch; real structure lives in edges)
-- `edges(id, from_id, to_id, relation_type, why, created_at)` with `CHECK` enum of 9 relation types and `UNIQUE(from_id, to_id, relation_type)`
-- `meta(key, value)` for singleton metadata
+- `notes_fts` (FTS5 virtual em title + tldr + body, sincronizado por triggers)
+- `tags(note_id, tag)` (escape hatch; a estrutura real mora nos edges)
+- `edges(id, from_id, to_id, relation_type, why, created_at)` com `CHECK` enum de 9 tipos de relação e `UNIQUE(from_id, to_id, relation_type)`
+- `meta(key, value)` pra metadados singleton
 
-## MCP tools (what Claude calls)
+## Tools MCP (o que o Claude chama)
 
-| Tool | Purpose |
+| Tool | Função |
 |---|---|
-| `save_note` | Atomic note + edges in a single call. Validates edge `why` ≥ 20 chars, domain slugs against regex, edge target existence. |
-| `recall` | Hybrid search: Workers AI embedding query + FTS5, merged and **domain-balanced** (max 3 per domain, up to 5 distinct domains). Returns only `{id, title, domain, kind, tldr}` — never the body. |
-| `expand` | 1-hop neighbors of a note in the graph. |
-| `get_note` | Full body + tags + edges of one note by id. |
-| `link` | Create an edge between two existing notes (for when Claude spots a connection between prior saves mid-conversation). |
+| `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, slugs de domínio contra regex, existência do edge target. |
+| `recall` | Busca híbrida: embedding Workers AI + FTS5, mesclados e **balanceados por domínio** (máx 3 por domínio, até 5 domínios distintos). Retorna só `{id, title, domain, kind, tldr}` — nunca o corpo. |
+| `expand` | Vizinhos de 1 hop de uma nota no grafo. |
+| `get_note` | Corpo completo + tags + edges de uma nota por id. |
+| `link` | Cria um edge entre duas notas existentes (pra quando o Claude detecta conexão entre saves anteriores no meio da conversa). |
 
-Tool descriptions are written in English with mandatory-flow instructions ("call `recall` first before `save_note`") and pedagogical error messages ("if the conversation is in Portuguese and you were going to use `biologia-evolutiva`, use `evolutionary-biology` instead") that teach Claude how to recover from mistakes in one shot.
+As descrições de tool são escritas em inglês com instruções de fluxo obrigatório ("chama `recall` antes de `save_note`") e mensagens de erro pedagógicas ("se a conversa tá em português e você ia usar `biologia-evolutiva`, usa `evolutionary-biology` no lugar") que ensinam o Claude a se recuperar de erro em um shot.
 
-## Method & intellectual lineage
+## Método e linhagem intelectual
 
 ```mermaid
 flowchart TD
-    Idea([You articulate an idea])
-    Atomize{One concept?<br/>title has 'and'/'e'?}
-    Split[Split into<br/>separate notes]
-    Tldr{Can you write<br/>a one-sentence tldr?}
-    NotReady[Keep thinking —<br/>note isn't ready]
-    Recall[recall across domains<br/>even if 'obviously new']
-    Read[Read ALL returned<br/>domains, not just top hit]
-    Hit{Cross-domain<br/>analogy found?}
-    Edge[Draft edge with<br/>substantive why<br/>20+ chars, name the mechanism]
-    Save[save_note<br/>atomic + edges in one call]
-    Vault[(Vault grows<br/>as a latticework)]
+    Idea([Você articula uma ideia])
+    Atomize{Um conceito só?<br/>título tem 'and'/'e'?}
+    Split[Divide em<br/>notas separadas]
+    Tldr{Dá pra escrever<br/>um tldr de uma frase?}
+    NotReady[Continua pensando —<br/>a nota não tá pronta]
+    Recall[recall entre domínios<br/>mesmo se 'obviamente novo']
+    Read[Lê TODOS os domínios<br/>retornados, não só o top hit]
+    Hit{Analogia cross-domain<br/>encontrada?}
+    Edge[Rascunha o edge com<br/>why substantivo<br/>20+ chars, nomeia o mecanismo]
+    Save[save_note<br/>atômico + edges em uma chamada]
+    Vault[(Vault cresce<br/>como latticework)]
 
     Idea --> Atomize
-    Atomize -->|yes, split| Split --> Tldr
-    Atomize -->|no, atomic| Tldr
-    Tldr -->|no| NotReady
-    Tldr -->|yes| Recall
+    Atomize -->|sim, divide| Split --> Tldr
+    Atomize -->|não, atômico| Tldr
+    Tldr -->|não| NotReady
+    Tldr -->|sim| Recall
     Recall --> Read
     Read --> Hit
-    Hit -->|yes| Edge --> Save
-    Hit -->|no| Save
+    Hit -->|sim| Edge --> Save
+    Hit -->|não| Save
     Save --> Vault
-    Vault -.->|future recall<br/>surfaces this note| Recall
+    Vault -.->|recall futuro<br/>traz essa nota de volta| Recall
 
     classDef action fill:#eff6ff,stroke:#3b82f6,color:#1e3a8a
     classDef check fill:#fef3c7,stroke:#f59e0b,color:#78350f
@@ -264,60 +264,60 @@ flowchart TD
     class NotReady stop
 ```
 
-This is not a clean-room design. Each decision has roots in a tradition:
+Isso não é projeto de sala limpa. Cada decisão tem raiz numa tradição:
 
-- **Charlie Munger** — latticework of mental models, the value of cross-domain thinking. North star.
-- **Scott E. Page**, *The Model Thinker* — diversity prediction theorem (diversity of models beats depth of one). Foundation for **domain-balanced recall**.
-- **Douglas Hofstadter & Emmanuel Sander**, *Surfaces and Analogies* — analogy as the core of cognition. Foundation for the weight of `analogous_to` and `same_mechanism_as` edges.
-- **Dedre Gentner**, *Structure-Mapping Theory* — the distinction between surface and structural similarity. Keeps edges honest.
-- **Niklas Luhmann / Sönke Ahrens**, *How to Take Smart Notes* (Zettelkasten) — atomic notes, links with substance, emergent structure. Foundation for "one concept one note", "never link without a why", and "not every conversation becomes a note".
-- **Richard Feynman** — if you cannot explain it simply, you do not understand it. Foundation for the mandatory `tldr` field.
-- **Karl Popper** — fallibilism. Foundation for `contradicts` and `refines` as first-class edge types.
+- **Charlie Munger** — latticework de modelos mentais, o valor do pensamento cross-domain. Norte.
+- **Scott E. Page**, *The Model Thinker* — teorema da previsão por diversidade (diversidade de modelos bate profundidade de um). Base pro **recall balanceado por domínio**.
+- **Douglas Hofstadter & Emmanuel Sander**, *Surfaces and Analogies* — analogia como núcleo da cognição. Base pro peso dos edges `analogous_to` e `same_mechanism_as`.
+- **Dedre Gentner**, *Structure-Mapping Theory* — a distinção entre similaridade superficial e estrutural. Mantém os edges honestos.
+- **Niklas Luhmann / Sönke Ahrens**, *How to Take Smart Notes* (Zettelkasten) — notas atômicas, links com substância, estrutura emergente. Base pro "um conceito uma nota", "nunca linka sem um why" e "nem toda conversa vira nota".
+- **Richard Feynman** — se você não consegue explicar simples, você não entendeu. Base pro campo `tldr` obrigatório.
+- **Karl Popper** — falibilismo. Base pros edges `contradicts` e `refines` como cidadãos de primeira classe.
 
-The public framing is **latticework thinking / many-model knowledge graph**, not "Munger mental models" — the academic basis (Page, Hofstadter, Gentner, Luhmann) is more rigorous than Munger's speeches alone.
+O framing público é **pensamento latticework / grafo de conhecimento multi-modelo**, não "modelos mentais do Munger" — a base acadêmica (Page, Hofstadter, Gentner, Luhmann) é mais rigorosa que os discursos do Munger sozinhos.
 
-## Advanced: auto-deploy on git push (optional)
+## Avançado: auto-deploy no git push (opcional)
 
-> **Skip this section if you're not sure you need it.** The Quickstart above (with `wrangler login` + `wrangler deploy`) is enough for personal use — you only redeploy when you change code, and you can just run `wrangler deploy` again from your terminal.
+> **Pula essa seção se você não tem certeza de que precisa.** O Quickstart acima (com `wrangler login` + `wrangler deploy`) já basta pra uso pessoal — você só re-deploya quando muda o código, e dá pra rodar `wrangler deploy` de novo no terminal.
 
-This repo ships with a **GitHub Actions workflow** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) that auto-deploys to your Worker on every push to `master` or `main`. Useful if you plan to modify Mind Vault and want your changes to ship automatically when you push to GitHub.
+Esse repo traz um **workflow do GitHub Actions** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) que faz auto-deploy pro seu Worker a cada push em `master` ou `main`. Útil se você pretende modificar o Mind Vault e quer suas mudanças subindo automático ao dar push no GitHub.
 
-To enable it on your fork:
+Pra habilitar no seu fork:
 
-1. Create a Cloudflare API token: go to [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create Token** → use the "Edit Cloudflare Workers" template, then add these extra permissions: `D1 Edit`, `Vectorize Edit`, `Workers KV Storage Edit`, `Workers AI Edit`. Click Continue → Create Token → **copy the token shown** (you won't see it again).
-2. Copy your Cloudflare Account ID: in any page of the Cloudflare dashboard, it's in the right sidebar.
-3. In your GitHub fork, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
-   - `CLOUDFLARE_API_TOKEN` = the token from step 1
-   - `CLOUDFLARE_ACCOUNT_ID` = the account ID from step 2
-4. Push any commit to `master`. The workflow runs `npm run typecheck` + `npm test` + `npm run build:skill` before deploying, so a failing test blocks the deploy.
+1. Cria um API token da Cloudflare: vai em [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) → **Create Token** → usa o template "Edit Cloudflare Workers", aí adiciona essas permissões extras: `D1 Edit`, `Vectorize Edit`, `Workers KV Storage Edit`, `Workers AI Edit`. Clica em Continue → Create Token → **copia o token mostrado** (ele não aparece de novo).
+2. Copia seu Cloudflare Account ID: em qualquer página do dashboard da Cloudflare, tá na sidebar direita.
+3. No seu fork do GitHub, vai em **Settings → Secrets and variables → Actions → New repository secret** e adiciona:
+   - `CLOUDFLARE_API_TOKEN` = o token do passo 1
+   - `CLOUDFLARE_ACCOUNT_ID` = o account ID do passo 2
+4. Dá push de qualquer commit em `master`. O workflow roda `npm run typecheck` + `npm test` + `npm run build:skill` antes do deploy, então teste quebrando bloqueia o deploy.
 
-You can follow the runs at `https://github.com/YOUR_USER/mind-vault/actions`.
+Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/mind-vault/actions`.
 
-## Development
+## Desenvolvimento
 
 ```bash
 npm install
-npm run dev          # wrangler dev on local Miniflare
-npm test             # vitest-pool-workers (workers pool + node pool for auth)
+npm run dev          # wrangler dev no Miniflare local
+npm test             # vitest-pool-workers (pool de workers + pool node pra auth)
 npm run typecheck    # tsc --noEmit
-npm run build:skill  # package skills/using-mind-vault/ into assets/using-mind-vault.zip
+npm run build:skill  # empacota skills/using-mind-vault/ em assets/using-mind-vault.zip
 npm run deploy       # build skill + wrangler deploy
 ```
 
-Tests run in two pools: the main workers pool (for D1 + MCP tool tests with mocked Vectorize / Workers AI), and a separate node pool for the password hashing test (`crypto.subtle` is available in both, but the node pool keeps the auth module isolated from the workers runtime constraints).
+Os testes rodam em dois pools: o pool principal de workers (pra testes de D1 + tool MCP com Vectorize / Workers AI mockados), e um pool node separado pro teste de hash de senha (`crypto.subtle` tá disponível nos dois, mas o pool node mantém o módulo de auth isolado das restrições do runtime dos workers).
 
-## Security
+## Segurança
 
-**Single-user by design.** Do not share the Worker URL. Access is gated by OAuth 2.1 using an email + passphrase hash stored as Worker secrets. The passphrase itself is hashed with PBKDF2-SHA256 at 100k iterations (Workers-capped — see `src/auth/password.ts`). The tokens issued by the OAuth provider are stored in the `OAUTH_KV` namespace.
+**Single-user por design.** Não compartilha a URL do Worker. Acesso é gated por OAuth 2.1 usando email + hash de passphrase armazenados como secrets do Worker. A passphrase em si é hasheada com PBKDF2-SHA256 em 100k iterações (cap do Workers — veja `src/auth/password.ts`). Os tokens emitidos pelo OAuth provider ficam no namespace `OAUTH_KV`.
 
-If you want a multi-user version, fork and adapt — it is not a drop-in change. You will need per-user rows in D1, per-user Vectorize filtering, and a registration flow.
+Se você quer versão multi-user, dá fork e adapta — não é mudança plug-and-play. Vai precisar de linhas por usuário no D1, filtro por usuário no Vectorize, e fluxo de registro.
 
-There is currently **no login rate limit**. Pull requests welcome.
+No momento **não tem rate limit de login**. Pull requests bem-vindos.
 
 ## Free tier
 
-D1 + Vectorize + Workers AI free tiers are sufficient for personal use. Confirm current limits on Cloudflare's pricing pages before relying on them for large vaults.
+Os free tiers de D1 + Vectorize + Workers AI bastam pra uso pessoal. Confirma os limites atuais nas páginas de preço da Cloudflare antes de contar com eles pra vaults grandes.
 
 ---
 
-Made by **[Robson Lins](https://github.com/orobsonn)** · [Instagram](https://www.instagram.com/orobsonn) · [X / Twitter](https://x.com/orobsonnn) · [YouTube](https://youtube.com/@orobsonnn)
+Feito por **[Robson Lins](https://github.com/orobsonn)** · [Instagram](https://www.instagram.com/orobsonn) · [X / Twitter](https://x.com/orobsonnn) · [YouTube](https://youtube.com/@orobsonnn)

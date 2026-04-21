@@ -1,55 +1,55 @@
-# CLAUDE.md — Mind Vault agent setup runbook
+# CLAUDE.md — Runbook de setup do agente Mind Vault
 
-This file is the single source of truth for setting up Mind Vault end-to-end from an agentic IDE (Claude Code, Cursor, etc). If the user asks you to "set up Mind Vault", "install Mind Vault", or similar, follow this runbook step by step. Do not improvise.
+Esse arquivo é a fonte única da verdade pra configurar o Mind Vault ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Mind Vault", "instalar o Mind Vault", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
 
-## What Mind Vault needs
+## O que o Mind Vault precisa
 
-A single Cloudflare Worker with five resources bound to it:
+Um único Cloudflare Worker com cinco recursos vinculados a ele:
 
-| Resource | Kind | Binding name |
+| Recurso | Tipo | Nome do binding |
 |---|---|---|
-| D1 database | SQL (SQLite) | `DB` |
-| Vectorize index | 1024-dim cosine | `VECTORIZE` (name `mind-vault-embeddings`) |
-| KV namespace | OAuth tokens | `OAUTH_KV` |
-| KV namespace | Graph layout cache | `GRAPH_CACHE` |
-| Workers AI | Multilingual embeddings (`@cf/baai/bge-m3`) | `AI` |
+| Banco D1 | SQL (SQLite) | `DB` |
+| Índice Vectorize | 1024-dim cosine | `VECTORIZE` (nome `mind-vault-embeddings`) |
+| Namespace KV | Tokens OAuth | `OAUTH_KV` |
+| Namespace KV | Cache do layout do grafo | `GRAPH_CACHE` |
+| Workers AI | Embeddings multilíngues (`@cf/baai/bge-m3`) | `AI` |
 
-And three Worker secrets:
+E três secrets do Worker:
 
-| Secret | Purpose |
+| Secret | Propósito |
 |---|---|
-| `OWNER_EMAIL` | Login email for the web dashboard and MCP OAuth |
-| `OWNER_PASSWORD_HASH` | PBKDF2-SHA256 hash (100k iter) of the user's passphrase |
-| `SESSION_SECRET` | Random 32-byte hex string — HMAC key for web dashboard session cookies |
+| `OWNER_EMAIL` | Email de login pro dashboard web e pro OAuth do MCP |
+| `OWNER_PASSWORD_HASH` | Hash PBKDF2-SHA256 (100k iter) da passphrase do usuário |
+| `SESSION_SECRET` | String hex aleatória de 32 bytes — chave HMAC dos cookies de sessão do dashboard web |
 
-Everything runs on Cloudflare's free tier. No credit card required.
+Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito.
 
-## Preflight (once per machine)
+## Preflight (uma vez por máquina)
 
-Before the first run of this runbook, confirm the host has `wrangler` CLI authenticated to Cloudflare:
+Antes de rodar o runbook pela primeira vez, confirma que o host tem a CLI `wrangler` autenticada na Cloudflare:
 
 ```bash
 npx wrangler whoami
 ```
 
-If that fails, ask the user to run `npx wrangler login` in their terminal (it opens a browser). Do not try to authenticate on their behalf.
+Se falhar, pede pro usuário rodar `npx wrangler login` no terminal dele (abre um browser). Não tenta autenticar no lugar dele.
 
-## Setup runbook
+## Runbook de setup
 
-Execute these steps in order. Stop and report to the user if any command fails — do not silently retry.
+Executa esses passos na ordem. Para e reporta pro usuário se algum comando falhar — não retenta em silêncio.
 
-### 1. Ask the user for credentials
+### 1. Peça as credenciais ao usuário
 
-Ask two questions in a single message:
+Faz duas perguntas numa mesma mensagem:
 
-1. **Email** for the vault login (any email works — it is just an identifier, no verification happens)
-2. **Passphrase** — recommend "a memorable phrase of 12+ characters", warn that losing it means losing dashboard access (the vault data itself survives because it lives in D1)
+1. **Email** pro login do vault (qualquer email serve — é só identificador, não rola verificação)
+2. **Passphrase** — recomenda "uma frase memorável de 12+ caracteres", avisa que perder isso significa perder acesso ao dashboard (os dados do vault em si sobrevivem porque ficam no D1)
 
-Do NOT proceed without both values.
+NÃO segue em frente sem os dois valores.
 
-### 2. Create the Cloudflare resources
+### 2. Cria os recursos Cloudflare
 
-Run these four commands and capture the IDs from the output:
+Roda esses quatro comandos e captura os IDs do output:
 
 ```bash
 npx wrangler d1 create mind-vault
@@ -58,46 +58,46 @@ npx wrangler kv namespace create OAUTH_KV
 npx wrangler kv namespace create GRAPH_CACHE
 ```
 
-Each command prints an ID. Parse the output and extract:
+Cada comando imprime um ID. Faz o parse do output e extrai:
 
-- `database_id` from `wrangler d1 create`
-- two `id` values from the two `kv namespace create` runs (the command's output labels them)
+- `database_id` do `wrangler d1 create`
+- dois valores de `id` das duas rodadas de `kv namespace create` (o output do comando labela qual é qual)
 
-Vectorize does not return an ID — it is referenced by name in `wrangler.toml`.
+O Vectorize não retorna ID — ele é referenciado pelo nome no `wrangler.toml`.
 
-### 3. Update `wrangler.toml`
+### 3. Atualiza o `wrangler.toml`
 
-Open `wrangler.toml` and replace the three `REPLACE_ME_*` placeholders with the IDs from step 2:
+Abre o `wrangler.toml` e troca os três placeholders `REPLACE_ME_*` pelos IDs do passo 2:
 
-- `database_id = "REPLACE_ME_D1_ID"` → the D1 ID
-- The `[[kv_namespaces]]` block with `binding = "OAUTH_KV"` — set `id` to the OAUTH_KV ID
-- The `[[kv_namespaces]]` block with `binding = "GRAPH_CACHE"` — set `id` to the GRAPH_CACHE ID
+- `database_id = "REPLACE_ME_D1_ID"` → o ID do D1
+- O bloco `[[kv_namespaces]]` com `binding = "OAUTH_KV"` — define `id` como o ID do OAUTH_KV
+- O bloco `[[kv_namespaces]]` com `binding = "GRAPH_CACHE"` — define `id` como o ID do GRAPH_CACHE
 
-Do not touch any other field. Specifically: do not add a custom `[[routes]]` block unless the user explicitly asked for a custom domain.
+Não mexe em nenhum outro campo. Especificamente: não adiciona um bloco `[[routes]]` customizado a menos que o usuário tenha pedido explicitamente um domínio próprio.
 
-### 4. Generate the three secrets locally
+### 4. Gera os três secrets localmente
 
-Two are derived from user input, one is random:
+Dois são derivados do input do usuário, um é aleatório:
 
-**`OWNER_EMAIL`** — the email the user gave you, verbatim.
+**`OWNER_EMAIL`** — o email que o usuário te deu, literal.
 
-**`OWNER_PASSWORD_HASH`** — the passphrase hashed with PBKDF2-SHA256, 100k iterations. The repo ships a helper script (plain Node ESM, no dependencies):
+**`OWNER_PASSWORD_HASH`** — a passphrase hasheada com PBKDF2-SHA256, 100k iterações. O repo traz um script helper (Node ESM puro, sem dependências):
 
 ```bash
 node scripts/hash-password.mjs "<passphrase>"
 ```
 
-The output is a single line starting with `pbkdf2$sha256$100000$...`. Treat it as opaque — do not split or reformat it. This format is what the Worker expects in `src/auth/password.ts`.
+O output é uma linha única começando com `pbkdf2$sha256$100000$...`. Trata como opaco — não separa nem reformata. Esse formato é o que o Worker espera em `src/auth/password.ts`.
 
-**`SESSION_SECRET`** — 32 bytes of randomness in hex:
+**`SESSION_SECRET`** — 32 bytes aleatórios em hex:
 
 ```bash
 openssl rand -hex 32
 ```
 
-### 5. Push the three secrets to the Worker
+### 5. Envia os três secrets pro Worker
 
-Secrets are set one at a time via `wrangler secret put`. The command reads from stdin when you pipe a value in, so pipe each value:
+Secrets são setados um por vez via `wrangler secret put`. O comando lê do stdin quando você faz pipe de um valor, então faz pipe de cada um:
 
 ```bash
 echo "<email>" | npx wrangler secret put OWNER_EMAIL
@@ -105,56 +105,56 @@ echo "<hash>" | npx wrangler secret put OWNER_PASSWORD_HASH
 echo "<session_secret>" | npx wrangler secret put SESSION_SECRET
 ```
 
-If any of the three fails, stop and report the error. The Worker cannot start without all three.
+Se algum dos três falhar, para e reporta o erro. O Worker não sobe sem os três.
 
-### 6. Deploy the Worker
+### 6. Faz o deploy do Worker
 
 ```bash
 npx wrangler deploy
 ```
 
-Capture the Worker URL from the output (it looks like `https://mind-vault.<your-subdomain>.workers.dev`). You will need it for the next step and to hand back to the user.
+Captura a URL do Worker no output (parece com `https://mind-vault.<seu-subdominio>.workers.dev`). Você vai precisar dela no próximo passo e pra devolver pro usuário.
 
-### 7. Apply the D1 schema
+### 7. Aplica o schema do D1
 
-Migrations are applied at runtime by the Worker via a `/setup/provision` endpoint. Hit it once:
+As migrations são aplicadas em runtime pelo Worker via o endpoint `/setup/provision`. Bate nele uma vez:
 
 ```bash
 curl -X POST "<worker-url>/setup/provision"
 ```
 
-Expected response: `{"ok":true}`. If you see anything else, report it.
+Resposta esperada: `{"ok":true}`. Se vier qualquer outra coisa, reporta.
 
-### 8. Verify the vault is up
+### 8. Verifica que o vault tá de pé
 
 ```bash
 curl "<worker-url>/status"
 ```
 
-Expected: `{"configured":true,"notes":0,"edges":0,...}`. If `configured` is false, a secret is missing — re-check step 5.
+Esperado: `{"configured":true,"notes":0,"edges":0,...}`. Se `configured` vier `false`, tá faltando algum secret — revê o passo 5.
 
-### 9. Hand off to the user
+### 9. Entrega pro usuário
 
-Print a short summary with:
+Imprime um resumo curto com:
 
-- The Worker URL
-- The MCP endpoint: `<worker-url>/mcp`
-- The Claude Code install command: `claude mcp add --transport http mind-vault <worker-url>/mcp`
-- A reminder to install the `using-mind-vault` skill from `<worker-url>/skill/using-mind-vault.zip` (or from the `skills/using-mind-vault/` directory in this repo)
-- A reminder that the token cost of connecting the MCP is ~2,400 tokens per request (see README section "The real cost: Claude tokens" for plan-specific impact)
+- A URL do Worker
+- O endpoint MCP: `<worker-url>/mcp`
+- O comando de instalação do Claude Code: `claude mcp add --transport http mind-vault <worker-url>/mcp`
+- Um lembrete pra instalar a skill `using-mind-vault` a partir de `<worker-url>/skill/using-mind-vault.zip` (ou do diretório `skills/using-mind-vault/` nesse repo)
+- Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja a seção "O custo real: tokens do Claude" no README pra impacto por plano)
 
-Do not walk the user through the Claude-side connection unless they ask. They know how to paste a URL.
+Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele sabe colar uma URL.
 
-## Failure modes
+## Modos de falha
 
-- **`wrangler d1 create` says "already exists"**: the user already has a `mind-vault` D1. Run `npx wrangler d1 list` to find it and ask the user whether to reuse it (and use its existing ID) or pick a different name.
-- **`wrangler deploy` fails on KV binding**: the ID in `wrangler.toml` is still a placeholder or wrong. Re-run step 2/3.
-- **`curl /setup/provision` returns a 503**: the secrets are not set. Re-run step 5 and redeploy.
-- **`curl /status` returns `{"configured":false}`**: at least one of the three secrets is missing. Check all three were actually set by running `npx wrangler secret list`.
+- **`wrangler d1 create` diz "already exists"**: o usuário já tem um D1 `mind-vault`. Roda `npx wrangler d1 list` pra achar e pergunta pro usuário se quer reaproveitar (e usar o ID existente) ou escolher outro nome.
+- **`wrangler deploy` falha no binding de KV**: o ID no `wrangler.toml` ainda é placeholder ou tá errado. Refaz o passo 2/3.
+- **`curl /setup/provision` retorna 503**: os secrets não foram setados. Refaz o passo 5 e o deploy.
+- **`curl /status` retorna `{"configured":false}`**: pelo menos um dos três secrets tá faltando. Confere se os três foram realmente setados rodando `npx wrangler secret list`.
 
-## Do not
+## Não faz
 
-- Do not commit `wrangler.local.toml`, `.dev.vars`, or any file containing a real D1/KV ID, email, passphrase, hash, or session secret.
-- Do not modify `src/db/migrate.ts` to "simplify" the migrations — they are authored manually for a reason (see the comment in the file about trigger bodies).
-- Do not add a `[[routes]]` custom domain unless the user asks.
-- Do not skip the `using-mind-vault` skill install — the MCP tool descriptions alone are not enough for Claude to actually follow the latticework method across sessions.
+- Não commita `wrangler.local.toml`, `.dev.vars`, nem nenhum arquivo contendo ID real de D1/KV, email, passphrase, hash ou session secret.
+- Não modifica `src/db/migrate.ts` pra "simplificar" as migrations — elas foram escritas manualmente por um motivo (veja o comentário no arquivo sobre trigger bodies).
+- Não adiciona domínio customizado `[[routes]]` a menos que o usuário peça.
+- Não pula a instalação da skill `using-mind-vault` — as descrições de tool do MCP sozinhas não bastam pro Claude realmente seguir o método latticework entre sessões.
