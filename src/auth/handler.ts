@@ -18,10 +18,6 @@ export const authHandler = {
     if (url.pathname === '/status') return handleStatus(env);
     if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(env);
 
-    if (url.pathname === '/skill/using-mind-vault.zip') {
-      return env.ASSETS.fetch(new Request(new URL('/using-mind-vault.zip', url.origin)));
-    }
-
     if (url.pathname === '/authorize') {
       if (!isSetup(env)) return new Response('Vault not configured', { status: 503 });
       const provider = (env as any).OAUTH_PROVIDER;

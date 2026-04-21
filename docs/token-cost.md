@@ -9,25 +9,23 @@ Mind Vault roda no free tier da Cloudflare ([veja o README](../README.md#-custo-
 | Custo | Tokens | Quando você paga |
 |---|---|---|
 | Overhead sempre-ligado do MCP | **~2.400** | Toda requisição com MCP conectado (cacheável, TTL de 5 min) |
-| Skill `using-mind-vault` | ~1.300 | Só quando a skill é invocada |
 | Resposta do `recall` | 100–300 | Por chamada (retorna só os tldrs, nunca o corpo) |
 | Resposta do `get_note` | 500–2.000 | Por chamada (corpo completo) |
 
-Numa sessão típica de Claude Code que mexe no vault algumas vezes, espera **~3–5k tokens extras por cold start** e **custo marginal perto de zero enquanto o cache de prompt tiver quente**.
+Numa sessão típica de Claude Code que mexe no vault algumas vezes, espera **~2–3k tokens extras por cold start** e **custo marginal perto de zero enquanto o cache de prompt tiver quente**.
 
 ## O que entra no system prompt
 
 Quando você conecta o MCP, o Claude carrega em toda requisição:
 
 1. **Instruções do servidor** ([`src/mcp/instructions.ts`](../src/mcp/instructions.ts)) — ~240 tokens. O preâmbulo "quando usar / fluxo recomendado".
-2. **Descrições das tools** das 6 tools — ~1.250 tokens no total. `save_note` e `recall` são propositalmente verbosas porque codificam a disciplina (atomizar, varrer cross-domain, regras do `why` do edge, ressalva de latência de indexação). As outras quatro (`expand`, `get_note`, `link`, `reembed`) são curtas.
-3. **Schemas JSON de input** das 6 tools — ~900 tokens no total.
+2. **Descrições das tools** das 9 tools — ~1.250 tokens no total. `save_note` e `recall` são propositalmente verbosas porque codificam a disciplina (atomizar, varrer cross-domain, regras do `why` do edge, ressalva de latência de indexação). As outras (`expand`, `get_note`, `link`, `update_note`, `delete_note`, `stats`, `reembed`) são curtas.
+3. **Schemas JSON de input** das 9 tools — ~900 tokens no total.
 
 Total: **~2.400 tokens adicionados ao system prompt** enquanto o MCP estiver conectado, *quer você use ou não* o vault naquela conversa.
 
 ## O que carrega sob demanda
 
-- **A skill `using-mind-vault`** ([`skills/using-mind-vault/SKILL.md`](../skills/using-mind-vault/SKILL.md)) — ~1.300 tokens. Só carrega quando o Claude (ou você) invoca. A skill duplica algumas das descrições de tool de propósito pra funcionar como referência standalone, mas a redundância significa que *invocar a skill numa sessão que já tem o MCP conectado custa ~1.300 tokens extras*.
 - **Respostas de tool** — pay-as-you-go. `recall` é intencionalmente barato (só tldrs, ~80 chars por hit, capado em ~15 hits). `get_note` é o pesado — lê corpos só quando realmente precisar.
 
 ## Impacto por plano do Claude
@@ -64,26 +62,23 @@ O cache de prompt do Claude tem **TTL de 5 minutos** e o overhead do MCP fica no
 ## Contras
 
 - **Sempre-ligado, mesmo ocioso.** O overhead do MCP é pago em toda requisição com ele conectado, incluindo conversas que nunca tocam no vault.
-- **A skill duplica as instruções do MCP.** Se você conectar o MCP *e* invocar a skill, você paga ~3.700 tokens de orientação sobre estruturalmente o mesmo conteúdo. A skill existe pra ambientes sem suporte a MCP — mantém ela desabilitada quando o MCP tá conectado.
 - **Penalidade de cold start.** Conversas esparsas e curtas (com mais de 5 minutos entre uma e outra) perdem o benefício do cache e pagam cheio toda vez.
 - **`get_note` pode sair caro em nota longa.** Uma nota de 2k tokens lida 5 vezes na sessão são 10k tokens. Prefere `recall` + varredura de tldr quando você não precisa do corpo de verdade.
 
 ## Como manter o custo baixo
 
 1. **Desconecta o MCP de sessões que não precisam dele.** A alavanca mais forte. Se você vai passar uma hora em UI, o vault não precisa ficar carregado.
-2. **Não invoca a skill se o MCP tá conectado.** As próprias descrições de tool do MCP já codificam a disciplina. A skill é pra ambientes de fallback.
-3. **Prefere `recall` a `get_note`.** Lê corpo só quando o tldr não der conta.
-4. **Agrupa interações com o vault numa mesma sessão.** O cache fica quente por até 5 minutos — cinco recalls seguidos saem quase de graça; cinco recalls espalhados pelo dia pagam cold start cada um.
-5. **Resiste a salvar demais.** O custo de token compõe com a quantidade de notas só no lado do *output* (mais notas → mais hits no recall). O overhead do system prompt fica plano, mas um vault barulhento faz recall retornar tldrs menos relevantes e tenta mais chamadas de `get_note`.
+2. **Prefere `recall` a `get_note`.** Lê corpo só quando o tldr não der conta.
+3. **Agrupa interações com o vault numa mesma sessão.** O cache fica quente por até 5 minutos — cinco recalls seguidos saem quase de graça; cinco recalls espalhados pelo dia pagam cold start cada um.
+4. **Resiste a salvar demais.** O custo de token compõe com a quantidade de notas só no lado do *output* (mais notas → mais hits no recall). O overhead do system prompt fica plano, mas um vault barulhento faz recall retornar tldrs menos relevantes e tenta mais chamadas de `get_note`.
 
 ## Metodologia
 
 Esses números vêm de `wc -c` nos arquivos-fonte dividido por 4. Especificamente:
 
-- `src/mcp/instructions.ts` — 955 chars
+- `src/mcp/instructions.ts` — ~1.000 chars
 - Bloco DESCRIPTION de `src/mcp/tools/save-note.ts` — ~1.900 chars
 - Bloco DESCRIPTION de `src/mcp/tools/recall.ts` — ~1.500 chars
-- Os outros 4 arquivos de tool têm descrições mais curtas + input schemas
-- `skills/using-mind-vault/SKILL.md` — 5.209 chars
+- Os outros 7 arquivos de tool têm descrições mais curtas + input schemas
 
 A tokenização real depende do tokenizer. Prosa em inglês dá em torno de 4 chars/token; schemas JSON e código são mais densos. Trata a tabela acima como ±15%, não exata. Se você quer números exatos pra sua conta, roda uma única requisição com o MCP conectado e inspeciona o campo `usage` na resposta da API.

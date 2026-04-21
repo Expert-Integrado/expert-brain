@@ -1,11 +1,10 @@
 // Canonical domain slug format: lowercase ASCII kebab-case, 2-40 chars.
 // This is a SYNTACTIC check. Semantic language enforcement (e.g. rejecting
 // 'biologia-evolutiva' because it's a Portuguese translation) lives in the
-// tool description of save_note + the using-mind-vault skill — Claude is
-// instructed to always use English canonical slugs, and the tool description
-// makes that load-bearing. The validator here just stops obvious syntax
-// violations (accents, uppercase, spaces, etc) from getting into the
-// taxonomy.
+// tool description of save_note — Claude is instructed to always use English
+// canonical slugs, and the tool description makes that load-bearing. The
+// validator here just stops obvious syntax violations (accents, uppercase,
+// spaces, etc) from getting into the taxonomy.
 export const DOMAIN_SLUG_REGEX = /^[a-z][a-z0-9-]{1,39}$/;
 
 export function validateDomains(domains: string[]): string | null {

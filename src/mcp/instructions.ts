@@ -14,6 +14,4 @@ Recommended flow:
 5. Prefer \`same_mechanism_as\` over \`analogous_to\` when you can justify the underlying mechanism.
 6. \`kind\` is REQUIRED on save_note — pick from the 7 canonical values (concept | decision | insight | fact | pattern | principle | question).
 7. To edit a note, call \`update_note\` with the id and only the fields that change. To remove one, call \`delete_note\` with \`confirm: true\` — ask the USER to confirm first.
-8. \`stats\` gives a panorama of the vault; use it when the user asks about composition or growth.
-
-For the full method, load the \`using-mind-vault\` skill.`;
+8. \`stats\` gives a panorama of the vault; use it when the user asks about composition or growth.`;

@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "build:bundle": "tsx scripts/build-graph-bundle.ts",
-    "deploy": "npm run build:skill && npm run build:bundle && wrangler deploy",
-    "build:skill": "tsx scripts/build-skill-zip.ts",
+    "deploy": "npm run build:bundle && wrangler deploy",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/web/client/tsconfig.json"

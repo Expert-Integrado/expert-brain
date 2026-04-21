@@ -139,8 +139,8 @@ Imprime um resumo curto com:
 
 - A URL do Worker
 - O endpoint MCP: `<worker-url>/mcp`
-- O comando de instalação do Claude Code: `claude mcp add --transport http mind-vault <worker-url>/mcp`
-- Um lembrete pra instalar a skill `using-mind-vault` a partir de `<worker-url>/skill/using-mind-vault.zip` (ou do diretório `skills/using-mind-vault/` nesse repo)
+- O comando de instalação do Claude Code: `claude mcp add --transport http segundo-cerebro <worker-url>/mcp`
+- Um lembrete pra abrir `<worker-url>/app/config` depois de logar pra copiar o bloco de personalização pra Claude → Settings → Personalization
 - Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja a seção "O custo real: tokens do Claude" no README pra impacto por plano)
 
 Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele sabe colar uma URL.
@@ -157,4 +157,3 @@ Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele 
 - Não commita `wrangler.local.toml`, `.dev.vars`, nem nenhum arquivo contendo ID real de D1/KV, email, passphrase, hash ou session secret.
 - Não modifica `src/db/migrate.ts` pra "simplificar" as migrations — elas foram escritas manualmente por um motivo (veja o comentário no arquivo sobre trigger bodies).
 - Não adiciona domínio customizado `[[routes]]` a menos que o usuário peça.
-- Não pula a instalação da skill `using-mind-vault` — as descrições de tool do MCP sozinhas não bastam pro Claude realmente seguir o método latticework entre sessões.

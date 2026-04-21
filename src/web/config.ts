@@ -15,8 +15,7 @@ domain — proactively think in terms of the latticework method:
   create edges with substantive why justifications.
 - When I ask about a topic that might be in the vault, prefer
   recall + expand over generic answers. The value of the vault
-  comes from being read, not just written.
-Follow the using-mind-vault skill for the full method.`;
+  comes from being read, not just written.`;
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -62,14 +61,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     </div>
 
     <div class="card">
-      <h2>2. Skill: <code>using-mind-vault</code></h2>
-      <p style="color:var(--text-dim)">Download the ZIP and install it in your Claude client. The skill teaches the latticework method — atomize the concept, cross-domain sweep, edge discipline with a concrete <em>why</em>.</p>
-      <p><a href="/skill/using-mind-vault.zip" download><button type="button">⬇ Download using-mind-vault.zip</button></a></p>
-      <p style="color:var(--text-dim);font-size:12px"><strong>Claude Code:</strong> extract to <code>~/.claude/skills/</code> · <strong>Desktop / Web:</strong> Settings → Skills → Import</p>
-    </div>
-
-    <div class="card">
-      <h2>3. Personalization prompt</h2>
+      <h2>2. Personalization prompt</h2>
       <p style="color:var(--text-dim)">Paste into <em>Claude → Settings → Personalization → Custom instructions</em> to activate the latticework behavior proactively in every conversation, not just when the topic is obvious.</p>
       <pre id="prefs-block">${esc(PREFS_BLOCK)}</pre>
       <button type="button" data-copy="prefs-block">Copy prompt</button>

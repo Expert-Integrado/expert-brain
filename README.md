@@ -70,7 +70,6 @@ A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de
 | Custo | Tokens | Quando você paga |
 |---|---|---|
 | Overhead sempre-ligado do MCP | **~2.400** | Toda requisição enquanto o MCP tiver conectado (cacheável, TTL de 5 min) |
-| Skill `using-mind-vault` | ~1.300 | Só quando a skill é invocada (não invoque se o MCP tá conectado — duplica as descrições de tool) |
 | Resposta do `recall` | 100–300 | Por chamada (retorna só os tldrs, nunca o corpo — barato por design) |
 | Resposta do `get_note` | 500–2.000 | Por chamada (corpo completo) |
 
@@ -101,9 +100,8 @@ Pontos importantes sobre as janelas dos planos:
 2. **Plano Pro**: conecta o MCP seletivamente. Em conversa que vai mexer no vault, deixa ligado. Em uma hora de UI ou debug, desconecta — você ganha bem mais folga na janela de 5h.
 3. **Max 5x / 20x**: deixa ligado. O overhead é <1% da janela e a disciplina codificada nas descrições de tool se paga na primeira vez que ela impede uma nota ruim.
 4. **API / Claude Code**: deixa ligado em sessões focadas no vault, desconecta em outras. Você paga por token de qualquer jeito; calor do cache é a sua melhor alavanca.
-5. **Nunca invoca a skill `using-mind-vault` com o MCP conectado** — duplica ~1.300 tokens de orientação que o MCP já carregou. A skill existe pra ambientes de fallback (Gemini, Codex, etc) sem suporte a MCP.
-6. **Agrupa as interações com o vault** numa mesma sessão. Cinco recalls seguidos ficam em cache e são quase de graça. Cinco recalls espalhados pelo dia pagam cold start cada um.
-7. **Prefere `recall` a `get_note`.** Lê o corpo completo só quando o tldr não der conta. Uma nota de 2k tokens lida 5 vezes numa sessão são 10k tokens indo embora.
+5. **Agrupa as interações com o vault** numa mesma sessão. Cinco recalls seguidos ficam em cache e são quase de graça. Cinco recalls espalhados pelo dia pagam cold start cada um.
+6. **Prefere `recall` a `get_note`.** Lê o corpo completo só quando o tldr não der conta. Uma nota de 2k tokens lida 5 vezes numa sessão são 10k tokens indo embora.
 
 Pra metodologia completa e o breakdown por tool, veja [docs/token-cost.md](docs/token-cost.md).
 
@@ -136,7 +134,7 @@ O agente lê o [CLAUDE.md](CLAUDE.md), te pede email e passphrase (12+ caractere
 claude mcp add --transport http segundo-cerebro https://<seu-worker>.workers.dev/mcp
 ```
 
-Instala a skill `using-mind-vault` (o agente te passa o link) e cola o bloco de personalização que ele mostra.
+Abre o `/app/config` do teu Worker e cola o bloco de personalização que aparece lá em *Claude → Settings → Personalization → Custom instructions*.
 
 ### Primeira conversa
 
@@ -221,10 +219,10 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 
 | Rota | Função |
 |---|---|
-| `/` | Landing page — quando configurado, mostra status do vault com badge de conexão + URL MCP pronta pra copiar + download da skill + prompt de personalização. Quando não configurado, mostra uma página estática "termine o setup pela sua IDE agêntica" apontando pro [CLAUDE.md](CLAUDE.md). |
+| `/` | Quando configurado, redireciona pra `/app/login`. Quando não configurado, mostra uma página estática "termine o setup pela sua IDE agêntica" apontando pro [CLAUDE.md](CLAUDE.md). |
 | `/authorize`, `/token`, `/register` | OAuth 2.1 via `@cloudflare/workers-oauth-provider` com registro dinâmico de cliente |
 | `/mcp` | Endpoint MCP protegido por OAuth, servido por `McpAgent` (`agents/mcp`) envolvendo `McpServer` do `@modelcontextprotocol/sdk` |
-| `/skill/using-mind-vault.zip` | O ZIP da skill servido como asset estático |
+| `/app/*` | Dashboard web (sessão por cookie): `/app/graph`, `/app/notes`, `/app/config`, `/app/login` |
 | `/status` | Status do vault em JSON (notas, edges, clientes OAuth, tokens ativos, estado de conexão) |
 
 **Bindings (tudo no `wrangler.toml`):**
@@ -233,7 +231,7 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 - `AI` — Workers AI, modelo `@cf/baai/bge-m3` pra embeddings multilíngues
 - `OAUTH_KV` — namespace KV pra grants/tokens/registros de cliente OAuth
 - `GRAPH_CACHE` — namespace KV cacheando o layout pré-computado do grafo pro dashboard web
-- `ASSETS` — assets estáticos (ZIP da skill)
+- `ASSETS` — assets estáticos (bundle do grafo)
 
 **Schema (5 tabelas):**
 - `notes(id, title, body, tldr, domains JSON, kind, created_at, updated_at)`
@@ -321,7 +319,7 @@ Pra habilitar no seu fork:
 3. No seu fork do GitHub, vai em **Settings → Secrets and variables → Actions → New repository secret** e adiciona:
    - `CLOUDFLARE_API_TOKEN` = o token do passo 1
    - `CLOUDFLARE_ACCOUNT_ID` = o account ID do passo 2
-4. Dá push de qualquer commit em `master`. O workflow roda `npm run typecheck` + `npm test` + `npm run build:skill` antes do deploy, então teste quebrando bloqueia o deploy.
+4. Dá push de qualquer commit em `master`. O workflow roda `npm run typecheck` + `npm test` antes do deploy, então teste quebrando bloqueia o deploy.
 
 Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/segundo-cerebro/actions`.
 
@@ -332,8 +330,8 @@ npm install
 npm run dev          # wrangler dev no Miniflare local
 npm test             # vitest-pool-workers (pool de workers + pool node pra auth)
 npm run typecheck    # tsc --noEmit
-npm run build:skill  # empacota skills/using-mind-vault/ em assets/using-mind-vault.zip
-npm run deploy       # build skill + wrangler deploy
+npm run build:bundle # empacota src/web/client → assets/graph.bundle.js
+npm run deploy       # build bundle + wrangler deploy
 ```
 
 Os testes rodam em dois pools: o pool principal de workers (pra testes de D1 + tool MCP com Vectorize / Workers AI mockados), e um pool node separado pro teste de hash de senha (`crypto.subtle` tá disponível nos dois, mas o pool node mantém o módulo de auth isolado das restrições do runtime dos workers).
