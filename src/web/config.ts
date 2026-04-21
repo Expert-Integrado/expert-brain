@@ -4,18 +4,15 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse } from './render.js';
 import { getVaultStatus } from '../auth/setup.js';
 
-const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP. Quando eu estiver discutindo
-conceitos, ideias, insights, decisões ou aprendizados — em qualquer
-domínio — pense proativamente no método latticework:
-- Consulte o vault via ExpertBrain:recall antes de depender apenas do seu
-  próprio conhecimento, especialmente para analogias cross-domain.
-- Quando eu compartilhar algo que vale lembrar, ofereça salvar e,
-  se eu concordar, atomize em um conceito por nota, marque com
-  domínio(s) específico(s), varra outros domínios em busca de analogias, e
-  crie edges com justificativas why substantivas.
-- Quando eu perguntar sobre um tópico que pode estar no vault, prefira
-  recall + expand a respostas genéricas. O valor do vault
-  vem de ser lido, não só escrito.`;
+const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP — é meu grafo de conhecimento pessoal cross-domain.
+
+Contexto: sou Eric Luciano, CEO da Expert Integrado. Trabalho com IA aplicada, vendas, gestão, educação, liderança e empreendedorismo.
+
+Comportamento esperado:
+- Antes de responder perguntas conceituais ou estratégicas, consulte o vault em busca de analogias — especialmente de domínios diferentes do tema da conversa.
+- Quando eu compartilhar uma ideia, decisão ou aprendizado que vale preservar, ofereça salvar. Se eu concordar: atomize em um conceito por nota, escolha um domínio específico, varra outros domínios em busca de analogias estruturais, e crie conexões com justificativa do mecanismo compartilhado.
+- Quando eu perguntar sobre algo que pode estar no vault, prefira buscar lá antes de responder do zero.
+- Não use o vault em tarefas operacionais (código, debug, tarefas do dia a dia) — só para ideias, insights, decisões e aprendizados que valem ser reencontrados no futuro.`;
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
