@@ -1,22 +1,16 @@
 import type { Env } from '../env.js';
 
-export type EdgeType =
-  | 'analogous_to' | 'same_mechanism_as' | 'instance_of' | 'generalizes'
-  | 'causes' | 'depends_on' | 'contradicts' | 'evidence_for' | 'refines';
-
-export const EDGE_TYPES: readonly EdgeType[] = [
+export const EDGE_TYPES = [
   'analogous_to','same_mechanism_as','instance_of','generalizes',
   'causes','depends_on','contradicts','evidence_for','refines',
 ] as const;
+export type EdgeType = typeof EDGE_TYPES[number];
 
-export type NoteKind =
-  | 'concept' | 'decision' | 'insight' | 'fact'
-  | 'pattern' | 'principle' | 'question';
-
-export const NOTE_KINDS: readonly NoteKind[] = [
+export const NOTE_KINDS = [
   'concept','decision','insight','fact',
   'pattern','principle','question',
 ] as const;
+export type NoteKind = typeof NOTE_KINDS[number];
 
 export interface NoteRow {
   id: string; title: string; body: string; tldr: string;

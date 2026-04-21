@@ -26,4 +26,22 @@ describe('migrations', () => {
     await runMigrations(env as any);
     await runMigrations(env as any);
   });
+
+  it('rejects INSERT of note with malformed domains JSON', async () => {
+    await expect(
+      (env as any).DB.prepare(
+        `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
+         VALUES ('bad','T','b','tl','not-json','concept',0,0)`
+      ).run()
+    ).rejects.toThrow();
+  });
+
+  it('accepts INSERT of note with valid domains JSON', async () => {
+    await (env as any).DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
+       VALUES ('ok','T','b','a tldr long enough','["biology"]','concept',0,0)`
+    ).run();
+    const row = await (env as any).DB.prepare('SELECT id FROM notes WHERE id = ?').bind('ok').first();
+    expect(row).not.toBeNull();
+  });
 });

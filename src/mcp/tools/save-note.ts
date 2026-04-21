@@ -2,13 +2,13 @@ import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
-import { EDGE_TYPES, NOTE_KINDS, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
+import { EDGE_TYPES, NOTE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 
 const edgeSchema = z.object({
   to_id: z.string().min(1),
-  relation_type: z.enum(EDGE_TYPES as unknown as [string, ...string[]]),
+  relation_type: z.enum(EDGE_TYPES),
   why: z.string(),
 });
 
@@ -17,7 +17,7 @@ const inputSchema = {
   body: z.string().min(1).describe('Body in markdown'),
   tldr: z.string().min(10).max(280).describe('One sentence. Feynman test.'),
   domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3)'),
-  kind: z.enum(NOTE_KINDS as unknown as [string, ...string[]]).describe(
+  kind: z.enum(NOTE_KINDS).describe(
     'concept | decision | insight | fact | pattern | principle | question'
   ),
   tags: z.array(z.string()).optional(),
@@ -57,7 +57,7 @@ interface SaveNoteInput {
   domains: string[];
   kind: NoteKind;
   tags?: string[];
-  edges?: Array<{ to_id: string; relation_type: string; why: string }>;
+  edges?: Array<{ to_id: string; relation_type: EdgeType; why: string }>;
 }
 
 export function registerSaveNote(server: any, env: Env): void {
@@ -124,7 +124,7 @@ export function registerSaveNote(server: any, env: Env): void {
             id: newId(),
             from_id: id,
             to_id: e.to_id,
-            relation_type: e.relation_type as any,
+            relation_type: e.relation_type,
             why: e.why,
             created_at: now,
           });

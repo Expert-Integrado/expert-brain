@@ -72,4 +72,19 @@ describe('delete_note', () => {
     expect(r.content[0].text).toContain('ghost');
     expect(E.VECTORIZE.deleteByIds).not.toHaveBeenCalled();
   });
+
+  it('preserves D1 and returns specific error when Vectorize.deleteByIds fails', async () => {
+    await seed('a');
+    E.VECTORIZE.deleteByIds = vi.fn(async () => {
+      throw new Error('Vectorize transient');
+    });
+
+    const r = await reg().delete_note({ id: 'a', confirm: true });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('NOT deleted');
+    expect(r.content[0].text).toContain('Safe to retry');
+
+    const row = await E.DB.prepare('SELECT id FROM notes WHERE id = ?').bind('a').first();
+    expect(row).not.toBeNull();
+  });
 });

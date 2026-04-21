@@ -13,9 +13,9 @@ async function authCookie(): Promise<string> {
 async function seed() {
   const db = (env as any).DB;
   await db.prepare(`INSERT OR REPLACE INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
-    VALUES ('n1','Alpha','# Alpha\\n\\nbody','sum','infra',NULL,1,1)`).run();
+    VALUES ('n1','Alpha','# Alpha\\n\\nbody','sum','["infra"]',NULL,1,1)`).run();
   await db.prepare(`INSERT OR REPLACE INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
-    VALUES ('n2','Beta','# Beta','sum','retrieval',NULL,2,2)`).run();
+    VALUES ('n2','Beta','# Beta','sum','["retrieval"]',NULL,2,2)`).run();
   await db.prepare(`INSERT OR IGNORE INTO edges (id,from_id,to_id,relation_type,why,created_at)
     VALUES ('e1','n1','n2','depends_on','shared mechanism explained here',3)`).run();
 }

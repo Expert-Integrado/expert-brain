@@ -55,7 +55,23 @@ export function registerDeleteNote(server: any, env: Env): void {
       const edgesRemoved = countRow?.e ?? 0;
       const tagsRemoved = countRow?.t ?? 0;
 
-      await env.VECTORIZE.deleteByIds([input.id]);
+      // Vectorize FIRST, D1 after. If the vector delete fails, D1 is preserved
+      // so the note stays reachable via get_note/recall — no inconsistent state.
+      // We catch here specifically (rather than letting safeToolHandler emit
+      // the generic Vectorize error) so the user gets a clear "nothing was
+      // deleted, safe to retry" signal instead of ambiguous boilerplate.
+      try {
+        await env.VECTORIZE.deleteByIds([input.id]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('delete_note: Vectorize.deleteByIds failed:', msg);
+        return toolError(
+          `Failed to remove the vector from the semantic index: ${msg}. ` +
+          `The note was NOT deleted from the vault — it is still fully accessible via recall, get_note, and the dashboard. ` +
+          `This is usually a transient Vectorize error. Safe to retry the same delete_note call in a few seconds.`
+        );
+      }
+
       await deleteNote(env, input.id);
 
       return toolSuccess({

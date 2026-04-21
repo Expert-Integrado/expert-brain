@@ -109,4 +109,40 @@ describe('update_note', () => {
     const r = await reg().update_note({ id: 'abc', domains: ['Biologia Evolutiva'] });
     expect(r.isError).toBe(true);
   });
+
+  it('handles legacy note with kind=null when reembedding (no NoteKind crash)', async () => {
+    // Direct insert with kind=null simulates a legacy row from before kind became required.
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`
+    ).bind('legacy', 'T', 'b', 'an old tldr long enough', '["biology"]', null, 1000, 1000).run();
+
+    const r = await reg().update_note({ id: 'legacy', tldr: 'a freshly rewritten tldr that qualifies' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.reembedded).toBe(true);
+
+    expect(E.VECTORIZE.upsert).toHaveBeenCalledTimes(1);
+    const upsertArg = (E.VECTORIZE.upsert.mock.calls[0] as any[])[0][0];
+    expect(upsertArg.metadata.kind).toBe(''); // upsertNoteVector coerces null -> ''
+  });
+
+  it('bumps updated_at when only tags change', async () => {
+    await seed('abc', 'a tldr long enough here', '["biology"]', 'concept');
+    const before = await E.DB.prepare('SELECT updated_at FROM notes WHERE id = ?').bind('abc').first();
+    expect(before.updated_at).toBe(1000);
+
+    const r = await reg().update_note({ id: 'abc', tags: ['fresh'] });
+    expect(r.isError).toBeUndefined();
+    const after = await E.DB.prepare('SELECT updated_at FROM notes WHERE id = ?').bind('abc').first();
+    expect(after.updated_at).toBeGreaterThan(1000);
+  });
+
+  it('tags=[] clears existing tags', async () => {
+    await seed('abc', 'a tldr long enough here', '["biology"]', 'concept');
+    await E.DB.prepare(`INSERT INTO tags (note_id, tag) VALUES (?, ?)`).bind('abc', 'old').run();
+    const r = await reg().update_note({ id: 'abc', tags: [] });
+    expect(r.isError).toBeUndefined();
+    const remaining = await E.DB.prepare('SELECT count(*) c FROM tags WHERE note_id = ?').bind('abc').first();
+    expect(remaining.c).toBe(0);
+  });
 });

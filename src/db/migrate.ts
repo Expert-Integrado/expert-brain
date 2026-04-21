@@ -59,8 +59,29 @@ END`,
 )`,
 ];
 
+// Guard against corrupt domains JSON. stats uses json_each(notes.domains) —
+// if any row has a malformed value, the whole query fails. Enforcing validity
+// at write time via triggers catches bugs at the source and keeps
+// stats/graph queries safe. Can't add CHECK to an existing table without
+// rebuilding it (which would cascade-delete edges/tags via foreign keys).
+const MIGRATION_0002_STMTS: string[] = [
+  `CREATE TRIGGER IF NOT EXISTS notes_domains_valid_insert
+   BEFORE INSERT ON notes
+   WHEN NOT json_valid(NEW.domains)
+   BEGIN
+     SELECT RAISE(ABORT, 'domains must be valid JSON');
+   END`,
+  `CREATE TRIGGER IF NOT EXISTS notes_domains_valid_update
+   BEFORE UPDATE ON notes
+   WHEN NOT json_valid(NEW.domains)
+   BEGIN
+     SELECT RAISE(ABORT, 'domains must be valid JSON');
+   END`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
+  { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

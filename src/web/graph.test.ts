@@ -17,9 +17,9 @@ beforeAll(async () => {
   await (env as any).DB.prepare(`DELETE FROM edges`).run();
   await (env as any).DB.prepare(`DELETE FROM notes`).run();
   await (env as any).DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
-    VALUES ('g1','Graph One','b','t','infra',NULL,1,1)`).run();
+    VALUES ('g1','Graph One','b','t','["infra"]',NULL,1,1)`).run();
   await (env as any).DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
-    VALUES ('g2','Graph Two','b','t','retrieval',NULL,2,2)`).run();
+    VALUES ('g2','Graph Two','b','t','["retrieval"]',NULL,2,2)`).run();
   await (env as any).DB.prepare(`INSERT INTO edges (id,from_id,to_id,relation_type,why,created_at)
     VALUES ('ge1','g1','g2','depends_on','because',3)`).run();
 });

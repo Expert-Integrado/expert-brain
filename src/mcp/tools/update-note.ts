@@ -11,7 +11,9 @@ const inputSchema = {
   body: z.string().min(1).optional(),
   tldr: z.string().min(10).max(280).optional(),
   domains: z.array(z.string().min(1)).min(1).max(3).optional(),
-  kind: z.enum(NOTE_KINDS as unknown as [string, ...string[]]).optional(),
+  kind: z.enum(NOTE_KINDS).optional().describe(
+    'concept | decision | insight | fact | pattern | principle | question'
+  ),
   tags: z.array(z.string()).optional(),
 };
 
@@ -24,7 +26,20 @@ FLOW: call recall() or get_note() first to confirm the id. Do not call update_no
 
 REEMBEDDING: the vector index is updated automatically when tldr, domains, or kind changes (the embedding is computed from tldr and the metadata carries domains+kind). If only title/body/tags changes, no Workers AI call happens — cheap edit.
 
-VALIDATION: domains must be canonical English kebab-case slugs (same rules as save_note). kind must be one of the 7 canonical values (concept, decision, insight, fact, pattern, principle, question). tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
+VALIDATION: domains must be canonical English kebab-case slugs (same rules as save_note). tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
+
+KIND VALUES: the kind field is optional here (omit to keep existing), but if provided must be one of the 7 canonical values — pick the one that best fits the note's epistemic status:
+- 'concept'   — an abstract idea, model, or framework (most common default)
+- 'decision'  — a choice made with preserved reasoning (design decision, strategic bet)
+- 'insight'   — a personal observation or discovery ("I just realized...")
+- 'fact'      — an objective data point or citable reference
+- 'pattern'   — a recurring structure observed across instances
+- 'principle' — a personal rule or axiom the user lives by
+- 'question'  — an open question worth revisiting (not yet answered)
+
+DOMAIN ORDER IS SIGNIFICANT: reordering domains counts as a change and triggers a reembed. recall treats the FIRST domain as the note's primary bucket for balancing, so reordering changes retrieval behavior.
+
+TAGS: passing an empty array (\`tags: []\`) clears all tags on the note. Omitting the tags field leaves existing tags untouched.
 
 INDEXING LATENCY: if tldr/domains/kind changed, recall may take ~1-2 minutes to reflect the new content. get_note returns the fresh values immediately.`;
 
@@ -53,9 +68,9 @@ export function registerUpdateNote(server: any, env: Env): void {
     },
     safeToolHandler(async (input: UpdateNoteInput) => {
       const { id, title, body, tldr, domains, kind, tags } = input;
-      const touchesD1 = title !== undefined || body !== undefined || tldr !== undefined
+      const touchesD1Columns = title !== undefined || body !== undefined || tldr !== undefined
         || domains !== undefined || kind !== undefined;
-      if (!touchesD1 && tags === undefined) {
+      if (!touchesD1Columns && tags === undefined) {
         return toolError(
           `update_note requires at least one field besides id to be provided. ` +
           `Editable fields: title, body, tldr, domains, kind, tags.`
@@ -74,31 +89,37 @@ export function registerUpdateNote(server: any, env: Env): void {
         if (err) return toolError(err);
       }
 
+      const titleChanged = title !== undefined && title !== existing.title;
+      const bodyChanged = body !== undefined && body !== existing.body;
+      const tldrChanged = tldr !== undefined && tldr !== existing.tldr;
+      const domainsChanged = domains !== undefined && JSON.stringify(domains) !== existing.domains;
+      const kindChanged = kind !== undefined && kind !== existing.kind;
+      const needsReembed = tldrChanged || domainsChanged || kindChanged;
+
       const now = Date.now();
       const fieldsChanged: string[] = [];
-      const vectorMetadataChanged = (domains !== undefined && JSON.stringify(domains) !== existing.domains)
-        || (kind !== undefined && kind !== existing.kind);
-      const tldrChanged = tldr !== undefined && tldr !== existing.tldr;
-      const needsReembed = tldrChanged || vectorMetadataChanged;
 
-      if (touchesD1) {
+      if (touchesD1Columns) {
         await updateNote(env, id, {
-          title,
-          body,
-          tldr,
+          title, body, tldr,
           domains: domains !== undefined ? JSON.stringify(domains) : undefined,
           kind,
           updated_at: now,
         });
-        if (title !== undefined && title !== existing.title) fieldsChanged.push('title');
-        if (body !== undefined && body !== existing.body) fieldsChanged.push('body');
+        if (titleChanged) fieldsChanged.push('title');
+        if (bodyChanged) fieldsChanged.push('body');
         if (tldrChanged) fieldsChanged.push('tldr');
-        if (domains !== undefined && JSON.stringify(domains) !== existing.domains) fieldsChanged.push('domains');
-        if (kind !== undefined && kind !== existing.kind) fieldsChanged.push('kind');
+        if (domainsChanged) fieldsChanged.push('domains');
+        if (kindChanged) fieldsChanged.push('kind');
       }
 
       if (tags !== undefined) {
         await replaceTags(env, id, tags);
+        // Ensure updated_at advances even when only tags changed — downstream
+        // code treats notes.updated_at as the "this note was edited" signal.
+        if (!touchesD1Columns) {
+          await updateNote(env, id, { updated_at: now });
+        }
         fieldsChanged.push('tags');
       }
 
@@ -106,7 +127,9 @@ export function registerUpdateNote(server: any, env: Env): void {
       if (needsReembed) {
         const finalTldr = tldr ?? existing.tldr;
         const finalDomains: string[] = domains ?? JSON.parse(existing.domains);
-        const finalKind: NoteKind = (kind ?? existing.kind) as NoteKind;
+        // Legacy rows may have kind = null; preserve that through to Vectorize
+        // metadata instead of forcing a NoteKind cast on a null.
+        const finalKind: string | null = kind ?? existing.kind;
         const vec = await embed(env, finalTldr);
         await upsertNoteVector(env, id, vec, {
           domains: finalDomains,

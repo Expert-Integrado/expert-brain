@@ -94,4 +94,27 @@ describe('stats', () => {
     const parsed = JSON.parse(r.content[0].text);
     expect(parsed.total_edges).toBe(1);
   });
+
+  it('respects top_domains_limit', async () => {
+    const now = Date.now();
+    await seed('a', ['alpha'], 'concept', now);
+    await seed('b', ['beta'], 'concept', now);
+    await seed('c', ['gamma'], 'concept', now);
+    await seed('d', ['delta'], 'concept', now);
+    await seed('e', ['epsilon'], 'concept', now);
+
+    const r = await reg().stats({ top_domains_limit: 2 });
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.notes_by_domain.length).toBe(2);
+  });
+
+  it('defaults top_domains_limit to 50 when omitted', async () => {
+    const now = Date.now();
+    for (let i = 0; i < 3; i++) {
+      await seed(`n${i}`, [`domain${i}`], 'concept', now);
+    }
+    const r = await reg().stats({});
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.notes_by_domain.length).toBe(3);
+  });
 });

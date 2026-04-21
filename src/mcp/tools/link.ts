@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
-import { EDGE_TYPES, getNoteById, insertEdge } from '../../db/queries.js';
+import { EDGE_TYPES, type EdgeType, getNoteById, insertEdge } from '../../db/queries.js';
 import { newId } from '../../util/id.js';
 
 const inputSchema = {
   from_id: z.string().min(1),
   to_id: z.string().min(1),
-  relation_type: z.enum(EDGE_TYPES as unknown as [string, ...string[]]),
+  relation_type: z.enum(EDGE_TYPES),
   why: z.string(),
 };
 
@@ -22,7 +22,7 @@ IMPORTANT: why minimum 20 characters, naming the shared MECHANISM, not just "rel
 interface LinkInput {
   from_id: string;
   to_id: string;
-  relation_type: string;
+  relation_type: EdgeType;
   why: string;
 }
 
@@ -60,7 +60,7 @@ export function registerLink(server: any, env: Env): void {
       const id = newId();
       await insertEdge(env, {
         id, from_id: input.from_id, to_id: input.to_id,
-        relation_type: input.relation_type as any, why: input.why,
+        relation_type: input.relation_type, why: input.why,
         created_at: Date.now(),
       });
       return toolSuccess({ id, from_id: input.from_id, to_id: input.to_id, relation_type: input.relation_type });

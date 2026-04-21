@@ -1,11 +1,16 @@
+import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolSuccess } from '../helpers.js';
+
+const inputSchema = {
+  top_domains_limit: z.number().int().min(1).max(200).optional().default(50),
+};
 
 const DESCRIPTION = `Overview of the vault: total counts, distribution by domain and by kind, and recent activity.
 
 Returns:
 - total_notes, total_edges
-- notes_by_domain: [{ domain, count }] sorted by count desc (all domains in the vault)
+- notes_by_domain: [{ domain, count }] sorted by count desc, capped at top_domains_limit (default 50)
 - notes_by_kind: [{ kind, count }] for the 7 canonical kinds
 - recent_7d, recent_30d: number of notes created in the last 7 / 30 days
 
@@ -19,12 +24,14 @@ Read-only. Cheap. No side effects.`;
 interface DomainRow { domain: string; count: number; }
 interface KindRow { kind: string; count: number; }
 
+interface StatsInput { top_domains_limit?: number; }
+
 export function registerStats(server: any, env: Env): void {
   server.registerTool(
     'stats',
     {
       description: DESCRIPTION,
-      inputSchema: {},
+      inputSchema,
       annotations: {
         title: 'Vault overview',
         readOnlyHint: true,
@@ -32,10 +39,11 @@ export function registerStats(server: any, env: Env): void {
         openWorldHint: false,
       },
     },
-    safeToolHandler(async () => {
+    safeToolHandler(async (input: StatsInput) => {
       const now = Date.now();
       const d7 = now - 7 * 24 * 60 * 60 * 1000;
       const d30 = now - 30 * 24 * 60 * 60 * 1000;
+      const limit = input.top_domains_limit ?? 50;
 
       const [totalsRow, domainRows, kindRows] = await Promise.all([
         env.DB.prepare(
@@ -48,9 +56,11 @@ export function registerStats(server: any, env: Env): void {
         env.DB.prepare(
           `SELECT je.value AS domain, count(*) AS count
            FROM notes, json_each(notes.domains) je
+           WHERE json_valid(notes.domains)
            GROUP BY je.value
-           ORDER BY count DESC, domain ASC`
-        ).all<DomainRow>(),
+           ORDER BY count DESC, domain ASC
+           LIMIT ?`
+        ).bind(limit).all<DomainRow>(),
         env.DB.prepare(
           `SELECT kind, count(*) AS count
            FROM notes
