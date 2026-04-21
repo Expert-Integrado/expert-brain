@@ -22,6 +22,8 @@ QUERY STYLE: prefer the literal vocabulary of the note's domain over metaphorica
 
 IMPORTANT: read ALL returned domains before answering. The valuable match often comes from the unexpected domain — that is exactly what the vault is for. If domains_filter is provided, all entries must be canonical English slugs (same rules as save_note.domains).
 
+DOMAINS_FILTER SEMANTICS: the filter does TWO things — (a) restricts results to notes that contain at least one of the listed domains (matches on any domain in the note, not just the primary) AND (b) pulls every note in those domains into the pool even if they didn't match the query semantically. So recall("anything", domains_filter=["X"]) returns "notes in domain X, ordered by relevance to the query, with semantic matches ranked above domain-only matches". Use this when the user asks "show me everything I have on X".
+
 INDEXING LATENCY: Cloudflare Vectorize is eventually consistent — a note saved via save_note can take up to ~1-2 minutes to become queryable via recall. If a user asks you to find a concept they JUST saved and the recall returns empty, that is probably indexing delay, NOT a missing note. Do NOT tell the user the vault is broken. Either (a) wait and retry, (b) use get_note on the id returned by save_note if you still have it, or (c) explain the delay and ask the user to try again in a minute. FTS5 search is strongly consistent and returns results immediately, so a recall that matches by keyword often still surfaces fresh notes even when the vector side is still indexing.`;
 
 interface RecallHit {
@@ -61,6 +63,28 @@ export function registerRecall(server: any, env: Env): void {
       const ids = new Set<string>();
       for (const m of vectorMatches) ids.add(m.id);
       for (const r of ftsRows) ids.add(r.id);
+
+      // When a domain filter is set, also pull every note in those domains.
+      // Without this, a query like recall("feedback loop", filter=["evolutionary-biology"])
+      // returns [] whenever the evo-bio notes fall outside the top-30 semantic
+      // window — the filter can only drop, never add. Union-ing the two pools
+      // means domain-scoped queries always surface the domain contents.
+      const domainFilterIds: string[] = [];
+      if (input.domains_filter?.length) {
+        const dfPlaceholders = input.domains_filter.map(() => '?').join(',');
+        const domainRows = await env.DB.prepare(
+          `SELECT DISTINCT n.id
+           FROM notes n, json_each(n.domains) je
+           WHERE je.value IN (${dfPlaceholders})
+           ORDER BY n.updated_at DESC
+           LIMIT 50`
+        ).bind(...input.domains_filter).all<{ id: string }>();
+        for (const r of domainRows.results ?? []) {
+          domainFilterIds.push(r.id);
+          ids.add(r.id);
+        }
+      }
+
       if (ids.size === 0) return toolSuccess({ results: [] });
 
       const placeholders = Array.from(ids).map(() => '?').join(',');
@@ -80,7 +104,12 @@ export function registerRecall(server: any, env: Env): void {
 
       const vectorOrder = vectorMatches.map((m) => m.id).filter((id) => byId.has(id));
       const ftsOrder = ftsRows.map((r) => r.id).filter((id) => byId.has(id) && !vectorOrder.includes(id));
-      const merged = [...vectorOrder, ...ftsOrder];
+      // Domain-filter-injected ids go LAST so that actual semantic/keyword
+      // matches stay prioritized in the final ordering; domain-retrieval
+      // notes only surface after the relevant ones run out.
+      const already = new Set<string>([...vectorOrder, ...ftsOrder]);
+      const domainOnlyOrder = domainFilterIds.filter((id) => byId.has(id) && !already.has(id));
+      const merged = [...vectorOrder, ...ftsOrder, ...domainOnlyOrder];
 
       let pool: RecallHit[] = merged.map((id) => byId.get(id)!).filter(Boolean);
       if (input.domains_filter?.length) {

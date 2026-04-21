@@ -90,6 +90,30 @@ describe('recall', () => {
     expect(ids).toContain('f');
   });
 
+  it('domains_filter pulls notes into the pool even when not matched by query', async () => {
+    // Add a note in evolutionary-biology whose tldr has nothing to do with the
+    // query. Mock vector + FTS to return ZERO matches for this note — it only
+    // enters the pool via the domain filter retrieval.
+    await E.DB.prepare(
+      `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0)`
+    ).bind('g', 'Cambrian explosion', 'b', 'rapid diversification of body plans', '["evolutionary-biology"]').run();
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [] })); // no semantic match
+
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+    const r = await registered.recall({
+      query: 'completely unrelated query that matches nothing',
+      domains_filter: ['evolutionary-biology'],
+    });
+    const parsed = JSON.parse(r.content[0].text);
+    const ids = parsed.results.map((x: any) => x.id);
+    // Without the domain retrieval, pool would be empty → results []. With it,
+    // all evolutionary-biology notes (a, d, g from this suite) are pulled in.
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).toContain('g');
+  });
+
   it('response does not leak internal allDomains field', async () => {
     const registered: any = {};
     const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
