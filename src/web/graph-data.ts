@@ -156,3 +156,48 @@ export async function handleGraphData(req: Request, env: Env): Promise<Response>
   }
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
 }
+
+// Parse the domains field: JSON-encoded array (new schema) or legacy CSV.
+function parseDomains(raw: string): string[] {
+  if (!raw) return [];
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const arr = JSON.parse(trimmed);
+      if (Array.isArray(arr)) return arr.map((d) => String(d).trim()).filter(Boolean);
+    } catch { /* fall through */ }
+  }
+  return trimmed.split(',').map((d) => d.trim()).filter(Boolean);
+}
+
+export interface NoteMetaRow {
+  id: string;
+  title: string;
+  kind: string;
+  tldr: string;
+  domains: string[];
+}
+
+// Lightweight metadata for the graph slide panel and client-side fuzzy search.
+// Kept out of the main graph payload so GRAPH_CACHE stays compact and this can
+// be refreshed independently without invalidating layout positions.
+export async function handleGraphMeta(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const rows = await env.DB.prepare(
+    `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains
+     FROM notes`
+  ).all<{ id: string; title: string; tldr: string; kind: string; domains: string }>();
+  const results = rows.results ?? [];
+
+  const meta: NoteMetaRow[] = results.map((n) => ({
+    id: n.id,
+    title: n.title,
+    kind: n.kind || '',
+    tldr: n.tldr || '',
+    domains: parseDomains(n.domains),
+  }));
+
+  return Response.json(meta, { headers: { 'cache-control': 'no-store' } });
+}

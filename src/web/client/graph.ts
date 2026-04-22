@@ -1,151 +1,181 @@
 import Graph from 'graphology';
 import Sigma from 'sigma';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
+import Fuse from 'fuse.js';
+import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor } from '../domain-colors.js';
 
-interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; }
-interface ExplicitEdge { id: string; source: string; target: string; type: 'explicit'; why: string; relation_type: string; }
-interface SimilarEdge { id: string; source: string; target: string; type: 'similar'; score: number; }
+// ──────────────────────────────────────────────────────────────────────────────
+// Payload shape (matches src/web/graph-data.ts server-side)
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface GraphNode {
+  id: string;
+  label: string;
+  domain: string;
+  size: number;
+  x: number;
+  y: number;
+  // Added client-side after load:
+  kind?: string;
+  tldr?: string;
+}
+interface ExplicitEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'explicit';
+  why: string;
+  relation_type: string;
+}
+interface SimilarEdge {
+  id: string;
+  source: string;
+  target: string;
+  type: 'similar';
+  score: number;
+}
 type Edge = ExplicitEdge | SimilarEdge;
 interface Payload { nodes: GraphNode[]; edges: Edge[]; }
 
-// Stable pastel color per domain via FNV-1a hash → HSL hue, converted to hex
-// because Sigma's WebGL program expects hex/rgb, not hsl() strings.
-function hslToHex(h: number, s: number, l: number): string {
-  const sat = s / 100;
-  const lig = l / 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = sat * Math.min(lig, 1 - lig);
-  const f = (n: number) => {
-    const c = lig - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    return Math.round(c * 255);
-  };
-  const r = f(0), g = f(8), b = f(4);
-  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('');
+// Node metadata fetched from /app/graph/meta (title, kind, tldr, domains array).
+// Kept separate from the graph payload so GRAPH_CACHE stays small and the
+// slide panel can render without an extra round trip per click.
+interface NoteMeta {
+  id: string;
+  title: string;
+  kind: string;
+  tldr: string;
+  domains: string[];
 }
 
-function domainColor(domain: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < domain.length; i++) h = Math.imul(h ^ domain.charCodeAt(i), 16777619);
-  const hue = (h >>> 0) % 360;
-  return hslToHex(hue, 70, 72);
-}
+// ──────────────────────────────────────────────────────────────────────────────
+// Main
+// ──────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const res = await fetch('/app/graph/data', { credentials: 'same-origin' });
-  if (!res.ok) {
-    document.getElementById('graph-count')!.textContent = 'Failed to load graph';
+  // Parallel load: graph topology + note metadata. Meta endpoint is additive —
+  // if it fails we degrade to id-only panel content rather than aborting.
+  const [graphRes, metaRes] = await Promise.all([
+    fetch('/app/graph/data', { credentials: 'same-origin' }),
+    fetch('/app/graph/meta', { credentials: 'same-origin' }),
+  ]);
+  if (!graphRes.ok) {
+    setStatus('Failed to load graph');
     return;
   }
-  const payload = (await res.json()) as Payload;
+  const payload = (await graphRes.json()) as Payload;
+  const meta: Map<string, NoteMeta> = new Map();
+  if (metaRes.ok) {
+    try {
+      const list = (await metaRes.json()) as NoteMeta[];
+      for (const m of list) meta.set(m.id, m);
+      for (const n of payload.nodes) {
+        const m = meta.get(n.id);
+        if (m) { n.kind = m.kind; n.tldr = m.tldr; }
+      }
+    } catch (err) {
+      console.warn('graph: meta parse failed', err);
+    }
+  }
 
   const container = document.getElementById('graph-canvas') as HTMLElement;
   const graph = new Graph({ type: 'undirected', multi: true });
 
-  // Nodes start clustered near origin with small random jitter so force-atlas2
-  // has a non-degenerate starting point and can "explode" them outward. This
-  // is what gives the Obsidian-style reveal — the physics converges from a
-  // collapsed ball into the final layout over ~2 seconds.
+  // Compute degree up front — used for node fade on zoom-out, label priority.
+  const degreeById = new Map<string, number>();
+  const bumpDegree = (id: string) => degreeById.set(id, (degreeById.get(id) ?? 0) + 1);
+
   for (const n of payload.nodes) {
     graph.addNode(n.id, {
       label: n.label,
+      // Tiny random jitter so ForceAtlas2 has a non-degenerate starting
+      // configuration and the reveal animation plays.
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
       size: 7 + n.size * 3.5,
       color: domainColor(n.domain),
+      domain: n.domain,
+      kind: n.kind ?? '',
     });
   }
 
-  // Only explicit edges go into the graphology graph (Sigma draws them solid).
-  // Similar edges are kept out and drawn on a Canvas 2D overlay with setLineDash
-  // — Sigma v3's WebGL edge programs can't render dashed lines natively.
-  const similarEdges: Array<{ source: string; target: string }> = [];
+  const similarEdges: Array<{ source: string; target: string; score: number }> = [];
+  let explicitCount = 0;
+  let similarCount = 0;
   for (const e of payload.edges) {
     if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
+    bumpDegree(e.source); bumpDegree(e.target);
     if (e.type === 'explicit') {
+      explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
         size: 2.2,
-        color: 'rgba(180, 140, 255, 0.75)',
+        color: 'rgba(186, 140, 255, 0.78)',
       });
     } else {
-      similarEdges.push({ source: e.source, target: e.target });
+      similarCount++;
+      similarEdges.push({ source: e.source, target: e.target, score: e.score });
     }
   }
 
-  // Custom hover renderer: Sigma v3's default draws a WHITE rounded rectangle
-  // behind the label (legacy light-theme style). We replace it with a dark
-  // Midnight Nebula pill so the label is readable on hover.
-  function drawDarkHover(
-    ctx: CanvasRenderingContext2D,
-    data: { x: number; y: number; size: number; label?: string | null },
-    settings: { labelSize: number; labelWeight: string; labelFont: string }
-  ) {
-    const label = data.label ?? '';
-    if (!label) return;
-    const size = settings.labelSize;
-    ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
-    const textWidth = ctx.measureText(label).width;
+  // ────────────────────────────────────────────────────────────────────────
+  // Status + legend
+  // ────────────────────────────────────────────────────────────────────────
+  setStatus(`${payload.nodes.length} notes · ${explicitCount} explicit · ${similarCount} similar`);
 
-    const padX = 10;
-    const padY = 6;
-    const offsetX = data.size + 8;
-    const boxX = data.x + offsetX;
-    const boxY = data.y - size / 2 - padY;
-    const boxW = textWidth + padX * 2;
-    const boxH = size + padY * 2;
-    const radius = 8;
+  renderLegend(payload.nodes);
 
-    // Pill background
-    ctx.fillStyle = 'rgba(20, 12, 51, 0.94)';
-    ctx.strokeStyle = 'rgba(180, 140, 255, 0.35)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const rr = (ctx as unknown as { roundRect?: Function }).roundRect;
-    if (typeof rr === 'function') {
-      (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void })
-        .roundRect(boxX, boxY, boxW, boxH, radius);
-    } else {
-      ctx.rect(boxX, boxY, boxW, boxH);
-    }
-    ctx.fill();
-    ctx.stroke();
-
-    // Text
-    ctx.fillStyle = '#ecdfff';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, boxX + padX, data.y);
-  }
-
+  // ────────────────────────────────────────────────────────────────────────
+  // Sigma renderer — label thresholds deliberately conservative so labels
+  // ONLY appear on hover or when the camera zooms deep into a cluster. The
+  // previous config (labelDensity=1, labelRenderedSizeThreshold=18) rendered
+  // every label every frame, turning the viewport into text soup at small
+  // zoom. labelRenderedSizeThreshold is in *rendered pixels*, not graph
+  // units — at camera.ratio≈1 a node of graph-size 10 renders at ~10px;
+  // setting the threshold to 10 plus a dynamic bump in the reducer below
+  // means only zoomed-in nodes get labels by default.
+  // ────────────────────────────────────────────────────────────────────────
   const renderer = new Sigma(graph, container, {
-    labelColor: { color: '#ecdfff' },
+    labelColor: { color: '#f4ecff' },
     labelSize: 13,
     labelWeight: '600',
     labelFont: 'Manrope, system-ui, sans-serif',
-    labelDensity: 1,
-    labelGridCellSize: 80,
-    labelRenderedSizeThreshold: 18,
-    defaultNodeColor: '#b48cff',
+    labelDensity: 0.07,
+    labelGridCellSize: 160,
+    labelRenderedSizeThreshold: 10,
+    defaultNodeColor: DOMAIN_FALLBACK,
     defaultEdgeColor: 'rgba(180, 140, 255, 0.5)',
     renderEdgeLabels: false,
-    minCameraRatio: 0.1,
-    maxCameraRatio: 10,
+    minCameraRatio: 0.08,
+    maxCameraRatio: 12,
     defaultDrawNodeHover: drawDarkHover as any,
   });
 
-  const explicitCount = payload.edges.filter((e) => e.type === 'explicit').length;
-  const similarCount = payload.edges.length - explicitCount;
-  document.getElementById('graph-count')!.textContent =
-    `${payload.nodes.length} notes · ${explicitCount} explicit · ${similarCount} similar`;
+  // Dynamic label threshold: when zoomed in (ratio < 0.5) show more labels;
+  // when far out (ratio > 2) only show labels for high-degree hubs.
+  // Implemented as a nodeReducer side-effect on `label` rather than changing
+  // the sigma setting — cheaper and preserves Sigma's grid culling.
+  const baseLabel = new Map<string, string>();
+  graph.forEachNode((id, attrs) => { baseLabel.set(id, attrs.label as string); });
 
-  // Hover state is referenced by both the dashed-edge overlay (below) and the
-  // nodeReducer (further down), so declare it up front to avoid TDZ.
-  let hoveredNeighbors: Set<string> | null = null;
+  // ────────────────────────────────────────────────────────────────────────
+  // UI state
+  // ────────────────────────────────────────────────────────────────────────
+  const state = {
+    hoveredNeighbors: null as Set<string> | null,
+    similarOpacity: 0.18,               // slider 0..1
+    hideSimilar: false,
+    domainFilter: null as Set<string> | null,  // null = all visible
+    kindFilter: null as Set<string> | null,
+    searchQuery: '',
+    searchMatches: new Set<string>(),
+    selectedNodeId: null as string | null,
+  };
 
-  // -----------------------------------------------------------------------
-  // Dashed similar-edge overlay: 2D canvas positioned on top of Sigma's WebGL
-  // canvas. Repainted after every Sigma render via the 'afterRender' event, so
-  // it stays in sync with pan/zoom/drag.
-  // -----------------------------------------------------------------------
+  // ────────────────────────────────────────────────────────────────────────
+  // Similar edge overlay (2D canvas on top of Sigma WebGL). Repainted every
+  // 'afterRender' so pan/zoom stay in sync. Respects slider + filter state.
+  // ────────────────────────────────────────────────────────────────────────
   const overlay = document.createElement('canvas');
   overlay.style.position = 'absolute';
   overlay.style.inset = '0';
@@ -168,20 +198,26 @@ async function main() {
 
   function drawSimilarEdges() {
     octx.clearRect(0, 0, overlay.width, overlay.height);
-    if (similarEdges.length === 0) return;
+    if (state.hideSimilar || state.similarOpacity <= 0 || similarEdges.length === 0) return;
+
     octx.save();
-    octx.lineWidth = 1.2;
+    octx.lineWidth = 1.1;
     octx.setLineDash([6, 5]);
     octx.lineCap = 'round';
 
-    const highlight = 'rgba(140, 200, 255, 0.6)';
-    const dim = 'rgba(140, 200, 255, 0.12)';
-
     for (const e of similarEdges) {
       if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
-      // Dim (don't hide) similar edges outside the hovered neighborhood.
-      const isActive = !hoveredNeighbors || (hoveredNeighbors.has(e.source) && hoveredNeighbors.has(e.target));
-      octx.strokeStyle = isActive ? highlight : dim;
+      if (!isNodeActive(e.source) || !isNodeActive(e.target)) continue;
+
+      // When hovering a node, boost similar edges touching its ego network
+      // and dim the rest so the local structure reads without hiding context.
+      let alpha = state.similarOpacity;
+      if (state.hoveredNeighbors) {
+        const inEgo = state.hoveredNeighbors.has(e.source) && state.hoveredNeighbors.has(e.target);
+        alpha = inEgo ? Math.max(0.55, state.similarOpacity) : state.similarOpacity * 0.25;
+      }
+
+      octx.strokeStyle = `rgba(140, 200, 255, ${alpha})`;
       const a = renderer.graphToViewport({
         x: graph.getNodeAttribute(e.source, 'x') as number,
         y: graph.getNodeAttribute(e.source, 'y') as number,
@@ -201,45 +237,89 @@ async function main() {
   renderer.on('afterRender', drawSimilarEdges);
   renderer.on('resize', sizeOverlay);
 
-  // -----------------------------------------------------------------------
-  // Live physics loop (Obsidian-style force-directed reveal + drag feedback)
-  // -----------------------------------------------------------------------
-  // Each animation frame we run a single force-atlas2 iteration. With
-  // Barnes-Hut this is O(n log n) and stays well under 16ms at 1000+ nodes.
-  // Sigma re-renders automatically whenever node attributes change.
-  //
-  // The loop runs for ~3 seconds on load (initial reveal), then stops. During
-  // drag we restart the loop so other nodes react physically to the grabbed
-  // node — the dragged node's x/y is overwritten from the pointer on every
-  // frame, which "pins" it while physics still processes its neighbors.
+  // ────────────────────────────────────────────────────────────────────────
+  // Reducers: apply filter + ego highlight + dynamic labels
+  // ────────────────────────────────────────────────────────────────────────
+  function isNodeActive(id: string): boolean {
+    if (state.domainFilter && state.domainFilter.size > 0) {
+      const d = graph.getNodeAttribute(id, 'domain') as string;
+      if (!state.domainFilter.has(d)) return false;
+    }
+    if (state.kindFilter && state.kindFilter.size > 0) {
+      const k = graph.getNodeAttribute(id, 'kind') as string;
+      if (!state.kindFilter.has(k)) return false;
+    }
+    return true;
+  }
+
+  renderer.setSetting('nodeReducer', (n, attrs) => {
+    const camRatio = renderer.getCamera().ratio;
+    const degree = degreeById.get(n) ?? 0;
+    const active = isNodeActive(n);
+
+    // Filter out: heavy dim, no label
+    if (!active) {
+      return { ...attrs, color: 'rgba(70, 70, 100, 0.12)', label: '', size: attrs.size * 0.6 };
+    }
+
+    // Search hit: bright + enlarged
+    if (state.searchMatches.size > 0 && state.searchMatches.has(n)) {
+      return { ...attrs, size: attrs.size * 1.6, zIndex: 10 };
+    }
+
+    // Ego dim: hovered node's neighborhood stays, rest heavily dimmed
+    if (state.hoveredNeighbors && !state.hoveredNeighbors.has(n)) {
+      return { ...attrs, color: 'rgba(60, 50, 90, 0.28)', label: '' };
+    }
+
+    // Degree fade on zoom-out: leaf nodes become quiet at far camera
+    if (camRatio > 2.8 && degree <= 1 && state.hoveredNeighbors == null) {
+      const hex = attrs.color as string;
+      return { ...attrs, color: hexWithAlpha(hex, 0.38) };
+    }
+
+    // Dynamic labels:
+    // - zoomed in (<0.6) → always show
+    // - mid (<1.3) → show if degree ≥ 3 (hubs)
+    // - zoomed out → only in hover (handled by reducer above)
+    const base = baseLabel.get(n) ?? '';
+    let label: string | null = attrs.label as string;
+    if (camRatio < 0.6) label = base;
+    else if (camRatio < 1.3 && degree >= 3) label = base;
+    else label = null;
+    return { ...attrs, label: label ?? '' };
+  });
+
+  renderer.setSetting('edgeReducer', (edge, attrs) => {
+    const [s, t] = graph.extremities(edge);
+    if (!isNodeActive(s) || !isNodeActive(t)) {
+      return { ...attrs, color: 'rgba(180, 140, 255, 0.04)', hidden: true };
+    }
+    if (state.hoveredNeighbors) {
+      const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
+      return keep ? attrs : { ...attrs, color: 'rgba(180, 140, 255, 0.05)' };
+    }
+    return attrs;
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Physics: ForceAtlas2 reveal with early-stop on convergence
+  // ────────────────────────────────────────────────────────────────────────
   const fa2Settings = forceAtlas2.inferSettings(graph);
   const physicsSettings = {
     ...fa2Settings,
     barnesHutOptimize: true,
-    // Trust inferSettings for gravity/scaling (tuned to graph order). Only
-    // halve slowDown so ~240 RAF frames × REVEAL_LERP=0.06 actually converge
-    // to a round-ish cluster inside 4s — otherwise strongGravityMode keeps
-    // collapsing the layout along the weaker axis and we get a vertical strip.
     slowDown: Math.max(2, (fa2Settings.slowDown ?? 1) / 2),
   };
-
-  // Instead of applying force-atlas2 steps at full speed (which snaps small
-  // graphs into place in ~5 frames), we compute where physics WANTS each node
-  // to be, then lerp toward that target. REVEAL_LERP controls reveal tempo —
-  // 0.06 gives ~2 seconds to settle on small graphs, which reads as a smooth
-  // "cascade" instead of a flash.
   const REVEAL_LERP = 0.06;
-  const DRAG_LERP = 0.18; // snappier during drag so neighbors chase in real time
+  const DRAG_LERP = 0.18;
+  const CONVERGENCE_EPSILON = 0.35;   // max-delta below this counts as "settled"
+  const CONVERGENCE_WINDOW = 30;      // consecutive frames under ε before stopping
 
   let physicsUntil = 0;
   let rafHandle = 0;
+  let convergenceStreak = 0;
 
-  // Sigma normalizes coords into [0,1]² using max(dx,dy) — preserving aspect —
-  // then applies a correctionRatio so the cluster touches the short viewport
-  // axis. Camera at {x:0.5,y:0.5,ratio:1} is therefore the canonical fit.
-  // refresh() recomputes normalization against the live node bbox (which
-  // expands as FA2 runs); ratio:1.05 adds a tiny breathing margin without
-  // re-introducing the hardcoded zoom that caused the clipping bug.
   function refitCamera() {
     renderer.refresh();
     renderer.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
@@ -247,39 +327,54 @@ async function main() {
 
   function runPhysics(durationMs: number) {
     physicsUntil = Math.max(physicsUntil, Date.now() + durationMs);
+    convergenceStreak = 0;
     if (rafHandle) return;
 
     const loop = () => {
-      // Snapshot current positions.
       const prev = new Map<string, { x: number; y: number }>();
       graph.forEachNode((id, attrs) => {
         prev.set(id, { x: attrs.x as number, y: attrs.y as number });
       });
 
-      // Run one physics iteration — this overwrites x/y with target positions.
       forceAtlas2.assign(graph, { iterations: 1, settings: physicsSettings });
 
-      // Lerp every node from its previous position toward the physics target.
       const lerp = drag ? DRAG_LERP : REVEAL_LERP;
+      let maxDelta = 0;
       graph.forEachNode((id, attrs) => {
         const p = prev.get(id)!;
         const targetX = attrs.x as number;
         const targetY = attrs.y as number;
-        graph.setNodeAttribute(id, 'x', p.x + (targetX - p.x) * lerp);
-        graph.setNodeAttribute(id, 'y', p.y + (targetY - p.y) * lerp);
+        const dx = (targetX - p.x) * lerp;
+        const dy = (targetY - p.y) * lerp;
+        const newX = p.x + dx;
+        const newY = p.y + dy;
+        graph.setNodeAttribute(id, 'x', newX);
+        graph.setNodeAttribute(id, 'y', newY);
+        const magnitude = Math.hypot(dx, dy);
+        if (magnitude > maxDelta) maxDelta = magnitude;
       });
 
-      // While dragging, pin the grabbed node directly to the pointer (no lerp).
       if (drag) {
         graph.setNodeAttribute(drag.node, 'x', drag.pointer.x);
         graph.setNodeAttribute(drag.node, 'y', drag.pointer.y);
       }
 
-      // Keep the camera fitting the expanding bbox during reveal — otherwise
-      // nodes fly outside the initial viewport as they explode outward.
       if (!drag) refitCamera();
 
-      if (Date.now() < physicsUntil || drag) {
+      // Convergence detection — only active after the initial 4s reveal has
+      // had a chance to spread nodes. Prevents early-stop during the first
+      // collapse-to-cluster phase.
+      const elapsedFromStart = Date.now() - initialStart;
+      if (!drag && elapsedFromStart > 2500) {
+        if (maxDelta < CONVERGENCE_EPSILON) convergenceStreak++;
+        else convergenceStreak = 0;
+      }
+
+      const shouldStop =
+        !drag &&
+        (Date.now() >= physicsUntil || convergenceStreak >= CONVERGENCE_WINDOW);
+
+      if (!shouldStop) {
         rafHandle = requestAnimationFrame(loop);
       } else {
         rafHandle = 0;
@@ -290,43 +385,30 @@ async function main() {
     rafHandle = requestAnimationFrame(loop);
   }
 
-  // Initial reveal: run physics for 4 seconds on load.
+  const initialStart = Date.now();
   runPhysics(4000);
 
-  // -----------------------------------------------------------------------
-  // Hover highlight (dim non-neighbors via reducer)
-  // -----------------------------------------------------------------------
-  renderer.setSetting('nodeReducer', (n, attrs) => {
-    if (!hoveredNeighbors) return attrs;
-    if (hoveredNeighbors.has(n)) return attrs;
-    return { ...attrs, color: 'rgba(60, 50, 90, 0.35)', label: '' };
-  });
-  renderer.setSetting('edgeReducer', (edge, attrs) => {
-    if (!hoveredNeighbors) return attrs;
-    const [s, t] = graph.extremities(edge);
-    return hoveredNeighbors.has(s) && hoveredNeighbors.has(t)
-      ? attrs
-      : { ...attrs, color: 'rgba(180, 140, 255, 0.04)' };
-  });
-
-  // -----------------------------------------------------------------------
-  // Drag: pin node to pointer, physics reacts around it
-  // -----------------------------------------------------------------------
-  let drag: { node: string; pointer: { x: number; y: number } } | null = null;
-  let didDrag = false;
-
+  // ────────────────────────────────────────────────────────────────────────
+  // Hover highlight
+  // ────────────────────────────────────────────────────────────────────────
   renderer.on('enterNode', ({ node }) => {
     container.style.cursor = drag ? 'grabbing' : 'grab';
     const neighbors = new Set<string>([node]);
     graph.forEachNeighbor(node, (n) => neighbors.add(n));
-    hoveredNeighbors = neighbors;
+    state.hoveredNeighbors = neighbors;
     renderer.refresh();
   });
   renderer.on('leaveNode', () => {
     if (!drag) container.style.cursor = '';
-    hoveredNeighbors = null;
+    state.hoveredNeighbors = null;
     renderer.refresh();
   });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Drag — pin node to pointer, physics reacts live
+  // ────────────────────────────────────────────────────────────────────────
+  let drag: { node: string; pointer: { x: number; y: number } } | null = null;
+  let didDrag = false;
 
   renderer.on('downNode', ({ node }) => {
     drag = {
@@ -339,7 +421,6 @@ async function main() {
     didDrag = false;
     container.style.cursor = 'grabbing';
     renderer.getCamera().disable();
-    // Restart physics so neighbors react live.
     runPhysics(4000);
   });
 
@@ -356,7 +437,6 @@ async function main() {
     if (drag) {
       drag = null;
       container.style.cursor = '';
-      // Let physics run a bit more so everything resettles smoothly.
       runPhysics(1500);
     }
     renderer.getCamera().enable();
@@ -364,14 +444,345 @@ async function main() {
   renderer.getMouseCaptor().on('mouseup', release);
   renderer.getMouseCaptor().on('mouseleave', release);
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Click → open side panel instead of navigating away
+  // ────────────────────────────────────────────────────────────────────────
   renderer.on('clickNode', ({ node }) => {
     if (didDrag) { didDrag = false; return; }
-    window.location.href = `/app/notes/${encodeURIComponent(node)}`;
+    openPanel(node);
   });
+  renderer.on('clickStage', () => {
+    closePanel();
+  });
+
+  // Allow opening a note from external code (eg. search enter, command palette)
+  function focusNode(id: string) {
+    if (!graph.hasNode(id)) return;
+    const x = graph.getNodeAttribute(id, 'x') as number;
+    const y = graph.getNodeAttribute(id, 'y') as number;
+    const cam = renderer.getCamera();
+    cam.animate({ x, y, ratio: 0.35 }, { duration: 500 });
+    openPanel(id);
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Slide panel (Obsidian-style) — visual state, no navigation
+  // ────────────────────────────────────────────────────────────────────────
+  const panel = ensurePanel();
+  function openPanel(nodeId: string) {
+    state.selectedNodeId = nodeId;
+    const node = graph.getNodeAttributes(nodeId);
+    const m = meta.get(nodeId);
+    const title = (node.label as string) ?? nodeId;
+    const domainChips = m?.domains?.length
+      ? m.domains.map((d) => `<span class="panel-chip" style="--chip:${domainColor(d)}">${esc(d)}</span>`).join('')
+      : `<span class="panel-chip" style="--chip:${domainColor(node.domain as string)}">${esc(node.domain as string)}</span>`;
+    const kindBadge = m?.kind ? `<span class="panel-kind">${esc(m.kind)}</span>` : '';
+    const tldrBlock = m?.tldr ? `<p class="panel-tldr">${esc(m.tldr)}</p>` : '';
+
+    const neighbors = new Set<string>();
+    graph.forEachNeighbor(nodeId, (n) => neighbors.add(n));
+
+    panel.innerHTML = `
+      <button class="panel-close" aria-label="Close panel">×</button>
+      <div class="panel-meta">${kindBadge}<span class="panel-degree">${neighbors.size} connections</span></div>
+      <h2 class="panel-title">${esc(title)}</h2>
+      <div class="panel-chips">${domainChips}</div>
+      ${tldrBlock}
+      <a class="panel-open" href="/app/notes/${encodeURIComponent(nodeId)}">Open full note →</a>
+    `;
+    panel.classList.add('open');
+    panel.querySelector('.panel-close')?.addEventListener('click', closePanel, { once: true });
+  }
+  function closePanel() {
+    state.selectedNodeId = null;
+    panel.classList.remove('open');
+  }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Controls: search + domain/kind filters + opacity slider + zoom buttons
+  // ────────────────────────────────────────────────────────────────────────
+  const fuse = new Fuse(payload.nodes, {
+    keys: [
+      { name: 'label', weight: 0.7 },
+      { name: 'tldr', weight: 0.3 },
+    ],
+    threshold: 0.35,
+    minMatchCharLength: 2,
+    ignoreLocation: true,
+  });
+
+  wireControls({
+    onSearch: (q) => {
+      state.searchQuery = q;
+      if (!q) {
+        state.searchMatches = new Set();
+      } else {
+        const hits = fuse.search(q, { limit: 20 });
+        state.searchMatches = new Set(hits.map((h) => h.item.id));
+      }
+      renderer.refresh();
+    },
+    onSearchSubmit: (q) => {
+      if (!q) return;
+      const hits = fuse.search(q, { limit: 1 });
+      if (hits[0]) focusNode(hits[0].item.id);
+    },
+    onDomainToggle: (domain, active) => {
+      if (!state.domainFilter) state.domainFilter = new Set();
+      if (active) state.domainFilter.add(domain);
+      else state.domainFilter.delete(domain);
+      if (state.domainFilter.size === 0) state.domainFilter = null;
+      renderer.refresh();
+    },
+    onKindToggle: (kind, active) => {
+      if (!state.kindFilter) state.kindFilter = new Set();
+      if (active) state.kindFilter.add(kind);
+      else state.kindFilter.delete(kind);
+      if (state.kindFilter.size === 0) state.kindFilter = null;
+      renderer.refresh();
+    },
+    onSimilarOpacity: (v) => { state.similarOpacity = v; renderer.refresh(); },
+    onSimilarHide: (hide) => { state.hideSimilar = hide; renderer.refresh(); },
+    onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 280 }),
+    onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 280 }),
+    onFit: () => {
+      renderer.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1.05 }, { duration: 400 });
+    },
+    onResetFilters: () => {
+      state.domainFilter = null;
+      state.kindFilter = null;
+      state.searchQuery = '';
+      state.searchMatches = new Set();
+      const input = document.getElementById('graph-search-input') as HTMLInputElement | null;
+      if (input) input.value = '';
+      document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
+      renderer.refresh();
+    },
+  }, payload.nodes);
+
+  // Keyboard: Esc closes panel; / focuses search
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePanel();
+    if (e.key === '/' && !isTypingInInput()) {
+      const input = document.getElementById('graph-search-input') as HTMLInputElement | null;
+      if (input) { e.preventDefault(); input.focus(); }
+    }
+  });
+}
+
+function isTypingInInput(): boolean {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = (el.tagName || '').toLowerCase();
+  return tag === 'input' || tag === 'textarea' || (el as HTMLElement).isContentEditable;
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => {
+    switch (c) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+    }
+    return c;
+  });
+}
+
+function setStatus(text: string) {
+  const el = document.getElementById('graph-count');
+  if (el) el.textContent = text;
+}
+
+function hexWithAlpha(color: string, alpha: number): string {
+  // Accepts '#rrggbb' or 'rgb(a)(...)'
+  if (color.startsWith('#')) {
+    const r = parseInt(color.slice(1, 3), 16);
+    const g = parseInt(color.slice(3, 5), 16);
+    const b = parseInt(color.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+  // rgb(a) — rewrite alpha
+  const m = color.match(/rgba?\(([^)]+)\)/);
+  if (!m) return color;
+  const parts = m[1].split(',').map((s) => s.trim());
+  const r = parts[0], g = parts[1], b = parts[2];
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Sigma custom hover renderer: dark pill (overrides the default white box)
+// ──────────────────────────────────────────────────────────────────────────────
+function drawDarkHover(
+  ctx: CanvasRenderingContext2D,
+  data: { x: number; y: number; size: number; label?: string | null },
+  settings: { labelSize: number; labelWeight: string; labelFont: string }
+) {
+  const label = data.label ?? '';
+  if (!label) return;
+  const size = settings.labelSize;
+  ctx.font = `${settings.labelWeight} ${size}px ${settings.labelFont}`;
+  const textWidth = ctx.measureText(label).width;
+
+  const padX = 10;
+  const padY = 6;
+  const offsetX = data.size + 8;
+  const boxX = data.x + offsetX;
+  const boxY = data.y - size / 2 - padY;
+  const boxW = textWidth + padX * 2;
+  const boxH = size + padY * 2;
+  const radius = 8;
+
+  ctx.fillStyle = 'rgba(20, 12, 51, 0.94)';
+  ctx.strokeStyle = 'rgba(180, 140, 255, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const rr = (ctx as unknown as { roundRect?: Function }).roundRect;
+  if (typeof rr === 'function') {
+    (ctx as unknown as { roundRect: (x: number, y: number, w: number, h: number, r: number) => void })
+      .roundRect(boxX, boxY, boxW, boxH, radius);
+  } else {
+    ctx.rect(boxX, boxY, boxW, boxH);
+  }
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#ecdfff';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, boxX + padX, data.y);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Legend — colors per domain with counts, clickable to toggle filter
+// ──────────────────────────────────────────────────────────────────────────────
+function renderLegend(nodes: GraphNode[]) {
+  const el = document.getElementById('graph-legend');
+  if (!el) return;
+
+  const counts = new Map<string, number>();
+  for (const n of nodes) counts.set(n.domain, (counts.get(n.domain) ?? 0) + 1);
+
+  // Sort known domains first (in palette order), then unknowns alpha
+  const known = Object.keys(DOMAIN_COLORS);
+  const sorted = [...counts.keys()].sort((a, b) => {
+    const ai = known.indexOf(a), bi = known.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  el.innerHTML = sorted
+    .map(
+      (d) => `
+      <button class="graph-chip" data-filter="domain" data-value="${esc(d)}">
+        <span class="dot" style="background:${domainColor(d)}"></span>
+        <span class="label">${esc(d)}</span>
+        <span class="count">${counts.get(d)}</span>
+      </button>`
+    )
+    .join('');
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Wire up all interactive controls in the overlay
+// ──────────────────────────────────────────────────────────────────────────────
+interface ControlCallbacks {
+  onSearch: (q: string) => void;
+  onSearchSubmit: (q: string) => void;
+  onDomainToggle: (domain: string, active: boolean) => void;
+  onKindToggle: (kind: string, active: boolean) => void;
+  onSimilarOpacity: (v: number) => void;
+  onSimilarHide: (hide: boolean) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFit: () => void;
+  onResetFilters: () => void;
+}
+
+function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
+  const search = document.getElementById('graph-search-input') as HTMLInputElement | null;
+  if (search) {
+    let t: number | null = null;
+    search.addEventListener('input', () => {
+      if (t) window.clearTimeout(t);
+      t = window.setTimeout(() => cb.onSearch(search.value.trim()), 90);
+    });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') cb.onSearchSubmit(search.value.trim());
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const chip = target.closest('.graph-chip') as HTMLElement | null;
+    if (chip) {
+      const filter = chip.dataset.filter;
+      const value = chip.dataset.value;
+      if (!filter || !value) return;
+      chip.classList.toggle('active');
+      const active = chip.classList.contains('active');
+      if (filter === 'domain') cb.onDomainToggle(value, active);
+      if (filter === 'kind') cb.onKindToggle(value, active);
+      return;
+    }
+    const btn = target.closest('[data-graph-action]') as HTMLElement | null;
+    if (btn) {
+      const action = btn.dataset.graphAction;
+      if (action === 'zoom-in') cb.onZoomIn();
+      if (action === 'zoom-out') cb.onZoomOut();
+      if (action === 'fit') cb.onFit();
+      if (action === 'reset-filters') cb.onResetFilters();
+    }
+  });
+
+  const slider = document.getElementById('similar-opacity') as HTMLInputElement | null;
+  if (slider) {
+    slider.addEventListener('input', () => cb.onSimilarOpacity(Number(slider.value) / 100));
+  }
+  const hide = document.getElementById('similar-hide') as HTMLInputElement | null;
+  if (hide) {
+    hide.addEventListener('change', () => cb.onSimilarHide(hide.checked));
+  }
+
+  // Populate kind chips from nodes that carry `kind`
+  const kindsEl = document.getElementById('graph-kinds');
+  if (kindsEl) {
+    const counts = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.kind) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1);
+    }
+    const order = ['concept', 'decision', 'insight', 'fact', 'pattern', 'principle', 'question'];
+    const sorted = [...counts.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    kindsEl.innerHTML = sorted
+      .map(
+        (k) => `
+        <button class="graph-chip graph-chip-kind" data-filter="kind" data-value="${esc(k)}">
+          <span class="label">${esc(k)}</span>
+          <span class="count">${counts.get(k)}</span>
+        </button>`
+      )
+      .join('');
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Slide panel DOM (lazy init)
+// ──────────────────────────────────────────────────────────────────────────────
+function ensurePanel(): HTMLElement {
+  let el = document.getElementById('graph-panel');
+  if (el) return el;
+  el = document.createElement('aside');
+  el.id = 'graph-panel';
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', 'Note preview');
+  document.body.appendChild(el);
+  return el;
 }
 
 main().catch((err) => {
   console.error(err);
-  const el = document.getElementById('graph-count');
-  if (el) el.textContent = 'Error loading graph';
+  setStatus('Error loading graph');
 });

@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
-import { handleGraphData } from './graph-data.js';
+import { handleGraphData, handleGraphMeta } from './graph-data.js';
 import { handleConfigPage, configPageScript } from './config.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
@@ -23,6 +23,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
+  if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
 
   if (path === '/app/graph/bundle.js' && req.method === 'GET') {
     return env.ASSETS.fetch(new Request(new URL('/graph.bundle.js', url.origin)));

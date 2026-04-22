@@ -15,6 +15,7 @@
     "@cloudflare/workers-oauth-provider": "^0.0.5",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "agents": "^0.0.90",
+    "fuse.js": "^7.3.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",
     "marked": "^18.0.0",
