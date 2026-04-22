@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "build:bundle": "tsx scripts/build-graph-bundle.ts",
-    "deploy": "npm run build:bundle && wrangler deploy",
+    "build:bundle": "tsx scripts/build-bundles.ts",
+    "build:bundles": "tsx scripts/build-bundles.ts",
+    "deploy": "npm run build:bundles && wrangler deploy",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/web/client/tsconfig.json"

@@ -29,6 +29,7 @@ ${opts.extraHead ?? ''}
   </aside>
   <main class="main">${opts.body}</main>
 </div>
+<script src="/app/shell/bundle.js" defer></script>
 </body></html>`;
 }
 

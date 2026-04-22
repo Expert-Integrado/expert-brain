@@ -28,6 +28,15 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph/bundle.js' && req.method === 'GET') {
     return env.ASSETS.fetch(new Request(new URL('/graph.bundle.js', url.origin)));
   }
+  if (path === '/app/notes/bundle.js' && req.method === 'GET') {
+    return env.ASSETS.fetch(new Request(new URL('/notes.bundle.js', url.origin)));
+  }
+  if (path === '/app/notes/local-graph.bundle.js' && req.method === 'GET') {
+    return env.ASSETS.fetch(new Request(new URL('/local-graph.bundle.js', url.origin)));
+  }
+  if (path === '/app/shell/bundle.js' && req.method === 'GET') {
+    return env.ASSETS.fetch(new Request(new URL('/shell.bundle.js', url.origin)));
+  }
 
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/bundle.js' && req.method === 'GET') {
