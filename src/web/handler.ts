@@ -4,6 +4,7 @@ import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
 import { handleGraphData, handleGraphMeta } from './graph-data.js';
 import { handleConfigPage, configPageScript } from './config.js';
+import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -37,6 +38,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/shell/bundle.js' && req.method === 'GET') {
     return env.ASSETS.fetch(new Request(new URL('/shell.bundle.js', url.origin)));
   }
+
+  if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);
+  if (path === '/app/api-keys/create' && req.method === 'POST') return handleApiKeyCreate(req, env);
+  if (path === '/app/api-keys/revoke' && req.method === 'POST') return handleApiKeyRevoke(req, env);
 
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/bundle.js' && req.method === 'GET') {
