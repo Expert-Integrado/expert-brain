@@ -609,7 +609,7 @@ a:hover { color: var(--text); }
   vertical-align: middle;
   margin-right: 2px;
 }
-.swatch-explicit { border-top-color: #b48cff; }
+.swatch-explicit { border-top-color: rgba(255, 255, 255, 0.55); }
 .swatch-similar { border-top-color: #8cc8ff; opacity: 0.7; border-top-style: dashed; }
 
 /* Right floating zoom controls */

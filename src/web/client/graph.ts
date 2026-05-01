@@ -94,8 +94,9 @@ async function main() {
       label: n.label,
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
-      // Sizing sqrt-based (Quartz spec) — leafs ~4px, hubs ~12px
-      size: 2.2 + Math.sqrt(n.size) * 3.6,
+      // A.7 — Aumentado pra dar mais corpo às bolinhas e contraste com a linha:
+      // leafs ~5.5px, hubs ~14px (pre-A.7 era 2.2 + sqrt*3.6 → leafs 4, hubs 11).
+      size: 4.0 + Math.sqrt(n.size) * 4.5,
       color: NEUTRAL_NODE_COLOR,
       domainColor: domainColor(n.domain), // guardado pra toggle Cores
       domain: n.domain,
@@ -113,10 +114,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // Phase A.6 — base size, edgeReducer ajusta dinâmico baseado em zoom
-        // pra manter linha sempre ~1px de tela (igual Obsidian).
-        size: 1.0,
-        color: 'rgba(255, 255, 255, 0.18)',
+        // A.7 — base ainda menor pra que mesmo em zoom in fique fina.
+        // edgeReducer abaixo ajusta dinâmico mantendo ~1px de tela.
+        size: 0.5,
+        color: 'rgba(255, 255, 255, 0.14)',
       });
     } else {
       similarCount++;
@@ -373,10 +374,9 @@ async function main() {
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
     const camRatio = renderer.getCamera().ratio;
-    // A.6 — Obsidian linha = max(1, 1/scale) — sempre ~1px de tela. Quando
-    // dá zoom in, linha não engrossa; zoom out, linha não some. Aqui o
-    // tamanho do edge é em unidades de graph (ratio inverso compensa).
-    const screenStableSize = Math.max(0.6, 1.0 * camRatio);
+    // A.7 — Linha mais fina, target ~0.7px de tela em zoom default.
+    // Multiplicador 0.5 (era 1.0). Sem piso mínimo — deixa sumir em zoom in.
+    const screenStableSize = 0.5 * camRatio;
 
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
@@ -385,8 +385,8 @@ async function main() {
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.65)', size: screenStableSize }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.05)', size: screenStableSize };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.6)', size: screenStableSize * 1.5 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.04)', size: screenStableSize };
     }
     return { ...attrs, size: screenStableSize };
   });
