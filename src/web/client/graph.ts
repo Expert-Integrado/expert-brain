@@ -155,6 +155,12 @@ async function main() {
     defaultNodeColor: DOMAIN_FALLBACK,
     // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
     defaultEdgeColor: 'rgba(255, 255, 255, 0.06)',
+    // A.15 — Sigma 3 default defaultEdgeType é 'line' (EdgeLineProgram /
+    // gl.LINES nativo), que IGNORA alpha. Forçar 'rectangle' usa
+    // EdgeRectangleProgram (triangle strips) com blending normal de alpha.
+    // Em A.14 só removi type:'line' do addEdge, mas Sigma caía no default
+    // global → mesmo bug. Esse é o fix de verdade.
+    defaultEdgeType: 'rectangle',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
