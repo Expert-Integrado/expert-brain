@@ -94,9 +94,13 @@ async function main() {
       label: n.label,
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
-      // A.7 — Aumentado pra dar mais corpo às bolinhas e contraste com a linha:
-      // leafs ~5.5px, hubs ~14px (pre-A.7 era 2.2 + sqrt*3.6 → leafs 4, hubs 11).
-      size: 4.0 + Math.sqrt(n.size) * 4.5,
+      // A.8 — n.size do server agora é sqrt(degree) direto, não log. Aplicar
+      // multiplicador linear simples pra preservar o range expandido.
+      // leaf (degree 1, n.size=1) → 2+2.5 = 4.5px
+      // hub (degree 10, n.size=3.16) → 2+7.9 = 9.9px
+      // mega-hub (degree 25, n.size=5) → 2+12.5 = 14.5px
+      // Range 4.5–14.5+ vs anterior 5.5–11 — variação 3x maior.
+      size: 2.0 + n.size * 2.5,
       color: NEUTRAL_NODE_COLOR,
       domainColor: domainColor(n.domain), // guardado pra toggle Cores
       domain: n.domain,
@@ -114,10 +118,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // A.7 — base ainda menor pra que mesmo em zoom in fique fina.
-        // edgeReducer abaixo ajusta dinâmico mantendo ~1px de tela.
-        size: 0.5,
-        color: 'rgba(255, 255, 255, 0.14)',
+        // A.8 — Linha ainda mais fina (referência Obsidian: linhas quase invisíveis
+        // contra os nodes). edgeReducer ajusta size dinâmico.
+        size: 0.3,
+        color: 'rgba(255, 255, 255, 0.10)',
       });
     } else {
       similarCount++;
@@ -374,19 +378,19 @@ async function main() {
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
     const camRatio = renderer.getCamera().ratio;
-    // A.7 — Linha mais fina, target ~0.7px de tela em zoom default.
-    // Multiplicador 0.5 (era 1.0). Sem piso mínimo — deixa sumir em zoom in.
-    const screenStableSize = 0.5 * camRatio;
+    // A.8 — Multiplicador 0.35 (era 0.5). Linha quase invisível em zoom out
+    // (Obsidian-style — linhas são contexto, nodes são o sujeito).
+    const screenStableSize = 0.35 * camRatio;
 
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', size: screenStableSize, hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.03)', size: screenStableSize, hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.6)', size: screenStableSize * 1.5 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.04)', size: screenStableSize };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: screenStableSize * 2.0 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.03)', size: screenStableSize };
     }
     return { ...attrs, size: screenStableSize };
   });

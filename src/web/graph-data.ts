@@ -16,7 +16,7 @@ export interface GraphPayload {
   sourceHash: string;
 }
 
-const CACHE_KEY = 'graph:v3'; // A.6 layout: scalingRatio 18, gravity 0.5
+const CACHE_KEY = 'graph:v4'; // A.8 size: sqrt(degree)
 const SIMILARITY_TOP_K = 4;
 const SIMILARITY_MIN_SCORE = 0.5;
 
@@ -102,7 +102,9 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
       id: n.id,
       label: n.title,
       domain: firstDomain(n.domains),
-      size: 1 + Math.log((degree.get(n.id) ?? 0) + 1),
+      // A.8 — Obsidian usa Math.sqrt(numLinks) que dá range 4x maior que log.
+      // Hubs ficam visualmente DOMINANTES. Antes: log(degree+1) — range muito comprimido.
+      size: Math.sqrt(degree.get(n.id) ?? 0),
       x: p.x,
       y: p.y,
     };
