@@ -112,10 +112,9 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.25 — base subido pra 1.2 (era 0.7). Com nós mais espalhados via
-        // D3-force, linhas finíssimas somem em distâncias maiores. Slider
-        // Line thickness multiplica esse base.
-        size: 1.2,
+        // A.26 — base subido de 1.2 → 2.5. Com nós mais espalhados via D3-force
+        // a câmera zoom-out faz edges finas sumirem (< 1 pixel renderizado).
+        size: 2.5,
         color: 'rgba(64, 64, 64, 0.25)',
       });
     } else {
@@ -419,10 +418,10 @@ async function main() {
   const FORCE_DEFAULTS = { center: 0.5, repel: 18, link: 1 };
   function mapForces(o: { center: number; repel: number; link: number }) {
     return {
-      center: o.center * 0.05,        // forceCenter sutil
-      repel: o.repel * 80,            // A.25: era *12 (fraco). Default 18 → 1440 (≈ Obsidian -1000)
+      center: o.center * 0.08,        // A.26: subiu pra puxar mais ao centro (evita explosão de escala)
+      repel: o.repel * 40,            // A.26: era *80 (explodia escala). 18 → 720 — mais contido
       link: Math.min(2, o.link),
-      distance: 200 - o.repel * 2,    // A.25: link distance inverso ao repel (mais repel = mais perto via collide)
+      distance: Math.max(40, 120 - o.repel * 1.5),
     };
   }
   let currentForces = { ...FORCE_DEFAULTS };
@@ -437,6 +436,12 @@ async function main() {
 
   const worker = new Worker('/app/graph/sim-worker.bundle.js?v=' + Date.now());
 
+  // A.26 — recentralizar a câmera periodicamente durante o reveal.
+  // Sem isso, a câmera fica fixa e os nós (que voam de range com D3-force)
+  // saem da viewport — edges parecem invisíveis. Recentro a cada 30 ticks
+  // até a simulação esfriar; depois disso fica fixa pro usuário pan/zoom.
+  let tickCount = 0;
+  let cameraSettled = false;
   worker.addEventListener('message', (e: MessageEvent) => {
     const msg = e.data;
     if (msg.type === 'tick') {
@@ -448,7 +453,13 @@ async function main() {
         }
       }
       renderer.refresh();
+      tickCount++;
+      // Recentro nos primeiros frames pra acompanhar o reveal explosivo
+      if (!cameraSettled && (tickCount === 1 || tickCount % 30 === 0)) {
+        void renderer.getCamera().animatedReset({ duration: 300 });
+      }
     } else if (msg.type === 'end') {
+      cameraSettled = true;
       void renderer.getCamera().animatedReset({ duration: 400 });
     }
   });
