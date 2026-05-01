@@ -120,7 +120,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
     ${notes.length === 0 ? '<p style="color:var(--text-dim)">No notes yet.</p>' : ''}
     <div id="notes-list" data-layout="cards">${ssrItems}</div>
 
-    <script src="/app/notes/bundle.js" defer></script>
+    <script src="/app/notes/bundle.js?v=${Date.now()}" defer></script>
   `;
 
   return htmlResponse(
@@ -208,7 +208,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ${outboundHtml}
     ${inboundHtml}
 
-    ${relatedIds.length > 0 ? '<script src="/app/notes/local-graph.bundle.js" defer></script>' : ''}
+    ${relatedIds.length > 0 ? `<script src="/app/notes/local-graph.bundle.js?v=${Date.now()}" defer></script>` : ''}
   `;
 
   return htmlResponse(

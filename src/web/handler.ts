@@ -26,17 +26,27 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
   if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
 
+  // Bundle assets — no-cache pra evitar browser segurar JS antigo entre deploys.
+  // Cache-busting via ?v=<timestamp> no <script src> também usado nas templates.
+  const bundleHeaders = { 'cache-control': 'no-cache, must-revalidate' };
+  async function serveBundle(asset: string): Promise<Response> {
+    const r = await env.ASSETS.fetch(new Request(new URL(asset, url.origin)));
+    const h = new Headers(r.headers);
+    Object.entries(bundleHeaders).forEach(([k, v]) => h.set(k, v));
+    return new Response(r.body, { status: r.status, headers: h });
+  }
+
   if (path === '/app/graph/bundle.js' && req.method === 'GET') {
-    return env.ASSETS.fetch(new Request(new URL('/graph.bundle.js', url.origin)));
+    return serveBundle('/graph.bundle.js');
   }
   if (path === '/app/notes/bundle.js' && req.method === 'GET') {
-    return env.ASSETS.fetch(new Request(new URL('/notes.bundle.js', url.origin)));
+    return serveBundle('/notes.bundle.js');
   }
   if (path === '/app/notes/local-graph.bundle.js' && req.method === 'GET') {
-    return env.ASSETS.fetch(new Request(new URL('/local-graph.bundle.js', url.origin)));
+    return serveBundle('/local-graph.bundle.js');
   }
   if (path === '/app/shell/bundle.js' && req.method === 'GET') {
-    return env.ASSETS.fetch(new Request(new URL('/shell.bundle.js', url.origin)));
+    return serveBundle('/shell.bundle.js');
   }
 
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);

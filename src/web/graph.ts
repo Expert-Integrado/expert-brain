@@ -107,7 +107,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
       <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Knowledge graph"></div>
     </div>
 
-    <script src="/app/graph/bundle.js" defer></script>
+    <script src="/app/graph/bundle.js?v=${Date.now()}" defer></script>
   `;
 
   return htmlResponse(
