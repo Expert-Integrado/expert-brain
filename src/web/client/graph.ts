@@ -113,10 +113,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // A.9 — Obsidian: linha height = fLineSizeMult / scale. fLineSizeMult=1.
-        // Com nodes em range 8-30, linha=1 dá razão 8x-30x (idêntico Obsidian).
-        size: 1.0,
-        color: 'rgba(255, 255, 255, 0.18)',
+        // A.10 — feedback Eric: reduzir grossura -30% e opacity -30%.
+        // size 1.0 → 0.7, alpha 0.18 → 0.13.
+        size: 0.7,
+        color: 'rgba(255, 255, 255, 0.13)',
       });
     } else {
       similarCount++;
@@ -153,8 +153,8 @@ async function main() {
     // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // Edges neutros brancos. A.4: 16% (era 22%) — Obsidian/Quartz são quase invisíveis até hover.
-    defaultEdgeColor: 'rgba(255, 255, 255, 0.16)',
+    // A.10 — alinhado com edge explícito: opacity 13%.
+    defaultEdgeColor: 'rgba(255, 255, 255, 0.13)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
@@ -372,18 +372,16 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.9 — Sigma já compensa zoom internamente quando size é constante.
-    // Removido screenStableSize dinâmico — confiar que size=1 mantém razão
-    // node:line idêntica em qualquer zoom (igual Obsidian fLineSizeMult/scale).
+    // A.10 — todos os opacity/highlight reduzidos -30%.
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.03)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: (attrs.size as number) * 1.6 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.04)' };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.39)', size: (attrs.size as number) * 1.6 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.03)' };
     }
     return attrs;
   });
