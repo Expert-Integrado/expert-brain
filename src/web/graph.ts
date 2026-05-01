@@ -128,7 +128,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           </label>
           <label class="graph-slider-label">
             <span>Line thickness</span>
-            <input type="range" id="line-size-mult" min="0.2" max="3" step="0.1" value="1" />
+            <input type="range" id="line-size-mult" min="0" max="100" step="1" value="50" aria-label="Explicit edge intensity" />
           </label>
           <label class="graph-slider-label">
             <span>Text fade</span>
@@ -160,7 +160,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explicit
           <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.27</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.28</span>
         </div>
       </div>
 

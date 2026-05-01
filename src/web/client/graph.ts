@@ -112,11 +112,10 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.27 — DEBUG: alpha forte pra confirmar se renderização funciona.
-        // 255*0.8=204. Se isso não aparecer, é bug de coordenadas (NaN, posições
-        // fora de range), não opacidade.
-        size: 4,
-        color: 'rgba(204, 204, 204, 0.8)',
+        // A.28 — size base 1; ambos size e color são reescritos no edgeReducer
+        // de acordo com state.lineIntensity (slider Line thickness).
+        size: 1,
+        color: 'rgba(0, 0, 0, 0)',
       });
     } else {
       similarCount++;
@@ -193,7 +192,9 @@ async function main() {
     showColors: false, // A.6 — toggle Obsidian-faithful default OFF
     // A.22 — Display options (Obsidian-style sliders)
     nodeSizeMult: 1,
-    lineSizeMult: 1,
+    // A.28 — lineIntensity: 0..1 (slider 0..100), controla alpha+size juntos
+    // Igual à proporção do "Similar edges": 0 = invisível, 1 = máximo visível.
+    lineIntensity: 0.5,
     textFadeMult: 0,        // -3..3, 0 = default Obsidian
     hideOrphans: false,
   };
@@ -396,19 +397,26 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.19 — base 25%, hover ego 75%. A.22 — lineSizeMult global.
+    // A.28 — slider Line thickness (state.lineIntensity 0..1) controla alpha
+    // E size juntos. RGB pré-multiplicado pelo alpha (Sigma usa premultiplied
+    // blending; ver bug A.17 no status doc).
     const [s, t] = graph.extremities(edge);
-    const baseEdgeSize = (attrs.size as number) * state.lineSizeMult;
+    const intensity = state.lineIntensity;
+    const baseSize = 0.8 + intensity * 3.2;        // 0.8 → 4
+    const baseAlpha = intensity * 0.7;             // 0 → 0.7
+    const rgb = Math.round(255 * baseAlpha);
+    const baseColor = `rgba(${rgb}, ${rgb}, ${rgb}, ${baseAlpha})`;
+
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseEdgeSize, hidden: true };
+      return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize, hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: baseEdgeSize * 1.6 }
-        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseEdgeSize };
+        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: baseSize * 1.6 }
+        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize };
     }
-    return { ...attrs, size: baseEdgeSize };
+    return { ...attrs, color: baseColor, size: baseSize };
   });
 
   // ────────────────────────────────────────────────────────────────────────
@@ -718,7 +726,8 @@ async function main() {
     },
     // A.22 — Display
     onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
-    onLineSizeMult: (v) => { state.lineSizeMult = v; renderer.refresh(); },
+    // A.28 — slider Line thickness vai de 0 a 100 → state.lineIntensity 0..1
+    onLineSizeMult: (v) => { state.lineIntensity = v / 100; renderer.refresh(); },
     onTextFadeMult: (v) => { state.textFadeMult = v; renderer.refresh(); },
     onHideOrphans: (hide) => { state.hideOrphans = hide; renderer.refresh(); },
     // A.22 — Forces (live)
