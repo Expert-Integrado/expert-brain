@@ -202,7 +202,18 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       <span>Updated ${formatDate(note.updated_at)}</span>
     </div>
 
-    ${relatedIds.length > 0 ? `<div id="local-graph" data-note-id="${esc(note.id)}" class="local-graph"></div>` : ''}
+    ${relatedIds.length > 0 ? `
+      <div class="local-graph-wrap">
+        <div class="local-graph-controls">
+          <label class="local-graph-hops">
+            <span>Depth</span>
+            <input type="range" id="local-graph-hops" min="1" max="3" step="1" value="1" />
+            <span id="local-graph-hops-value">1 hop</span>
+          </label>
+        </div>
+        <div id="local-graph" data-note-id="${esc(note.id)}" class="local-graph"></div>
+      </div>
+    ` : ''}
 
     <div class="note-body">${renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })}</div>
     ${outboundHtml}

@@ -942,6 +942,34 @@ a:hover { color: var(--text); }
 .note-edges { display: flex; flex-direction: column; gap: 8px; }
 .note-edges .note-card { margin-bottom: 0; }
 
+.local-graph-wrap { margin: 0 0 28px; }
+.local-graph-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.local-graph-hops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.local-graph-hops input[type=range] { width: 120px; }
+.local-graph-hops #local-graph-hops-value {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.local-graph-wrap .local-graph {
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin: 0;
+}
 .local-graph {
   position: relative;
   height: 240px;

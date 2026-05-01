@@ -1,9 +1,10 @@
-// Mini graph for the note detail page. Renders a 1-hop ego network around the
-// note being viewed: the focal node in the center, explicit + similar edges
-// reaching its direct neighbors, nothing else. Click a neighbor to navigate.
+// Mini graph for the note detail page. Renders an N-hop ego network around the
+// note being viewed. Slider on top lets the reader adjust depth (1-3 hops).
+// Click a neighbor to navigate.
 
 import Graph from 'graphology';
 import Sigma from 'sigma';
+import { EdgeRectangleProgram } from 'sigma/rendering';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 import { domainColor } from '../domain-colors.js';
 
@@ -26,8 +27,142 @@ interface PayloadEdge {
 }
 interface Payload { nodes: PayloadNode[]; edges: PayloadEdge[]; }
 
+function expandNeighborhood(
+  focusId: string,
+  edges: PayloadEdge[],
+  hops: number,
+): Map<string, number> {
+  // Build adjacency from EXPLICIT edges only — semantic similar edges geram
+  // ruído quando expande pra 2-3 hops.
+  const adj = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (e.type !== 'explicit') continue;
+    if (!adj.has(e.source)) adj.set(e.source, new Set());
+    if (!adj.has(e.target)) adj.set(e.target, new Set());
+    adj.get(e.source)!.add(e.target);
+    adj.get(e.target)!.add(e.source);
+  }
+
+  // BFS retornando map<id, hopDistance>
+  const distance = new Map<string, number>();
+  distance.set(focusId, 0);
+  let frontier = new Set<string>([focusId]);
+  for (let h = 0; h < hops; h++) {
+    const next = new Set<string>();
+    for (const id of frontier) {
+      const nbrs = adj.get(id);
+      if (!nbrs) continue;
+      for (const nb of nbrs) {
+        if (!distance.has(nb)) {
+          distance.set(nb, h + 1);
+          next.add(nb);
+        }
+      }
+    }
+    if (next.size === 0) break;
+    frontier = next;
+  }
+  return distance;
+}
+
+let currentRenderer: Sigma | null = null;
+
+function render(
+  container: HTMLElement,
+  focusId: string,
+  payload: Payload,
+  hops: number,
+) {
+  if (currentRenderer) {
+    currentRenderer.kill();
+    currentRenderer = null;
+  }
+
+  const distance = expandNeighborhood(focusId, payload.edges, hops);
+
+  if (distance.size <= 1) {
+    container.innerHTML = '<p class="local-graph-empty">No connections yet for this note.</p>';
+    return;
+  }
+
+  const graph = new Graph({ type: 'undirected', multi: true });
+  for (const n of payload.nodes) {
+    if (!distance.has(n.id)) continue;
+    const hop = distance.get(n.id)!;
+    const isFocus = hop === 0;
+    graph.addNode(n.id, {
+      label: n.label,
+      x: (Math.random() - 0.5) * 2,
+      y: (Math.random() - 0.5) * 2,
+      // Tamanho decai com hop: 16 (focus), 10 (1-hop), 7 (2-hop), 5 (3-hop)
+      size: isFocus ? 16 : Math.max(5, 11 - hop * 2),
+      color: domainColor(n.domain),
+      isFocus,
+      hop,
+    });
+  }
+
+  for (const e of payload.edges) {
+    if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
+    if (!distance.has(e.source) || !distance.has(e.target)) continue;
+    if (e.type !== 'explicit') continue;
+    try {
+      graph.addEdgeWithKey(e.id, e.source, e.target, {
+        size: 0.8,
+        color: 'rgba(120, 120, 120, 0.45)',
+      });
+    } catch {
+      /* duplicate edge id — ignore */
+    }
+  }
+
+  const settings = forceAtlas2.inferSettings(graph);
+  forceAtlas2.assign(graph, {
+    iterations: 120,
+    settings: { ...settings, scalingRatio: 12, gravity: 1.0 },
+  });
+
+  const renderer = new Sigma(graph, container, {
+    labelColor: { color: '#f4ecff' },
+    labelSize: 12,
+    labelWeight: '600',
+    labelFont: 'Manrope, system-ui, sans-serif',
+    labelDensity: 1,
+    labelGridCellSize: 80,
+    labelRenderedSizeThreshold: 5,
+    defaultEdgeColor: 'rgba(120, 120, 120, 0.45)',
+    defaultEdgeType: 'rectangle',
+    edgeProgramClasses: { rectangle: EdgeRectangleProgram },
+    renderEdgeLabels: false,
+    minCameraRatio: 0.2,
+    maxCameraRatio: 4,
+  });
+
+  renderer.setSetting('nodeReducer', (n, attrs) => {
+    if (attrs.isFocus) {
+      return { ...attrs, color: '#a78bfa', highlighted: true };
+    }
+    return attrs;
+  });
+
+  renderer.on('clickNode', ({ node }) => {
+    if (node === focusId) return;
+    window.location.href = `/app/notes/${encodeURIComponent(node)}`;
+  });
+
+  container.style.cursor = 'grab';
+  renderer.on('enterNode', ({ node }) => {
+    container.style.cursor = node === focusId ? 'default' : 'pointer';
+  });
+  renderer.on('leaveNode', () => {
+    container.style.cursor = 'grab';
+  });
+
+  currentRenderer = renderer;
+}
+
 async function main() {
-  const container = document.getElementById('local-graph');
+  const container = document.getElementById('local-graph') as HTMLElement | null;
   if (!container) return;
   const focusId = container.dataset.noteId;
   if (!focusId) return;
@@ -43,89 +178,18 @@ async function main() {
     return;
   }
 
-  // Find focal + 1-hop neighbors
-  const neighbors = new Set<string>([focusId]);
-  for (const e of payload.edges) {
-    if (e.source === focusId) neighbors.add(e.target);
-    else if (e.target === focusId) neighbors.add(e.source);
-  }
+  let hops = 1;
+  render(container, focusId, payload, hops);
 
-  if (neighbors.size <= 1) {
-    container.innerHTML = '<p class="local-graph-empty">No connections yet for this note.</p>';
-    return;
-  }
-
-  const graph = new Graph({ type: 'undirected', multi: true });
-  for (const n of payload.nodes) {
-    if (!neighbors.has(n.id)) continue;
-    const isFocus = n.id === focusId;
-    graph.addNode(n.id, {
-      label: n.label,
-      x: (Math.random() - 0.5) * 2,
-      y: (Math.random() - 0.5) * 2,
-      size: isFocus ? 16 : 9,
-      color: domainColor(n.domain),
-      isFocus,
+  const slider = document.getElementById('local-graph-hops') as HTMLInputElement | null;
+  const valueLabel = document.getElementById('local-graph-hops-value');
+  if (slider) {
+    slider.addEventListener('input', () => {
+      hops = Number(slider.value);
+      if (valueLabel) valueLabel.textContent = `${hops} hop${hops > 1 ? 's' : ''}`;
+      render(container, focusId, payload, hops);
     });
   }
-
-  for (const e of payload.edges) {
-    if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
-    if (!neighbors.has(e.source) || !neighbors.has(e.target)) continue;
-    // Only include edges that touch the focal node (clean star shape).
-    if (e.source !== focusId && e.target !== focusId) continue;
-    const color = e.type === 'explicit' ? 'rgba(186, 140, 255, 0.78)' : 'rgba(140, 200, 255, 0.4)';
-    try {
-      graph.addEdgeWithKey(e.id, e.source, e.target, {
-        size: e.type === 'explicit' ? 2 : 1,
-        color,
-      });
-    } catch {
-      /* duplicate edge id — ignore */
-    }
-  }
-
-  // Quick layout pass — few nodes, single shot is fine
-  const settings = forceAtlas2.inferSettings(graph);
-  forceAtlas2.assign(graph, { iterations: 80, settings: { ...settings, scalingRatio: 12 } });
-
-  const renderer = new Sigma(graph, container as HTMLElement, {
-    labelColor: { color: '#f4ecff' },
-    labelSize: 12,
-    labelWeight: '600',
-    labelFont: 'Manrope, system-ui, sans-serif',
-    labelDensity: 1,
-    labelGridCellSize: 80,
-    labelRenderedSizeThreshold: 5,
-    defaultEdgeColor: 'rgba(180, 140, 255, 0.5)',
-    renderEdgeLabels: false,
-    minCameraRatio: 0.2,
-    maxCameraRatio: 4,
-  });
-
-  renderer.setSetting('nodeReducer', (n, attrs) => {
-    if (attrs.isFocus) {
-      return {
-        ...attrs,
-        color: '#a78bfa',
-        highlighted: true,
-      };
-    }
-    return attrs;
-  });
-
-  renderer.on('clickNode', ({ node }) => {
-    if (node === focusId) return;
-    window.location.href = `/app/notes/${encodeURIComponent(node)}`;
-  });
-
-  (container as HTMLElement).style.cursor = 'grab';
-  renderer.on('enterNode', ({ node }) => {
-    (container as HTMLElement).style.cursor = node === focusId ? 'default' : 'pointer';
-  });
-  renderer.on('leaveNode', () => {
-    (container as HTMLElement).style.cursor = 'grab';
-  });
 }
 
 main().catch((err) => console.error('local-graph: fatal', err));
