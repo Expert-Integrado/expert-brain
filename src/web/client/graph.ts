@@ -112,10 +112,11 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.26 — base subido de 1.2 → 2.5. Com nós mais espalhados via D3-force
-        // a câmera zoom-out faz edges finas sumirem (< 1 pixel renderizado).
-        size: 2.5,
-        color: 'rgba(64, 64, 64, 0.25)',
+        // A.27 — DEBUG: alpha forte pra confirmar se renderização funciona.
+        // 255*0.8=204. Se isso não aparecer, é bug de coordenadas (NaN, posições
+        // fora de range), não opacidade.
+        size: 4,
+        color: 'rgba(204, 204, 204, 0.8)',
       });
     } else {
       similarCount++;
@@ -153,7 +154,7 @@ async function main() {
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
     // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
-    defaultEdgeColor: 'rgba(64, 64, 64, 0.25)',
+    defaultEdgeColor: 'rgba(204, 204, 204, 0.8)',
     // A.16 — Sigma 3 só registra EdgeLineProgram por default. Pra usar
     // 'rectangle' (triangle strips com blending de alpha de verdade) precisa
     // registrar o programa via edgeProgramClasses E setar defaultEdgeType.
@@ -446,11 +447,24 @@ async function main() {
     const msg = e.data;
     if (msg.type === 'tick') {
       const positions: Record<string, [number, number]> = msg.positions;
+      let nanCount = 0;
+      let firstId = '';
       for (const id in positions) {
-        if (graph.hasNode(id)) {
-          graph.setNodeAttribute(id, 'x', positions[id][0]);
-          graph.setNodeAttribute(id, 'y', positions[id][1]);
+        const [x, y] = positions[id];
+        if (!isFinite(x) || !isFinite(y)) {
+          nanCount++;
+          continue;
         }
+        if (!firstId) firstId = id;
+        if (graph.hasNode(id)) {
+          graph.setNodeAttribute(id, 'x', x);
+          graph.setNodeAttribute(id, 'y', y);
+        }
+      }
+      // A.27 — log uma vez pra Eric checar console
+      if (tickCount === 0) {
+        const sample = positions[firstId];
+        console.log('[graph] tick #1', { sampleId: firstId, samplePos: sample, nanCount });
       }
       renderer.refresh();
       tickCount++;
