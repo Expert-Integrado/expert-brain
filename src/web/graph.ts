@@ -37,6 +37,37 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         background: rgba(14, 14, 18, 0.88);
         border-color: rgba(255, 255, 255, 0.08);
       }
+      /* A.22 — Display + Forces sections */
+      .graph-section {
+        margin-top: 8px;
+        padding: 6px 8px;
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 6px;
+        background: rgba(255,255,255,0.02);
+      }
+      .graph-section[open] { padding-bottom: 8px; }
+      .graph-section-summary {
+        cursor: pointer;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(255,255,255,0.55);
+        font-weight: 500;
+        user-select: none;
+        padding: 2px 0;
+      }
+      .graph-section-summary:hover { color: rgba(255,255,255,0.85); }
+      .graph-section .graph-slider-label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin-top: 6px;
+        font-size: 11px;
+        color: rgba(255,255,255,0.7);
+      }
+      .graph-section .graph-slider-label input[type=range] { width: 100%; }
+      .graph-section .graph-check-label { margin-top: 6px; }
+      .graph-section .graph-reset-btn { margin-top: 8px; }
     </style>
 
     <div class="graph-wrap">
@@ -89,10 +120,47 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           </label>
         </div>
 
+        <details class="graph-section" open>
+          <summary class="graph-section-summary">Display</summary>
+          <label class="graph-slider-label">
+            <span>Node size</span>
+            <input type="range" id="node-size-mult" min="0.3" max="3" step="0.1" value="1" />
+          </label>
+          <label class="graph-slider-label">
+            <span>Line thickness</span>
+            <input type="range" id="line-size-mult" min="0.2" max="3" step="0.1" value="1" />
+          </label>
+          <label class="graph-slider-label">
+            <span>Text fade</span>
+            <input type="range" id="text-fade-mult" min="-3" max="3" step="0.1" value="0" />
+          </label>
+          <label class="graph-check-label">
+            <input type="checkbox" id="hide-orphans" />
+            <span>Hide orphans</span>
+          </label>
+        </details>
+
+        <details class="graph-section">
+          <summary class="graph-section-summary">Forces</summary>
+          <label class="graph-slider-label">
+            <span>Center force</span>
+            <input type="range" id="force-center" min="0" max="2" step="0.01" value="0.5" />
+          </label>
+          <label class="graph-slider-label">
+            <span>Repel force</span>
+            <input type="range" id="force-repel" min="1" max="100" step="1" value="18" />
+          </label>
+          <label class="graph-slider-label">
+            <span>Link strength</span>
+            <input type="range" id="force-link" min="0" max="2" step="0.05" value="1" />
+          </label>
+          <button class="graph-reset-btn" data-graph-action="reset-forces" title="Volta os forces ao default">restore default</button>
+        </details>
+
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explicit
           <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.21</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.22</span>
         </div>
       </div>
 

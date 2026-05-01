@@ -190,6 +190,11 @@ async function main() {
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
     showColors: false, // A.6 — toggle Obsidian-faithful default OFF
+    // A.22 — Display options (Obsidian-style sliders)
+    nodeSizeMult: 1,
+    lineSizeMult: 1,
+    textFadeMult: 0,        // -3..3, 0 = default Obsidian
+    hideOrphans: false,
   };
 
   // ────────────────────────────────────────────────────────────────────────
@@ -328,6 +333,11 @@ async function main() {
       const k = graph.getNodeAttribute(id, 'kind') as string;
       if (!state.kindFilter.has(k)) return false;
     }
+    // A.22 — hide orphans: nó sem nenhuma edge explícita é considerado órfão.
+    if (state.hideOrphans) {
+      const deg = degreeById.get(id) ?? 0;
+      if (deg === 0) return false;
+    }
     return true;
   }
 
@@ -341,69 +351,87 @@ async function main() {
       ? (attrs.domainColor as string) || (attrs.color as string)
       : (attrs.color as string);
 
+    // A.22 — multiplicador global de tamanho (slider Display > Node size).
+    const baseSize = (attrs.size as number) * state.nodeSizeMult;
+
     // Filter out: heavy dim, no label
     if (!active) {
-      return { ...attrs, color: 'rgba(70, 70, 90, 0.12)', label: '', size: (attrs.size as number) * 0.6 };
+      return { ...attrs, color: 'rgba(70, 70, 90, 0.12)', label: '', size: baseSize * 0.6 };
     }
 
     // Search hit: bright + enlarged
     if (state.searchMatches.size > 0 && state.searchMatches.has(n)) {
-      return { ...attrs, color: baseColor, size: (attrs.size as number) * 1.6, zIndex: 10 };
+      return { ...attrs, color: baseColor, size: baseSize * 1.6, zIndex: 10 };
     }
 
     // A.6 — hovered node: NÃO faz scale (Obsidian não escala). Ring fino
     // desenhado no overlay 2D acima dá o destaque visual. Apenas força label.
     if (state.hoveredNode === n) {
-      return { ...attrs, color: baseColor, label: baseLabel.get(n) ?? '', zIndex: 20 };
+      return { ...attrs, color: baseColor, size: baseSize, label: baseLabel.get(n) ?? '', zIndex: 20 };
     }
 
     // Ego dim: hovered node's neighborhood stays bright, rest fade to ghosts
     if (state.hoveredNeighbors && !state.hoveredNeighbors.has(n)) {
-      return { ...attrs, color: 'rgba(70, 70, 90, 0.25)', label: '' };
+      return { ...attrs, color: 'rgba(70, 70, 90, 0.25)', size: baseSize, label: '' };
     }
 
     // Degree fade on zoom-out: leaf nodes become quiet at far camera
     if (camRatio > 2.8 && degree <= 1 && state.hoveredNeighbors == null) {
-      return { ...attrs, color: hexWithAlpha(baseColor, 0.45) };
+      return { ...attrs, color: hexWithAlpha(baseColor, 0.45), size: baseSize };
     }
 
-    // Dynamic labels:
-    // - zoomed in (<0.6) → always show
-    // - mid (<1.3) → show if degree ≥ 3 (hubs)
-    // - zoomed out → only in hover (handled by reducer above)
+    // A.22 — Dynamic labels com textFadeMult ajustável.
+    // mult > 0 → labels aparecem em zoom mais distante (mais labels)
+    // mult < 0 → labels só em zoom muito perto (menos labels)
+    // Threshold base 0.6 (in) e 1.3 (mid). Mult de -3..3 desloca essas bordas.
+    const labelInThreshold = 0.6 * Math.pow(2, -state.textFadeMult * 0.5);
+    const labelMidThreshold = 1.3 * Math.pow(2, -state.textFadeMult * 0.5);
     const base = baseLabel.get(n) ?? '';
     let label: string | null = attrs.label as string;
-    if (camRatio < 0.6) label = base;
-    else if (camRatio < 1.3 && degree >= 3) label = base;
+    if (camRatio < labelInThreshold) label = base;
+    else if (camRatio < labelMidThreshold && degree >= 3) label = base;
     else label = null;
-    return { ...attrs, color: baseColor, label: label ?? '' };
+    return { ...attrs, color: baseColor, size: baseSize, label: label ?? '' };
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.19 — base 25%, hover ego 75% (255*0.75≈191), inactive 2% (255*0.02≈5).
-    // Pré-multiplicação manual: ver A.17.
+    // A.19 — base 25%, hover ego 75%. A.22 — lineSizeMult global.
     const [s, t] = graph.extremities(edge);
+    const baseEdgeSize = (attrs.size as number) * state.lineSizeMult;
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', hidden: true };
+      return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseEdgeSize, hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: (attrs.size as number) * 1.6 }
-        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)' };
+        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: baseEdgeSize * 1.6 }
+        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseEdgeSize };
     }
-    return attrs;
+    return { ...attrs, size: baseEdgeSize };
   });
 
   // ────────────────────────────────────────────────────────────────────────
   // Physics: ForceAtlas2 reveal with early-stop on convergence
   // ────────────────────────────────────────────────────────────────────────
   const fa2Settings = forceAtlas2.inferSettings(graph);
+  // A.22 — defaults expostos em sliders. Cada slider muda ao vivo via setForces.
+  const FORCE_DEFAULTS = { center: 0.5, repel: 18, link: 1 };
   const physicsSettings = {
     ...fa2Settings,
     barnesHutOptimize: true,
     slowDown: Math.max(2, (fa2Settings.slowDown ?? 1) / 2),
+    gravity: FORCE_DEFAULTS.center,
+    scalingRatio: FORCE_DEFAULTS.repel,
+    edgeWeightInfluence: FORCE_DEFAULTS.link,
   };
+
+  function setForces(o: { center?: number; repel?: number; link?: number }) {
+    if (o.center != null) physicsSettings.gravity = o.center;
+    if (o.repel != null) physicsSettings.scalingRatio = o.repel;
+    if (o.link != null) physicsSettings.edgeWeightInfluence = o.link;
+    // Pequeno burst de physics pra reacomodar com os novos valores.
+    runPhysics(2000);
+  }
   const REVEAL_LERP = 0.06;
   const DRAG_LERP = 0.18;
   const CONVERGENCE_EPSILON = 0.35;   // max-delta below this counts as "settled"
@@ -705,6 +733,25 @@ async function main() {
       resetGraphLayout();
       renderer.refresh();
     },
+    // A.22 — Display
+    onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
+    onLineSizeMult: (v) => { state.lineSizeMult = v; renderer.refresh(); },
+    onTextFadeMult: (v) => { state.textFadeMult = v; renderer.refresh(); },
+    onHideOrphans: (hide) => { state.hideOrphans = hide; renderer.refresh(); },
+    // A.22 — Forces (live)
+    onForceCenter: (v) => setForces({ center: v }),
+    onForceRepel: (v) => setForces({ repel: v }),
+    onForceLink: (v) => setForces({ link: v }),
+    onResetForces: () => {
+      setForces(FORCE_DEFAULTS);
+      const setVal = (id: string, v: number) => {
+        const el = document.getElementById(id) as HTMLInputElement | null;
+        if (el) el.value = String(v);
+      };
+      setVal('force-center', FORCE_DEFAULTS.center);
+      setVal('force-repel', FORCE_DEFAULTS.repel);
+      setVal('force-link', FORCE_DEFAULTS.link);
+    },
   }, payload.nodes);
 
   // Keyboard: Esc closes panel; / focuses search
@@ -847,6 +894,15 @@ interface ControlCallbacks {
   onZoomOut: () => void;
   onFit: () => void;
   onResetFilters: () => void;
+  // A.22 — Display + Forces
+  onNodeSizeMult: (v: number) => void;
+  onLineSizeMult: (v: number) => void;
+  onTextFadeMult: (v: number) => void;
+  onHideOrphans: (hide: boolean) => void;
+  onForceCenter: (v: number) => void;
+  onForceRepel: (v: number) => void;
+  onForceLink: (v: number) => void;
+  onResetForces: () => void;
 }
 
 function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
@@ -882,6 +938,7 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
       if (action === 'zoom-out') cb.onZoomOut();
       if (action === 'fit') cb.onFit();
       if (action === 'reset-filters') cb.onResetFilters();
+      if (action === 'reset-forces') cb.onResetForces();
     }
   });
 
@@ -896,6 +953,23 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   const colorsToggle = document.getElementById('show-colors') as HTMLInputElement | null;
   if (colorsToggle) {
     colorsToggle.addEventListener('change', () => cb.onShowColors(colorsToggle.checked));
+  }
+
+  // A.22 — Display sliders + Forces sliders + hide orphans
+  const wireSlider = (id: string, fn: (v: number) => void) => {
+    const el = document.getElementById(id) as HTMLInputElement | null;
+    if (el) el.addEventListener('input', () => fn(Number(el.value)));
+  };
+  wireSlider('node-size-mult', cb.onNodeSizeMult);
+  wireSlider('line-size-mult', cb.onLineSizeMult);
+  wireSlider('text-fade-mult', cb.onTextFadeMult);
+  wireSlider('force-center', cb.onForceCenter);
+  wireSlider('force-repel', cb.onForceRepel);
+  wireSlider('force-link', cb.onForceLink);
+
+  const hideOrphans = document.getElementById('hide-orphans') as HTMLInputElement | null;
+  if (hideOrphans) {
+    hideOrphans.addEventListener('change', () => cb.onHideOrphans(hideOrphans.checked));
   }
 
   // Populate kind chips from nodes that carry `kind`
