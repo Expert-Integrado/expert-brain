@@ -8,28 +8,35 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
   const body = `
     <style>
-      /* Phase A — Obsidian-style refinement (2026-05-01):
-         - Drop the lavender radial overlay on the canvas; let the dark ambient
-           background carry. Heavy gradients made the canvas compete with the
-           nodes for attention. Keep a much subtler violet tint just to retain
-           brand identity vs going pure-neutral.
-         - Per-pixel drop-shadow on every node still degrades clusters, so the
-           glow stays as a single-pass radial pseudo-element — only fainter. */
-      .graph-wrap { background: #0a0a10; }
-      #graph-canvas::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: radial-gradient(ellipse 75% 60% at 50% 50%, rgba(124, 58, 237, 0.06), transparent 75%);
-        pointer-events: none;
-      }
+      /* Phase A.2 — Obsidian-style aggressive (2026-05-01):
+         Background neutral dark, no lavender overlay. Sidebar+grain do app
+         seguem com gradient nebula, mas o canvas do graph é minimal.
+         Mais escuro que Obsidian (#1e1e1e) propositalmente — Brain assina
+         numa palette mais profunda. */
+      .graph-wrap { background: #0c0c10; }
       #graph-canvas { cursor: grab; }
       #graph-canvas:active { cursor: grabbing; }
-      #graph-canvas .sigma-labels { text-shadow: 0 1px 2px rgba(8, 5, 26, 0.95), 0 0 8px rgba(8, 5, 26, 0.9); }
-      /* Escape .main's max-width:980px + padding on this page only, so Sigma
-         gets the full viewport next to the sidebar instead of rendering into
-         a 948x836 box with empty space to its right. */
-      .main:has(#graph-canvas) { max-width: none; width: auto; padding: 0; }
+      #graph-canvas .sigma-labels {
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 6px rgba(0, 0, 0, 0.85);
+      }
+      /* Hide the body grain/nebula behind the graph canvas — they fight the nodes. */
+      .main:has(#graph-canvas) {
+        max-width: none;
+        width: auto;
+        padding: 0;
+        background: #0c0c10;
+        position: relative;
+        z-index: 2;
+      }
+      /* Overlay panel mais clean: preto-grafite em vez de violeta-tinted */
+      .main:has(#graph-canvas) .graph-overlay {
+        background: rgba(14, 14, 18, 0.88);
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+      .main:has(#graph-canvas) .graph-zoom-controls {
+        background: rgba(14, 14, 18, 0.88);
+        border-color: rgba(255, 255, 255, 0.08);
+      }
     </style>
 
     <div class="graph-wrap">

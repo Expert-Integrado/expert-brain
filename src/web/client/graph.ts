@@ -109,11 +109,11 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // Phase A redesign 2026-05-01: thinner + softer edges so they read as
-        // contextual scaffolding instead of competing with the nodes.
-        // Pre-redesign: size 2.2, rgba(186, 140, 255, 0.78) — visually loud.
-        size: 1.4,
-        color: 'rgba(220, 200, 255, 0.32)',
+        // Phase A.2 — Obsidian-style: edges neutros, finos, baixa opacity.
+        // Pré-A: size 2.2, lavender 78%; A1: size 1.4, lavender 32% (ainda loud);
+        // A.2: size 1.0, branco 22% (Obsidian-equivalente).
+        size: 1.0,
+        color: 'rgba(255, 255, 255, 0.22)',
       });
     } else {
       similarCount++;
@@ -139,20 +139,19 @@ async function main() {
   // means only zoomed-in nodes get labels by default.
   // ────────────────────────────────────────────────────────────────────────
   const renderer = new Sigma(graph, container, {
-    labelColor: { color: '#f4ecff' },
-    labelSize: 13,
-    labelWeight: '600',
+    labelColor: { color: '#e5e5ea' },
+    labelSize: 12,
+    labelWeight: '500',
     labelFont: 'Manrope, system-ui, sans-serif',
     labelDensity: 0.07,
     labelGridCellSize: 160,
-    // Phase A redesign 2026-05-01: raise threshold from 10 → 12 so labels
-    // require slightly more zoom-in to appear (Obsidian-ish — labels are an
-    // explicit affordance, not always-on). Hover bump in the reducer below
-    // still surfaces them on demand at any zoom.
-    labelRenderedSizeThreshold: 12,
+    // Phase A.2 — Obsidian-style: raise threshold to 18px rendered. Labels só
+    // aparecem em zoom alto (ou hover). Reducer dinâmico abaixo continua
+    // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
+    labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // Match the new explicit-edge color so non-keyed edges (if any) blend in.
-    defaultEdgeColor: 'rgba(220, 200, 255, 0.32)',
+    // Edges neutros brancos (Obsidian-equivalente). Cor sincronizada com edges nomeados.
+    defaultEdgeColor: 'rgba(255, 255, 255, 0.22)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
@@ -170,6 +169,7 @@ async function main() {
   // UI state
   // ────────────────────────────────────────────────────────────────────────
   const state = {
+    hoveredNode: null as string | null,
     hoveredNeighbors: null as Set<string> | null,
     similarOpacity: 0.18,               // slider 0..1
     hideSimilar: false,
@@ -275,9 +275,14 @@ async function main() {
       return { ...attrs, size: attrs.size * 1.6, zIndex: 10 };
     }
 
+    // Phase A.2 — hover scale: o nó central cresce 1.4x e força label visível.
+    if (state.hoveredNode === n) {
+      return { ...attrs, size: attrs.size * 1.4, label: baseLabel.get(n) ?? '', zIndex: 20 };
+    }
+
     // Ego dim: hovered node's neighborhood stays, rest heavily dimmed
     if (state.hoveredNeighbors && !state.hoveredNeighbors.has(n)) {
-      return { ...attrs, color: 'rgba(60, 50, 90, 0.28)', label: '' };
+      return { ...attrs, color: 'rgba(40, 40, 50, 0.18)', label: '' };
     }
 
     // Degree fade on zoom-out: leaf nodes become quiet at far camera
@@ -301,11 +306,14 @@ async function main() {
   renderer.setSetting('edgeReducer', (edge, attrs) => {
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(180, 140, 255, 0.04)', hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
-      return keep ? attrs : { ...attrs, color: 'rgba(180, 140, 255, 0.05)' };
+      // Hover: edges no ego ficam mais brilhantes, fora do ego fade pra ~5%.
+      return keep
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: (attrs.size as number) * 1.3 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.05)' };
     }
     return attrs;
   });
@@ -403,11 +411,13 @@ async function main() {
     container.style.cursor = drag ? 'grabbing' : 'grab';
     const neighbors = new Set<string>([node]);
     graph.forEachNeighbor(node, (n) => neighbors.add(n));
+    state.hoveredNode = node;
     state.hoveredNeighbors = neighbors;
     renderer.refresh();
   });
   renderer.on('leaveNode', () => {
     if (!drag) container.style.cursor = '';
+    state.hoveredNode = null;
     state.hoveredNeighbors = null;
     renderer.refresh();
   });
