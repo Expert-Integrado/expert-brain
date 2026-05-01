@@ -31,19 +31,22 @@ interface SimNode extends SimulationNodeDatum {
   id: string;
   x: number;
   y: number;
+  // A.25 — raio do nó (do server-side: max(8, min(3*sqrt(d+1), 30))).
+  // Usado pra forceCollide proporcional + repel scaled by size.
+  r: number;
 }
 interface SimLink extends SimulationLinkDatum<SimNode> {
   source: string | SimNode;
   target: string | SimNode;
 }
 interface Forces {
-  center: number;     // gravity-ish (0..1)
-  repel: number;      // forceManyBody strength (negative magnitude, 0..2000)
+  center: number;     // forceCenter strength (0..0.2 sutil)
+  repel: number;      // forceManyBody strength magnitude (200..2000)
   link: number;       // forceLink strength (0..2)
-  distance: number;   // forceLink distance (default 80)
+  distance: number;   // forceLink distance (50..400)
 }
 
-const DEFAULTS: Forces = { center: 0.05, repel: 250, link: 0.4, distance: 80 };
+const DEFAULTS: Forces = { center: 0.05, repel: 1000, link: 0.4, distance: 200 };
 
 let nodes: SimNode[] = [];
 let links: SimLink[] = [];
@@ -67,7 +70,15 @@ function rebuildSimulation() {
   }
 
   sim = forceSimulation<SimNode, SimLink>(nodes)
-    .force('charge', forceManyBody<SimNode>().strength(-forces.repel))
+    // A.25 — manyBody com strength escalado pelo tamanho do nó (nós grandes
+    // empurram mais que pequenos), igual ao Obsidian. Usa distanceMax pra
+    // evitar repelir entre clusters distantes (perf + estabilidade).
+    .force(
+      'charge',
+      forceManyBody<SimNode>()
+        .strength((d) => -forces.repel * ((d.r ?? 10) / 12))
+        .distanceMax(800),
+    )
     .force(
       'link',
       forceLink<SimNode, SimLink>(links)
@@ -76,7 +87,9 @@ function rebuildSimulation() {
         .distance(forces.distance),
     )
     .force('center', forceCenter<SimNode>(0, 0).strength(forces.center))
-    .force('collide', forceCollide<SimNode>().radius(8).strength(0.6))
+    // A.25 — collide com raio = size + padding. Garante que nó grande
+    // não fica em cima de pequeno.
+    .force('collide', forceCollide<SimNode>().radius((d) => (d.r ?? 10) + 4).strength(0.8))
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 (~300 ticks pra esfriar)
     .on('tick', emitTick)
     .on('end', () => {
@@ -100,8 +113,8 @@ self.addEventListener('message', (e: MessageEvent) => {
   const msg = e.data;
   switch (msg.type) {
     case 'init': {
-      nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y }));
-      // Resolve string IDs em referências
+      // A.25 — recebe r (raio) por nó pra collide + repel proporcionais
+      nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y, r: n.r ?? 10 }));
       links = msg.links.map((l: any) => ({ source: l.source, target: l.target }));
       if (msg.forces) forces = { ...forces, ...msg.forces };
       pinned.clear();

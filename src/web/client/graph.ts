@@ -112,8 +112,10 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.19 — linha base 25% (255*0.25=64). Pré-multiplicado, ver A.17.
-        size: 0.7,
+        // A.25 — base subido pra 1.2 (era 0.7). Com nós mais espalhados via
+        // D3-force, linhas finíssimas somem em distâncias maiores. Slider
+        // Line thickness multiplica esse base.
+        size: 1.2,
         color: 'rgba(64, 64, 64, 0.25)',
       });
     } else {
@@ -411,25 +413,26 @@ async function main() {
 
   // ────────────────────────────────────────────────────────────────────────
   // A.24 — Physics: D3-force em Web Worker dedicado
+  // A.25 — mapping refeito: repel forte (Obsidian-grade), forceCollide com
+  //         raio = node size + padding (nós grandes empurram mais).
   // ────────────────────────────────────────────────────────────────────────
   const FORCE_DEFAULTS = { center: 0.5, repel: 18, link: 1 };
-  // Mapeamento dos sliders Obsidian-like (0..2 / 1..100 / 0..2) pros parâmetros
-  // do D3-force. Empíricos — afinados pra dar um layout parecido com FA2 anterior.
   function mapForces(o: { center: number; repel: number; link: number }) {
     return {
-      center: o.center * 0.05,    // forceCenter strength (sutil — gravity puxa pro 0,0)
-      repel: o.repel * 12,        // forceManyBody strength (negativo no worker)
-      link: Math.min(2, o.link),  // forceLink strength
-      distance: 80,               // mantemos fixo por ora — slider futuro se quiser
+      center: o.center * 0.05,        // forceCenter sutil
+      repel: o.repel * 80,            // A.25: era *12 (fraco). Default 18 → 1440 (≈ Obsidian -1000)
+      link: Math.min(2, o.link),
+      distance: 200 - o.repel * 2,    // A.25: link distance inverso ao repel (mais repel = mais perto via collide)
     };
   }
   let currentForces = { ...FORCE_DEFAULTS };
 
-  // Snapshot inicial pra Reset — posições vindas do server (layout pré-calculado).
-  const initialPositions: Array<{ id: string; x: number; y: number }> = payload.nodes.map((n) => ({
+  // Snapshot inicial pra Reset + raio pra collide proporcional
+  const initialPositions: Array<{ id: string; x: number; y: number; r: number }> = payload.nodes.map((n) => ({
     id: n.id,
     x: n.x,
     y: n.y,
+    r: n.size,  // A.25 — passa raio pro worker
   }));
 
   const worker = new Worker('/app/graph/sim-worker.bundle.js?v=' + Date.now());
@@ -437,7 +440,6 @@ async function main() {
   worker.addEventListener('message', (e: MessageEvent) => {
     const msg = e.data;
     if (msg.type === 'tick') {
-      // Aplica posições do worker no graph local
       const positions: Record<string, [number, number]> = msg.positions;
       for (const id in positions) {
         if (graph.hasNode(id)) {
@@ -447,12 +449,10 @@ async function main() {
       }
       renderer.refresh();
     } else if (msg.type === 'end') {
-      // Simulação esfriou — câmera reset suave (igual A.20 pós-convergência).
       void renderer.getCamera().animatedReset({ duration: 400 });
     }
   });
 
-  // Initial seed: nodes + links + forces
   const workerLinks = [];
   for (const e of payload.edges) {
     if (e.type !== 'explicit') continue;
