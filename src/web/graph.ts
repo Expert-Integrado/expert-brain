@@ -92,7 +92,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explicit
           <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.16</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.17</span>
         </div>
       </div>
 

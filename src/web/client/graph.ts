@@ -113,11 +113,13 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.14 — REMOVER type:'line' → Sigma usa EdgeRectangleProgram default
-        // que respeita alpha (line program não faz blending de alpha em WebGL).
-        // Esse era o BUG: alpha do rgba era ignorado no shader gl.LINES nativo.
+        // A.17 — Sigma usa premultiplied alpha (gl.ONE, gl.ONE_MINUS_SRC_ALPHA)
+        // mas NÃO pré-multiplica RGB pelo alpha. Pra alpha funcionar de fato, a
+        // gente faz a pré-multiplicação manual: rgba(255,255,255,0.06) virou
+        // rgba(15,15,15,0.06) — 255 * 0.06 ≈ 15. Resultado idêntico ao straight
+        // alpha sobre fundo escuro.
         size: 0.7,
-        color: 'rgba(255, 255, 255, 0.06)',
+        color: 'rgba(15, 15, 15, 0.06)',
       });
     } else {
       similarCount++;
@@ -155,7 +157,7 @@ async function main() {
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
     // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
-    defaultEdgeColor: 'rgba(255, 255, 255, 0.06)',
+    defaultEdgeColor: 'rgba(15, 15, 15, 0.06)',
     // A.16 — Sigma 3 só registra EdgeLineProgram por default. Pra usar
     // 'rectangle' (triangle strips com blending de alpha de verdade) precisa
     // registrar o programa via edgeProgramClasses E setar defaultEdgeType.
@@ -382,16 +384,18 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.13 — base 6%, hover ego 50% (destaque forte só no foco).
+    // A.17 — pré-multiplicação manual de RGB*alpha porque Sigma usa
+    // premultiplied blending mas não pré-multiplica.
+    // 255 * 0.02 ≈ 5 | 255 * 0.5 ≈ 127
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.02)', hidden: true };
+      return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.5)', size: (attrs.size as number) * 1.6 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.02)' };
+        ? { ...attrs, color: 'rgba(127, 127, 127, 0.5)', size: (attrs.size as number) * 1.6 }
+        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)' };
     }
     return attrs;
   });
