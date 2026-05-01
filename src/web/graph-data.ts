@@ -16,7 +16,7 @@ export interface GraphPayload {
   sourceHash: string;
 }
 
-const CACHE_KEY = 'graph:v4'; // A.8 size: sqrt(degree)
+const CACHE_KEY = 'graph:v5'; // A.9 fórmula Obsidian exata: max(8, min(3*sqrt(d+1), 30))
 const SIMILARITY_TOP_K = 4;
 const SIMILARITY_MIN_SCORE = 0.5;
 
@@ -102,9 +102,13 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
       id: n.id,
       label: n.title,
       domain: firstDomain(n.domains),
-      // A.8 — Obsidian usa Math.sqrt(numLinks) que dá range 4x maior que log.
-      // Hubs ficam visualmente DOMINANTES. Antes: log(degree+1) — range muito comprimido.
-      size: Math.sqrt(degree.get(n.id) ?? 0),
+      // A.9 — FÓRMULA EXATA EXTRAÍDA DO app.js DO OBSIDIAN:
+      //   getSize() = max(8, min(3 * sqrt(weight+1), 30))
+      // - Floor 8: todo nó tem tamanho mínimo visível
+      // - Cap 30: hub gigante não estoura
+      // - 3*sqrt = curva mais agressiva que sqrt simples
+      // Range: 8 a 30 (4x), igual Obsidian. Linha = 1 → razão node:line de 8x-30x.
+      size: Math.max(8, Math.min(3 * Math.sqrt((degree.get(n.id) ?? 0) + 1), 30)),
       x: p.x,
       y: p.y,
     };

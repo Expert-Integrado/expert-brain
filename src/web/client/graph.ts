@@ -94,13 +94,8 @@ async function main() {
       label: n.label,
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
-      // A.8 — n.size do server agora é sqrt(degree) direto, não log. Aplicar
-      // multiplicador linear simples pra preservar o range expandido.
-      // leaf (degree 1, n.size=1) → 2+2.5 = 4.5px
-      // hub (degree 10, n.size=3.16) → 2+7.9 = 9.9px
-      // mega-hub (degree 25, n.size=5) → 2+12.5 = 14.5px
-      // Range 4.5–14.5+ vs anterior 5.5–11 — variação 3x maior.
-      size: 2.0 + n.size * 2.5,
+      // A.9 — n.size já é o valor final do Obsidian (range 8-30). Usar direto.
+      size: n.size,
       color: NEUTRAL_NODE_COLOR,
       domainColor: domainColor(n.domain), // guardado pra toggle Cores
       domain: n.domain,
@@ -118,10 +113,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // A.8 — Linha ainda mais fina (referência Obsidian: linhas quase invisíveis
-        // contra os nodes). edgeReducer ajusta size dinâmico.
-        size: 0.3,
-        color: 'rgba(255, 255, 255, 0.10)',
+        // A.9 — Obsidian: linha height = fLineSizeMult / scale. fLineSizeMult=1.
+        // Com nodes em range 8-30, linha=1 dá razão 8x-30x (idêntico Obsidian).
+        size: 1.0,
+        color: 'rgba(255, 255, 255, 0.18)',
       });
     } else {
       similarCount++;
@@ -377,22 +372,20 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    const camRatio = renderer.getCamera().ratio;
-    // A.8 — Multiplicador 0.35 (era 0.5). Linha quase invisível em zoom out
-    // (Obsidian-style — linhas são contexto, nodes são o sujeito).
-    const screenStableSize = 0.35 * camRatio;
-
+    // A.9 — Sigma já compensa zoom internamente quando size é constante.
+    // Removido screenStableSize dinâmico — confiar que size=1 mantém razão
+    // node:line idêntica em qualquer zoom (igual Obsidian fLineSizeMult/scale).
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.03)', size: screenStableSize, hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: screenStableSize * 2.0 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.03)', size: screenStableSize };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: (attrs.size as number) * 1.6 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.04)' };
     }
-    return { ...attrs, size: screenStableSize };
+    return attrs;
   });
 
   // ────────────────────────────────────────────────────────────────────────
