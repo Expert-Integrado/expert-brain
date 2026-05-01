@@ -113,10 +113,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // A.10 — feedback Eric: reduzir grossura -30% e opacity -30%.
-        // size 1.0 → 0.7, alpha 0.18 → 0.13.
+        // A.11 — Eric: -30% adicional de opacity (linha mais translúcida).
+        // alpha 0.13 → 0.09. Espessura mantida em 0.7.
         size: 0.7,
-        color: 'rgba(255, 255, 255, 0.13)',
+        color: 'rgba(255, 255, 255, 0.09)',
       });
     } else {
       similarCount++;
@@ -153,8 +153,8 @@ async function main() {
     // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // A.10 — alinhado com edge explícito: opacity 13%.
-    defaultEdgeColor: 'rgba(255, 255, 255, 0.13)',
+    // A.11 — alinhado com edge explícito: opacity 9%.
+    defaultEdgeColor: 'rgba(255, 255, 255, 0.09)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
@@ -372,16 +372,16 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.10 — todos os opacity/highlight reduzidos -30%.
+    // A.11 — opacity -30% adicional vs A.10.
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.03)', hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.02)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.39)', size: (attrs.size as number) * 1.6 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.03)' };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.27)', size: (attrs.size as number) * 1.6 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.02)' };
     }
     return attrs;
   });
