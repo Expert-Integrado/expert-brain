@@ -17,6 +17,8 @@ const bundles: Array<{ entry: string; out: string }> = [
   { entry: 'src/web/client/notes.ts', out: 'assets/notes.bundle.js' },
   { entry: 'src/web/client/local-graph.ts', out: 'assets/local-graph.bundle.js' },
   { entry: 'src/web/client/shell.ts', out: 'assets/shell.bundle.js' },
+  // A.24 — Web Worker dedicado pra D3-force simulation
+  { entry: 'src/web/client/sim-worker.ts', out: 'assets/sim-worker.bundle.js' },
 ];
 
 for (const b of bundles) {

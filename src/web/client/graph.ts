@@ -1,7 +1,6 @@
 import Graph from 'graphology';
 import Sigma from 'sigma';
 import { EdgeRectangleProgram } from 'sigma/rendering';
-import forceAtlas2 from 'graphology-layout-forceatlas2';
 import Fuse from 'fuse.js';
 import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted } from '../domain-colors.js';
 
@@ -411,135 +410,91 @@ async function main() {
   });
 
   // ────────────────────────────────────────────────────────────────────────
-  // Physics: ForceAtlas2 reveal with early-stop on convergence
+  // A.24 — Physics: D3-force em Web Worker dedicado
   // ────────────────────────────────────────────────────────────────────────
-  const fa2Settings = forceAtlas2.inferSettings(graph);
-  // A.22 — defaults expostos em sliders. Cada slider muda ao vivo via setForces.
   const FORCE_DEFAULTS = { center: 0.5, repel: 18, link: 1 };
-  const physicsSettings = {
-    ...fa2Settings,
-    barnesHutOptimize: true,
-    slowDown: Math.max(2, (fa2Settings.slowDown ?? 1) / 2),
-    gravity: FORCE_DEFAULTS.center,
-    scalingRatio: FORCE_DEFAULTS.repel,
-    edgeWeightInfluence: FORCE_DEFAULTS.link,
-  };
-
-  function setForces(o: { center?: number; repel?: number; link?: number }) {
-    if (o.center != null) physicsSettings.gravity = o.center;
-    if (o.repel != null) physicsSettings.scalingRatio = o.repel;
-    if (o.link != null) physicsSettings.edgeWeightInfluence = o.link;
-    // Pequeno burst de physics pra reacomodar com os novos valores.
-    runPhysics(2000);
+  // Mapeamento dos sliders Obsidian-like (0..2 / 1..100 / 0..2) pros parâmetros
+  // do D3-force. Empíricos — afinados pra dar um layout parecido com FA2 anterior.
+  function mapForces(o: { center: number; repel: number; link: number }) {
+    return {
+      center: o.center * 0.05,    // forceCenter strength (sutil — gravity puxa pro 0,0)
+      repel: o.repel * 12,        // forceManyBody strength (negativo no worker)
+      link: Math.min(2, o.link),  // forceLink strength
+      distance: 80,               // mantemos fixo por ora — slider futuro se quiser
+    };
   }
-  const REVEAL_LERP = 0.06;
-  const DRAG_LERP = 0.18;
-  const CONVERGENCE_EPSILON = 0.35;   // max-delta below this counts as "settled"
-  const CONVERGENCE_WINDOW = 30;      // consecutive frames under ε before stopping
+  let currentForces = { ...FORCE_DEFAULTS };
 
-  let physicsUntil = 0;
-  let rafHandle = 0;
-  let convergenceStreak = 0;
+  // Snapshot inicial pra Reset — posições vindas do server (layout pré-calculado).
+  const initialPositions: Array<{ id: string; x: number; y: number }> = payload.nodes.map((n) => ({
+    id: n.id,
+    x: n.x,
+    y: n.y,
+  }));
 
-  // A.20 — snapshot do layout em equilíbrio. Capturado UMA vez na primeira
-  // convergência do reveal physics. Reset restaura sempre essa posição,
-  // independente de quantos drags o usuário tenha feito depois.
-  let restSnapshot: Map<string, { x: number; y: number }> | null = null;
+  const worker = new Worker('/app/graph/sim-worker.bundle.js?v=' + Date.now());
 
-  function refitCamera() {
-    renderer.refresh();
-    renderer.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
-  }
-
-  function runPhysics(durationMs: number) {
-    physicsUntil = Math.max(physicsUntil, Date.now() + durationMs);
-    convergenceStreak = 0;
-    if (rafHandle) return;
-
-    const loop = () => {
-      const prev = new Map<string, { x: number; y: number }>();
-      graph.forEachNode((id, attrs) => {
-        prev.set(id, { x: attrs.x as number, y: attrs.y as number });
-      });
-
-      forceAtlas2.assign(graph, { iterations: 1, settings: physicsSettings });
-
-      const lerp = drag ? DRAG_LERP : REVEAL_LERP;
-      let maxDelta = 0;
-      graph.forEachNode((id, attrs) => {
-        const p = prev.get(id)!;
-        const targetX = attrs.x as number;
-        const targetY = attrs.y as number;
-        const dx = (targetX - p.x) * lerp;
-        const dy = (targetY - p.y) * lerp;
-        const newX = p.x + dx;
-        const newY = p.y + dy;
-        graph.setNodeAttribute(id, 'x', newX);
-        graph.setNodeAttribute(id, 'y', newY);
-        const magnitude = Math.hypot(dx, dy);
-        if (magnitude > maxDelta) maxDelta = magnitude;
-      });
-
-      if (drag) {
-        graph.setNodeAttribute(drag.node, 'x', drag.pointer.x);
-        graph.setNodeAttribute(drag.node, 'y', drag.pointer.y);
-      }
-
-      if (!drag) refitCamera();
-
-      // Convergence detection — only active after the initial 4s reveal has
-      // had a chance to spread nodes. Prevents early-stop during the first
-      // collapse-to-cluster phase.
-      const elapsedFromStart = Date.now() - initialStart;
-      if (!drag && elapsedFromStart > 2500) {
-        if (maxDelta < CONVERGENCE_EPSILON) convergenceStreak++;
-        else convergenceStreak = 0;
-      }
-
-      const shouldStop =
-        !drag &&
-        (Date.now() >= physicsUntil || convergenceStreak >= CONVERGENCE_WINDOW);
-
-      if (!shouldStop) {
-        rafHandle = requestAnimationFrame(loop);
-      } else {
-        rafHandle = 0;
-        renderer.refresh();
-        void renderer.getCamera().animatedReset({ duration: 400 });
-        // A.20 — captura snapshot UMA vez, na primeira convergência sem drag.
-        // Drags subsequentes não atualizam → Reset volta ao layout original.
-        if (!restSnapshot && !drag) {
-          restSnapshot = new Map();
-          graph.forEachNode((id, attrs) => {
-            restSnapshot!.set(id, { x: attrs.x as number, y: attrs.y as number });
-          });
+  worker.addEventListener('message', (e: MessageEvent) => {
+    const msg = e.data;
+    if (msg.type === 'tick') {
+      // Aplica posições do worker no graph local
+      const positions: Record<string, [number, number]> = msg.positions;
+      for (const id in positions) {
+        if (graph.hasNode(id)) {
+          graph.setNodeAttribute(id, 'x', positions[id][0]);
+          graph.setNodeAttribute(id, 'y', positions[id][1]);
         }
       }
-    };
-    rafHandle = requestAnimationFrame(loop);
+      renderer.refresh();
+    } else if (msg.type === 'end') {
+      // Simulação esfriou — câmera reset suave (igual A.20 pós-convergência).
+      void renderer.getCamera().animatedReset({ duration: 400 });
+    }
+  });
+
+  // Initial seed: nodes + links + forces
+  const workerLinks = [];
+  for (const e of payload.edges) {
+    if (e.type !== 'explicit') continue;
+    workerLinks.push({ source: e.source, target: e.target });
+  }
+  worker.postMessage({
+    type: 'init',
+    nodes: initialPositions,
+    links: workerLinks,
+    forces: mapForces(currentForces),
+  });
+
+  function setForces(o: { center?: number; repel?: number; link?: number }) {
+    currentForces = { ...currentForces, ...o };
+    worker.postMessage({
+      type: 'forces',
+      forces: mapForces(currentForces),
+      alpha: 0.3,
+    });
   }
 
-  // A.20 — restaura snapshot do layout original. Usado pelo botão Reset.
+  function pinNode(id: string, x: number, y: number) {
+    worker.postMessage({ type: 'pin', id, x, y });
+  }
+  function unpinNode(id: string) {
+    worker.postMessage({ type: 'unpin', id });
+  }
+
   function resetGraphLayout() {
-    if (!restSnapshot) return;
-    // Para physics em curso pra evitar lerp lutando contra o snapshot.
-    physicsUntil = 0;
-    convergenceStreak = CONVERGENCE_WINDOW;
-    restSnapshot.forEach((pos, id) => {
-      if (graph.hasNode(id)) {
-        graph.setNodeAttribute(id, 'x', pos.x);
-        graph.setNodeAttribute(id, 'y', pos.y);
-      }
-    });
-    renderer.refresh();
+    worker.postMessage({ type: 'reset', nodes: initialPositions });
     void renderer.getCamera().animate(
       { x: 0.5, y: 0.5, ratio: 1.05, angle: 0 },
       { duration: 400 },
     );
   }
 
-  const initialStart = Date.now();
-  runPhysics(4000);
+  // Compat: alguns callers ainda chamam runPhysics() — vira reheat no worker.
+  function runPhysics(_ms?: number) {
+    worker.postMessage({ type: 'reheat', alpha: 0.5 });
+  }
+  // Inicial reveal já roda automático com alpha=1 do init. Não precisa burst extra.
+  void runPhysics;
 
   // ────────────────────────────────────────────────────────────────────────
   // Hover highlight
@@ -578,7 +533,6 @@ async function main() {
       },
     };
     didDrag = false;
-    // A.21 — captura ponto inicial em viewport (px) pra threshold de 5px.
     dragOrigin = { x: event.x, y: event.y };
     container.style.cursor = 'grabbing';
     renderer.getCamera().disable();
@@ -587,16 +541,16 @@ async function main() {
   renderer.getMouseCaptor().on('mousemovebody', (e) => {
     if (!drag) return;
     if (!didDrag && dragOrigin) {
-      // A.21 — só confirma drag depois de 5px de movimento (igual Obsidian).
-      // Movimento menor é tratado como click — não atualiza pointer nem dispara
-      // physics, então o layout fica intacto.
       const dx = e.x - dragOrigin.x;
       const dy = e.y - dragOrigin.y;
       if (dx * dx + dy * dy <= DRAG_THRESHOLD_SQ) return;
       didDrag = true;
-      runPhysics(4000);
     }
-    drag.pointer = renderer.viewportToGraph(e);
+    // A.24 — drag via pin no worker (D3-force segura o nó em fx/fy e
+    // recalcula vizinhos suave em torno).
+    const pos = renderer.viewportToGraph(e);
+    drag.pointer = pos;
+    pinNode(drag.node, pos.x, pos.y);
     e.preventSigmaDefault();
     e.original.preventDefault();
     e.original.stopPropagation();
@@ -605,10 +559,14 @@ async function main() {
   const release = () => {
     if (drag) {
       const wasDragging = didDrag;
+      const draggedId = drag.node;
       drag = null;
       dragOrigin = null;
       container.style.cursor = '';
-      if (wasDragging) runPhysics(1500);
+      if (wasDragging) {
+        // A.24 — libera pin → worker volta a esfriar naturalmente
+        unpinNode(draggedId);
+      }
     }
     renderer.getCamera().enable();
   };

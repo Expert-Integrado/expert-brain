@@ -15,7 +15,9 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.0.5",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@types/d3-force": "^3.0.10",
     "agents": "^0.0.90",
+    "d3-force": "^3.0.0",
     "fuse.js": "^7.3.0",
     "graphology": "^0.26.0",
     "graphology-layout-forceatlas2": "^0.10.1",

@@ -39,6 +39,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph/bundle.js' && req.method === 'GET') {
     return serveBundle('/graph.bundle.js');
   }
+  if (path === '/app/graph/sim-worker.bundle.js' && req.method === 'GET') {
+    return serveBundle('/sim-worker.bundle.js');
+  }
   if (path === '/app/notes/bundle.js' && req.method === 'GET') {
     return serveBundle('/notes.bundle.js');
   }
