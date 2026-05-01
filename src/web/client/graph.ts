@@ -112,8 +112,9 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        type: 'line',
-        // A.13 — Eric: linha QUASE INVISÍVEL. 6% alpha, fica fantasma.
+        // A.14 — REMOVER type:'line' → Sigma usa EdgeRectangleProgram default
+        // que respeita alpha (line program não faz blending de alpha em WebGL).
+        // Esse era o BUG: alpha do rgba era ignorado no shader gl.LINES nativo.
         size: 0.7,
         color: 'rgba(255, 255, 255, 0.06)',
       });
