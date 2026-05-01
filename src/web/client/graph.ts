@@ -85,21 +85,19 @@ async function main() {
   const degreeById = new Map<string, number>();
   const bumpDegree = (id: string) => degreeById.set(id, (degreeById.get(id) ?? 0) + 1);
 
+  // Phase A.6 — Obsidian-faithful: nodes default cinza-claro neutro
+  // (equivalente a --text-muted do Obsidian dark theme). Cor por domínio
+  // continua armazenada como `domainColor` em attrs, ativada via toggle.
+  const NEUTRAL_NODE_COLOR = '#b8b8c8';
   for (const n of payload.nodes) {
     graph.addNode(n.id, {
       label: n.label,
-      // Tiny random jitter so ForceAtlas2 has a non-degenerate starting
-      // configuration and the reveal animation plays.
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
-      // Phase A.4 — Quartz/Obsidian sizing: sqrt scaling (matches Quartz's
-      //   `2 + Math.sqrt(numLinks)` formula). n.size já é log(degree+1) → range
-      //   ~[3.5, 9]. Mais sutil que a versão anterior linear.
-      size: 2.5 + Math.sqrt(n.size) * 2.2,
-      // Cor muted: blend 45% com cinza neutro pra ficar Obsidian-monochrome
-      // mas preservar a dimensão de domínio como tint sutil. Halo (glow 2D)
-      // continua usando a cor saturada pra dar o pop.
-      color: domainColorMuted(n.domain),
+      // Sizing sqrt-based (Quartz spec) — leafs ~4px, hubs ~12px
+      size: 2.2 + Math.sqrt(n.size) * 3.6,
+      color: NEUTRAL_NODE_COLOR,
+      domainColor: domainColor(n.domain), // guardado pra toggle Cores
       domain: n.domain,
       kind: n.kind ?? '',
     });
@@ -115,10 +113,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // Phase A.4 — Quartz spec: 1px stroke, lightgray. Mais fino e mais
-        // transparente. Hover destaca via reducer pra ego edges ficarem 55%.
-        size: 0.8,
-        color: 'rgba(255, 255, 255, 0.16)',
+        // Phase A.6 — base size, edgeReducer ajusta dinâmico baseado em zoom
+        // pra manter linha sempre ~1px de tela (igual Obsidian).
+        size: 1.0,
+        color: 'rgba(255, 255, 255, 0.18)',
       });
     } else {
       similarCount++;
@@ -183,6 +181,7 @@ async function main() {
     searchQuery: '',
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
+    showColors: false, // A.6 — toggle Obsidian-faithful default OFF
   };
 
   // ────────────────────────────────────────────────────────────────────────
@@ -229,37 +228,30 @@ async function main() {
   window.addEventListener('resize', sizeOverlay);
 
   // ────────────────────────────────────────────────────────────────────────
-  // Glow renderer — per-node radial halo under each visible node.
-  // Honors filter/hover state so dimmed nodes don't glow.
+  // Phase A.6 — Obsidian-faithful hover ring. Substituto do glow per-node:
+  // único anel fino (1px de tela) ao redor do nó hovered. Igual à
+  // implementação do app.js do Obsidian: o.lineStyle(E,M.rgb,1) onde
+  // E = max(1, 1/scale).
   // ────────────────────────────────────────────────────────────────────────
-  function drawGlow() {
+  function drawHoverRing() {
     gctx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    if (!state.hoveredNode) return;
+    if (!graph.hasNode(state.hoveredNode)) return;
+    const id = state.hoveredNode;
+    const attrs = graph.getNodeAttributes(id);
+    const v = renderer.graphToViewport({ x: attrs.x as number, y: attrs.y as number });
     const camRatio = renderer.getCamera().ratio;
+    const renderedRadius = (attrs.size as number) / camRatio;
+    const ringRadius = renderedRadius + 4;
+
     gctx.save();
-    graph.forEachNode((id, attrs) => {
-      if (!isNodeActive(id)) return;
-      // Skip glow on nodes that are dimmed by ego highlight (keeps focus tight)
-      if (state.hoveredNeighbors && !state.hoveredNeighbors.has(id)) return;
-
-      const v = renderer.graphToViewport({ x: attrs.x as number, y: attrs.y as number });
-      const baseSize = (attrs.size as number);
-      const renderedRadius = baseSize / camRatio;
-      const haloRadius = renderedRadius * 4.5;
-      const isHovered = state.hoveredNode === id;
-      const haloAlpha = isHovered ? 0.85 : 0.55;
-      // Halo usa cor SATURADA (não a muted do nó) pra dar o pop Obsidian-style:
-      // núcleo cinza-tinted, borda glow saturada. Contraste cria a sensação de luz.
-      const color = domainColor((attrs.domain as string) || '');
-
-      const grad = gctx.createRadialGradient(v.x, v.y, renderedRadius * 0.5, v.x, v.y, haloRadius);
-      grad.addColorStop(0, hexToRgba(color, haloAlpha));
-      grad.addColorStop(0.5, hexToRgba(color, haloAlpha * 0.18));
-      grad.addColorStop(1, hexToRgba(color, 0));
-      gctx.fillStyle = grad;
-      gctx.beginPath();
-      gctx.arc(v.x, v.y, haloRadius, 0, Math.PI * 2);
-      gctx.fill();
-    });
+    gctx.lineWidth = 1.2;
+    gctx.strokeStyle = state.showColors
+      ? (attrs.domainColor as string) || '#ffffff'
+      : 'rgba(255, 255, 255, 0.85)';
+    gctx.beginPath();
+    gctx.arc(v.x, v.y, ringRadius, 0, Math.PI * 2);
+    gctx.stroke();
     gctx.restore();
   }
 
@@ -311,8 +303,8 @@ async function main() {
   }
 
   renderer.on('afterRender', () => {
-    drawGlow();
     drawSimilarEdges();
+    drawHoverRing();
   });
   renderer.on('resize', sizeOverlay);
 
@@ -336,30 +328,35 @@ async function main() {
     const degree = degreeById.get(n) ?? 0;
     const active = isNodeActive(n);
 
+    // A.6 — cor base: saturada se toggle Cores está ON, cinza neutro se OFF
+    const baseColor = state.showColors
+      ? (attrs.domainColor as string) || (attrs.color as string)
+      : (attrs.color as string);
+
     // Filter out: heavy dim, no label
     if (!active) {
-      return { ...attrs, color: 'rgba(70, 70, 100, 0.12)', label: '', size: attrs.size * 0.6 };
+      return { ...attrs, color: 'rgba(70, 70, 90, 0.12)', label: '', size: (attrs.size as number) * 0.6 };
     }
 
     // Search hit: bright + enlarged
     if (state.searchMatches.size > 0 && state.searchMatches.has(n)) {
-      return { ...attrs, size: attrs.size * 1.6, zIndex: 10 };
+      return { ...attrs, color: baseColor, size: (attrs.size as number) * 1.6, zIndex: 10 };
     }
 
-    // Phase A.2 — hover scale: o nó central cresce 1.4x e força label visível.
+    // A.6 — hovered node: NÃO faz scale (Obsidian não escala). Ring fino
+    // desenhado no overlay 2D acima dá o destaque visual. Apenas força label.
     if (state.hoveredNode === n) {
-      return { ...attrs, size: attrs.size * 1.4, label: baseLabel.get(n) ?? '', zIndex: 20 };
+      return { ...attrs, color: baseColor, label: baseLabel.get(n) ?? '', zIndex: 20 };
     }
 
-    // Ego dim: hovered node's neighborhood stays, rest heavily dimmed
+    // Ego dim: hovered node's neighborhood stays bright, rest fade to ghosts
     if (state.hoveredNeighbors && !state.hoveredNeighbors.has(n)) {
-      return { ...attrs, color: 'rgba(40, 40, 50, 0.18)', label: '' };
+      return { ...attrs, color: 'rgba(70, 70, 90, 0.25)', label: '' };
     }
 
     // Degree fade on zoom-out: leaf nodes become quiet at far camera
     if (camRatio > 2.8 && degree <= 1 && state.hoveredNeighbors == null) {
-      const hex = attrs.color as string;
-      return { ...attrs, color: hexWithAlpha(hex, 0.38) };
+      return { ...attrs, color: hexWithAlpha(baseColor, 0.45) };
     }
 
     // Dynamic labels:
@@ -371,22 +368,27 @@ async function main() {
     if (camRatio < 0.6) label = base;
     else if (camRatio < 1.3 && degree >= 3) label = base;
     else label = null;
-    return { ...attrs, label: label ?? '' };
+    return { ...attrs, color: baseColor, label: label ?? '' };
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
+    const camRatio = renderer.getCamera().ratio;
+    // A.6 — Obsidian linha = max(1, 1/scale) — sempre ~1px de tela. Quando
+    // dá zoom in, linha não engrossa; zoom out, linha não some. Aqui o
+    // tamanho do edge é em unidades de graph (ratio inverso compensa).
+    const screenStableSize = Math.max(0.6, 1.0 * camRatio);
+
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.04)', size: screenStableSize, hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
-      // Hover: edges no ego ficam mais brilhantes, fora do ego fade pra ~5%.
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.55)', size: (attrs.size as number) * 1.3 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.05)' };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.65)', size: screenStableSize }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.05)', size: screenStableSize };
     }
-    return attrs;
+    return { ...attrs, size: screenStableSize };
   });
 
   // ────────────────────────────────────────────────────────────────────────
@@ -633,6 +635,7 @@ async function main() {
     },
     onSimilarOpacity: (v) => { state.similarOpacity = v; renderer.refresh(); },
     onSimilarHide: (hide) => { state.hideSimilar = hide; renderer.refresh(); },
+    onShowColors: (show) => { state.showColors = show; renderer.refresh(); },
     onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 280 }),
     onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 280 }),
     onFit: () => {
@@ -785,6 +788,7 @@ interface ControlCallbacks {
   onKindToggle: (kind: string, active: boolean) => void;
   onSimilarOpacity: (v: number) => void;
   onSimilarHide: (hide: boolean) => void;
+  onShowColors: (show: boolean) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -834,6 +838,10 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   const hide = document.getElementById('similar-hide') as HTMLInputElement | null;
   if (hide) {
     hide.addEventListener('change', () => cb.onSimilarHide(hide.checked));
+  }
+  const colorsToggle = document.getElementById('show-colors') as HTMLInputElement | null;
+  if (colorsToggle) {
+    colorsToggle.addEventListener('change', () => cb.onShowColors(colorsToggle.checked));
   }
 
   // Populate kind chips from nodes that carry `kind`

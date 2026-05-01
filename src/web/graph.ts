@@ -83,6 +83,10 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="checkbox" id="similar-hide" />
             <span>Hide</span>
           </label>
+          <label class="graph-check-label">
+            <input type="checkbox" id="show-colors" />
+            <span>Color by domain</span>
+          </label>
         </div>
 
         <div class="graph-legend-line">

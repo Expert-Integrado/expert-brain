@@ -16,7 +16,7 @@ export interface GraphPayload {
   sourceHash: string;
 }
 
-const CACHE_KEY = 'graph:v2';
+const CACHE_KEY = 'graph:v3'; // A.6 layout: scalingRatio 18, gravity 0.5
 const SIMILARITY_TOP_K = 4;
 const SIMILARITY_MIN_SCORE = 0.5;
 

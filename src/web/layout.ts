@@ -36,12 +36,16 @@ export function computeLayout(nodes: LayoutNode[], edges: LayoutEdge[]): LaidOut
 
   const settings = forceAtlas2.inferSettings(g);
   forceAtlas2.assign(g, {
-    iterations: 500,
+    // Phase A.5 — layout radial Obsidian-style: aumentar repulsão entre nós
+    // (scalingRatio 10→18) + reduzir gravidade central (1→0.5) faz hubs
+    // virarem "fogos de artifício" com leafs distribuídos radialmente.
+    // 800 iterações dá tempo de convergir bem nesse setup mais espalhado.
+    iterations: 800,
     settings: {
       ...settings,
       barnesHutOptimize: true,
-      scalingRatio: 10,
-      gravity: 1,
+      scalingRatio: 18,
+      gravity: 0.5,
       slowDown: 5,
     },
   });
