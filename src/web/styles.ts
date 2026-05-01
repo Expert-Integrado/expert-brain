@@ -1,11 +1,11 @@
 // Google Fonts preconnect + font stylesheet are injected in <head> via FONT_LINKS.
-// Fraunces for the display/serif voice (characterful, optical-sized), Manrope for body.
-// Both are on Google Fonts — no self-hosting needed and CSP 'self' stays strict because
-// we only pull fonts, not scripts.
+// Poppins é a fonte de marca da Expert Integrado (display: títulos, logo, headings).
+// Manrope continua pra body — ambas geometric sans, complementam.
+// Substituiu Fraunces (serif) em 01/05/2026 alinhando com identidade visual EI.
 export const FONT_LINKS = `
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 `;
 
 // Midnight Nebula — distinctive aesthetic: Fraunces display + Manrope body, deep nebula
@@ -33,7 +33,7 @@ export const NEBULA_CSS = `
   --radius: 12px;
   --radius-lg: 16px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-display: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
@@ -91,10 +91,9 @@ a:hover { color: var(--text); }
 }
 .sidebar .logo {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 22px;
-  letter-spacing: -0.02em;
-  font-variation-settings: "opsz" 48;
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.015em;
   margin-bottom: 32px;
   display: flex;
   align-items: center;
@@ -103,11 +102,12 @@ a:hover { color: var(--text); }
 }
 .sidebar .logo::before {
   content: "";
-  width: 10px;
-  height: 10px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, var(--accent-pink), var(--accent-lav) 60%, var(--accent-violet));
-  box-shadow: 0 0 16px rgba(167, 139, 250, 0.65);
+  background: url('/expert-integrado-logo.png') center/cover no-repeat #ffffff;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 16px rgba(167, 139, 250, 0.35);
 }
 .sidebar .nav-item {
   padding: 10px 14px;
@@ -1125,8 +1125,8 @@ a:hover { color: var(--text); }
     margin-bottom: 20px;
   }
   .sidebar .logo::before {
-    width: 14px;
-    height: 14px;
+    width: 24px;
+    height: 24px;
   }
   .sidebar .nav-item {
     padding: 10px 0;

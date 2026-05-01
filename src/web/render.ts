@@ -12,6 +12,8 @@ export function renderShell(opts: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(opts.title)} · Expert Brain</title>
+<link rel="icon" type="image/png" href="/expert-integrado-logo.png">
+<link rel="apple-touch-icon" href="/expert-integrado-logo.png">
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style>
 ${opts.extraHead ?? ''}
