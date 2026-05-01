@@ -113,9 +113,9 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // A.12 — Eric: 20% pra confirmar que mudança chega visível no browser.
+        // A.13 — Eric: linha QUASE INVISÍVEL. 6% alpha, fica fantasma.
         size: 0.7,
-        color: 'rgba(255, 255, 255, 0.20)',
+        color: 'rgba(255, 255, 255, 0.06)',
       });
     } else {
       similarCount++;
@@ -152,8 +152,8 @@ async function main() {
     // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // A.12 — alinhado: 20% pra confirmação visual.
-    defaultEdgeColor: 'rgba(255, 255, 255, 0.20)',
+    // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
+    defaultEdgeColor: 'rgba(255, 255, 255, 0.06)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
@@ -371,16 +371,16 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.12 — todos em 20% pra confirmar mudança visível.
+    // A.13 — base 6%, hover ego 50% (destaque forte só no foco).
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
-      return { ...attrs, color: 'rgba(255, 255, 255, 0.05)', hidden: true };
+      return { ...attrs, color: 'rgba(255, 255, 255, 0.02)', hidden: true };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(255, 255, 255, 0.65)', size: (attrs.size as number) * 1.6 }
-        : { ...attrs, color: 'rgba(255, 255, 255, 0.05)' };
+        ? { ...attrs, color: 'rgba(255, 255, 255, 0.5)', size: (attrs.size as number) * 1.6 }
+        : { ...attrs, color: 'rgba(255, 255, 255, 0.02)' };
     }
     return attrs;
   });
