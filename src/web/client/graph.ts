@@ -113,10 +113,9 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.18 — linha base subida pra 50% (pré-multiplicado: 255*0.5=127).
-        // Ver A.17 pra explicação do premultiplied blending do Sigma.
+        // A.19 — linha base 25% (255*0.25=64). Pré-multiplicado, ver A.17.
         size: 0.7,
-        color: 'rgba(127, 127, 127, 0.5)',
+        color: 'rgba(64, 64, 64, 0.25)',
       });
     } else {
       similarCount++;
@@ -154,7 +153,7 @@ async function main() {
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
     // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
-    defaultEdgeColor: 'rgba(127, 127, 127, 0.5)',
+    defaultEdgeColor: 'rgba(64, 64, 64, 0.25)',
     // A.16 — Sigma 3 só registra EdgeLineProgram por default. Pra usar
     // 'rectangle' (triangle strips com blending de alpha de verdade) precisa
     // registrar o programa via edgeProgramClasses E setar defaultEdgeType.
@@ -381,8 +380,8 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.18 — base 50%, hover ego 90% (255*0.9≈229), inactive 2% (255*0.02≈5).
-    // Pré-multiplicação manual: ver A.17 pra explicação.
+    // A.19 — base 25%, hover ego 75% (255*0.75≈191), inactive 2% (255*0.02≈5).
+    // Pré-multiplicação manual: ver A.17.
     const [s, t] = graph.extremities(edge);
     if (!isNodeActive(s) || !isNodeActive(t)) {
       return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', hidden: true };
@@ -390,7 +389,7 @@ async function main() {
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
       return keep
-        ? { ...attrs, color: 'rgba(229, 229, 229, 0.9)', size: (attrs.size as number) * 1.6 }
+        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: (attrs.size as number) * 1.6 }
         : { ...attrs, color: 'rgba(5, 5, 5, 0.02)' };
     }
     return attrs;
