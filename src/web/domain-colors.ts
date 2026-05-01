@@ -36,3 +36,20 @@ export function domainColorAlpha(domain: string, alpha: number): string {
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
+
+// Muted version: blends 55% with neutral gray so domain colors are present
+// as a tint instead of pure saturated hues. Closer to Obsidian's default
+// monochrome look while preserving the per-domain dimension as a hint.
+export function domainColorMuted(domain: string): string {
+  const hex = domainColor(domain);
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  // Blend with neutral cool gray (180,180,200) — slight cool cast keeps the
+  // graph feeling like a knowledge surface, not pure greyscale.
+  const mix = 0.45; // 0 = pure original, 1 = pure gray
+  const mr = Math.round(r * (1 - mix) + 180 * mix);
+  const mg = Math.round(g * (1 - mix) + 180 * mix);
+  const mb = Math.round(b * (1 - mix) + 200 * mix);
+  return `rgb(${mr}, ${mg}, ${mb})`;
+}

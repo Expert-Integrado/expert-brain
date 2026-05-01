@@ -2,7 +2,7 @@ import Graph from 'graphology';
 import Sigma from 'sigma';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 import Fuse from 'fuse.js';
-import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor } from '../domain-colors.js';
+import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted } from '../domain-colors.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Payload shape (matches src/web/graph-data.ts server-side)
@@ -92,8 +92,14 @@ async function main() {
       // configuration and the reveal animation plays.
       x: (Math.random() - 0.5) * 2,
       y: (Math.random() - 0.5) * 2,
-      size: 7 + n.size * 3.5,
-      color: domainColor(n.domain),
+      // Phase A.4 — Quartz/Obsidian sizing: sqrt scaling (matches Quartz's
+      //   `2 + Math.sqrt(numLinks)` formula). n.size já é log(degree+1) → range
+      //   ~[3.5, 9]. Mais sutil que a versão anterior linear.
+      size: 2.5 + Math.sqrt(n.size) * 2.2,
+      // Cor muted: blend 45% com cinza neutro pra ficar Obsidian-monochrome
+      // mas preservar a dimensão de domínio como tint sutil. Halo (glow 2D)
+      // continua usando a cor saturada pra dar o pop.
+      color: domainColorMuted(n.domain),
       domain: n.domain,
       kind: n.kind ?? '',
     });
@@ -109,11 +115,10 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        // Phase A.2 — Obsidian-style: edges neutros, finos, baixa opacity.
-        // Pré-A: size 2.2, lavender 78%; A1: size 1.4, lavender 32% (ainda loud);
-        // A.2: size 1.0, branco 22% (Obsidian-equivalente).
-        size: 1.0,
-        color: 'rgba(255, 255, 255, 0.22)',
+        // Phase A.4 — Quartz spec: 1px stroke, lightgray. Mais fino e mais
+        // transparente. Hover destaca via reducer pra ego edges ficarem 55%.
+        size: 0.8,
+        color: 'rgba(255, 255, 255, 0.16)',
       });
     } else {
       similarCount++;
@@ -150,8 +155,8 @@ async function main() {
     // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // Edges neutros brancos (Obsidian-equivalente). Cor sincronizada com edges nomeados.
-    defaultEdgeColor: 'rgba(255, 255, 255, 0.22)',
+    // Edges neutros brancos. A.4: 16% (era 22%) — Obsidian/Quartz são quase invisíveis até hover.
+    defaultEdgeColor: 'rgba(255, 255, 255, 0.16)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
@@ -181,6 +186,20 @@ async function main() {
   };
 
   // ────────────────────────────────────────────────────────────────────────
+  // Glow overlay (Phase A.3) — sits ABOVE the Sigma WebGL canvases with
+  // mix-blend-mode 'screen' so the halo lightens nodes without occluding
+  // them. zIndex: 1 keeps it under the similar-edge overlay (zIndex: 2).
+  // ────────────────────────────────────────────────────────────────────────
+  const glowCanvas = document.createElement('canvas');
+  glowCanvas.style.position = 'absolute';
+  glowCanvas.style.inset = '0';
+  glowCanvas.style.pointerEvents = 'none';
+  glowCanvas.style.mixBlendMode = 'screen';
+  glowCanvas.style.zIndex = '1';
+  container.appendChild(glowCanvas);
+  const gctx = glowCanvas.getContext('2d')!;
+
+  // ────────────────────────────────────────────────────────────────────────
   // Similar edge overlay (2D canvas on top of Sigma WebGL). Repainted every
   // 'afterRender' so pan/zoom stay in sync. Respects slider + filter state.
   // ────────────────────────────────────────────────────────────────────────
@@ -200,9 +219,58 @@ async function main() {
     overlay.style.width = width + 'px';
     overlay.style.height = height + 'px';
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    glowCanvas.width = Math.round(width * dpr);
+    glowCanvas.height = Math.round(height * dpr);
+    glowCanvas.style.width = width + 'px';
+    glowCanvas.style.height = height + 'px';
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
   sizeOverlay();
   window.addEventListener('resize', sizeOverlay);
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Glow renderer — per-node radial halo under each visible node.
+  // Honors filter/hover state so dimmed nodes don't glow.
+  // ────────────────────────────────────────────────────────────────────────
+  function drawGlow() {
+    gctx.clearRect(0, 0, glowCanvas.width, glowCanvas.height);
+    const camRatio = renderer.getCamera().ratio;
+    gctx.save();
+    graph.forEachNode((id, attrs) => {
+      if (!isNodeActive(id)) return;
+      // Skip glow on nodes that are dimmed by ego highlight (keeps focus tight)
+      if (state.hoveredNeighbors && !state.hoveredNeighbors.has(id)) return;
+
+      const v = renderer.graphToViewport({ x: attrs.x as number, y: attrs.y as number });
+      const baseSize = (attrs.size as number);
+      const renderedRadius = baseSize / camRatio;
+      const haloRadius = renderedRadius * 4.5;
+      const isHovered = state.hoveredNode === id;
+      const haloAlpha = isHovered ? 0.85 : 0.55;
+      // Halo usa cor SATURADA (não a muted do nó) pra dar o pop Obsidian-style:
+      // núcleo cinza-tinted, borda glow saturada. Contraste cria a sensação de luz.
+      const color = domainColor((attrs.domain as string) || '');
+
+      const grad = gctx.createRadialGradient(v.x, v.y, renderedRadius * 0.5, v.x, v.y, haloRadius);
+      grad.addColorStop(0, hexToRgba(color, haloAlpha));
+      grad.addColorStop(0.5, hexToRgba(color, haloAlpha * 0.18));
+      grad.addColorStop(1, hexToRgba(color, 0));
+      gctx.fillStyle = grad;
+      gctx.beginPath();
+      gctx.arc(v.x, v.y, haloRadius, 0, Math.PI * 2);
+      gctx.fill();
+    });
+    gctx.restore();
+  }
+
+  function hexToRgba(hex: string, alpha: number): string {
+    if (hex.startsWith('rgba') || hex.startsWith('rgb')) return hex;
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
 
   function drawSimilarEdges() {
     octx.clearRect(0, 0, overlay.width, overlay.height);
@@ -242,7 +310,10 @@ async function main() {
     octx.restore();
   }
 
-  renderer.on('afterRender', drawSimilarEdges);
+  renderer.on('afterRender', () => {
+    drawGlow();
+    drawSimilarEdges();
+  });
   renderer.on('resize', sizeOverlay);
 
   // ────────────────────────────────────────────────────────────────────────
