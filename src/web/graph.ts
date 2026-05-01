@@ -8,15 +8,23 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
   const body = `
     <style>
-      /* soft radial halo behind the whole canvas instead of per-pixel drop-shadow
-         (drop-shadow compounds in dense clusters and turns nodes black) */
+      /* Phase A — Obsidian-style refinement (2026-05-01):
+         - Drop the lavender radial overlay on the canvas; let the dark ambient
+           background carry. Heavy gradients made the canvas compete with the
+           nodes for attention. Keep a much subtler violet tint just to retain
+           brand identity vs going pure-neutral.
+         - Per-pixel drop-shadow on every node still degrades clusters, so the
+           glow stays as a single-pass radial pseudo-element — only fainter. */
+      .graph-wrap { background: #0a0a10; }
       #graph-canvas::before {
         content: "";
         position: absolute;
         inset: 0;
-        background: radial-gradient(ellipse 60% 50% at 50% 50%, rgba(180, 140, 255, 0.18), transparent 70%);
+        background: radial-gradient(ellipse 75% 60% at 50% 50%, rgba(124, 58, 237, 0.06), transparent 75%);
         pointer-events: none;
       }
+      #graph-canvas { cursor: grab; }
+      #graph-canvas:active { cursor: grabbing; }
       #graph-canvas .sigma-labels { text-shadow: 0 1px 2px rgba(8, 5, 26, 0.95), 0 0 8px rgba(8, 5, 26, 0.9); }
       /* Escape .main's max-width:980px + padding on this page only, so Sigma
          gets the full viewport next to the sidebar instead of rendering into

@@ -109,8 +109,11 @@ async function main() {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         type: 'line',
-        size: 2.2,
-        color: 'rgba(186, 140, 255, 0.78)',
+        // Phase A redesign 2026-05-01: thinner + softer edges so they read as
+        // contextual scaffolding instead of competing with the nodes.
+        // Pre-redesign: size 2.2, rgba(186, 140, 255, 0.78) — visually loud.
+        size: 1.4,
+        color: 'rgba(220, 200, 255, 0.32)',
       });
     } else {
       similarCount++;
@@ -142,9 +145,14 @@ async function main() {
     labelFont: 'Manrope, system-ui, sans-serif',
     labelDensity: 0.07,
     labelGridCellSize: 160,
-    labelRenderedSizeThreshold: 10,
+    // Phase A redesign 2026-05-01: raise threshold from 10 → 12 so labels
+    // require slightly more zoom-in to appear (Obsidian-ish — labels are an
+    // explicit affordance, not always-on). Hover bump in the reducer below
+    // still surfaces them on demand at any zoom.
+    labelRenderedSizeThreshold: 12,
     defaultNodeColor: DOMAIN_FALLBACK,
-    defaultEdgeColor: 'rgba(180, 140, 255, 0.5)',
+    // Match the new explicit-edge color so non-keyed edges (if any) blend in.
+    defaultEdgeColor: 'rgba(220, 200, 255, 0.32)',
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
