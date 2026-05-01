@@ -536,11 +536,12 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   let drag: { node: string; pointer: { x: number; y: number } } | null = null;
   let didDrag = false;
+  // A.21 — igual Obsidian: drag só é confirmado depois de 5px de movimento.
+  // Movimento menor é tratado como click puro (sem disparar physics).
+  let dragOrigin: { x: number; y: number } | null = null;
+  const DRAG_THRESHOLD_SQ = 25; // 5px²
 
-  renderer.on('downNode', ({ node }) => {
-    // A.20 — apenas captura intent de drag. Physics SÓ dispara quando o
-    // usuário move o mouse (mousemovebody abaixo). Click puro sem mover não
-    // bagunça mais o layout.
+  renderer.on('downNode', ({ node, event }) => {
     drag = {
       node,
       pointer: {
@@ -549,19 +550,25 @@ async function main() {
       },
     };
     didDrag = false;
+    // A.21 — captura ponto inicial em viewport (px) pra threshold de 5px.
+    dragOrigin = { x: event.x, y: event.y };
     container.style.cursor = 'grabbing';
     renderer.getCamera().disable();
   });
 
   renderer.getMouseCaptor().on('mousemovebody', (e) => {
     if (!drag) return;
-    drag.pointer = renderer.viewportToGraph(e);
-    if (!didDrag) {
-      // A.20 — physics agora começa SÓ quando confirma drag real (primeiro
-      // movimento). Click sem arrastar nunca dispara physics.
+    if (!didDrag && dragOrigin) {
+      // A.21 — só confirma drag depois de 5px de movimento (igual Obsidian).
+      // Movimento menor é tratado como click — não atualiza pointer nem dispara
+      // physics, então o layout fica intacto.
+      const dx = e.x - dragOrigin.x;
+      const dy = e.y - dragOrigin.y;
+      if (dx * dx + dy * dy <= DRAG_THRESHOLD_SQ) return;
       didDrag = true;
       runPhysics(4000);
     }
+    drag.pointer = renderer.viewportToGraph(e);
     e.preventSigmaDefault();
     e.original.preventDefault();
     e.original.stopPropagation();
@@ -571,8 +578,8 @@ async function main() {
     if (drag) {
       const wasDragging = didDrag;
       drag = null;
+      dragOrigin = null;
       container.style.cursor = '';
-      // A.20 — só roda settling se houve drag real.
       if (wasDragging) runPhysics(1500);
     }
     renderer.getCamera().enable();
