@@ -413,6 +413,11 @@ async function main() {
   let rafHandle = 0;
   let convergenceStreak = 0;
 
+  // A.20 — snapshot do layout em equilíbrio. Capturado UMA vez na primeira
+  // convergência do reveal physics. Reset restaura sempre essa posição,
+  // independente de quantos drags o usuário tenha feito depois.
+  let restSnapshot: Map<string, { x: number; y: number }> | null = null;
+
   function refitCamera() {
     renderer.refresh();
     renderer.getCamera().setState({ x: 0.5, y: 0.5, angle: 0, ratio: 1.05 });
@@ -473,9 +478,36 @@ async function main() {
         rafHandle = 0;
         renderer.refresh();
         void renderer.getCamera().animatedReset({ duration: 400 });
+        // A.20 — captura snapshot UMA vez, na primeira convergência sem drag.
+        // Drags subsequentes não atualizam → Reset volta ao layout original.
+        if (!restSnapshot && !drag) {
+          restSnapshot = new Map();
+          graph.forEachNode((id, attrs) => {
+            restSnapshot!.set(id, { x: attrs.x as number, y: attrs.y as number });
+          });
+        }
       }
     };
     rafHandle = requestAnimationFrame(loop);
+  }
+
+  // A.20 — restaura snapshot do layout original. Usado pelo botão Reset.
+  function resetGraphLayout() {
+    if (!restSnapshot) return;
+    // Para physics em curso pra evitar lerp lutando contra o snapshot.
+    physicsUntil = 0;
+    convergenceStreak = CONVERGENCE_WINDOW;
+    restSnapshot.forEach((pos, id) => {
+      if (graph.hasNode(id)) {
+        graph.setNodeAttribute(id, 'x', pos.x);
+        graph.setNodeAttribute(id, 'y', pos.y);
+      }
+    });
+    renderer.refresh();
+    void renderer.getCamera().animate(
+      { x: 0.5, y: 0.5, ratio: 1.05, angle: 0 },
+      { duration: 400 },
+    );
   }
 
   const initialStart = Date.now();
@@ -506,6 +538,9 @@ async function main() {
   let didDrag = false;
 
   renderer.on('downNode', ({ node }) => {
+    // A.20 — apenas captura intent de drag. Physics SÓ dispara quando o
+    // usuário move o mouse (mousemovebody abaixo). Click puro sem mover não
+    // bagunça mais o layout.
     drag = {
       node,
       pointer: {
@@ -516,13 +551,17 @@ async function main() {
     didDrag = false;
     container.style.cursor = 'grabbing';
     renderer.getCamera().disable();
-    runPhysics(4000);
   });
 
   renderer.getMouseCaptor().on('mousemovebody', (e) => {
     if (!drag) return;
     drag.pointer = renderer.viewportToGraph(e);
-    didDrag = true;
+    if (!didDrag) {
+      // A.20 — physics agora começa SÓ quando confirma drag real (primeiro
+      // movimento). Click sem arrastar nunca dispara physics.
+      didDrag = true;
+      runPhysics(4000);
+    }
     e.preventSigmaDefault();
     e.original.preventDefault();
     e.original.stopPropagation();
@@ -530,9 +569,11 @@ async function main() {
 
   const release = () => {
     if (drag) {
+      const wasDragging = didDrag;
       drag = null;
       container.style.cursor = '';
-      runPhysics(1500);
+      // A.20 — só roda settling se houve drag real.
+      if (wasDragging) runPhysics(1500);
     }
     renderer.getCamera().enable();
   };
@@ -653,6 +694,8 @@ async function main() {
       const input = document.getElementById('graph-search-input') as HTMLInputElement | null;
       if (input) input.value = '';
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
+      // A.20 — Reset agora também restaura o layout original (snapshot).
+      resetGraphLayout();
       renderer.refresh();
     },
   }, payload.nodes);

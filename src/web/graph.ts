@@ -60,7 +60,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
         <div class="graph-overlay-row graph-filter-header">
           <span>Domains</span>
-          <button class="graph-reset-btn" data-graph-action="reset-filters" title="Clear all filters">reset</button>
+          <button class="graph-reset-btn" data-graph-action="reset-filters" title="Limpa filtros e volta o grafo ao layout original">reset</button>
         </div>
         <div id="graph-legend" class="graph-chips" role="group" aria-label="Filter by domain"></div>
 
@@ -92,7 +92,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explicit
           <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.19</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.20</span>
         </div>
       </div>
 
