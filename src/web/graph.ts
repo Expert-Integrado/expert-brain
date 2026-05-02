@@ -110,22 +110,31 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         cursor: pointer;
       }
       .graph-active-filters button:hover { background: rgba(255,255,255,0.06); }
-      /* A.34 — Select de coloração com dropdown legível em dark mode.
-         color-scheme:dark instrui o browser a usar UI nativa escura;
-         estilo dos <option> garante fallback em SOs que ignoram a propriedade. */
-      .graph-color-select {
-        width: 100%;
-        padding: 4px 6px;
+      /* A.35 — Chips inline pra Coloração (substituiu <select>). */
+      .graph-color-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 4px;
+      }
+      .graph-color-chip {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 4px 8px;
+        font-size: 10px;
+        font-family: inherit;
         background: rgba(255,255,255,0.04);
         border: 1px solid rgba(255,255,255,0.1);
         border-radius: 4px;
-        color: #f4ecff;
-        font-size: 11px;
-        font-family: inherit;
-        color-scheme: dark;
+        color: rgba(255,255,255,0.65);
+        cursor: pointer;
+        transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        white-space: nowrap;
       }
-      .graph-color-select option {
-        background: #1a1a26;
+      .graph-color-chip:hover { background: rgba(255,255,255,0.08); color: #f4ecff; }
+      .graph-color-chip.active {
+        background: rgba(167, 139, 250, 0.2);
+        border-color: rgba(167, 139, 250, 0.6);
         color: #f4ecff;
       }
       /* A.31 — Cmd+K command palette */
@@ -313,18 +322,18 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="checkbox" id="similar-hide" />
             <span>Esconder</span>
           </label>
-          <!-- A.33 — color groups simplificado: select de modo (neutral/domain/kind/degree)
-               A.34 — fix dropdown branco: color-scheme:dark + estilo nos options. -->
-          <label class="graph-slider-label">
+          <!-- A.35 — chips inline pra Coloração (substituiu select; popup nativo
+               do <select> ignorava CSS em dark mode em vários browsers/SOs). -->
+          <div class="graph-slider-label">
             <span>Coloração das bolinhas</span>
-            <select id="color-mode" class="graph-color-select">
-              <option value="neutral">Neutra (cinza)</option>
-              <option value="domain">Por área</option>
-              <option value="kind">Por tipo</option>
-              <option value="degree">Por grau de conexão</option>
-            </select>
+            <div id="color-mode-chips" class="graph-color-chips" role="radiogroup" aria-label="Modo de coloração">
+              <button type="button" class="graph-color-chip active" data-color-mode="neutral">Neutra</button>
+              <button type="button" class="graph-color-chip" data-color-mode="domain">Por área</button>
+              <button type="button" class="graph-color-chip" data-color-mode="kind">Por tipo</button>
+              <button type="button" class="graph-color-chip" data-color-mode="degree">Por grau</button>
+            </div>
             <small class="graph-slider-help">Como as bolinhas são coloridas no grafo</small>
-          </label>
+          </div>
           <!-- A.32 — Suggested links toggle -->
           <div class="graph-suggested-row">
             <button id="suggested-toggle" type="button" data-graph-action="toggle-suggested">Mostrar conexões sugeridas</button>
@@ -381,7 +390,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explícita
           <span class="legend-swatch swatch-similar"></span> semântica
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.34</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.35</span>
         </div>
       </div>
 

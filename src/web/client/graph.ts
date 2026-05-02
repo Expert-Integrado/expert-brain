@@ -189,8 +189,8 @@ async function main() {
     searchQuery: '',
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
-    showColors: false, // A.33 — mantido pra compat (Restore default zera) mas substituído pelo colorMode
-    // A.33 — modos de coloração: 'neutral' | 'domain' | 'kind' | 'degree'
+    // A.35 — modo de coloração: 'neutral' | 'domain' | 'kind' | 'degree'.
+    // Substituiu o checkbox showColors antigo (removido).
     colorMode: 'neutral' as 'neutral' | 'domain' | 'kind' | 'degree',
     nodeSizeMult: 1,
     lineSizeMult: 1,
@@ -316,9 +316,13 @@ async function main() {
     octx.restore();
   }
 
+  // A.35 — unificado: um único listener afterRender pra todas as camadas
+  // 2D que sobrepõem a WebGL canvas (similar dashed, hover ring, suggested
+  // links). Reduz overhead de event dispatch e mantém ordem determinística.
   renderer.on('afterRender', () => {
     drawSimilarEdges();
     drawHoverRing();
+    drawSuggestedEdges();
   });
   renderer.on('resize', sizeOverlay);
 
@@ -736,8 +740,7 @@ async function main() {
     },
     onSimilarOpacity: (v) => { state.similarOpacity = v; renderer.refresh(); },
     onSimilarHide: (hide) => { state.hideSimilar = hide; (window as any).__updateActiveFilters?.(); renderer.refresh(); },
-    onShowColors: (show) => { state.showColors = show; renderer.refresh(); },
-    // A.33
+    // A.33/A.35 — color mode (substitui onShowColors removido).
     onColorMode: (mode) => {
       state.colorMode = (['neutral','domain','kind','degree'].includes(mode) ? mode : 'neutral') as any;
       renderer.refresh();
@@ -767,7 +770,6 @@ async function main() {
       state.hideOrphans = false;
       state.hideSimilar = false;
       state.similarOpacity = 0.18;
-      state.showColors = false;
       state.colorMode = 'neutral';
       // 2. Display
       state.nodeSizeMult = 1;
@@ -794,7 +796,6 @@ async function main() {
       setVal('graph-search-input', '');
       setVal('similar-opacity', 18);
       setCheck('similar-hide', false);
-      setCheck('show-colors', false);
       setCheck('hide-orphans', false);
       setVal('node-size-mult', 1);
       setVal('line-size-mult', 1);
@@ -803,7 +804,10 @@ async function main() {
       setVal('force-repel', FORCE_DEFAULTS.repel);
       setVal('force-link', FORCE_DEFAULTS.link);
       setVal('force-distance', FORCE_DEFAULTS.distance);
-      setVal('color-mode', 'neutral');
+      // A.35 — chips de coloração: remove active, ativa o "neutral"
+      document.querySelectorAll('.graph-color-chip').forEach((el) => {
+        el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === 'neutral');
+      });
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
       (window as any).__updateActiveFilters?.();
       renderer.refresh();
@@ -965,8 +969,7 @@ async function main() {
     }
     octx.restore();
   }
-  // Hook: roda depois de drawSimilarEdges (que já é chamado no afterRender).
-  renderer.on('afterRender', () => { drawSuggestedEdges(); });
+  // afterRender unificado em um único listener (ver acima).
 
   function toggleSuggestedLinks() {
     suggestedActive = !suggestedActive;
@@ -1255,7 +1258,6 @@ interface ControlCallbacks {
   onKindToggle: (kind: string, active: boolean) => void;
   onSimilarOpacity: (v: number) => void;
   onSimilarHide: (hide: boolean) => void;
-  onShowColors: (show: boolean) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
@@ -1320,10 +1322,16 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   if (hide) {
     hide.addEventListener('change', () => cb.onSimilarHide(hide.checked));
   }
-  const colorsToggle = document.getElementById('show-colors') as HTMLInputElement | null;
-  if (colorsToggle) {
-    colorsToggle.addEventListener('change', () => cb.onShowColors(colorsToggle.checked));
-  }
+  // A.35 — chips de Coloração das bolinhas (substituiu select)
+  const colorChips = document.querySelectorAll('.graph-color-chip');
+  colorChips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const mode = (chip as HTMLElement).dataset.colorMode;
+      if (!mode) return;
+      colorChips.forEach((c) => c.classList.toggle('active', c === chip));
+      cb.onColorMode(mode);
+    });
+  });
 
   // A.22 — Display sliders + Forces sliders + hide orphans
   const wireSlider = (id: string, fn: (v: number) => void) => {
@@ -1342,12 +1350,6 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   if (hideOrphans) {
     hideOrphans.addEventListener('change', () => cb.onHideOrphans(hideOrphans.checked));
   }
-  // A.33 — color mode select
-  const colorMode = document.getElementById('color-mode') as HTMLSelectElement | null;
-  if (colorMode) {
-    colorMode.addEventListener('change', () => cb.onColorMode(colorMode.value));
-  }
-
   // Populate kind chips from nodes that carry `kind`
   const kindsEl = document.getElementById('graph-kinds');
   if (kindsEl) {
