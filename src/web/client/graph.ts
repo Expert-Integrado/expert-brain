@@ -60,7 +60,7 @@ async function main() {
     fetch('/app/graph/meta', { credentials: 'same-origin' }),
   ]);
   if (!graphRes.ok) {
-    setStatus('Failed to load graph');
+    setStatus('Falha ao carregar grafo');
     return;
   }
   const payload = (await graphRes.json()) as Payload;
@@ -126,7 +126,7 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // Status + legend
   // ────────────────────────────────────────────────────────────────────────
-  setStatus(`${payload.nodes.length} notes · ${explicitCount} explicit · ${similarCount} similar`);
+  setStatus(`${payload.nodes.length} notas · ${explicitCount} ligações explícitas · ${similarCount} semânticas`);
 
   renderLegend(payload.nodes);
 
@@ -643,12 +643,12 @@ async function main() {
     graph.forEachNeighbor(nodeId, (n) => neighbors.add(n));
 
     panel.innerHTML = `
-      <button class="panel-close" aria-label="Close panel">×</button>
-      <div class="panel-meta">${kindBadge}<span class="panel-degree">${neighbors.size} connections</span></div>
+      <button class="panel-close" aria-label="Fechar painel">×</button>
+      <div class="panel-meta">${kindBadge}<span class="panel-degree">${neighbors.size} ${neighbors.size === 1 ? 'conexão' : 'conexões'}</span></div>
       <h2 class="panel-title">${esc(title)}</h2>
       <div class="panel-chips">${domainChips}</div>
       ${tldrBlock}
-      <a class="panel-open" href="/app/notes/${encodeURIComponent(nodeId)}">Open full note →</a>
+      <a class="panel-open" href="/app/notes/${encodeURIComponent(nodeId)}">Abrir nota completa →</a>
     `;
     panel.classList.add('open');
     panel.querySelector('.panel-close')?.addEventListener('click', closePanel, { once: true });
@@ -769,7 +769,8 @@ async function main() {
     },
   }, payload.nodes);
 
-  // Keyboard: Esc closes panel; / focuses search
+  // Keyboard: Esc closes panel; / focuses search.
+  // A.30 — fix #7 do Conselho: "/" só ativa fora de input/textarea/contentEditable.
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closePanel();
     if (e.key === '/' && !isTypingInInput()) {
@@ -777,6 +778,39 @@ async function main() {
       if (input) { e.preventDefault(); input.focus(); }
     }
   });
+
+  // A.30 — Indicador de filtros ativos no topo do overlay (Contrário).
+  // Atualiza sempre que filtros mudam pra que usuário não ache que "quebrou"
+  // quando o grafo fica vazio.
+  function updateActiveFiltersIndicator() {
+    const el = document.getElementById('graph-active-filters');
+    const text = document.getElementById('graph-active-filters-text');
+    if (!el || !text) return;
+    const parts: string[] = [];
+    if (state.searchQuery) parts.push(`busca "${state.searchQuery}"`);
+    if (state.domainFilter && state.domainFilter.size > 0) {
+      parts.push(`${state.domainFilter.size} ${state.domainFilter.size === 1 ? 'área' : 'áreas'}`);
+    }
+    if (state.kindFilter && state.kindFilter.size > 0) {
+      parts.push(`${state.kindFilter.size} ${state.kindFilter.size === 1 ? 'tipo' : 'tipos'}`);
+    }
+    if (state.hideOrphans) parts.push('isoladas escondidas');
+    if (state.hideSimilar) parts.push('semânticas escondidas');
+    if (parts.length === 0) {
+      el.classList.remove('show');
+    } else {
+      text.textContent = `Filtrando: ${parts.join(', ')}`;
+      el.classList.add('show');
+    }
+  }
+  // Wrap state setters via Proxy seria over-engineering; chamada explícita
+  // nos handlers já cobre os pontos de mudança.
+  const _origRefresh = renderer.refresh.bind(renderer);
+  (renderer as any).refresh = function () {
+    updateActiveFiltersIndicator();
+    return _origRefresh();
+  };
+  updateActiveFiltersIndicator();
 }
 
 function isTypingInInput(): boolean {
@@ -954,6 +988,8 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
       if (action === 'zoom-out') cb.onZoomOut();
       if (action === 'fit') cb.onFit();
       if (action === 'reset-all') cb.onResetAll();
+      // A.30 — botão "Limpar" do indicador de filtros ativos
+      if (action === 'clear-filters') cb.onResetAll();
     }
   });
 
@@ -1025,5 +1061,5 @@ function ensurePanel(): HTMLElement {
 
 main().catch((err) => {
   console.error(err);
-  setStatus('Error loading graph');
+  setStatus('Erro ao carregar grafo');
 });

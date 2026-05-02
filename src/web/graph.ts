@@ -77,6 +77,39 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         padding: 6px 10px;
         font-size: 11px;
       }
+      /* A.30 — Microcopy embaixo dos sliders (Forasteiro: sem isso, tradução é teatro). */
+      .graph-slider-help {
+        display: block;
+        margin-top: 1px;
+        font-size: 10px;
+        color: rgba(255,255,255,0.4);
+        line-height: 1.3;
+      }
+      /* A.30 — Indicador de filtro ativo no topo (Contrário: crítico pós-A.29). */
+      .graph-active-filters {
+        display: none;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        margin: 4px 0;
+        font-size: 11px;
+        background: rgba(167, 139, 250, 0.12);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        border-radius: 6px;
+        color: rgba(220, 200, 255, 0.95);
+      }
+      .graph-active-filters.show { display: flex; }
+      .graph-active-filters button {
+        margin-left: auto;
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.2);
+        color: rgba(255,255,255,0.85);
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      .graph-active-filters button:hover { background: rgba(255,255,255,0.06); }
     </style>
 
     <div class="graph-wrap">
@@ -90,104 +123,119 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             type="search"
             id="graph-search-input"
             class="graph-search-input"
-            placeholder="Search notes (press / to focus, Enter to jump)"
+            placeholder="Buscar notas (/ pra focar, Enter pra abrir)"
             autocomplete="off"
             spellcheck="false"
+            aria-label="Buscar notas"
           />
         </div>
 
-        <div id="graph-count" class="graph-overlay-row graph-status">Loading...</div>
+        <div id="graph-count" class="graph-overlay-row graph-status">Carregando...</div>
 
-        <div class="graph-overlay-row graph-filter-header">Domains</div>
-        <div id="graph-legend" class="graph-chips" role="group" aria-label="Filter by domain"></div>
+        <!-- A.30 — Indicador de filtro ativo (Contrário: crítico pra leigo não achar que "quebrou"). -->
+        <div id="graph-active-filters" class="graph-active-filters" aria-live="polite">
+          <span id="graph-active-filters-text">Sem filtros</span>
+          <button data-graph-action="clear-filters" type="button">Limpar</button>
+        </div>
 
-        <div class="graph-overlay-row graph-filter-header">Kinds</div>
-        <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filter by kind"></div>
+        <div class="graph-overlay-row graph-filter-header">Áreas</div>
+        <div id="graph-legend" class="graph-chips" role="group" aria-label="Filtrar por área"></div>
 
-        <!-- A.29 — Hide orphans veio pra cá (era em Display, mas é filtro) -->
+        <div class="graph-overlay-row graph-filter-header">Tipos</div>
+        <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filtrar por tipo"></div>
+
         <label class="graph-check-label graph-orphans-toggle">
           <input type="checkbox" id="hide-orphans" />
-          <span>Hide orphans</span>
+          <span>Esconder isoladas</span>
         </label>
 
-        <div class="graph-overlay-row graph-similar-controls">
+        <details class="graph-section" open>
+          <summary class="graph-section-summary">Notas parecidas</summary>
           <label class="graph-slider-label">
-            <span>Similar edges</span>
+            <span>Intensidade</span>
             <input
               type="range"
               id="similar-opacity"
               min="0"
               max="100"
               value="18"
-              aria-label="Similar edge opacity"
+              aria-label="Intensidade das linhas semânticas"
             />
+            <small class="graph-slider-help">Linhas que conectam notas semanticamente parecidas</small>
           </label>
           <label class="graph-check-label">
             <input type="checkbox" id="similar-hide" />
-            <span>Hide</span>
+            <span>Esconder</span>
           </label>
           <label class="graph-check-label">
             <input type="checkbox" id="show-colors" />
-            <span>Color by domain</span>
+            <span>Colorir bolinhas por área</span>
           </label>
-        </div>
+        </details>
 
+        <!-- A.30 — Forces aberto / Display fechado (Contrário: power-user mexe em forças, não em display) -->
         <details class="graph-section" open>
-          <summary class="graph-section-summary">Display</summary>
+          <summary class="graph-section-summary">Forças</summary>
           <label class="graph-slider-label">
-            <span>Node size</span>
-            <input type="range" id="node-size-mult" min="0.3" max="3" step="0.1" value="1" />
+            <span>Quão centralizado</span>
+            <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.1" aria-label="Força de centralização" />
+            <small class="graph-slider-help">Puxa o grafo todo pro centro da tela</small>
           </label>
           <label class="graph-slider-label">
-            <span>Line thickness</span>
-            <input type="range" id="line-size-mult" min="0" max="3" step="0.1" value="1" aria-label="Explicit edge thickness multiplier" />
+            <span>Quanto se repelem</span>
+            <input type="range" id="force-repel" min="0" max="20" step="0.1" value="10" aria-label="Força de repulsão" />
+            <small class="graph-slider-help">Afasta as bolinhas umas das outras</small>
           </label>
           <label class="graph-slider-label">
-            <span>Text fade</span>
-            <input type="range" id="text-fade-mult" min="-3" max="3" step="0.1" value="0" />
+            <span>Força das ligações</span>
+            <input type="range" id="force-link" min="0" max="1" step="0.01" value="1" aria-label="Força do link" />
+            <small class="graph-slider-help">Quão firme as linhas puxam as bolinhas conectadas</small>
+          </label>
+          <label class="graph-slider-label">
+            <span>Comprimento das ligações</span>
+            <input type="range" id="force-distance" min="30" max="500" step="5" value="250" aria-label="Distância do link" />
+            <small class="graph-slider-help">Distância natural entre bolinhas conectadas</small>
           </label>
         </details>
 
         <details class="graph-section">
-          <summary class="graph-section-summary">Forces</summary>
+          <summary class="graph-section-summary">Visual</summary>
           <label class="graph-slider-label">
-            <span>Center force</span>
-            <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.1" />
+            <span>Tamanho das bolinhas</span>
+            <input type="range" id="node-size-mult" min="0.3" max="3" step="0.1" value="1" aria-label="Tamanho dos nós" />
+            <small class="graph-slider-help">Multiplicador global do tamanho dos nós</small>
           </label>
           <label class="graph-slider-label">
-            <span>Repel force</span>
-            <input type="range" id="force-repel" min="0" max="20" step="0.1" value="10" />
+            <span>Espessura das linhas</span>
+            <input type="range" id="line-size-mult" min="0" max="3" step="0.1" value="1" aria-label="Espessura das linhas explícitas" />
+            <small class="graph-slider-help">Espessura das ligações explícitas (links justificados)</small>
           </label>
           <label class="graph-slider-label">
-            <span>Link force</span>
-            <input type="range" id="force-link" min="0" max="1" step="0.01" value="1" />
-          </label>
-          <label class="graph-slider-label">
-            <span>Link distance</span>
-            <input type="range" id="force-distance" min="30" max="500" step="5" value="250" />
+            <span>Aparição dos rótulos</span>
+            <input type="range" id="text-fade-mult" min="-3" max="3" step="0.1" value="0" aria-label="Fade do texto" />
+            <small class="graph-slider-help">Quão cedo os nomes das notas aparecem ao dar zoom</small>
           </label>
         </details>
 
-        <!-- A.29 — único Reset no fim do overlay (igual Obsidian "Restore default settings"). -->
-        <button class="graph-reset-btn graph-reset-all" data-graph-action="reset-all" title="Reseta filtros, display, forces e posições para os valores iniciais">Restore default</button>
+        <button class="graph-reset-btn graph-reset-all" data-graph-action="reset-all" title="Volta filtros, visual, forças e posições para o estado inicial">Restaurar padrão</button>
 
         <div class="graph-legend-line">
-          <span class="legend-swatch swatch-explicit"></span> explicit
-          <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.29</span>
+          <span class="legend-swatch swatch-explicit"></span> explícita
+          <span class="legend-swatch swatch-similar"></span> semântica
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.30</span>
         </div>
       </div>
 
       <!-- RIGHT FLOATING: zoom controls -->
-      <div class="graph-zoom-controls" role="group" aria-label="Zoom controls">
-        <button class="graph-zoom-btn" data-graph-action="zoom-in" title="Zoom in" aria-label="Zoom in">+</button>
-        <button class="graph-zoom-btn" data-graph-action="zoom-out" title="Zoom out" aria-label="Zoom out">&minus;</button>
-        <button class="graph-zoom-btn graph-zoom-fit" data-graph-action="fit" title="Fit to screen" aria-label="Fit to screen">
+      <div class="graph-zoom-controls" role="group" aria-label="Controles de zoom">
+        <button class="graph-zoom-btn" data-graph-action="zoom-in" title="Aproximar" aria-label="Aproximar">+</button>
+        <button class="graph-zoom-btn" data-graph-action="zoom-out" title="Afastar" aria-label="Afastar">&minus;</button>
+        <button class="graph-zoom-btn graph-zoom-fit" data-graph-action="fit" title="Ajustar à tela" aria-label="Ajustar à tela">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         </button>
       </div>
 
-      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Knowledge graph"></div>
+      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento"></div>
     </div>
 
     <script src="/app/graph/bundle.js?v=${Date.now()}" defer></script>
