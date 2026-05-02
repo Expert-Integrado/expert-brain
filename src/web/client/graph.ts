@@ -112,10 +112,10 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.28 — size base 1; ambos size e color são reescritos no edgeReducer
-        // de acordo com state.lineIntensity (slider Line thickness).
-        size: 1,
-        color: 'rgba(0, 0, 0, 0)',
+        // A.29 — base size + cor pré-multiplicada fixa (alpha 25%).
+        // Slider Line thickness é multiplier puro sobre `size` (igual Obsidian).
+        size: 1.5,
+        color: 'rgba(64, 64, 64, 0.25)',
       });
     } else {
       similarCount++;
@@ -189,13 +189,12 @@ async function main() {
     searchQuery: '',
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
-    showColors: false, // A.6 — toggle Obsidian-faithful default OFF
-    // A.22 — Display options (Obsidian-style sliders)
+    showColors: false,
+    // A.22/A.29 — Display options. A.29 — line thickness voltou pra
+    // multiplier puro (não combina mais alpha+size — fugiu do mental model).
     nodeSizeMult: 1,
-    // A.28 — lineIntensity: 0..1 (slider 0..100), controla alpha+size juntos
-    // Igual à proporção do "Similar edges": 0 = invisível, 1 = máximo visível.
-    lineIntensity: 0.5,
-    textFadeMult: 0,        // -3..3, 0 = default Obsidian
+    lineSizeMult: 1,
+    textFadeMult: 0,
     hideOrphans: false,
   };
 
@@ -397,16 +396,10 @@ async function main() {
   });
 
   renderer.setSetting('edgeReducer', (edge, attrs) => {
-    // A.28 — slider Line thickness (state.lineIntensity 0..1) controla alpha
-    // E size juntos. RGB pré-multiplicado pelo alpha (Sigma usa premultiplied
-    // blending; ver bug A.17 no status doc).
+    // A.29 — Line thickness é multiplier puro (igual Obsidian). Cor base fica
+    // fixa (rgba pré-multiplicado 25%); só size escala com slider.
     const [s, t] = graph.extremities(edge);
-    const intensity = state.lineIntensity;
-    const baseSize = 0.8 + intensity * 3.2;        // 0.8 → 4
-    const baseAlpha = intensity * 0.7;             // 0 → 0.7
-    const rgb = Math.round(255 * baseAlpha);
-    const baseColor = `rgba(${rgb}, ${rgb}, ${rgb}, ${baseAlpha})`;
-
+    const baseSize = (attrs.size as number) * state.lineSizeMult;
     if (!isNodeActive(s) || !isNodeActive(t)) {
       return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize, hidden: true };
     }
@@ -416,21 +409,25 @@ async function main() {
         ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: baseSize * 1.6 }
         : { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize };
     }
-    return { ...attrs, color: baseColor, size: baseSize };
+    return { ...attrs, size: baseSize };
   });
 
   // ────────────────────────────────────────────────────────────────────────
   // A.24 — Physics: D3-force em Web Worker dedicado
-  // A.25 — mapping refeito: repel forte (Obsidian-grade), forceCollide com
-  //         raio = node size + padding (nós grandes empurram mais).
+  // A.29 — defaults e ranges alinhados com Obsidian:
+  //   center: 0..1   default 0.1  (forceCenter strength sutil)
+  //   repel:  0..20  default 10   (forceManyBody strength magnitude)
+  //   link:   0..1   default 1    (forceLink strength)
+  //   distance: 30..500 default 250 (forceLink distance)
   // ────────────────────────────────────────────────────────────────────────
-  const FORCE_DEFAULTS = { center: 0.5, repel: 18, link: 1 };
-  function mapForces(o: { center: number; repel: number; link: number }) {
+  const FORCE_DEFAULTS = { center: 0.1, repel: 10, link: 1, distance: 250 };
+  function mapForces(o: { center: number; repel: number; link: number; distance: number }) {
     return {
-      center: o.center * 0.08,        // A.26: subiu pra puxar mais ao centro (evita explosão de escala)
-      repel: o.repel * 40,            // A.26: era *80 (explodia escala). 18 → 720 — mais contido
-      link: Math.min(2, o.link),
-      distance: Math.max(40, 120 - o.repel * 1.5),
+      // Slider Obsidian-like → parâmetros que o worker D3-force consome.
+      center: o.center * 0.5,         // 0.1 → 0.05 forceCenter strength
+      repel: o.repel * 50,            // 10 → 500 forceManyBody magnitude
+      link: o.link,                   // direto
+      distance: o.distance,           // direto
     };
   }
   let currentForces = { ...FORCE_DEFAULTS };
@@ -498,7 +495,7 @@ async function main() {
     forces: mapForces(currentForces),
   });
 
-  function setForces(o: { center?: number; repel?: number; link?: number }) {
+  function setForces(o: { center?: number; repel?: number; link?: number; distance?: number }) {
     currentForces = { ...currentForces, ...o };
     worker.postMessage({
       type: 'forces',
@@ -712,37 +709,63 @@ async function main() {
     onFit: () => {
       renderer.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1.05 }, { duration: 400 });
     },
-    onResetFilters: () => {
+    // A.22 + A.29 — Display
+    onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
+    onLineSizeMult: (v) => { state.lineSizeMult = v; renderer.refresh(); },
+    onTextFadeMult: (v) => { state.textFadeMult = v; renderer.refresh(); },
+    onHideOrphans: (hide) => { state.hideOrphans = hide; renderer.refresh(); },
+    // A.29 — Forces (live, ranges Obsidian-like)
+    onForceCenter: (v) => setForces({ center: v }),
+    onForceRepel: (v) => setForces({ repel: v }),
+    onForceLink: (v) => setForces({ link: v }),
+    onForceDistance: (v) => setForces({ distance: v }),
+    // A.29 — único Reset que reseta TUDO: filters, display, forces, layout.
+    onResetAll: () => {
+      // 1. Filters
       state.domainFilter = null;
       state.kindFilter = null;
       state.searchQuery = '';
       state.searchMatches = new Set();
-      const input = document.getElementById('graph-search-input') as HTMLInputElement | null;
-      if (input) input.value = '';
-      document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
-      // A.20 — Reset agora também restaura o layout original (snapshot).
+      state.hideOrphans = false;
+      state.hideSimilar = false;
+      state.similarOpacity = 0.18;
+      state.showColors = false;
+      // 2. Display
+      state.nodeSizeMult = 1;
+      state.lineSizeMult = 1;
+      state.textFadeMult = 0;
+      // 3. Forces (volta pros defaults Obsidian-like)
+      currentForces = { ...FORCE_DEFAULTS };
+      worker.postMessage({
+        type: 'forces',
+        forces: mapForces(currentForces),
+        alpha: 0.5,
+      });
+      // 4. Layout (snapshot inicial)
       resetGraphLayout();
-      renderer.refresh();
-    },
-    // A.22 — Display
-    onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
-    // A.28 — slider Line thickness vai de 0 a 100 → state.lineIntensity 0..1
-    onLineSizeMult: (v) => { state.lineIntensity = v / 100; renderer.refresh(); },
-    onTextFadeMult: (v) => { state.textFadeMult = v; renderer.refresh(); },
-    onHideOrphans: (hide) => { state.hideOrphans = hide; renderer.refresh(); },
-    // A.22 — Forces (live)
-    onForceCenter: (v) => setForces({ center: v }),
-    onForceRepel: (v) => setForces({ repel: v }),
-    onForceLink: (v) => setForces({ link: v }),
-    onResetForces: () => {
-      setForces(FORCE_DEFAULTS);
-      const setVal = (id: string, v: number) => {
+      // 5. Sync HTML inputs/checkboxes
+      const setVal = (id: string, v: number | string) => {
         const el = document.getElementById(id) as HTMLInputElement | null;
         if (el) el.value = String(v);
       };
+      const setCheck = (id: string, c: boolean) => {
+        const el = document.getElementById(id) as HTMLInputElement | null;
+        if (el) el.checked = c;
+      };
+      setVal('graph-search-input', '');
+      setVal('similar-opacity', 18);
+      setCheck('similar-hide', false);
+      setCheck('show-colors', false);
+      setCheck('hide-orphans', false);
+      setVal('node-size-mult', 1);
+      setVal('line-size-mult', 1);
+      setVal('text-fade-mult', 0);
       setVal('force-center', FORCE_DEFAULTS.center);
       setVal('force-repel', FORCE_DEFAULTS.repel);
       setVal('force-link', FORCE_DEFAULTS.link);
+      setVal('force-distance', FORCE_DEFAULTS.distance);
+      document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
+      renderer.refresh();
     },
   }, payload.nodes);
 
@@ -885,8 +908,7 @@ interface ControlCallbacks {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFit: () => void;
-  onResetFilters: () => void;
-  // A.22 — Display + Forces
+  // A.22 + A.29 — Display + Forces
   onNodeSizeMult: (v: number) => void;
   onLineSizeMult: (v: number) => void;
   onTextFadeMult: (v: number) => void;
@@ -894,7 +916,9 @@ interface ControlCallbacks {
   onForceCenter: (v: number) => void;
   onForceRepel: (v: number) => void;
   onForceLink: (v: number) => void;
-  onResetForces: () => void;
+  onForceDistance: (v: number) => void;
+  // A.29 — único Restore default que reseta TUDO (filters, display, forces, layout).
+  onResetAll: () => void;
 }
 
 function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
@@ -929,8 +953,7 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
       if (action === 'zoom-in') cb.onZoomIn();
       if (action === 'zoom-out') cb.onZoomOut();
       if (action === 'fit') cb.onFit();
-      if (action === 'reset-filters') cb.onResetFilters();
-      if (action === 'reset-forces') cb.onResetForces();
+      if (action === 'reset-all') cb.onResetAll();
     }
   });
 
@@ -958,6 +981,7 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   wireSlider('force-center', cb.onForceCenter);
   wireSlider('force-repel', cb.onForceRepel);
   wireSlider('force-link', cb.onForceLink);
+  wireSlider('force-distance', cb.onForceDistance);
 
   const hideOrphans = document.getElementById('hide-orphans') as HTMLInputElement | null;
   if (hideOrphans) {

@@ -68,6 +68,15 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
       .graph-section .graph-slider-label input[type=range] { width: 100%; }
       .graph-section .graph-check-label { margin-top: 6px; }
       .graph-section .graph-reset-btn { margin-top: 8px; }
+      /* A.29 — Hide orphans + Restore default no fim */
+      .graph-orphans-toggle { display: flex; margin: 6px 0 4px; padding: 0 4px; }
+      .graph-reset-all {
+        display: block;
+        width: 100%;
+        margin-top: 12px;
+        padding: 6px 10px;
+        font-size: 11px;
+      }
     </style>
 
     <div class="graph-wrap">
@@ -89,14 +98,17 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
         <div id="graph-count" class="graph-overlay-row graph-status">Loading...</div>
 
-        <div class="graph-overlay-row graph-filter-header">
-          <span>Domains</span>
-          <button class="graph-reset-btn" data-graph-action="reset-filters" title="Limpa filtros e volta o grafo ao layout original">reset</button>
-        </div>
+        <div class="graph-overlay-row graph-filter-header">Domains</div>
         <div id="graph-legend" class="graph-chips" role="group" aria-label="Filter by domain"></div>
 
         <div class="graph-overlay-row graph-filter-header">Kinds</div>
         <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filter by kind"></div>
+
+        <!-- A.29 — Hide orphans veio pra cá (era em Display, mas é filtro) -->
+        <label class="graph-check-label graph-orphans-toggle">
+          <input type="checkbox" id="hide-orphans" />
+          <span>Hide orphans</span>
+        </label>
 
         <div class="graph-overlay-row graph-similar-controls">
           <label class="graph-slider-label">
@@ -128,15 +140,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           </label>
           <label class="graph-slider-label">
             <span>Line thickness</span>
-            <input type="range" id="line-size-mult" min="0" max="100" step="1" value="50" aria-label="Explicit edge intensity" />
+            <input type="range" id="line-size-mult" min="0" max="3" step="0.1" value="1" aria-label="Explicit edge thickness multiplier" />
           </label>
           <label class="graph-slider-label">
             <span>Text fade</span>
             <input type="range" id="text-fade-mult" min="-3" max="3" step="0.1" value="0" />
-          </label>
-          <label class="graph-check-label">
-            <input type="checkbox" id="hide-orphans" />
-            <span>Hide orphans</span>
           </label>
         </details>
 
@@ -144,23 +152,29 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           <summary class="graph-section-summary">Forces</summary>
           <label class="graph-slider-label">
             <span>Center force</span>
-            <input type="range" id="force-center" min="0" max="2" step="0.01" value="0.5" />
+            <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.1" />
           </label>
           <label class="graph-slider-label">
             <span>Repel force</span>
-            <input type="range" id="force-repel" min="1" max="100" step="1" value="18" />
+            <input type="range" id="force-repel" min="0" max="20" step="0.1" value="10" />
           </label>
           <label class="graph-slider-label">
-            <span>Link strength</span>
-            <input type="range" id="force-link" min="0" max="2" step="0.05" value="1" />
+            <span>Link force</span>
+            <input type="range" id="force-link" min="0" max="1" step="0.01" value="1" />
           </label>
-          <button class="graph-reset-btn" data-graph-action="reset-forces" title="Volta os forces ao default">restore default</button>
+          <label class="graph-slider-label">
+            <span>Link distance</span>
+            <input type="range" id="force-distance" min="30" max="500" step="5" value="250" />
+          </label>
         </details>
+
+        <!-- A.29 — único Reset no fim do overlay (igual Obsidian "Restore default settings"). -->
+        <button class="graph-reset-btn graph-reset-all" data-graph-action="reset-all" title="Reseta filtros, display, forces e posições para os valores iniciais">Restore default</button>
 
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explicit
           <span class="legend-swatch swatch-similar"></span> similar
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.28</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.29</span>
         </div>
       </div>
 
