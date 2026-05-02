@@ -187,6 +187,39 @@ export interface NoteMetaRow {
 // Lightweight metadata for the graph slide panel and client-side fuzzy search.
 // Kept out of the main graph payload so GRAPH_CACHE stays compact and this can
 // be refreshed independently without invalidating layout positions.
+// A.32 — POST /app/graph/link: cria edge explícita justificada (Latticework).
+// Aceita { source, target, why } e invalida cache.
+export async function handleGraphLink(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  let body: { source?: string; target?: string; why?: string };
+  try { body = await req.json(); } catch {
+    return new Response(JSON.stringify({ error: 'invalid json' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  }
+  const source = (body.source || '').trim();
+  const target = (body.target || '').trim();
+  const why = (body.why || '').trim();
+  if (!source || !target || source === target) {
+    return new Response(JSON.stringify({ error: 'source and target required and must differ' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  }
+  if (why.length < 8) {
+    return new Response(JSON.stringify({ error: 'why minimum 8 characters' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  }
+  // Verifica que ambas notas existem
+  const exists = await env.DB.prepare(`SELECT id FROM notes WHERE id IN (?, ?)`).bind(source, target).all<{ id: string }>();
+  if ((exists.results?.length ?? 0) < 2) {
+    return new Response(JSON.stringify({ error: 'one or both notes not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
+  }
+  const id = `e_manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO edges (id, from_id, to_id, relation_type, why, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).bind(id, source, target, 'related-to', why, Date.now()).run();
+  // Invalida cache do graph
+  await env.GRAPH_CACHE.delete(CACHE_KEY);
+  return new Response(JSON.stringify({ ok: true, id }), { headers: { 'content-type': 'application/json' } });
+}
+
 export async function handleGraphMeta(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;

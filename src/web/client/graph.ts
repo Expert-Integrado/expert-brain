@@ -769,14 +769,294 @@ async function main() {
     },
   }, payload.nodes);
 
-  // Keyboard: Esc closes panel; / focuses search.
-  // A.30 — fix #7 do Conselho: "/" só ativa fora de input/textarea/contentEditable.
+  // Keyboard: Esc closes panel; / focuses search; Cmd/Ctrl+K opens palette.
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closePanel();
+    // A.31 — Cmd+K (Mac) / Ctrl+K (Windows) abre palette
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openPalette();
+      return;
+    }
+    if (e.key === 'Escape') {
+      const palette = document.getElementById('graph-palette-backdrop');
+      if (palette?.classList.contains('open')) { closePalette(); return; }
+      const suggest = document.getElementById('graph-suggest-modal-backdrop');
+      if (suggest?.classList.contains('open')) { closeSuggestModal(); return; }
+      closePanel();
+    }
     if (e.key === '/' && !isTypingInInput()) {
       const input = document.getElementById('graph-search-input') as HTMLInputElement | null;
       if (input) { e.preventDefault(); input.focus(); }
     }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // A.31 — Cmd+K command palette
+  // ────────────────────────────────────────────────────────────────────────
+  let paletteIdx = 0;
+  let paletteResults: Array<{ id: string; label: string; domain: string; tldr?: string }> = [];
+
+  function openPalette() {
+    const bd = document.getElementById('graph-palette-backdrop');
+    const inp = document.getElementById('graph-palette-input') as HTMLInputElement | null;
+    if (!bd || !inp) return;
+    bd.classList.add('open');
+    inp.value = '';
+    renderPaletteResults('');
+    setTimeout(() => inp.focus(), 0);
+  }
+  function closePalette() {
+    const bd = document.getElementById('graph-palette-backdrop');
+    if (bd) bd.classList.remove('open');
+  }
+  function renderPaletteResults(query: string) {
+    const list = document.getElementById('graph-palette-list');
+    if (!list) return;
+    if (!query.trim()) {
+      // Top 12 notas por degree (hubs principais) quando vazio
+      const hubs = [...payload.nodes]
+        .map((n) => ({ ...n, deg: degreeById.get(n.id) ?? 0 }))
+        .sort((a, b) => b.deg - a.deg)
+        .slice(0, 12);
+      paletteResults = hubs.map((n) => ({ id: n.id, label: n.label, domain: n.domain, tldr: meta.get(n.id)?.tldr }));
+    } else {
+      const hits = fuse.search(query, { limit: 30 });
+      paletteResults = hits.map((h) => ({ id: h.item.id, label: h.item.label, domain: h.item.domain, tldr: meta.get(h.item.id)?.tldr }));
+    }
+    paletteIdx = 0;
+    if (paletteResults.length === 0) {
+      list.innerHTML = '<li class="graph-palette-empty">Nenhuma nota encontrada</li>';
+      return;
+    }
+    list.innerHTML = paletteResults
+      .map((r, i) => `
+        <li class="graph-palette-item${i === 0 ? ' active' : ''}" data-idx="${i}" data-id="${esc(r.id)}">
+          <span class="graph-palette-item-title">${esc(r.label)}</span>
+          <span class="graph-palette-item-meta">${esc(r.domain)}${r.tldr ? ' · ' + esc(r.tldr.slice(0, 80)) : ''}</span>
+        </li>
+      `)
+      .join('');
+  }
+  function paletteSelect(idx: number) {
+    if (idx < 0 || idx >= paletteResults.length) return;
+    const r = paletteResults[idx];
+    closePalette();
+    focusNode(r.id);
+  }
+  function paletteMove(delta: number) {
+    if (paletteResults.length === 0) return;
+    paletteIdx = (paletteIdx + delta + paletteResults.length) % paletteResults.length;
+    const items = document.querySelectorAll('.graph-palette-item');
+    items.forEach((el, i) => {
+      el.classList.toggle('active', i === paletteIdx);
+      if (i === paletteIdx) (el as HTMLElement).scrollIntoView({ block: 'nearest' });
+    });
+  }
+  const paletteInp = document.getElementById('graph-palette-input') as HTMLInputElement | null;
+  if (paletteInp) {
+    paletteInp.addEventListener('input', () => renderPaletteResults(paletteInp.value));
+    paletteInp.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown') { e.preventDefault(); paletteMove(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); paletteMove(-1); }
+      else if (e.key === 'Enter') { e.preventDefault(); paletteSelect(paletteIdx); }
+    });
+  }
+  document.getElementById('graph-palette-list')?.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement).closest('.graph-palette-item') as HTMLElement | null;
+    if (!item) return;
+    paletteSelect(Number(item.dataset.idx));
+  });
+  document.getElementById('graph-palette-backdrop')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closePalette();
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // A.32 — Suggested links layer + create modal
+  // ────────────────────────────────────────────────────────────────────────
+  let suggestedActive = false;
+  let suggestedPairs: Array<{ source: string; target: string; score: number }> = [];
+  let suggestModalState: { source: string; target: string } | null = null;
+
+  // Pré-computa pares: pega edges 'similar' do payload, filtra os que NÃO têm
+  // edge 'explicit' já existente, e ordena por score desc.
+  const explicitPairs = new Set<string>();
+  for (const e of payload.edges) {
+    if (e.type !== 'explicit') continue;
+    const k = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
+    explicitPairs.add(k);
+  }
+  function computeSuggestedPairs(threshold = 0.78) {
+    const out: Array<{ source: string; target: string; score: number }> = [];
+    for (const e of payload.edges) {
+      if (e.type !== 'similar') continue;
+      const score = e.score ?? 0;
+      if (score < threshold) continue;
+      const k = e.source < e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`;
+      if (explicitPairs.has(k)) continue;
+      out.push({ source: e.source, target: e.target, score });
+    }
+    return out.sort((a, b) => b.score - a.score).slice(0, 60);
+  }
+  suggestedPairs = computeSuggestedPairs();
+
+  function drawSuggestedEdges() {
+    if (!suggestedActive) return;
+    octx.save();
+    octx.lineWidth = 1.4;
+    octx.setLineDash([4, 4]);
+    octx.lineCap = 'round';
+    octx.strokeStyle = 'rgba(255, 200, 100, 0.55)';
+    for (const p of suggestedPairs) {
+      if (!graph.hasNode(p.source) || !graph.hasNode(p.target)) continue;
+      if (!isNodeActive(p.source) || !isNodeActive(p.target)) continue;
+      const a = renderer.graphToViewport({
+        x: graph.getNodeAttribute(p.source, 'x') as number,
+        y: graph.getNodeAttribute(p.source, 'y') as number,
+      });
+      const b = renderer.graphToViewport({
+        x: graph.getNodeAttribute(p.target, 'x') as number,
+        y: graph.getNodeAttribute(p.target, 'y') as number,
+      });
+      octx.beginPath();
+      octx.moveTo(a.x, a.y);
+      octx.lineTo(b.x, b.y);
+      octx.stroke();
+    }
+    octx.restore();
+  }
+  // Hook: roda depois de drawSimilarEdges (que já é chamado no afterRender).
+  renderer.on('afterRender', () => { drawSuggestedEdges(); });
+
+  function toggleSuggestedLinks() {
+    suggestedActive = !suggestedActive;
+    const btn = document.getElementById('suggested-toggle');
+    if (btn) {
+      btn.classList.toggle('active', suggestedActive);
+      btn.textContent = suggestedActive ? 'Esconder conexões sugeridas' : 'Mostrar conexões sugeridas';
+    }
+    renderer.refresh();
+  }
+
+  // Click em edge sugerida (canvas overlay): detecta proximidade do mouse com cada par
+  overlay.addEventListener('click', (e) => {
+    if (!suggestedActive) return;
+    const rect = overlay.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    let best: { p: typeof suggestedPairs[0]; d: number } | null = null;
+    for (const p of suggestedPairs) {
+      if (!graph.hasNode(p.source) || !graph.hasNode(p.target)) continue;
+      const a = renderer.graphToViewport({
+        x: graph.getNodeAttribute(p.source, 'x') as number,
+        y: graph.getNodeAttribute(p.source, 'y') as number,
+      });
+      const b = renderer.graphToViewport({
+        x: graph.getNodeAttribute(p.target, 'x') as number,
+        y: graph.getNodeAttribute(p.target, 'y') as number,
+      });
+      const d = pointToSegmentDistance(mx, my, a.x, a.y, b.x, b.y);
+      if (!best || d < best.d) best = { p, d };
+    }
+    if (best && best.d < 8) {
+      openSuggestModal(best.p.source, best.p.target);
+    }
+  });
+  // Pra que o overlay receba pointer events ao clicar (default é none pra não bloquear hover do Sigma).
+  // Solução: só ativa pointer-events quando suggestedActive E mouse não está em hover de nó.
+  // Implementação simples: overlay só vira clicável quando suggested está ON.
+  function syncOverlayPointer() {
+    overlay.style.pointerEvents = suggestedActive ? 'auto' : 'none';
+  }
+
+  function pointToSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+    const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = lenSq !== 0 ? dot / lenSq : -1;
+    param = Math.max(0, Math.min(1, param));
+    const xx = x1 + param * C, yy = y1 + param * D;
+    return Math.hypot(px - xx, py - yy);
+  }
+
+  function openSuggestModal(sourceId: string, targetId: string) {
+    const bd = document.getElementById('graph-suggest-modal-backdrop');
+    const fromEl = document.getElementById('suggest-from');
+    const toEl = document.getElementById('suggest-to');
+    const ta = document.getElementById('suggest-why') as HTMLTextAreaElement | null;
+    if (!bd || !fromEl || !toEl || !ta) return;
+    fromEl.textContent = graph.getNodeAttribute(sourceId, 'label') as string;
+    toEl.textContent = graph.getNodeAttribute(targetId, 'label') as string;
+    ta.value = '';
+    suggestModalState = { source: sourceId, target: targetId };
+    bd.classList.add('open');
+    setTimeout(() => ta.focus(), 0);
+  }
+  function closeSuggestModal() {
+    const bd = document.getElementById('graph-suggest-modal-backdrop');
+    if (bd) bd.classList.remove('open');
+    suggestModalState = null;
+  }
+  async function createSuggestedLink() {
+    if (!suggestModalState) return;
+    const ta = document.getElementById('suggest-why') as HTMLTextAreaElement | null;
+    const why = (ta?.value || '').trim();
+    if (!why) {
+      alert('Escreva uma justificativa pra ligação (POR QUÊ se conectam) — princípio Latticework.');
+      ta?.focus();
+      return;
+    }
+    const btn = document.getElementById('suggest-create-btn') as HTMLButtonElement | null;
+    if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
+    try {
+      const res = await fetch('/app/graph/link', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          source: suggestModalState.source,
+          target: suggestModalState.target,
+          why,
+        }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      // Adiciona edge no graph local sem precisar reload
+      const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      try {
+        graph.addEdgeWithKey(id, suggestModalState.source, suggestModalState.target, {
+          size: 1.5,
+          color: 'rgba(64, 64, 64, 0.25)',
+        });
+      } catch { /* duplicate */ }
+      // Remove o par da lista de sugeridos
+      const k = suggestModalState.source < suggestModalState.target
+        ? `${suggestModalState.source}|${suggestModalState.target}`
+        : `${suggestModalState.target}|${suggestModalState.source}`;
+      explicitPairs.add(k);
+      suggestedPairs = suggestedPairs.filter((p) => {
+        const pk = p.source < p.target ? `${p.source}|${p.target}` : `${p.target}|${p.source}`;
+        return pk !== k;
+      });
+      closeSuggestModal();
+      renderer.refresh();
+    } catch (err) {
+      console.error('createSuggestedLink failed', err);
+      alert('Erro ao criar ligação. Veja console.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Criar ligação'; }
+    }
+  }
+
+  document.getElementById('graph-suggest-modal-backdrop')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSuggestModal();
+  });
+  document.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const btn = target.closest('[data-graph-action]') as HTMLElement | null;
+    if (!btn) return;
+    const action = btn.dataset.graphAction;
+    if (action === 'toggle-suggested') { toggleSuggestedLinks(); syncOverlayPointer(); }
+    if (action === 'suggest-cancel') closeSuggestModal();
+    if (action === 'suggest-create') void createSuggestedLink();
   });
 
   // A.30 — Indicador de filtros ativos no topo do overlay (Contrário).

@@ -110,6 +110,134 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         cursor: pointer;
       }
       .graph-active-filters button:hover { background: rgba(255,255,255,0.06); }
+      /* A.31 — Cmd+K command palette */
+      .graph-palette-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+        z-index: 9000;
+        display: none;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 12vh;
+      }
+      .graph-palette-backdrop.open { display: flex; }
+      .graph-palette {
+        width: min(560px, 90vw);
+        max-height: 60vh;
+        background: rgba(20, 20, 26, 0.98);
+        border: 1px solid rgba(167, 139, 250, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .graph-palette-input {
+        width: 100%;
+        padding: 14px 16px;
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        color: #f4ecff;
+        font-size: 14px;
+        font-family: inherit;
+        outline: none;
+      }
+      .graph-palette-input::placeholder { color: rgba(255,255,255,0.35); }
+      .graph-palette-list {
+        list-style: none;
+        margin: 0;
+        padding: 4px 0;
+        overflow-y: auto;
+        flex: 1;
+      }
+      .graph-palette-item {
+        padding: 8px 16px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        border-left: 2px solid transparent;
+      }
+      .graph-palette-item.active {
+        background: rgba(167, 139, 250, 0.12);
+        border-left-color: rgba(167, 139, 250, 0.7);
+      }
+      .graph-palette-item-title { color: #f4ecff; font-size: 13px; }
+      .graph-palette-item-meta { color: rgba(255,255,255,0.45); font-size: 11px; }
+      .graph-palette-empty { padding: 16px; text-align: center; color: rgba(255,255,255,0.4); font-size: 12px; }
+      .graph-palette-hint {
+        padding: 6px 16px;
+        font-size: 10px;
+        color: rgba(255,255,255,0.4);
+        background: rgba(0,0,0,0.25);
+        border-top: 1px solid rgba(255,255,255,0.05);
+      }
+      /* A.32 — Botão "Mostrar conexões sugeridas" + lista de sugestões */
+      .graph-suggested-row { margin-top: 10px; }
+      .graph-suggested-row button {
+        width: 100%;
+        background: rgba(255, 200, 100, 0.08);
+        border: 1px dashed rgba(255, 200, 100, 0.4);
+        color: rgba(255, 220, 160, 0.9);
+        padding: 6px 10px;
+        font-size: 11px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .graph-suggested-row button:hover { background: rgba(255, 200, 100, 0.15); }
+      .graph-suggested-row button.active {
+        background: rgba(255, 200, 100, 0.18);
+        border-style: solid;
+      }
+      .graph-suggest-modal-backdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(4px);
+        z-index: 9100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+      .graph-suggest-modal-backdrop.open { display: flex; }
+      .graph-suggest-modal {
+        width: min(540px, 100%);
+        background: rgba(20, 20, 26, 0.98);
+        border: 1px solid rgba(255, 200, 100, 0.4);
+        border-radius: 12px;
+        padding: 20px;
+        color: #f4ecff;
+      }
+      .graph-suggest-modal h3 { margin: 0 0 4px; font-size: 14px; color: rgba(255, 220, 160, 0.95); }
+      .graph-suggest-modal .pair { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+      .graph-suggest-modal .pair span { flex: 1; font-size: 13px; padding: 6px 10px; background: rgba(255,255,255,0.04); border-radius: 6px; }
+      .graph-suggest-modal .arrow { color: rgba(255, 200, 100, 0.7); }
+      .graph-suggest-modal textarea {
+        width: 100%;
+        min-height: 80px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px;
+        color: #f4ecff;
+        padding: 8px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .graph-suggest-modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+      .graph-suggest-modal-actions button {
+        padding: 6px 14px; border-radius: 6px; font-size: 12px;
+        cursor: pointer; border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.05); color: #f4ecff;
+      }
+      .graph-suggest-modal-actions button.primary {
+        background: rgba(255, 200, 100, 0.2);
+        border-color: rgba(255, 200, 100, 0.5);
+      }
+      .graph-suggest-modal-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 
     <div class="graph-wrap">
@@ -171,6 +299,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="checkbox" id="show-colors" />
             <span>Colorir bolinhas por área</span>
           </label>
+          <!-- A.32 — Suggested links toggle -->
+          <div class="graph-suggested-row">
+            <button id="suggested-toggle" type="button" data-graph-action="toggle-suggested">Mostrar conexões sugeridas</button>
+            <small class="graph-slider-help">Linhas tracejadas amarelas mostrando pares de notas com alta similaridade que ainda não têm ligação explícita. Clique numa pra criar a ligação justificada.</small>
+          </div>
         </details>
 
         <!-- A.30 — Forces aberto / Display fechado (Contrário: power-user mexe em forças, não em display) -->
@@ -222,7 +355,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explícita
           <span class="legend-swatch swatch-similar"></span> semântica
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.30</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.32</span>
         </div>
       </div>
 
@@ -236,6 +369,43 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
       </div>
 
       <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento"></div>
+
+      <!-- A.31 — Cmd+K command palette -->
+      <div id="graph-palette-backdrop" class="graph-palette-backdrop" role="dialog" aria-label="Buscar nota">
+        <div class="graph-palette">
+          <input
+            id="graph-palette-input"
+            class="graph-palette-input"
+            type="search"
+            placeholder="Buscar por nome ou conteúdo... (↑↓ navega · Enter abre · Esc fecha)"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <ul id="graph-palette-list" class="graph-palette-list"></ul>
+          <div class="graph-palette-hint">⌘K / Ctrl+K abre · Enter teleporta a câmera + abre o painel da nota</div>
+        </div>
+      </div>
+
+      <!-- A.32 — Suggested links modal -->
+      <div id="graph-suggest-modal-backdrop" class="graph-suggest-modal-backdrop" role="dialog" aria-label="Sugestão de ligação">
+        <div class="graph-suggest-modal">
+          <h3>Conexão sugerida</h3>
+          <p style="font-size:12px; color:rgba(255,255,255,0.55); margin:0">Notas semanticamente próximas que ainda não têm ligação explícita. Edite a justificativa e crie a ligação se fizer sentido.</p>
+          <div class="pair">
+            <span id="suggest-from"></span>
+            <span class="arrow">↔</span>
+            <span id="suggest-to"></span>
+          </div>
+          <label style="font-size:11px; color:rgba(255,255,255,0.65); display:block;">
+            Por que se conectam?
+            <textarea id="suggest-why" placeholder="Ex: ambas tratam de filtros mentais que distorcem decisão"></textarea>
+          </label>
+          <div class="graph-suggest-modal-actions">
+            <button data-graph-action="suggest-cancel" type="button">Cancelar</button>
+            <button id="suggest-create-btn" data-graph-action="suggest-create" class="primary" type="button">Criar ligação</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="/app/graph/bundle.js?v=${Date.now()}" defer></script>

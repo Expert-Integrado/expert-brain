@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
-import { handleGraphData, handleGraphMeta } from './graph-data.js';
+import { handleGraphData, handleGraphMeta, handleGraphLink } from './graph-data.js';
 import { handleConfigPage, configPageScript } from './config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 
@@ -25,6 +25,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
   if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
+  if (path === '/app/graph/link' && req.method === 'POST') return handleGraphLink(req, env);
 
   // Bundle assets — no-cache pra evitar browser segurar JS antigo entre deploys.
   // Cache-busting via ?v=<timestamp> no <script src> também usado nas templates.
