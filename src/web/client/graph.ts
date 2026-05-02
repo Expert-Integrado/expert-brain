@@ -189,9 +189,9 @@ async function main() {
     searchQuery: '',
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
-    showColors: false,
-    // A.22/A.29 — Display options. A.29 — line thickness voltou pra
-    // multiplier puro (não combina mais alpha+size — fugiu do mental model).
+    showColors: false, // A.33 — mantido pra compat (Restore default zera) mas substituído pelo colorMode
+    // A.33 — modos de coloração: 'neutral' | 'domain' | 'kind' | 'degree'
+    colorMode: 'neutral' as 'neutral' | 'domain' | 'kind' | 'degree',
     nodeSizeMult: 1,
     lineSizeMult: 1,
     textFadeMult: 0,
@@ -260,7 +260,7 @@ async function main() {
 
     gctx.save();
     gctx.lineWidth = 1.2;
-    gctx.strokeStyle = state.showColors
+    gctx.strokeStyle = state.colorMode === 'domain'
       ? (attrs.domainColor as string) || '#ffffff'
       : 'rgba(255, 255, 255, 0.85)';
     gctx.beginPath();
@@ -325,6 +325,38 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // Reducers: apply filter + ego highlight + dynamic labels
   // ────────────────────────────────────────────────────────────────────────
+  // A.33 — paleta de cores por kind (alinhada a domain-colors mas distinta).
+  const KIND_COLORS: Record<string, string> = {
+    concept:    '#7dd3fc', // cyan-300
+    decision:   '#fbbf24', // amber-400
+    insight:    '#f472b6', // pink-400
+    fact:       '#94a3b8', // slate-400
+    pattern:    '#a78bfa', // violet-400
+    principle:  '#fb923c', // orange-400
+    question:   '#86efac', // green-300
+  };
+  // Gradiente de degree: 0 conexões = cinza, +20 = vermelho saturado.
+  function degreeColor(deg: number): string {
+    const t = Math.min(1, deg / 20);
+    const r = Math.round(120 + (240 - 120) * t);
+    const g = Math.round(120 + (80 - 120) * t);
+    const b = Math.round(140 + (80 - 140) * t);
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  function pickNodeColor(id: string, attrs: any): string {
+    const NEUTRAL = (attrs.color as string) || '#b8b8c8';
+    switch (state.colorMode) {
+      case 'domain': return (attrs.domainColor as string) || NEUTRAL;
+      case 'kind': {
+        const k = (attrs.kind as string) || '';
+        return KIND_COLORS[k] || NEUTRAL;
+      }
+      case 'degree': return degreeColor(degreeById.get(id) ?? 0);
+      case 'neutral':
+      default: return NEUTRAL;
+    }
+  }
+
   function isNodeActive(id: string): boolean {
     if (state.domainFilter && state.domainFilter.size > 0) {
       const d = graph.getNodeAttribute(id, 'domain') as string;
@@ -347,10 +379,8 @@ async function main() {
     const degree = degreeById.get(n) ?? 0;
     const active = isNodeActive(n);
 
-    // A.6 — cor base: saturada se toggle Cores está ON, cinza neutro se OFF
-    const baseColor = state.showColors
-      ? (attrs.domainColor as string) || (attrs.color as string)
-      : (attrs.color as string);
+    // A.33 — coloração baseada no modo selecionado.
+    const baseColor = pickNodeColor(n, attrs);
 
     // A.22 — multiplicador global de tamanho (slider Display > Node size).
     const baseSize = (attrs.size as number) * state.nodeSizeMult;
@@ -704,6 +734,11 @@ async function main() {
     onSimilarOpacity: (v) => { state.similarOpacity = v; renderer.refresh(); },
     onSimilarHide: (hide) => { state.hideSimilar = hide; renderer.refresh(); },
     onShowColors: (show) => { state.showColors = show; renderer.refresh(); },
+    // A.33
+    onColorMode: (mode) => {
+      state.colorMode = (['neutral','domain','kind','degree'].includes(mode) ? mode : 'neutral') as any;
+      renderer.refresh();
+    },
     onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 280 }),
     onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 280 }),
     onFit: () => {
@@ -730,6 +765,7 @@ async function main() {
       state.hideSimilar = false;
       state.similarOpacity = 0.18;
       state.showColors = false;
+      state.colorMode = 'neutral';
       // 2. Display
       state.nodeSizeMult = 1;
       state.lineSizeMult = 1;
@@ -764,6 +800,7 @@ async function main() {
       setVal('force-repel', FORCE_DEFAULTS.repel);
       setVal('force-link', FORCE_DEFAULTS.link);
       setVal('force-distance', FORCE_DEFAULTS.distance);
+      setVal('color-mode', 'neutral');
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
       renderer.refresh();
     },
@@ -1233,6 +1270,8 @@ interface ControlCallbacks {
   onForceDistance: (v: number) => void;
   // A.29 — único Restore default que reseta TUDO (filters, display, forces, layout).
   onResetAll: () => void;
+  // A.33 — modo de coloração
+  onColorMode: (mode: string) => void;
 }
 
 function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
@@ -1302,6 +1341,11 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   const hideOrphans = document.getElementById('hide-orphans') as HTMLInputElement | null;
   if (hideOrphans) {
     hideOrphans.addEventListener('change', () => cb.onHideOrphans(hideOrphans.checked));
+  }
+  // A.33 — color mode select
+  const colorMode = document.getElementById('color-mode') as HTMLSelectElement | null;
+  if (colorMode) {
+    colorMode.addEventListener('change', () => cb.onColorMode(colorMode.value));
   }
 
   // Populate kind chips from nodes that carry `kind`

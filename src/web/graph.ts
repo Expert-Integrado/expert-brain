@@ -295,9 +295,16 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="checkbox" id="similar-hide" />
             <span>Esconder</span>
           </label>
-          <label class="graph-check-label">
-            <input type="checkbox" id="show-colors" />
-            <span>Colorir bolinhas por área</span>
+          <!-- A.33 — color groups simplificado: select de modo (neutral/domain/kind/degree) -->
+          <label class="graph-slider-label">
+            <span>Coloração</span>
+            <select id="color-mode" style="width:100%; padding:4px 6px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#f4ecff; font-size:11px;">
+              <option value="neutral">Neutra (cinza)</option>
+              <option value="domain">Por área</option>
+              <option value="kind">Por tipo</option>
+              <option value="degree">Por grau de conexão</option>
+            </select>
+            <small class="graph-slider-help">Como as bolinhas são coloridas no grafo</small>
           </label>
           <!-- A.32 — Suggested links toggle -->
           <div class="graph-suggested-row">
@@ -355,7 +362,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explícita
           <span class="legend-swatch swatch-similar"></span> semântica
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.32</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.33</span>
         </div>
       </div>
 
