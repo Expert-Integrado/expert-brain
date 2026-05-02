@@ -710,6 +710,7 @@ async function main() {
         const hits = fuse.search(q, { limit: 20 });
         state.searchMatches = new Set(hits.map((h) => h.item.id));
       }
+      (window as any).__updateActiveFilters?.();
       renderer.refresh();
     },
     onSearchSubmit: (q) => {
@@ -722,6 +723,7 @@ async function main() {
       if (active) state.domainFilter.add(domain);
       else state.domainFilter.delete(domain);
       if (state.domainFilter.size === 0) state.domainFilter = null;
+      (window as any).__updateActiveFilters?.();
       renderer.refresh();
     },
     onKindToggle: (kind, active) => {
@@ -729,10 +731,11 @@ async function main() {
       if (active) state.kindFilter.add(kind);
       else state.kindFilter.delete(kind);
       if (state.kindFilter.size === 0) state.kindFilter = null;
+      (window as any).__updateActiveFilters?.();
       renderer.refresh();
     },
     onSimilarOpacity: (v) => { state.similarOpacity = v; renderer.refresh(); },
-    onSimilarHide: (hide) => { state.hideSimilar = hide; renderer.refresh(); },
+    onSimilarHide: (hide) => { state.hideSimilar = hide; (window as any).__updateActiveFilters?.(); renderer.refresh(); },
     onShowColors: (show) => { state.showColors = show; renderer.refresh(); },
     // A.33
     onColorMode: (mode) => {
@@ -748,7 +751,7 @@ async function main() {
     onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
     onLineSizeMult: (v) => { state.lineSizeMult = v; renderer.refresh(); },
     onTextFadeMult: (v) => { state.textFadeMult = v; renderer.refresh(); },
-    onHideOrphans: (hide) => { state.hideOrphans = hide; renderer.refresh(); },
+    onHideOrphans: (hide) => { state.hideOrphans = hide; (window as any).__updateActiveFilters?.(); renderer.refresh(); },
     // A.29 — Forces (live, ranges Obsidian-like)
     onForceCenter: (v) => setForces({ center: v }),
     onForceRepel: (v) => setForces({ repel: v }),
@@ -802,6 +805,7 @@ async function main() {
       setVal('force-distance', FORCE_DEFAULTS.distance);
       setVal('color-mode', 'neutral');
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
+      (window as any).__updateActiveFilters?.();
       renderer.refresh();
     },
   }, payload.nodes);
@@ -1096,9 +1100,10 @@ async function main() {
     if (action === 'suggest-create') void createSuggestedLink();
   });
 
-  // A.30 — Indicador de filtros ativos no topo do overlay (Contrário).
-  // Atualiza sempre que filtros mudam pra que usuário não ache que "quebrou"
-  // quando o grafo fica vazio.
+  // A.30/A.34 — Indicador de filtros ativos. Em A.30 eu fazia monkey-patch
+  // de renderer.refresh, e o worker D3-force chama refresh 60x/s → 60 DOM ops/s.
+  // A.34: chamada EXPLÍCITA nos handlers que mudam state de filtro. Zero
+  // overhead no hot path do worker.
   function updateActiveFiltersIndicator() {
     const el = document.getElementById('graph-active-filters');
     const text = document.getElementById('graph-active-filters-text');
@@ -1120,13 +1125,8 @@ async function main() {
       el.classList.add('show');
     }
   }
-  // Wrap state setters via Proxy seria over-engineering; chamada explícita
-  // nos handlers já cobre os pontos de mudança.
-  const _origRefresh = renderer.refresh.bind(renderer);
-  (renderer as any).refresh = function () {
-    updateActiveFiltersIndicator();
-    return _origRefresh();
-  };
+  // Expõe globalmente pra que callbacks de filtro possam chamar.
+  (window as any).__updateActiveFilters = updateActiveFiltersIndicator;
   updateActiveFiltersIndicator();
 }
 

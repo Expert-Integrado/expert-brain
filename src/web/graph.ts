@@ -110,6 +110,24 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         cursor: pointer;
       }
       .graph-active-filters button:hover { background: rgba(255,255,255,0.06); }
+      /* A.34 — Select de coloração com dropdown legível em dark mode.
+         color-scheme:dark instrui o browser a usar UI nativa escura;
+         estilo dos <option> garante fallback em SOs que ignoram a propriedade. */
+      .graph-color-select {
+        width: 100%;
+        padding: 4px 6px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 4px;
+        color: #f4ecff;
+        font-size: 11px;
+        font-family: inherit;
+        color-scheme: dark;
+      }
+      .graph-color-select option {
+        background: #1a1a26;
+        color: #f4ecff;
+      }
       /* A.31 — Cmd+K command palette */
       .graph-palette-backdrop {
         position: fixed;
@@ -295,10 +313,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="checkbox" id="similar-hide" />
             <span>Esconder</span>
           </label>
-          <!-- A.33 — color groups simplificado: select de modo (neutral/domain/kind/degree) -->
+          <!-- A.33 — color groups simplificado: select de modo (neutral/domain/kind/degree)
+               A.34 — fix dropdown branco: color-scheme:dark + estilo nos options. -->
           <label class="graph-slider-label">
-            <span>Coloração</span>
-            <select id="color-mode" style="width:100%; padding:4px 6px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:4px; color:#f4ecff; font-size:11px;">
+            <span>Coloração das bolinhas</span>
+            <select id="color-mode" class="graph-color-select">
               <option value="neutral">Neutra (cinza)</option>
               <option value="domain">Por área</option>
               <option value="kind">Por tipo</option>
@@ -362,7 +381,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explícita
           <span class="legend-swatch swatch-similar"></span> semântica
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.33</span>
+          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.34</span>
         </div>
       </div>
 
