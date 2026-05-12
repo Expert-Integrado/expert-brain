@@ -268,6 +268,22 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
     </style>
 
     <div class="graph-wrap">
+      <!-- Mobile-only toggle do overlay (escondido em desktop via CSS).
+           Permite fechar o painel pra interagir com o canvas no mobile. -->
+      <button
+        id="graph-overlay-toggle"
+        class="graph-overlay-toggle"
+        type="button"
+        aria-label="Mostrar/ocultar painel de controles"
+        aria-controls="graph-overlay"
+        aria-expanded="false"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
       <!-- LEFT OVERLAY: search + filters + status -->
       <div id="graph-overlay" class="graph-overlay" role="region" aria-label="Graph controls">
         <div class="graph-overlay-row graph-search-row">

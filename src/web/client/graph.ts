@@ -53,6 +53,11 @@ interface NoteMeta {
 // ──────────────────────────────────────────────────────────────────────────────
 
 async function main() {
+  // Mobile overlay toggle — abre/fecha o painel de controles pra liberar o
+  // canvas em telas pequenas. Em desktop o botão fica escondido via CSS e
+  // o overlay continua sempre visível.
+  wireOverlayToggle();
+
   // Parallel load: graph topology + note metadata. Meta endpoint is additive —
   // if it fails we degrade to id-only panel content rather than aborting.
   const [graphRes, metaRes] = await Promise.all([
@@ -1383,6 +1388,32 @@ function ensurePanel(): HTMLElement {
   el.setAttribute('aria-label', 'Note preview');
   document.body.appendChild(el);
   return el;
+}
+
+function wireOverlayToggle() {
+  const toggle = document.getElementById('graph-overlay-toggle') as HTMLButtonElement | null;
+  const overlay = document.getElementById('graph-overlay');
+  if (!toggle || !overlay) return;
+
+  const setOpen = (open: boolean) => {
+    overlay.classList.toggle('open', open);
+    toggle.setAttribute('aria-expanded', String(open));
+  };
+
+  toggle.addEventListener('click', () => {
+    const open = !overlay.classList.contains('open');
+    setOpen(open);
+  });
+
+  // Em desktop, força aberto (CSS deixa visível por padrão de qualquer jeito).
+  // Em mobile, começa fechado.
+  const mq = window.matchMedia('(min-width: 768px)');
+  const applyMq = (e: MediaQueryList | MediaQueryListEvent) => {
+    if (e.matches) setOpen(true);
+    else setOpen(false);
+  };
+  applyMq(mq);
+  mq.addEventListener('change', applyMq);
 }
 
 main().catch((err) => {

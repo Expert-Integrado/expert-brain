@@ -456,6 +456,31 @@ a:hover { color: var(--text); }
 .graph-overlay::-webkit-scrollbar { width: 6px; }
 .graph-overlay::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
 
+/* Mobile-only toggle do overlay — escondido em desktop. Em mobile, fixa no
+   canto top-left e abre/fecha o overlay pra liberar o canvas do grafo. */
+.graph-overlay-toggle {
+  display: none;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 6, 24, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 160ms var(--ease), color 160ms var(--ease);
+}
+.graph-overlay-toggle:hover { background: rgba(167, 139, 250, 0.18); color: var(--accent-lav); }
+.graph-overlay-toggle:active { transform: scale(0.96); }
+.graph-overlay-toggle[aria-expanded="true"] { background: rgba(167, 139, 250, 0.28); color: var(--accent-lav); border-color: var(--border-strong); }
+
 /* Search */
 .graph-search-row { position: relative; }
 .graph-search-icon {
@@ -763,10 +788,23 @@ a:hover { color: var(--text); }
 
 /* Mobile: collapse overlay below, make panel full width */
 @media (max-width: 767px) {
+  .graph-overlay-toggle { display: inline-flex; }
+
+  /* Overlay fica colapsado por padrão em mobile — usuário abre via botão.
+     Quando aberto (.open), abre como drawer do topo, deixando ainda assim
+     um pedaço do canvas visível embaixo pra contexto. */
   .graph-overlay {
-    width: calc(100vw - 32px);
-    max-width: 320px;
+    display: none;
+    top: 60px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    max-height: calc(100vh - 72px);
+    max-height: calc(100dvh - 72px);
   }
+  .graph-overlay.open { display: flex; }
+
   #graph-panel { width: 100vw; padding: 32px 20px 20px; }
 }
 
