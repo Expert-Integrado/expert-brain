@@ -467,7 +467,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
     <script src="/app/graph/bundle.js?v=${Date.now()}" defer></script>
   `;
 
+  // Preload do bundle pesado do graph (210KB+) — browser começa o download
+  // em paralelo com o parse do HTML, cortando ~100-300ms do tempo até render.
+  const extraHead = `<link rel="preload" href="/app/graph/bundle.js" as="script">`;
+
   return htmlResponse(
-    renderShell({ title: 'Graph', active: 'graph', email: session.email, body })
+    renderShell({ title: 'Graph', active: 'graph', email: session.email, body, extraHead })
   );
 }
