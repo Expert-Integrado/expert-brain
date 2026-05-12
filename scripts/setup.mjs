@@ -95,7 +95,16 @@ async function askVisible(rl, question) {
 
 async function askHidden(question) {
   // Esconde echo via raw mode do stdin. Trata Enter / Ctrl+C / backspace.
+  // Se stdin nao for TTY (pipe, CI, etc), faz fallback pra readline visivel
+  // — usabilidade pior, mas o script ao menos roda em vez de crashar.
   const stdin = process.stdin;
+  if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
+    const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+    process.stdout.write(`${question}${YELLOW}(stdin nao e TTY — senha visivel)${RESET} `);
+    const value = await rl.question('');
+    rl.close();
+    return value;
+  }
   process.stdout.write(question);
   let buffer = '';
   return new Promise((resolve) => {
@@ -162,7 +171,16 @@ function hasPlaceholder(content, placeholder) {
 }
 
 // Setup flow
+function checkNodeVersion() {
+  const major = parseInt(process.versions.node.split('.')[0], 10);
+  if (Number.isNaN(major) || major < 18) {
+    die(`Node ${process.versions.node} e antigo demais. Atualiza pra Node 18+ (https://nodejs.org) e tente de novo.`);
+  }
+}
+
 async function main() {
+  checkNodeVersion();
+
   console.log(`\n${BOLD}Expert Brain - setup automatico${RESET}\n`);
   console.log(`${DIM}Este script provisiona D1, Vectorize, KV, gera secrets, e deploya${RESET}`);
   console.log(`${DIM}o Worker na sua conta Cloudflare. Leva ~3 minutos.${RESET}`);
