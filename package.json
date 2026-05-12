@@ -13,7 +13,9 @@
     "deploy": "npm run build:bundles && wrangler deploy",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p src/web/client/tsconfig.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/web/client/tsconfig.json",
+    "install-hooks": "node scripts/install-hooks.mjs",
+    "prepare": "node scripts/install-hooks.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.0.5",

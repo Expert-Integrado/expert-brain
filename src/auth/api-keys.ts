@@ -36,11 +36,28 @@ export interface CreateApiKeyResult {
   plainKey: string;
 }
 
+export const MAX_ACTIVE_KEYS = 20;
+
+export class ApiKeyLimitError extends Error {
+  constructor(public readonly limit: number) {
+    super(`Limite de ${limit} chaves ativas atingido. Revogue uma antes de criar outra.`);
+    this.name = 'ApiKeyLimitError';
+  }
+}
+
 export async function createApiKey(
   env: Env,
   ownerEmail: string,
   name: string
 ): Promise<CreateApiKeyResult> {
+  // Cap por owner pra evitar criação ilimitada via sessão comprometida.
+  // revokeApiKey hoje faz DELETE, então count(*) bate com "ativas".
+  const countRow = await env.DB.prepare(
+    `SELECT count(*) c FROM api_keys WHERE owner_email = ? AND revoked_at IS NULL`
+  ).bind(ownerEmail).first<{ c: number }>();
+  if ((countRow?.c ?? 0) >= MAX_ACTIVE_KEYS) {
+    throw new ApiKeyLimitError(MAX_ACTIVE_KEYS);
+  }
   const id = randomId();
   const secret = randomSecret();
   const plainKey = `${PREFIX}${id}_${secret}`;

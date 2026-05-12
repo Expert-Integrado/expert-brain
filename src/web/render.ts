@@ -68,6 +68,8 @@ export function htmlResponse(body: string, status = 200): Response {
       'content-type': 'text/html; charset=utf-8',
       // Google Fonts is allow-listed for style-src and font-src so the Fraunces/Manrope
       // stylesheets and woff2 files load. Everything else stays 'self'-only.
+      // frame-ancestors 'none' + X-Frame-Options: DENY block clickjacking even
+      // for browsers that ignore one or the other.
       'content-security-policy':
         "default-src 'self'; " +
         "script-src 'self'; " +
@@ -76,7 +78,12 @@ export function htmlResponse(body: string, status = 200): Response {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data:; " +
-        "connect-src 'self'",
+        "connect-src 'self'; " +
+        "frame-ancestors 'none'",
+      'x-frame-options': 'DENY',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'strict-origin-when-cross-origin',
+      'permissions-policy': 'camera=(), microphone=(), geolocation=()',
     },
   });
 }

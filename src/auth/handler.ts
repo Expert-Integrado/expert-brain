@@ -71,7 +71,12 @@ ${error ? `<p class="error">${esc(error)}</p>` : ''}
           "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
           "font-src 'self' https://fonts.gstatic.com; " +
           "img-src 'self' data:; " +
-          "connect-src 'self'",
+          "connect-src 'self'; " +
+          "frame-ancestors 'none'",
+        'x-frame-options': 'DENY',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'strict-origin-when-cross-origin',
+        'permissions-policy': 'camera=(), microphone=(), geolocation=()',
       },
     }
   );

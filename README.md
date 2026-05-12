@@ -374,6 +374,19 @@ Se você quer versão multi-user, dá fork e adapta — não é mudança plug-an
 
 No momento **não tem rate limit de login**. Pull requests bem-vindos.
 
+### Por que PBKDF2 100k iterações (e não 600k)?
+
+A recomendação OWASP de 2024 é PBKDF2-SHA256 em **600k iterações**. Esse projeto roda em **100k** por causa do CPU cap dos Cloudflare Workers (50 ms por request no plano free). Em testes, 100k ficou em ~30-40 ms — dentro do orçamento, com margem pra retry. 600k estoura.
+
+Mitigantes que tornam o cap aceitável pro modelo de ameaça single-owner:
+
+1. **Setup força passphrase de no mínimo 12 caracteres** (`scripts/setup.mjs`) — 100k contra uma senha longa de alta entropia ainda é caro pro atacante.
+2. **Salt aleatório de 16 bytes por hash** — força rainbow-table-per-target.
+3. **Acesso à URL é privado** — você não publica a URL do seu Worker, não tem signup.
+4. **O hash mora num secret do Worker**, só sai por comprometimento da conta Cloudflare. Se isso acontece, o atacante tem coisa pior pra explorar.
+
+Se quiser endurecer: aumente `ITERATIONS` em `src/auth/password.ts` e `scripts/setup.mjs` (precisam casar) e rode `npm test` pra confirmar que o pool de testes ainda fecha dentro do timeout. 200-300k normalmente cabe; 600k provavelmente não.
+
 ## Free tier
 
 Os free tiers de D1 + Vectorize + Workers AI bastam pra uso pessoal. Confirma os limites atuais nas páginas de preço da Cloudflare antes de contar com eles pra vaults grandes.

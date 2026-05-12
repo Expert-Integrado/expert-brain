@@ -4,6 +4,7 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse } from './render.js';
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
+import { flashKvKey } from './api-keys.js';
 
 const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP — é meu grafo de conhecimento pessoal cross-domain.
 
@@ -19,7 +20,21 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
   const url = new URL(req.url);
-  const justCreatedKey = url.searchParams.get('new');
+  // M6 fix: a chave plaintext NÃO chega mais via query param. /app/api-keys/create
+  // grava em KV com TTL curto e redireciona com um id opaco; aqui consumimos e
+  // deletamos (single-use). Sem fallback pra ?new=: redirects em voo no momento
+  // do deploy perdem a exibição da chave, mas o aluno só precisa recriar — bem
+  // melhor do que continuar vazando a chave no histórico do browser.
+  const flash = url.searchParams.get('flash');
+  let justCreatedKey: string | null = null;
+  if (flash && /^[a-f0-9]{32}$/.test(flash)) {
+    const key = flashKvKey(flash);
+    const value = await env.OAUTH_KV.get(key);
+    if (value) {
+      justCreatedKey = value;
+      await env.OAUTH_KV.delete(key);
+    }
+  }
 
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite

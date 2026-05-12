@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import type { NoteRow, EdgeRow } from '../db/queries.js';
 import { requireSession } from './session.js';
+import { newId } from '../util/id.js';
 import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { computeSimilarityEdges, explicitPairKey } from './similarity.js';
 
@@ -75,7 +76,6 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
       console.error('graph-data: Vectorize.getByIds failed', err);
       noteVectors = [];
     }
-    console.log(`graph-data: fetched ${noteVectors.length} vectors for ${notes.length} notes`);
   }
 
   let similarityEdges: Array<{ source: string; target: string; score: number }> = [];
@@ -216,11 +216,11 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
   if ((exists.results?.length ?? 0) < 2) {
     return new Response(JSON.stringify({ error: 'one or both notes not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
   }
-  const id = `e_manual_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = newId();
   await env.DB.prepare(
     `INSERT OR IGNORE INTO edges (id, from_id, to_id, relation_type, why, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(id, source, target, 'related-to', why, Date.now()).run();
+  ).bind(id, source, target, 'analogous_to', why, Date.now()).run();
   // Invalida cache do graph
   await env.GRAPH_CACHE.delete(CACHE_KEY);
   return new Response(JSON.stringify({ ok: true, id }), { headers: { 'content-type': 'application/json' } });

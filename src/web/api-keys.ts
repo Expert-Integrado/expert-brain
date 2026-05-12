@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
-import { createApiKey, revokeApiKey } from '../auth/api-keys.js';
+import { ApiKeyLimitError, createApiKey, revokeApiKey } from '../auth/api-keys.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
 // Mantemos a rota só pra não quebrar bookmarks antigos.
@@ -12,16 +12,45 @@ export async function handleApiKeysPage(_req: Request, _env: Env): Promise<Respo
   });
 }
 
+// TTL curto pro KV flash: chave nasce, redireciona, a /app/config consome e
+// apaga. 60s é folga suficiente pra qualquer redirect HTTP sem deixar a chave
+// recuperável depois.
+const API_KEY_FLASH_TTL = 60;
+
+function flashId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let s = '';
+  for (const b of bytes) s += b.toString(16).padStart(2, '0');
+  return s;
+}
+
+export function flashKvKey(id: string): string {
+  return `flash:newkey:${id}`;
+}
+
 export async function handleApiKeyCreate(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
   if (!name) return htmlResponse('Nome obrigatório', 400);
-  const { plainKey } = await createApiKey(env, session.email, name);
+  let plainKey: string;
+  try {
+    const created = await createApiKey(env, session.email, name);
+    plainKey = created.plainKey;
+  } catch (err) {
+    if (err instanceof ApiKeyLimitError) {
+      return htmlResponse(err.message, 429);
+    }
+    throw err;
+  }
+  // Não voltamos a chave na URL — fica no histórico do browser, em logs,
+  // e pode vazar via Referer. Guarda no KV por 60s e devolve só um id opaco.
+  const id = flashId();
+  await env.OAUTH_KV.put(flashKvKey(id), plainKey, { expirationTtl: API_KEY_FLASH_TTL });
   return new Response(null, {
     status: 302,
-    headers: { location: `/app/config?new=${encodeURIComponent(plainKey)}#api-keys` },
+    headers: { location: `/app/config?flash=${id}#api-keys` },
   });
 }
 
