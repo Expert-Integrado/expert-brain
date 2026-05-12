@@ -3,7 +3,6 @@ import { BASE_CSS } from './styles.js';
 const FOOTER_HTML = `
 <div class="card footer">
   Feito pela <a href="https://expertintegrado.com.br" target="_blank">Expert Integrado</a>
-  &nbsp;·&nbsp; Fork de <a href="https://github.com/orobsonn/segundo-cerebro" target="_blank">orobsonn/segundo-cerebro</a>
 </div>`;
 
 export function renderNotConfigured(): string {

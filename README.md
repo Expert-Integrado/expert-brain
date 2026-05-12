@@ -1,8 +1,8 @@
-# Segundo Cérebro — um grafo de conhecimento pessoal pro Claude, rodando no Cloudflare
+# Expert Brain — um grafo de conhecimento pessoal pro Claude, rodando no Cloudflare
 
-![Segundo Cérebro em ação](docs/media/tela-gravacao.gif)
+![Expert Brain em ação](docs/media/tela-gravacao.gif)
 
-**A ferramenta de pensamento latticework pra quem conversa com o Claude.** Segundo Cérebro é um grafo de conhecimento self-hosted, de usuário único, que roda 100% na sua conta Cloudflare e conecta no Claude Code, Claude Desktop ou Claude Web como servidor MCP. Você conversa com o Claude sobre uma ideia, ele decide o que vale guardar, atomiza o conceito, varre o vault atrás de analogias entre domínios diferentes, e salva a nota com edges que nomeiam o *mecanismo* compartilhado — não só "relacionado".
+**A ferramenta de pensamento latticework pra quem conversa com o Claude.** Expert Brain é um grafo de conhecimento self-hosted, de usuário único, que roda 100% na sua conta Cloudflare e conecta no Claude Code, Claude Desktop ou Claude Web como servidor MCP. Você conversa com o Claude sobre uma ideia, ele decide o que vale guardar, atomiza o conceito, varre o vault atrás de analogias entre domínios diferentes, e salva a nota com edges que nomeiam o *mecanismo* compartilhado — não só "relacionado".
 
 **Não é um app de notas. É uma ferramenta de pensamento.**
 
@@ -17,18 +17,18 @@
 
 - **Quem vive no Claude Code** e quer que o que aprende se acumule entre sessões, em vez de evaporar no fim de cada conversa.
 - **Quem procura uma alternativa "Claude-native" ao Obsidian ou Notion** pra capturar ideias — especificamente no estilo cross-domain, guiado por analogia, do latticework de modelos mentais do Charlie Munger ou do Zettelkasten do Luhmann.
-- **Escritores, pesquisadores, pensadores** que leem entre áreas e querem um segundo cérebro que *obriga* a procurar a sobreposição estrutural em vez de enterrar as notas em pastas.
+- **Escritores, pesquisadores, pensadores** que leem entre áreas e querem um Expert Brain que *obriga* a procurar a sobreposição estrutural em vez de enterrar as notas em pastas.
 
-Segundo Cérebro **não é** substituto pra app de captura diária. Ele é pro subconjunto do seu pensamento que vale preservar com rigor — as ideias que você vai querer reencontrar, num contexto diferente, daqui a alguns anos.
+Expert Brain **não é** substituto pra app de captura diária. Ele é pro subconjunto do seu pensamento que vale preservar com rigor — as ideias que você vai querer reencontrar, num contexto diferente, daqui a alguns anos.
 
 ## Quando faz sentido (e quando não)
 
-Segundo Cérebro é uma ferramenta opinativa — é uma disciplina embrulhada num servidor MCP. Antes de instalar, vale bater as duas listas abaixo.
+Expert Brain é uma ferramenta opinativa — é uma disciplina embrulhada num servidor MCP. Antes de instalar, vale bater as duas listas abaixo.
 
 ### ✅ Vai te servir bem se…
 
 - **Você lê ou trabalha entre múltiplos domínios** e quer que as analogias estruturais entre eles apareçam sozinhas. O ponto do vault é notar que um padrão que você acabou de ver em engenharia de software é a mesma forma de algo que você leu em biologia evolutiva ano passado.
-- **Você já vive dentro do Claude Code, Claude Desktop ou cliente compatível com Claude.** Segundo Cérebro é um servidor MCP — o valor vem de estar ao alcance sem sair da conversa.
+- **Você já vive dentro do Claude Code, Claude Desktop ou cliente compatível com Claude.** Expert Brain é um servidor MCP — o valor vem de estar ao alcance sem sair da conversa.
 - **Você toma decisões de julgamento cujo raciocínio vale preservar** — decisões de design, conclusões de pesquisa, apostas estratégicas. O vault protege o *porquê* pra você revisitar depois.
 - **Você tá no Pro, Max ou na API** e pode arcar com os ~2.400 tokens de overhead por requisição fria. No Max 5x/20x isso é desprezível.
 - **Você compra o método Munger/Luhmann**: um conceito por nota, links com *whys* substantivos, estrutura cross-domain em vez de pastas. Se você não compra o método, a ferramenta vai parecer atrito.
@@ -39,17 +39,17 @@ Segundo Cérebro é uma ferramenta opinativa — é uma disciplina embrulhada nu
 - **O que você quer é diário ou lista de tarefa.** O vault é rigoroso por design — rejeita captura efêmera. Pra esse uso, Obsidian, Notion ou Apple Notes resolvem melhor.
 - **Você trabalha só num domínio estreito.** A proposta de valor é recall cross-domain. Quem atua num domínio só extrai quase tudo de uma pasta de markdown simples + `grep`.
 - **Você não usa o Claude como interface principal.** O vault é navegável por um dashboard web, mas a disciplina de *escrita* só funciona quando tem um LLM mediando o fluxo de save. Sem isso, você vai voltar a despejar notas.
-- **Você ainda está no modo "quero capturar tudo".** Segundo Cérebro pune saves de baixo sinal — notas relaxadas poluem recalls futuros. Se você não consegue articular um tldr de uma frase, talvez valha amadurecer a ideia antes de guardar.
+- **Você ainda está no modo "quero capturar tudo".** Expert Brain pune saves de baixo sinal — notas relaxadas poluem recalls futuros. Se você não consegue articular um tldr de uma frase, talvez valha amadurecer a ideia antes de guardar.
 - **Você precisa de acesso offline ou armazenamento local.** O vault roda no D1 + Vectorize da Cloudflare. Suas notas saem da sua máquina.
 - **Você se importa em preservar a forma exata do que escreveu.** O vault empurra pra atomização e reescrita — é ferramenta de pensamento, não de arquivo.
 
 ### A frase honesta
 
-Segundo Cérebro vale a pena quando você trata ele como **uma disciplina pras ideias que você vai querer de volta**, não como lugar pra despejar coisa. Se essa distinção não ressoa, talvez o próximo mês seja uma hora melhor.
+Expert Brain vale a pena quando você trata ele como **uma disciplina pras ideias que você vai querer de volta**, não como lugar pra despejar coisa. Se essa distinção não ressoa, talvez o próximo mês seja uma hora melhor.
 
 ## 💰 Custo: R$ 0 — roda inteiro no free tier da Cloudflare
 
-Antes de sair deployando, lê isso: **você não vai ser cobrado**. Segundo Cérebro roda no free tier da Cloudflare, que é generoso o suficiente pra um vault pessoal nunca chegar perto dos limites:
+Antes de sair deployando, lê isso: **você não vai ser cobrado**. Expert Brain roda no free tier da Cloudflare, que é generoso o suficiente pra um vault pessoal nunca chegar perto dos limites:
 
 | Serviço | Free tier | O que um vault pessoal consome |
 |---|---|---|
@@ -63,7 +63,7 @@ Antes de sair deployando, lê isso: **você não vai ser cobrado**. Segundo Cér
 
 ## ⚠️ O custo real: tokens do Claude
 
-A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de vista do orçamento de tokens. Você precisa entender isso antes de decidir se Segundo Cérebro vale pro seu padrão de uso.
+A infra é grátis, mas conectar o MCP ao Claude **não é** grátis do ponto de vista do orçamento de tokens. Você precisa entender isso antes de decidir se Expert Brain vale pro seu padrão de uso.
 
 ### O que custa
 
@@ -81,7 +81,7 @@ A Anthropic não publica quotas exatas pros planos de consumidor, mas a leitura 
 
 | Plano | Janela de uso | Orçamento observado | Overhead MCP como % da janela |
 |---|---|---|---|
-| **Free** | 5h rolling | muito apertado (~9k tok efetivos) | ~27% — **não use** Segundo Cérebro no Free |
+| **Free** | 5h rolling | muito apertado (~9k tok efetivos) | ~27% — **não use** Expert Brain no Free |
 | **Pro** (US$ 20/mês) | 5h rolling + limite semanal | ~44k tok por janela de 5h | ~5,5% por requisição fria |
 | **Max 5x** (US$ 100/mês) | 5h rolling + limite semanal | ~220k tok por janela de 5h | ~1,1% |
 | **Max 20x** (US$ 200/mês) | 5h rolling + limite semanal | ~880k tok por janela de 5h | ~0,3% |
@@ -90,7 +90,7 @@ A Anthropic não publica quotas exatas pros planos de consumidor, mas a leitura 
 Pontos importantes sobre as janelas dos planos:
 
 - **Todos os planos pagos usam janela rolling de 5h**, não reset diário. Mensagens caem 5h depois do envio. Confere em `/usage` no Claude Code ou em `claude.ai/settings/usage` pra ver o contador ao vivo.
-- **Limites semanais foram adicionados em agosto/2025** no Pro e Max pra usuários pesados, além da janela de 5h. O overhead fixo do Segundo Cérebro também conta pro semanal.
+- **Limites semanais foram adicionados em agosto/2025** no Pro e Max pra usuários pesados, além da janela de 5h. O overhead fixo do Expert Brain também conta pro semanal.
 - **Horário de pico queima mais rápido**: em dia de semana, 5–11h PT / 13–19h GMT, a Anthropic aperta os limites da sessão de 5h durante alta demanda. Uma sessão com MCP conectado e 10 turnos frios no pico pode comer um pedaço notável da janela Pro.
 - **Billing da API é o modelo oposto**: sem janela, mas cada token é medido. Aqui o overhead do MCP vira linha de custo real. Disciplina de cache importa mais.
 
@@ -105,36 +105,53 @@ Pontos importantes sobre as janelas dos planos:
 
 Pra metodologia completa e o breakdown por tool, veja [docs/token-cost.md](docs/token-cost.md).
 
-## Quickstart — deixa sua IDE agêntica fazer o trabalho
-
-Segundo Cérebro é configurado pela sua IDE agêntica (Claude Code, Cursor, Windsurf, etc), não por wizard web. O repo traz um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta. **A única coisa que você digita é email e passphrase.** Tudo o mais — provisionar D1, Vectorize, KV, hashear a passphrase, gerar o session secret, subir os secrets, fazer deploy, aplicar o schema — é feito pra você.
+## Quickstart
 
 **O que você precisa:**
 
 - Um computador com Node.js 20+ ([nodejs.org](https://nodejs.org))
 - Uma conta Cloudflare gratuita ([cadastro](https://dash.cloudflare.com/sign-up) — sem cartão)
-- Uma IDE agêntica conectada ao Claude
 
-**O fluxo:**
+### Opção A — `npm run setup` (recomendada)
+
+1 comando faz tudo (provisiona D1, Vectorize, 2 KV namespaces, hash da passphrase, session secret, deploy, migrations):
 
 ```bash
-git clone https://github.com/orobsonn/segundo-cerebro.git
-cd segundo-cerebro
+git clone https://github.com/expertintegrado/expertbrain.git
+cd expertbrain
 npm install
-npx wrangler login   # abre o browser → clica "Allow" → pronto
+npx wrangler login   # abre o browser → clica "Allow"
+npm run setup        # responde 2 perguntas (e-mail + senha) e espera ~3min
 ```
 
-Agora abre a pasta na sua IDE e diz:
+Ao final, o script imprime a URL do Worker, o comando MCP pra conectar no Claude, e o link pro dashboard. Pronto.
 
-> Configura o Segundo Cérebro.
+### Opção B — Claude Code (quem prefere IDE agêntica)
 
-O agente lê o [CLAUDE.md](CLAUDE.md), te pede email e passphrase (12+ caracteres), e roda o runbook completo. Quando termina, ele te devolve a URL do Worker e a linha pra conectar o Claude Code ao MCP:
+Se você usa Claude Code (ou Cursor/Windsurf com MCP), o repo tem um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta:
 
 ```bash
-claude mcp add --transport http segundo-cerebro https://<seu-worker>.workers.dev/mcp
+git clone https://github.com/expertintegrado/expertbrain.git
+cd expertbrain
+npm install
+npx wrangler login
 ```
 
-Abre o `/app/config` do teu Worker e cola o bloco de personalização que aparece lá em *Claude → Settings → Personalization → Custom instructions*.
+Abre a pasta na IDE e fala:
+
+> Configura o Expert Brain.
+
+O agente lê o [CLAUDE.md](CLAUDE.md), te pede e-mail e senha (12+ caracteres), e roda o runbook completo. Resultado igual ao da Opção A.
+
+### Conectar ao Claude
+
+Depois do setup, o comando MCP é:
+
+```bash
+claude mcp add --transport http expert-brain https://<seu-worker>.workers.dev/mcp
+```
+
+Abre `<seu-worker>.workers.dev/app/config` e cola o bloco de personalização que aparece lá em *Claude → Settings → Personalization → Custom instructions*.
 
 ### Primeira conversa
 
@@ -154,7 +171,7 @@ O Claude chama `recall` pra varrer o vault atrás de analogias, aí oferece salv
 
 *Tela de grafo — física force-directed com reveal no estilo Obsidian. Linhas roxas sólidas são edges explícitos; tracejadas em teal são edges de similaridade semântica emergidos pelo modelo de embedding; nós são coloridos por domínio.*
 
-## 🎯 As 3 regras de ouro do Segundo Cérebro
+## 🎯 As 3 regras de ouro do Expert Brain
 
 Se você esquecer tudo nesse README, lembra dessas três. É o método inteiro em 3 bullets:
 
@@ -167,7 +184,7 @@ Exemplo bom: *"Feedback loop negativo com atraso oscila"* + *"Viés de disponibi
 
 ### 2. Todo link precisa de `why`
 
-O Segundo Cérebro rejeita edges com `why` menor que 20 caracteres. Não é frescura — é que um edge sem mecanismo explicado é lixo pro recall futuro. "Related" não ajuda ninguém.
+O Expert Brain rejeita edges com `why` menor que 20 caracteres. Não é frescura — é que um edge sem mecanismo explicado é lixo pro recall futuro. "Related" não ajuda ninguém.
 
 O `why` tem que nomear o **mecanismo compartilhado**:
 
@@ -176,7 +193,7 @@ O `why` tem que nomear o **mecanismo compartilhado**:
 
 ### 3. Sempre `recall` antes de `save`
 
-Antes de salvar qualquer nota, o Claude chama `recall` pra varrer o vault atrás de analogias em outros domínios. **É aqui que o segundo cérebro se diferencia de um arquivo de notas.**
+Antes de salvar qualquer nota, o Claude chama `recall` pra varrer o vault atrás de analogias em outros domínios. **É aqui que o Expert Brain se diferencia de um arquivo de notas.**
 
 Você acha que a ideia é nova. O `recall` traz uma nota sua de 8 meses atrás sobre sucessão ecológica que tem a mesma forma estrutural. Agora você tem dois pontos num grid, e eles se iluminam um ao outro.
 
@@ -310,7 +327,7 @@ O framing público é **pensamento latticework / grafo de conhecimento multi-mod
 
 > **Pula essa seção se você não tem certeza de que precisa.** O Quickstart acima (com `wrangler login` + `wrangler deploy`) já basta pra uso pessoal — você só re-deploya quando muda o código, e dá pra rodar `wrangler deploy` de novo no terminal.
 
-Esse repo traz um **workflow do GitHub Actions** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) que faz auto-deploy pro seu Worker a cada push em `master` ou `main`. Útil se você pretende modificar o Segundo Cérebro e quer suas mudanças subindo automático ao dar push no GitHub.
+Esse repo traz um **workflow do GitHub Actions** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) que faz auto-deploy pro seu Worker a cada push em `master` ou `main`. Útil se você pretende modificar o Expert Brain e quer suas mudanças subindo automático ao dar push no GitHub.
 
 Pra habilitar no seu fork:
 
@@ -321,7 +338,7 @@ Pra habilitar no seu fork:
    - `CLOUDFLARE_ACCOUNT_ID` = o account ID do passo 2
 4. Dá push de qualquer commit em `master`. O workflow roda `npm run typecheck` + `npm test` antes do deploy, então teste quebrando bloqueia o deploy.
 
-Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/segundo-cerebro/actions`.
+Dá pra acompanhar as runs em `https://github.com/SEU_USUARIO/expert-brain/actions`.
 
 ## Desenvolvimento
 
@@ -373,7 +390,7 @@ Sim. Wrangler e Node rodam no Windows normal. Na hora do setup, se você usa WSL
 Sim. Três opções:
 
 1. **Export rápido via API:** `curl <seu-worker-url>/status` traz totais; pra dump completo, abre o D1 no dashboard Cloudflare e exporta como SQL.
-2. **CLI:** `npx wrangler d1 export mind-vault --output=dump.sql` gera um dump SQL da sua vault.
+2. **CLI:** `npx wrangler d1 export expert-brain --output=dump.sql` gera um dump SQL da sua vault.
 3. **Dashboard web:** a tela de grafo serve como índice visual; clicar na nota abre o conteúdo.
 
 ### Posso desligar o MCP sem perder dados?
@@ -386,7 +403,7 @@ Cálculo rápido: free tier do Vectorize dá 5M vetores. Uma nota = um vetor. Pr
 
 ### Dá pra rodar dois vaults separados (pessoal + trabalho, por exemplo)?
 
-Sim, mas cada um precisa do próprio Worker. Forka o repo, cria recursos novos no Cloudflare com nomes diferentes (`mind-vault-work`, etc), e faz deploy pra cada um. Não tem suporte nativo a múltiplos vaults no mesmo Worker (design single-user).
+Sim, mas cada um precisa do próprio Worker. Forka o repo, cria recursos novos no Cloudflare com nomes diferentes (`expert-brain-work`, etc), e faz deploy pra cada um. Não tem suporte nativo a múltiplos vaults no mesmo Worker (design single-user).
 
 ### O Claude vê minhas notas em outras conversas automaticamente?
 
@@ -398,4 +415,4 @@ Se o modelo atual (`bge-m3`) for descontinuado ou substituído por algo melhor, 
 
 ---
 
-Feito por **[Robson Lins](https://github.com/orobsonn)** · [Instagram](https://www.instagram.com/orobsonn) · [X / Twitter](https://x.com/orobsonnn) · [YouTube](https://youtube.com/@orobsonnn)
+Feito pela [Expert Integrado](https://expertintegrado.com.br).

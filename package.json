@@ -1,11 +1,11 @@
 {
-  "name": "mind-vault",
+  "name": "expert-brain",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "node scripts/setup.mjs",
     "dev": "wrangler dev",
-    "build:bundle": "tsx scripts/build-bundles.ts",
     "build:bundles": "tsx scripts/build-bundles.ts",
     "deploy": "npm run build:bundles && wrangler deploy",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",

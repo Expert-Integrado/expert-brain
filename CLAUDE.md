@@ -1,15 +1,15 @@
-# CLAUDE.md — Runbook de setup do agente Mind Vault
+# CLAUDE.md — Runbook de setup do agente Expert Brain
 
-Esse arquivo é a fonte única da verdade pra configurar o Mind Vault ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Mind Vault", "instalar o Mind Vault", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
+Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Expert Brain", "instalar o Expert Brain", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
 
-## O que o Mind Vault precisa
+## O que o Expert Brain precisa
 
 Um único Cloudflare Worker com cinco recursos vinculados a ele:
 
 | Recurso | Tipo | Nome do binding |
 |---|---|---|
 | Banco D1 | SQL (SQLite) | `DB` |
-| Índice Vectorize | 1024-dim cosine | `VECTORIZE` (nome `mind-vault-embeddings`) |
+| Índice Vectorize | 1024-dim cosine | `VECTORIZE` (nome `expert-brain-embeddings`) |
 | Namespace KV | Tokens OAuth | `OAUTH_KV` |
 | Namespace KV | Cache do layout do grafo | `GRAPH_CACHE` |
 | Workers AI | Embeddings multilíngues (`@cf/baai/bge-m3`) | `AI` |
@@ -34,9 +34,21 @@ npx wrangler whoami
 
 Se falhar, pede pro usuário rodar `npx wrangler login` no terminal dele (abre um browser). Não tenta autenticar no lugar dele.
 
+**Atalho:** se o usuário tem Node 20+ e quer pular o runbook manual, ele pode rodar `npm run setup` que automatiza os 9 passos abaixo. Use esse atalho a menos que o usuário peça explicitamente pra você executar passo a passo.
+
 ## Runbook de setup
 
 Executa esses passos na ordem. Para e reporta pro usuário se algum comando falhar — não retenta em silêncio.
+
+### 0. Garante que `wrangler.toml` existe
+
+Se o repo só tem `wrangler.example.toml` (clone fresco), copia pra `wrangler.toml`:
+
+```bash
+cp wrangler.example.toml wrangler.toml
+```
+
+`wrangler.toml` é ignorado pelo git por design — cada instalação tem o seu, com os IDs locais.
 
 ### 1. Peça as credenciais ao usuário
 
@@ -52,8 +64,8 @@ NÃO segue em frente sem os dois valores.
 Roda esses quatro comandos e captura os IDs do output:
 
 ```bash
-npx wrangler d1 create mind-vault
-npx wrangler vectorize create mind-vault-embeddings --dimensions=1024 --metric=cosine
+npx wrangler d1 create expert-brain
+npx wrangler vectorize create expert-brain-embeddings --dimensions=1024 --metric=cosine
 npx wrangler kv namespace create OAUTH_KV
 npx wrangler kv namespace create GRAPH_CACHE
 ```
@@ -113,7 +125,7 @@ Se algum dos três falhar, para e reporta o erro. O Worker não sobe sem os trê
 npx wrangler deploy
 ```
 
-Captura a URL do Worker no output (parece com `https://mind-vault.<seu-subdominio>.workers.dev`). Você vai precisar dela no próximo passo e pra devolver pro usuário.
+Captura a URL do Worker no output (parece com `https://expert-brain.<seu-subdominio>.workers.dev`). Você vai precisar dela no próximo passo e pra devolver pro usuário.
 
 ### 7. Aplica o schema do D1
 
@@ -139,7 +151,7 @@ Imprime um resumo curto com:
 
 - A URL do Worker
 - O endpoint MCP: `<worker-url>/mcp`
-- O comando de instalação do Claude Code: `claude mcp add --transport http segundo-cerebro <worker-url>/mcp`
+- O comando de instalação do Claude Code: `claude mcp add --transport http expert-brain <worker-url>/mcp`
 - Um lembrete pra abrir `<worker-url>/app/config` depois de logar pra copiar o bloco de personalização pra Claude → Settings → Personalization
 - Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja a seção "O custo real: tokens do Claude" no README pra impacto por plano)
 
@@ -147,7 +159,7 @@ Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele 
 
 ## Modos de falha
 
-- **`wrangler d1 create` diz "already exists"**: o usuário já tem um D1 `mind-vault`. Roda `npx wrangler d1 list` pra achar e pergunta pro usuário se quer reaproveitar (e usar o ID existente) ou escolher outro nome.
+- **`wrangler d1 create` diz "already exists"**: o usuário já tem um D1 `expert-brain`. Roda `npx wrangler d1 list` pra achar e pergunta pro usuário se quer reaproveitar (e usar o ID existente) ou escolher outro nome.
 - **`wrangler deploy` falha no binding de KV**: o ID no `wrangler.toml` ainda é placeholder ou tá errado. Refaz o passo 2/3.
 - **`curl /setup/provision` retorna 503**: os secrets não foram setados. Refaz o passo 5 e o deploy.
 - **`curl /status` retorna `{"configured":false}`**: pelo menos um dos três secrets tá faltando. Confere se os três foram realmente setados rodando `npx wrangler secret list`.

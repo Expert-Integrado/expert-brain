@@ -1,0 +1,50 @@
+# Expert Brain — template de configuração Cloudflare.
+#
+# Copie este arquivo pra `wrangler.toml` e substitua os placeholders REPLACE_ME_*
+# pelos IDs reais da sua conta. Ou rode `npm run setup` que o script faz isso
+# automaticamente.
+#
+# - account_id: encontra em https://dash.cloudflare.com (canto inferior direito da sidebar)
+# - database_id: gerado por `wrangler d1 create expert-brain`
+# - id (OAUTH_KV): gerado por `wrangler kv namespace create OAUTH_KV`
+# - id (GRAPH_CACHE): gerado por `wrangler kv namespace create GRAPH_CACHE`
+
+name = "expert-brain"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "REPLACE_ME_ACCOUNT_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "expert-brain"
+database_id = "REPLACE_ME_D1_ID"
+migrations_dir = "src/db/migrations"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "expert-brain-embeddings"
+
+[ai]
+binding = "AI"
+
+[durable_objects]
+bindings = [
+  { name = "MCP_OBJECT", class_name = "ExpertBrainMCP" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExpertBrainMCP"]
+
+[assets]
+directory = "./assets"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_ME_OAUTH_KV_ID"
+
+[[kv_namespaces]]
+binding = "GRAPH_CACHE"
+id = "REPLACE_ME_GRAPH_CACHE_ID"
