@@ -259,6 +259,37 @@ wire();
 window.addEventListener('keydown', onKey);
 loadNotes();
 registerServiceWorker();
+wireMobileSidebar();
+
+// Sidebar collapse em mobile — clique na logo recolhe (width 0); botão
+// circular no canto top-left reabre. Desktop fica intocado: CSS esconde
+// o botão de reabrir e não tem transição de width.
+function wireMobileSidebar() {
+  const logo = document.querySelector('.sidebar .logo') as HTMLElement | null;
+  const reopen = document.querySelector('.sidebar-reopen') as HTMLElement | null;
+  if (!logo || !reopen) return;
+
+  const collapse = () => {
+    if (!window.matchMedia('(max-width: 767px)').matches) return;
+    document.body.classList.add('sidebar-collapsed');
+    reopen.setAttribute('aria-hidden', 'false');
+  };
+  const expand = () => {
+    document.body.classList.remove('sidebar-collapsed');
+    reopen.setAttribute('aria-hidden', 'true');
+  };
+
+  logo.addEventListener('click', collapse);
+  logo.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); }
+  });
+  reopen.addEventListener('click', expand);
+
+  // Voltar pra desktop reseta o estado (caso usuário rotacione/redimensione).
+  window.matchMedia('(min-width: 768px)').addEventListener('change', (e) => {
+    if (e.matches) expand();
+  });
+}
 
 // Service worker — registra /sw.js após load pra cachear shell estático.
 // Não muda nada visual; só permite Add to Home Screen e abre mais rápido em

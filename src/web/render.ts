@@ -24,9 +24,12 @@ ${FONT_LINKS}
 <style>${NEBULA_CSS}</style>
 ${opts.extraHead ?? ''}
 </head><body>
+<button class="sidebar-reopen" type="button" aria-label="Mostrar menu" aria-hidden="true">
+  <span class="sidebar-reopen-dot" aria-hidden="true"></span>
+</button>
 <div class="shell">
   <aside class="sidebar">
-    <div class="logo">Expert Brain</div>
+    <div class="logo" role="button" tabindex="0" aria-label="Recolher menu (mobile)">Expert Brain</div>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph">Graph</a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notes</a>
     <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config">Config</a>

@@ -791,9 +791,63 @@ a:hover { color: var(--text); }
 }
 .panel-open:hover { background: rgba(124, 58, 237, 0.32); color: var(--text); }
 
+/* Sidebar reopen button — só aparece em mobile quando sidebar tá colapsada.
+   Em desktop fica permanentemente escondido. */
+.sidebar-reopen {
+  display: none;
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  z-index: 80;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 6, 24, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 160ms var(--ease), transform 160ms var(--ease);
+}
+.sidebar-reopen:hover { background: rgba(167, 139, 250, 0.18); }
+.sidebar-reopen:active { transform: scale(0.96); }
+.sidebar-reopen-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: url('/expert-integrado-logo.png') center/cover no-repeat #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 12px rgba(167, 139, 250, 0.35);
+}
+
 /* Mobile: collapse overlay below, make panel full width */
 @media (max-width: 767px) {
   .graph-overlay-toggle { display: inline-flex; }
+
+  /* Logo do sidebar vira ponto de toque pra recolher menu */
+  .sidebar .logo { cursor: pointer; }
+
+  /* Sidebar collapses to width 0 — main page expande automaticamente */
+  .sidebar {
+    transition: width 220ms var(--ease), padding 220ms var(--ease);
+    overflow: hidden;
+  }
+  body.sidebar-collapsed .sidebar {
+    width: 0 !important;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+  }
+  body.sidebar-collapsed .sidebar-reopen {
+    display: inline-flex;
+  }
+  /* Quando collapsed, o burger toggle do graph desce um pouco pra não
+     colidir com o sidebar-reopen no canto top-left. */
+  body.sidebar-collapsed .graph-overlay-toggle {
+    left: 60px;
+  }
 
   /* Overlay fica colapsado por padrão em mobile — usuário abre via botão.
      Quando aberto (.open), abre como drawer do topo, deixando ainda assim
