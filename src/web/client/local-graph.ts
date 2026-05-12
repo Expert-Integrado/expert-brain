@@ -195,7 +195,7 @@ async function main() {
   if (slider) {
     slider.addEventListener('input', () => {
       hops = Number(slider.value);
-      if (valueLabel) valueLabel.textContent = `${hops} hop${hops > 1 ? 's' : ''}`;
+      if (valueLabel) valueLabel.textContent = `${hops} salto${hops > 1 ? 's' : ''}`;
       render(container, focusId, payload, hops);
     });
   }

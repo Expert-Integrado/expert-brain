@@ -23,27 +23,27 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
-    ? new Date(stats.lastWrite).toLocaleString('en-US')
-    : 'Never';
+    ? new Date(stats.lastWrite).toLocaleString('pt-BR')
+    : 'Nunca';
 
   const badge = stats.connected
-    ? `<span class="badge-pill badge-ok">● Claude connected</span>`
-    : `<span class="badge-pill badge-warn">○ Waiting for Claude connection</span>`;
+    ? `<span class="badge-pill badge-ok">● Claude conectado</span>`
+    : `<span class="badge-pill badge-warn">○ Aguardando conexão do Claude</span>`;
 
   // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
   const keys = await listApiKeys(env, session.email);
   const keyRows = keys
     .map((k) => {
-      const created = new Date(k.created_at).toLocaleString('en-US');
-      const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('en-US') : '—';
+      const created = new Date(k.created_at).toLocaleString('pt-BR');
+      const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('pt-BR') : '—';
       const revokeBtn = `<form method="post" action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn-danger">Delete</button>
+             <button type="submit" class="btn-danger">Excluir</button>
            </form>`;
       return `<tr>
         <td><strong>${esc(k.name)}</strong></td>
         <td><code>${esc(k.prefix)}…</code></td>
-        <td><span class="badge-pill badge-ok">● active</span></td>
+        <td><span class="badge-pill badge-ok">● ativa</span></td>
         <td>${esc(created)}</td>
         <td>${esc(lastUsed)}</td>
         <td>${revokeBtn}</td>
@@ -53,76 +53,76 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   const createdBanner = justCreatedKey
     ? `<div class="card" style="border:1px solid #5a8a5a;background:#1a2a1a">
-         <h2>Key created — save it now</h2>
-         <p style="color:var(--text-dim)">This is the only time the full key is shown. Click the field to select all, then Ctrl+C / Cmd+C.</p>
+         <h2>Chave criada — copie agora</h2>
+         <p style="color:var(--text-dim)">Essa é a única vez que a chave completa aparece. Clique no campo pra selecionar tudo e Ctrl+C.</p>
          <input type="text" readonly value="${esc(justCreatedKey)}" onclick="this.select()" style="width:100%;padding:10px;background:#0f1a0f;color:#9f9;border:1px solid #2a4a2a;border-radius:4px;font-family:monospace;font-size:13px">
        </div>`
     : '';
 
   const body = `
     <div class="page-header">
-      <h1>Config ${badge}</h1>
+      <h1>Configurações ${badge}</h1>
     </div>
 
     <div class="card">
-      <h2>Vault status</h2>
-      <p><strong>Notes:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Edges:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Last write:</strong> ${esc(lastWriteStr)}</p>
-      <p style="color:var(--text-dim);font-size:13px"><strong>Registered OAuth clients:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Active tokens:</strong> ${stats.tokens}</p>
+      <h2>Status do vault</h2>
+      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
+      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
     </div>
 
     <div class="card">
-      <h2>1. MCP server URL</h2>
-      <p style="color:var(--text-dim)">Paste this URL into Claude Desktop / Web → Settings → Connectors → Add custom connector.</p>
+      <h2>1. URL do servidor MCP</h2>
+      <p style="color:var(--text-dim)">Cole essa URL no Claude Desktop / Web → Settings → Connectors → Add custom connector.</p>
       <div class="row">
         <div id="mcp-url" class="url-box">/mcp</div>
-        <button type="button" data-copy="mcp-url">Copy URL</button>
+        <button type="button" data-copy="mcp-url">Copiar URL</button>
       </div>
       <details style="margin-top:12px">
-        <summary style="cursor:pointer;color:var(--text-dim)">Using Claude Code (CLI)?</summary>
+        <summary style="cursor:pointer;color:var(--text-dim)">Usando Claude Code (CLI)?</summary>
         <div class="row" style="margin-top:8px">
           <div id="code-add" class="url-box">claude mcp add --transport http expert-brain &lt;URL&gt;</div>
-          <button type="button" data-copy="code-add">Copy command</button>
+          <button type="button" data-copy="code-add">Copiar comando</button>
         </div>
       </details>
       <p style="margin-top:16px;padding:12px 14px;background:rgba(140,200,255,0.07);border:1px solid rgba(140,200,255,0.18);border-radius:8px;font-size:13px;color:var(--text-dim)">
-        <strong style="color:var(--accent-cyan)">No API key needed.</strong> When Claude connects to this URL, it opens a browser window asking you to log in — use the <em>same email and passphrase</em> you use to access this dashboard. Authentication is OAuth 2.1, the token is stored by Claude automatically.
+        <strong style="color:var(--accent-cyan)">Não precisa de API key.</strong> Quando o Claude conectar nessa URL, abre uma aba do navegador pedindo login — use o <em>mesmo e-mail e senha</em> que você usa pra acessar este painel. A autenticação é OAuth 2.1 e o token é armazenado automaticamente pelo Claude.
       </p>
     </div>
 
     <div class="card">
-      <h2>2. Personalization prompt</h2>
-      <p style="color:var(--text-dim)">Paste into <em>Claude → Settings → Personalization → Custom instructions</em> to activate the latticework behavior proactively in every conversation, not just when the topic is obvious.</p>
+      <h2>2. Prompt de personalização</h2>
+      <p style="color:var(--text-dim)">Cole em <em>Claude → Settings → Personalization → Custom instructions</em> pra ativar o comportamento latticework de forma proativa em toda conversa, não só quando o tema é óbvio.</p>
       <pre id="prefs-block">${esc(PREFS_BLOCK)}</pre>
-      <button type="button" data-copy="prefs-block">Copy prompt</button>
+      <button type="button" data-copy="prefs-block">Copiar prompt</button>
     </div>
 
-    <h2 id="api-keys" style="margin-top:40px;margin-bottom:14px">API Keys</h2>
+    <h2 id="api-keys" style="margin-top:40px;margin-bottom:14px">Chaves de API</h2>
 
     ${createdBanner}
 
     <div class="card">
-      <h2>What are API keys?</h2>
-      <p style="color:var(--text-dim)">Long-lived personal access tokens for the MCP server. Use these when your client can't do OAuth refresh (agents, scripts, containers). Send them in the <code>Authorization: Bearer eb_pat_...</code> header on <code>/mcp</code>.</p>
-      <p style="color:var(--text-dim)">They never expire. Revoke a key to kill it instantly.</p>
+      <h2>O que são chaves de API?</h2>
+      <p style="color:var(--text-dim)">Tokens pessoais de longa duração pro servidor MCP. Use quando o cliente não consegue fazer refresh OAuth (agentes, scripts, containers). Envie no header <code>Authorization: Bearer eb_pat_...</code> em <code>/mcp</code>.</p>
+      <p style="color:var(--text-dim)">Não expiram. Revogue a chave pra matar o acesso na hora.</p>
     </div>
 
     <div class="card">
-      <h2>Create new key</h2>
+      <h2>Criar nova chave</h2>
       <form method="post" action="/app/api-keys/create">
-        <label>Name (so you remember where it's used)
+        <label>Nome (pra você lembrar onde usa)
           <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." style="width:100%;padding:8px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px">
         </label>
-        <button type="submit" style="margin-top:12px">Create key</button>
+        <button type="submit" style="margin-top:12px">Criar chave</button>
       </form>
     </div>
 
     <div class="card">
-      <h2>Your keys</h2>
-      ${keys.length === 0 ? '<p style="color:var(--text-dim)">No keys yet.</p>' : `
+      <h2>Suas chaves</h2>
+      ${keys.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>' : `
       <table style="width:100%;border-collapse:collapse">
         <thead><tr style="text-align:left;color:var(--text-dim);font-size:13px">
-          <th style="padding:8px">Name</th><th style="padding:8px">Prefix</th><th style="padding:8px">Status</th>
-          <th style="padding:8px">Created</th><th style="padding:8px">Last used</th><th style="padding:8px"></th>
+          <th style="padding:8px">Nome</th><th style="padding:8px">Prefixo</th><th style="padding:8px">Status</th>
+          <th style="padding:8px">Criada em</th><th style="padding:8px">Último uso</th><th style="padding:8px"></th>
         </tr></thead>
         <tbody>${keyRows}</tbody>
       </table>`}
@@ -132,7 +132,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Config', active: 'config', email: session.email, body })
+    renderShell({ title: 'Configurações', active: 'config', email: session.email, body })
   );
 }
 
@@ -169,7 +169,7 @@ export function configPageScript(): string {
       var text = (el.textContent || '').trim();
       var ok = await copyText(text);
       var original = btn.textContent;
-      btn.textContent = ok ? 'Copied ✓' : 'Select + Ctrl+C';
+      btn.textContent = ok ? 'Copiado ✓' : 'Selecione + Ctrl+C';
       setTimeout(function () { btn.textContent = original; }, 1800);
     });
   });

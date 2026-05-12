@@ -29,8 +29,8 @@ describe('/app/config', () => {
     });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('MCP server URL');
-    expect(html).toContain('Personalization prompt');
+    expect(html).toContain('URL do servidor MCP');
+    expect(html).toContain('Prompt de personalização');
     expect(html).toContain('href="/app/graph"');
     expect(html).toContain('href="/app/notes"');
   });

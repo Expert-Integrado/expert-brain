@@ -9,6 +9,6 @@ export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const res = await handleApp(req, env);
     if (res) return res;
-    return new Response('Not found', { status: 404 });
+    return new Response('Não encontrado', { status: 404 });
   },
 };

@@ -8,7 +8,7 @@ export function renderShell(opts: {
   body: string;
   extraHead?: string;
 }): string {
-  return `<!doctype html><html lang="en"><head>
+  return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#070a13">
@@ -27,26 +27,26 @@ ${opts.extraHead ?? ''}
 <div class="shell">
   <aside class="sidebar">
     <div class="logo">Expert Brain</div>
-    <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph">Graph</a>
-    <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notes</a>
-    <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config">Config</a>
+    <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph">Grafo</a>
+    <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes">Notas</a>
+    <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config">Configurações</a>
     <div class="bottom">
       <div>${esc(opts.email)}</div>
-      <form method="post" action="/app/logout"><button type="submit">Log out</button></form>
+      <form method="post" action="/app/logout"><button type="submit">Sair</button></form>
     </div>
   </aside>
   <main class="main">${opts.body}</main>
 </div>
 <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
-  <a class="bottom-nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" aria-label="Graph">
+  <a class="bottom-nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" aria-label="Grafo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>
-    <span>Graph</span>
+    <span>Grafo</span>
   </a>
-  <a class="bottom-nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" aria-label="Notes">
+  <a class="bottom-nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" aria-label="Notas">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
-    <span>Notes</span>
+    <span>Notas</span>
   </a>
-  <a class="bottom-nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" aria-label="Config">
+  <a class="bottom-nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" aria-label="Configurações">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     <span>Config</span>
   </a>

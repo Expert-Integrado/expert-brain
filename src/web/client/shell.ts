@@ -18,10 +18,10 @@ interface Command {
 }
 
 const COMMANDS: Command[] = [
-  { id: 'go-graph',  label: 'Go to Graph',  hint: 'Ctrl+G', action: () => (window.location.href = '/app/graph') },
-  { id: 'go-notes',  label: 'Go to Notes',  hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
-  { id: 'go-config', label: 'Go to Config', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
-  { id: 'logout',    label: 'Log out',     action: () => submitLogout() },
+  { id: 'go-graph',  label: 'Ir pro Grafo',         hint: 'Ctrl+G', action: () => (window.location.href = '/app/graph') },
+  { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
+  { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
+  { id: 'logout',    label: 'Sair',                 action: () => submitLogout() },
 ];
 
 function submitLogout() {
@@ -82,14 +82,14 @@ function ensurePalette(): { root: HTMLElement; input: HTMLInputElement; list: HT
         <span class="cmd-input-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
         </span>
-        <input class="cmd-input" type="text" placeholder="Search notes — type &gt; for commands" autocomplete="off" spellcheck="false" aria-label="Command palette input" />
+        <input class="cmd-input" type="text" placeholder="Buscar notas — digite &gt; pra comandos" autocomplete="off" spellcheck="false" aria-label="Paleta de comandos" />
         <kbd class="cmd-esc">Esc</kbd>
       </div>
       <ul class="cmd-list" role="listbox" aria-live="polite"></ul>
       <div class="cmd-help">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-        <span><kbd>↵</kbd> open</span>
-        <span><kbd>&gt;</kbd> commands</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> navegar</span>
+        <span><kbd>↵</kbd> abrir</span>
+        <span><kbd>&gt;</kbd> comandos</span>
       </div>
     </div>
   `;
@@ -153,7 +153,7 @@ function render(query: string, list: HTMLElement) {
   cursor = 0;
 
   if (items.length === 0) {
-    list.innerHTML = `<li class="cmd-empty">${q ? 'No matches' : 'No notes loaded yet'}</li>`;
+    list.innerHTML = `<li class="cmd-empty">${q ? 'Nada encontrado' : 'Notas ainda carregando'}</li>`;
     return;
   }
 

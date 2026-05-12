@@ -6,9 +6,9 @@ import { NEBULA_CSS, FONT_LINKS } from './styles.js';
 import { htmlResponse } from './render.js';
 
 function renderLoginPage(error: string | null, next: string): string {
-  return `<!doctype html><html lang="en"><head>
+  return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Log in · Expert Brain</title>
+<title>Entrar · Expert Brain</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style></head>
 <body><div class="login-wrap">
@@ -17,9 +17,9 @@ ${FONT_LINKS}
 ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/app/login">
 <input type="hidden" name="next" value="${esc(next)}">
-<label>Email<input type="email" name="email" required autofocus></label>
-<label>Passphrase<input type="password" name="password" required></label>
-<button type="submit">Enter</button>
+<label>E-mail<input type="email" name="email" required autofocus></label>
+<label>Senha<input type="password" name="password" required></label>
+<button type="submit">Entrar</button>
 </form></div></body></html>`;
 }
 
@@ -37,9 +37,9 @@ function checkOrigin(req: Request): boolean {
 }
 
 export async function handleLoginPost(req: Request, env: Env): Promise<Response> {
-  if (!checkOrigin(req)) return new Response('Forbidden', { status: 403 });
+  if (!checkOrigin(req)) return new Response('Acesso negado', { status: 403 });
   if (!env.OWNER_EMAIL || !env.OWNER_PASSWORD_HASH || !env.SESSION_SECRET) {
-    return new Response('Vault not configured', { status: 503 });
+    return new Response('Vault não configurado', { status: 503 });
   }
   const form = await req.formData();
   const email = String(form.get('email') ?? '').trim();
@@ -49,7 +49,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   const emailMatch = email === env.OWNER_EMAIL;
   const passwordOk = emailMatch && (await verifyPassword(password, env.OWNER_PASSWORD_HASH));
   if (!emailMatch || !passwordOk) {
-    return htmlResponse(renderLoginPage('Invalid credentials.', next), 401);
+    return htmlResponse(renderLoginPage('Credenciais inválidas.', next), 401);
   }
 
   const token = await signSession(env.OWNER_EMAIL, env.SESSION_SECRET, Math.floor(Date.now() / 1000));
@@ -67,7 +67,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
 }
 
 export async function handleLogoutPost(req: Request): Promise<Response> {
-  if (!checkOrigin(req)) return new Response('Forbidden', { status: 403 });
+  if (!checkOrigin(req)) return new Response('Acesso negado', { status: 403 });
   return new Response(null, {
     status: 302,
     headers: {

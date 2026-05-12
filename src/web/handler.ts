@@ -67,5 +67,5 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
     });
   }
 
-  return new Response('Not found', { status: 404 });
+  return new Response('Não encontrado', { status: 404 });
 }

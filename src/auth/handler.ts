@@ -19,15 +19,15 @@ export const authHandler = {
     if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(env);
 
     if (url.pathname === '/authorize') {
-      if (!isSetup(env)) return new Response('Vault not configured', { status: 503 });
+      if (!isSetup(env)) return new Response('Vault não configurado', { status: 503 });
       const provider = (env as any).OAUTH_PROVIDER;
       if (req.method === 'POST') {
         const form = await req.formData();
         const email = String(form.get('email') ?? '');
         const password = String(form.get('password') ?? '');
-        if (email !== env.OWNER_EMAIL) return renderLogin('Invalid credentials.', url.search);
+        if (email !== env.OWNER_EMAIL) return renderLogin('Credenciais inválidas.', url.search);
         const ok = await verifyPassword(password, env.OWNER_PASSWORD_HASH!);
-        if (!ok) return renderLogin('Invalid credentials.', url.search);
+        if (!ok) return renderLogin('Credenciais inválidas.', url.search);
         // parseAuthRequest expects the original GET request; reconstruct it from the query string
         const authReq = await provider.parseAuthRequest(new Request(url.toString(), { method: 'GET' }));
         const result = await provider.completeAuthorization({
@@ -42,25 +42,25 @@ export const authHandler = {
       return renderLogin(null, url.search);
     }
 
-    return new Response('Not found', { status: 404 });
+    return new Response('Não encontrado', { status: 404 });
   },
 };
 
 function renderLogin(error: string | null, qs: string): Response {
   return new Response(
-    `<!doctype html><html lang="en"><head>
+    `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Authorize · Expert Brain</title>
+<title>Autorizar · Expert Brain</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style></head>
 <body><div class="login-wrap">
 <h1>Expert Brain</h1>
-<p class="subtitle">Authorize Claude to access your vault.</p>
+<p class="subtitle">Autorize o Claude a acessar seu vault.</p>
 ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/authorize${esc(qs)}">
-<label>Email<input type="email" name="email" required autofocus></label>
-<label>Passphrase<input type="password" name="password" required></label>
-<button type="submit">Authorize</button>
+<label>E-mail<input type="email" name="email" required autofocus></label>
+<label>Senha<input type="password" name="password" required></label>
+<button type="submit">Autorizar</button>
 </form></div></body></html>`,
     {
       headers: {

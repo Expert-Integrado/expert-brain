@@ -71,8 +71,8 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
 
   const body = `
     <div class="page-header">
-      <h1>Notes</h1>
-      <span class="count" id="notes-count">${notes.length} ${notes.length === 1 ? 'note' : 'notes'}</span>
+      <h1>Notas</h1>
+      <span class="count" id="notes-count">${notes.length} ${notes.length === 1 ? 'nota' : 'notas'}</span>
     </div>
 
     <div class="notes-toolbar">
@@ -84,47 +84,47 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
           type="search"
           id="notes-search-input"
           class="notes-search-input"
-          placeholder="Search notes (press / to focus)"
+          placeholder="Buscar notas (aperte / pra focar)"
           autocomplete="off"
           spellcheck="false"
         />
         <div class="notes-toolbar-actions">
           <label>
-            <span class="sr-label">Sort</span>
+            <span class="sr-label">Ordenar</span>
             <select id="notes-sort" class="notes-select">
-              <option value="updated_desc">Updated ↓</option>
-              <option value="title_asc">Title A–Z</option>
-              <option value="kind">Kind</option>
+              <option value="updated_desc">Atualizadas ↓</option>
+              <option value="title_asc">Título A–Z</option>
+              <option value="kind">Tipo</option>
             </select>
           </label>
           <label>
             <span class="sr-label">Layout</span>
             <select id="notes-layout" class="notes-select">
-              <option value="cards">Cards</option>
-              <option value="compact">Compact</option>
+              <option value="cards">Cartões</option>
+              <option value="compact">Compacto</option>
             </select>
           </label>
         </div>
       </div>
 
       <div class="notes-filter-group">
-        <span class="notes-filter-label">Domains</span>
+        <span class="notes-filter-label">Áreas</span>
         <div id="notes-domain-chips" class="notes-chips"></div>
       </div>
       <div class="notes-filter-group">
-        <span class="notes-filter-label">Kinds</span>
+        <span class="notes-filter-label">Tipos</span>
         <div id="notes-kind-chips" class="notes-chips"></div>
       </div>
     </div>
 
-    ${notes.length === 0 ? '<p style="color:var(--text-dim)">No notes yet.</p>' : ''}
+    ${notes.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma nota ainda.</p>' : ''}
     <div id="notes-list" data-layout="cards">${ssrItems}</div>
 
     <script src="/app/notes/bundle.js?v=${Date.now()}" defer></script>
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Notes', active: 'notes', email: session.email, body })
+    renderShell({ title: 'Notas', active: 'notes', email: session.email, body })
   );
 }
 
@@ -136,10 +136,10 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   if (!note) {
     return htmlResponse(
       renderShell({
-        title: 'Not found',
+        title: 'Não encontrada',
         active: 'notes',
         email: session.email,
-        body: '<h1>Note not found</h1><p><a href="/app/notes">← Back to notes</a></p>',
+        body: '<h1>Nota não encontrada</h1><p><a href="/app/notes">← Voltar pras notas</a></p>',
       }),
       404
     );
@@ -183,13 +183,13 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   };
 
   const outboundHtml = outbound.length
-    ? `<h2>Connected to</h2><div class="note-edges">${outbound
+    ? `<h2>Conectada a</h2><div class="note-edges">${outbound
         .map((e) => renderEdgeCard(e.to_id, e.relation_type, e.why, 'out'))
         .join('')}</div>`
     : '';
 
   const inboundHtml = inbound.length
-    ? `<h2>Referenced by</h2><div class="note-edges">${inbound
+    ? `<h2>Referenciada por</h2><div class="note-edges">${inbound
         .map((e) => renderEdgeCard(e.from_id, e.relation_type, e.why, 'in'))
         .join('')}</div>`
     : '';
@@ -199,16 +199,16 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     <div class="meta" style="margin-bottom:20px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       ${note.kind ? `<span class="kind-badge">${esc(note.kind)}</span>` : ''}
       ${domainsToBadges(note.domains)}
-      <span>Updated ${formatDate(note.updated_at)}</span>
+      <span>Atualizada ${formatDate(note.updated_at)}</span>
     </div>
 
     ${relatedIds.length > 0 ? `
       <div class="local-graph-wrap">
         <div class="local-graph-controls">
           <label class="local-graph-hops">
-            <span>Depth</span>
+            <span>Profundidade</span>
             <input type="range" id="local-graph-hops" min="1" max="3" step="1" value="1" />
-            <span id="local-graph-hops-value">1 hop</span>
+            <span id="local-graph-hops-value">1 salto</span>
           </label>
         </div>
         <div id="local-graph" data-note-id="${esc(note.id)}" class="local-graph">

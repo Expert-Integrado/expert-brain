@@ -17,7 +17,7 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   if (!session.ok) return session.response;
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
-  if (!name) return htmlResponse('Name required', 400);
+  if (!name) return htmlResponse('Nome obrigatório', 400);
   const { plainKey } = await createApiKey(env, session.email, name);
   return new Response(null, {
     status: 302,
@@ -30,7 +30,7 @@ export async function handleApiKeyRevoke(req: Request, env: Env): Promise<Respon
   if (!session.ok) return session.response;
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id required', 400);
+  if (!id) return htmlResponse('id obrigatório', 400);
   await revokeApiKey(env, session.email, id);
   return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }
