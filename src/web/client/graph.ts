@@ -174,6 +174,10 @@ async function main() {
     defaultDrawNodeHover: drawDarkHover as any,
   });
 
+  // Expõe renderer pro listener de viewport-change (mobile scale) refresh-ar
+  // os reducers quando a tela vira/redimensiona.
+  (globalThis as any).__graphRenderer = renderer;
+
   // Dynamic label threshold: when zoomed in (ratio < 0.5) show more labels;
   // when far out (ratio > 2) only show labels for high-degree hubs.
   // Implemented as a nodeReducer side-effect on `label` rather than changing
@@ -201,7 +205,29 @@ async function main() {
     lineSizeMult: 1,
     textFadeMult: 0,
     hideOrphans: false,
+    // Escala extra aplicada por cima dos multiplicadores acima.
+    // Em mobile (<768px) reduz nodes/edges proporcionalmente pra manter
+    // a mesma "leitura" visual do desktop sem ficar gigante na tela pequena.
+    mobileNodeScale: 1,
+    mobileEdgeScale: 1,
   };
+
+  // Aplica escala mobile e reage a mudanças de viewport (rotação, redimensiona).
+  const applyMobileScale = () => {
+    const mobile = window.matchMedia('(max-width: 767px)').matches;
+    state.mobileNodeScale = mobile ? 0.5 : 1;
+    state.mobileEdgeScale = mobile ? 0.7 : 1;
+  };
+  applyMobileScale();
+  // O listener abaixo refresh-a o renderer só depois dele existir; antes,
+  // o estado já ficou correto pelo applyMobileScale acima e o primeiro
+  // render vai usar os valores certos.
+  window.matchMedia('(max-width: 767px)').addEventListener('change', () => {
+    applyMobileScale();
+    if (typeof (globalThis as any).__graphRenderer?.refresh === 'function') {
+      (globalThis as any).__graphRenderer.refresh();
+    }
+  });
 
   // ────────────────────────────────────────────────────────────────────────
   // Glow overlay (Phase A.3) — sits ABOVE the Sigma WebGL canvases with
@@ -392,7 +418,8 @@ async function main() {
     const baseColor = pickNodeColor(n, attrs);
 
     // A.22 — multiplicador global de tamanho (slider Display > Node size).
-    const baseSize = (attrs.size as number) * state.nodeSizeMult;
+    // mobileNodeScale aplica escala extra em viewports <768px sem mexer no slider.
+    const baseSize = (attrs.size as number) * state.nodeSizeMult * state.mobileNodeScale;
 
     // Filter out: heavy dim, no label
     if (!active) {
@@ -438,7 +465,7 @@ async function main() {
     // A.29 — Line thickness é multiplier puro (igual Obsidian). Cor base fica
     // fixa (rgba pré-multiplicado 25%); só size escala com slider.
     const [s, t] = graph.extremities(edge);
-    const baseSize = (attrs.size as number) * state.lineSizeMult;
+    const baseSize = (attrs.size as number) * state.lineSizeMult * state.mobileEdgeScale;
     if (!isNodeActive(s) || !isNodeActive(t)) {
       return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize, hidden: true };
     }
