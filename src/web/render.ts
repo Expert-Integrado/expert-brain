@@ -10,10 +10,16 @@ export function renderShell(opts: {
 }): string {
   return `<!doctype html><html lang="en"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#070a13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brain">
 <title>${esc(opts.title)} · Expert Brain</title>
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" type="image/png" href="/expert-integrado-logo.png">
-<link rel="apple-touch-icon" href="/expert-integrado-logo.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 ${FONT_LINKS}
 <style>${NEBULA_CSS}</style>
 ${opts.extraHead ?? ''}
@@ -46,6 +52,8 @@ export function htmlResponse(body: string, status = 200): Response {
       'content-security-policy':
         "default-src 'self'; " +
         "script-src 'self'; " +
+        "worker-src 'self'; " +
+        "manifest-src 'self'; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data:; " +

@@ -258,3 +258,16 @@ ensurePalette();
 wire();
 window.addEventListener('keydown', onKey);
 loadNotes();
+registerServiceWorker();
+
+// Service worker — registra /sw.js após load pra cachear shell estático.
+// Não muda nada visual; só permite Add to Home Screen e abre mais rápido em
+// revisita. Falha silenciosa em ambientes sem suporte.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/sw.js', { scope: '/' })
+      .catch((err) => console.warn('sw register failed', err));
+  });
+}
