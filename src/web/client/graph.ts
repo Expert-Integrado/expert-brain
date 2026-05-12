@@ -66,6 +66,8 @@ async function main() {
   ]);
   if (!graphRes.ok) {
     setStatus('Falha ao carregar grafo');
+    const loading = document.getElementById('graph-center-loading');
+    if (loading) loading.textContent = 'Falha ao carregar grafo';
     return;
   }
   const payload = (await graphRes.json()) as Payload;
@@ -177,6 +179,15 @@ async function main() {
   // Expõe renderer pro listener de viewport-change (mobile scale) refresh-ar
   // os reducers quando a tela vira/redimensiona.
   (globalThis as any).__graphRenderer = renderer;
+
+  // Esconde o loading central assim que o primeiro frame for renderizado.
+  let _loadingHidden = false;
+  renderer.on('afterRender', () => {
+    if (_loadingHidden) return;
+    const loading = document.getElementById('graph-center-loading');
+    if (loading) loading.classList.add('hidden');
+    _loadingHidden = true;
+  });
 
   // Dynamic label threshold: when zoomed in (ratio < 0.5) show more labels;
   // when far out (ratio > 2) only show labels for high-degree hubs.

@@ -268,6 +268,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
     </style>
 
     <div class="graph-wrap">
+      <!-- Loading centralizado sobre o canvas — escondido após primeiro render. -->
+      <div id="graph-center-loading" class="center-loading" role="status" aria-live="polite">
+        <div class="center-loading-spinner" aria-hidden="true"></div>
+        <div>Carregando grafo...</div>
+      </div>
       <!-- Mobile-only toggle do overlay (escondido em desktop via CSS).
            Permite fechar o painel pra interagir com o canvas no mobile. -->
       <button

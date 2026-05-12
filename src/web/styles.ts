@@ -791,113 +791,108 @@ a:hover { color: var(--text); }
 }
 .panel-open:hover { background: rgba(124, 58, 237, 0.32); color: var(--text); }
 
-/* Sidebar reopen button — só aparece em mobile quando sidebar tá colapsada.
-   Em desktop fica permanentemente escondido. */
-.sidebar-reopen {
+/* Bottom navigation — só em mobile (regra mobile no fim do arquivo).
+   Em desktop fica escondida; a sidebar lateral continua sendo a navegação. */
+.bottom-nav {
   display: none;
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  left: 12px;
+  bottom: 0;
+  left: 0;
+  right: 0;
   z-index: 80;
-  width: 40px;
-  height: 40px;
-  align-items: center;
-  justify-content: center;
-  background: rgba(10, 6, 24, 0.82);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  cursor: pointer;
-  transition: background 160ms var(--ease), transform 160ms var(--ease);
-}
-.sidebar-reopen:hover { background: rgba(167, 139, 250, 0.18); }
-.sidebar-reopen:active { transform: scale(0.96); }
-/* Dropdown de navegação acionado pelo botão hambúrguer (mobile). */
-.sidebar-menu {
-  position: fixed;
-  top: max(60px, calc(env(safe-area-inset-top) + 52px));
-  left: 12px;
-  z-index: 90;
-  min-width: 200px;
-  background: rgba(10, 6, 24, 0.96);
+  height: calc(60px + env(safe-area-inset-bottom));
+  padding: 0 4px env(safe-area-inset-bottom);
+  background: rgba(10, 6, 24, 0.94);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px;
-  display: none;
+  border-top: 1px solid var(--border);
+  align-items: stretch;
+  justify-content: space-around;
+}
+.bottom-nav-item {
+  display: inline-flex;
   flex-direction: column;
-  gap: 2px;
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
-  animation: cmdFadeIn 140ms var(--ease);
-}
-.sidebar-menu.open { display: flex; }
-.sidebar-menu-item {
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-dim);
-  text-decoration: none;
-  transition: background 140ms var(--ease), color 140ms var(--ease);
-}
-.sidebar-menu-item:hover { background: rgba(167, 139, 250, 0.08); color: var(--text); }
-.sidebar-menu-item.active { background: rgba(167, 139, 250, 0.14); color: var(--text); }
-.sidebar-menu-sep {
-  height: 1px;
-  background: var(--border);
-  margin: 6px 4px;
-}
-.sidebar-menu-email {
-  padding: 4px 14px;
-  font-size: 11.5px;
-  color: var(--text-faint);
-  font-family: var(--font-body);
-}
-.sidebar-menu form { margin: 0; }
-.sidebar-menu-logout {
-  width: 100%;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px;
   background: none;
   border: none;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  text-decoration: none;
   font: inherit;
-  font-size: 13px;
+  font-size: 10.5px;
   font-weight: 500;
-  color: var(--text-dim);
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background 140ms var(--ease), color 140ms var(--ease);
+  transition: color 140ms var(--ease);
 }
-.sidebar-menu-logout:hover { background: rgba(255, 122, 144, 0.12); color: var(--danger); }
+.bottom-nav-item span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.bottom-nav-item:hover { color: var(--text-dim); }
+.bottom-nav-item.active { color: var(--accent-lav); }
+.bottom-nav-item.active svg { filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.45)); }
+.bottom-nav-logout-form { margin: 0; display: inline-flex; flex: 1; min-width: 0; }
+.bottom-nav-logout { width: 100%; }
+.bottom-nav-logout:hover { color: var(--danger); }
 
-/* Mobile: collapse overlay below, make panel full width */
+/* Loading central — sobreposto ao canvas/conteúdo enquanto carrega.
+   Mostrado SOBRE o canvas no centro da tela (não no canto da overlay). */
+.center-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+.center-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid rgba(167, 139, 250, 0.18);
+  border-top-color: var(--accent-lav);
+  animation: centerSpin 800ms linear infinite;
+}
+.center-loading.hidden { display: none; }
+@keyframes centerSpin { to { transform: rotate(360deg); } }
+
+/* Mobile: bottom navigation substitui sidebar lateral; graph/notes ocupam
+   toda a width do viewport. Bottom nav ocupa ~60px no rodapé. */
 @media (max-width: 767px) {
   .graph-overlay-toggle { display: inline-flex; }
 
-  /* Logo do sidebar vira ponto de toque pra recolher menu */
-  .sidebar .logo { cursor: pointer; }
+  /* Sidebar lateral some — navegação migra pra bottom nav */
+  .sidebar { display: none; }
 
-  /* Sidebar collapses to width 0 — main page expande automaticamente */
-  .sidebar {
-    transition: width 220ms var(--ease), padding 220ms var(--ease);
-    overflow: hidden;
+  /* Bottom nav fica visível */
+  .bottom-nav { display: inline-flex; }
+
+  /* Espaço pro bottom nav no final do conteúdo */
+  .main { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+
+  /* Graph wrap deixa folga no fim pra não esconder controles atrás do bottom nav */
+  .graph-wrap {
+    height: calc(100vh - 60px - env(safe-area-inset-bottom));
+    height: calc(100dvh - 60px - env(safe-area-inset-bottom));
   }
-  body.sidebar-collapsed .sidebar {
-    width: 0 !important;
-    padding-left: 0;
-    padding-right: 0;
-    border-right: none;
-  }
-  body.sidebar-collapsed .sidebar-reopen {
-    display: inline-flex;
-  }
-  /* Quando collapsed, o burger toggle do graph desce um pouco pra não
-     colidir com o sidebar-reopen no canto top-left. */
-  body.sidebar-collapsed .graph-overlay-toggle {
-    left: 60px;
+
+  /* Zoom controls sobem pra não colidir com o bottom nav */
+  .graph-zoom-controls {
+    bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   /* Overlay fica colapsado por padrão em mobile — usuário abre via botão.

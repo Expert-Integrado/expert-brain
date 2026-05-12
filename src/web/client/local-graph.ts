@@ -138,6 +138,15 @@ function render(
     maxCameraRatio: 4,
   });
 
+  // Esconde o loading central após primeiro render.
+  let _localLoadingHidden = false;
+  renderer.on('afterRender', () => {
+    if (_localLoadingHidden) return;
+    const loading = document.getElementById('local-graph-loading');
+    if (loading) loading.classList.add('hidden');
+    _localLoadingHidden = true;
+  });
+
   renderer.setSetting('nodeReducer', (n, attrs) => {
     if (attrs.isFocus) {
       return { ...attrs, color: '#a78bfa', highlighted: true };

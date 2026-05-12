@@ -211,7 +211,12 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
             <span id="local-graph-hops-value">1 hop</span>
           </label>
         </div>
-        <div id="local-graph" data-note-id="${esc(note.id)}" class="local-graph"></div>
+        <div id="local-graph" data-note-id="${esc(note.id)}" class="local-graph">
+          <div id="local-graph-loading" class="center-loading" role="status" aria-live="polite">
+            <div class="center-loading-spinner" aria-hidden="true"></div>
+            <div>Carregando...</div>
+          </div>
+        </div>
       </div>
     ` : ''}
 
