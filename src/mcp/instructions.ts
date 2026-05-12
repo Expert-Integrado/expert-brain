@@ -16,5 +16,9 @@ Fluxo recomendado:
 7. Para editar uma nota, chame \`update_note\` com o id e só os campos que mudam. Para remover, chame \`delete_note\` com \`confirm: true\` — pergunte ao USUÁRIO antes.
 8. \`stats\` dá um panorama do vault; use quando o usuário perguntar sobre composição ou crescimento.
 
-Domínios sugeridos para o contexto do Eric (use esses; aceita outros em kebab-case inglês):
-management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science`;
+Domínios canônicos do vault (TRAVA, não é sugestão):
+management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science
+
+\`save_note\` e \`update_note\` rejeitam domínios fora dessa lista. Se a nota não cabe perfeitamente em nenhum dos 12, escolha o mais próximo — o canon é a unidade de recall cross-domain. A mensagem de erro sugere o canônico mais próximo, então re-tentar é barato.
+
+Escape hatch: se o usuário GENUINAMENTE abriu uma área nova (ex: mudou de mercado, começou a estudar biotech), passe \`allow_new_domain: true\` no save_note/update_note daquela chamada. Não abuse — o canon existe pra evitar a proliferação que aconteceu em 12/05/2026 (46 domínios espalhados em 378 notas, limpeza manual em 27 notas).`;

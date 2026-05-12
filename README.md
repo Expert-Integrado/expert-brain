@@ -261,7 +261,7 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 
 | Tool | Função |
 |---|---|
-| `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, slugs de domínio contra regex, existência do edge target, e `kind` contra o enum fechado. |
+| `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, domínio contra a lista canônica de 12 (escape hatch via `allow_new_domain: true`), existência do edge target, e `kind` contra o enum fechado. |
 | `update_note` | Edita título/body/tldr/domínios/kind/tags de uma nota existente. Re-embed automático se o `tldr` mudou. |
 | `delete_note` | Remove a nota do D1 (cascata em edges/tags) e o vetor correspondente do Vectorize. Irreversível. |
 | `recall` | Busca híbrida: embedding Workers AI + FTS5, mesclados e **balanceados por domínio** (máx 3 por domínio, até 5 domínios distintos). Retorna só `{id, title, domain, kind, tldr}` — nunca o corpo. |
@@ -272,6 +272,19 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 | `reembed` | Regenera o embedding de uma nota (rescue pra quando o upsert vetorial falhou no save). |
 
 As descrições de tool são escritas em inglês com instruções de fluxo obrigatório ("chama `recall` antes de `save_note`") e mensagens de erro pedagógicas ("se a conversa tá em português e você ia usar `biologia-evolutiva`, usa `evolutionary-biology` no lugar") que ensinam o Claude a se recuperar de erro em um shot.
+
+### Domínios canônicos (trava, não sugestão)
+
+`save_note` e `update_note` validam o campo `domains` contra uma lista canônica de **12 slugs**:
+
+```
+management | sales | marketing | education | ai-applied | leadership
+product | operations | personal-development | entrepreneurship | music | cognitive-science
+```
+
+Domínio fora da lista é rejeitado com uma mensagem que sugere o canônico mais próximo (via heurística por keyword + Levenshtein nos 12). Isso é trava, não regra de estilo — antes do canon endurecer, o vault acumulou 46 domínios espalhados em ~250 notas (limpeza manual em 12/05/2026).
+
+**Escape hatch:** quando você genuinamente abre uma área nova (mudou de mercado, novo hobby de profundidade), passe `allow_new_domain: true` na chamada da tool. A trava sintática (kebab-case ASCII, 2–40 chars, sem acento) continua valendo.
 
 ## Método e linhagem intelectual
 

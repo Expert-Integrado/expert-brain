@@ -10,11 +10,14 @@ const inputSchema = {
   title: z.string().min(1).max(200).optional(),
   body: z.string().min(1).optional(),
   tldr: z.string().min(10).max(280).optional(),
-  domains: z.array(z.string().min(1)).min(1).max(3).optional(),
+  domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
   kind: z.enum(NOTE_KINDS).optional().describe(
     'concept | decision | insight | fact | pattern | principle | question'
   ),
   tags: z.array(z.string()).optional(),
+  allow_new_domain: z.boolean().optional().describe(
+    'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area.'
+  ),
 };
 
 const DESCRIPTION = `Edits fields of an existing note. At least one field besides id must be provided.
@@ -26,7 +29,7 @@ FLOW: call recall() or get_note() first to confirm the id. Do not call update_no
 
 REEMBEDDING: the vector index is updated automatically when tldr, domains, or kind changes (the embedding is computed from tldr and the metadata carries domains+kind). If only title/body/tags changes, no Workers AI call happens — cheap edit.
 
-VALIDATION: domains must be canonical English kebab-case slugs (same rules as save_note). tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
+VALIDATION: domains must be one of the 12 canonical domains (management, sales, marketing, education, ai-applied, leadership, product, operations, personal-development, entrepreneurship, music, cognitive-science). To intentionally introduce a non-canonical domain, pass allow_new_domain: true. tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
 
 KIND VALUES: the kind field is optional here (omit to keep existing), but if provided must be one of the 7 canonical values — pick the one that best fits the note's epistemic status:
 - 'concept'   — an abstract idea, model, or framework (most common default)
@@ -51,6 +54,7 @@ interface UpdateNoteInput {
   domains?: string[];
   kind?: NoteKind;
   tags?: string[];
+  allow_new_domain?: boolean;
 }
 
 export function registerUpdateNote(server: any, env: Env): void {
@@ -85,7 +89,9 @@ export function registerUpdateNote(server: any, env: Env): void {
       }
 
       if (domains !== undefined) {
-        const err = validateDomains(domains);
+        const err = validateDomains(domains, {
+          allowNewDomain: input.allow_new_domain ?? false,
+        });
         if (err) return toolError(err);
       }
 

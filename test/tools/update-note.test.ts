@@ -63,7 +63,7 @@ describe('update_note', () => {
 
   it('reembeds when domains change (metadata must follow)', async () => {
     await seed('abc', 'a tldr long enough here', '["biology"]', 'concept');
-    const r = await reg().update_note({ id: 'abc', domains: ['systems-thinking'] });
+    const r = await reg().update_note({ id: 'abc', domains: ['product'] });
     expect(r.isError).toBeUndefined();
     const parsed = JSON.parse(r.content[0].text);
     expect(parsed.fields_changed).toContain('domains');

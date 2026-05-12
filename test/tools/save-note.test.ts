@@ -39,7 +39,7 @@ describe('save_note', () => {
       title: 'Red Queen',
       body: 'bod',
       tldr: 'coevolution forces constant running just to keep place',
-      domains: ['evolutionary-biology'],
+      domains: ['cognitive-science'],
       kind: 'concept',
     });
     expect(r.isError).toBeUndefined();
@@ -60,7 +60,7 @@ describe('save_note', () => {
       title: 'X',
       body: 'b',
       tldr: 'tl of at least ten chars here ok',
-      domains: ['seed-domain'],
+      domains: ['operations'],
       kind: 'concept',
       edges: [{ to_id: 'target', relation_type: 'analogous_to', why: 'too short' }],
     });
@@ -74,7 +74,7 @@ describe('save_note', () => {
     const r = await registered.save_note({
       title: 'X', body: 'b',
       tldr: 'tldr long enough here really',
-      domains: ['seed-domain'],
+      domains: ['operations'],
       kind: 'concept',
       edges: [{ to_id: 'ghost', relation_type: 'analogous_to', why: 'this is a long enough why to pass validation' }],
     });

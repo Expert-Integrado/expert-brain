@@ -30,13 +30,13 @@ describe('e2e: all tools wired', () => {
     const a = await tools.save_note({
       title: 'Red Queen', body: 'coevolution body',
       tldr: 'coevolution forces constant running just to stay in place',
-      domains: ['evolutionary-biology'],
+      domains: ['cognitive-science'],
       kind: 'concept',
     });
     const b = await tools.save_note({
       title: 'Tech debt spiral', body: 'compounding',
       tldr: 'unpaid debt accrues interest via slower future work',
-      domains: ['software-engineering'],
+      domains: ['ai-applied'],
       kind: 'pattern',
     });
     const aId = JSON.parse(a.content[0].text).id;

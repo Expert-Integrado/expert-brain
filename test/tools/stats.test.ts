@@ -45,23 +45,23 @@ describe('stats', () => {
 
   it('counts by domain expanding multi-domain notes', async () => {
     const now = Date.now();
-    await seed('a', ['biology'], 'concept', now);
-    await seed('b', ['biology', 'economics'], 'insight', now);
+    await seed('a', ['cognitive-science'], 'concept', now);
+    await seed('b', ['cognitive-science', 'economics'], 'insight', now);
     await seed('c', ['economics'], 'concept', now);
 
     const r = await reg().stats({});
     const parsed = JSON.parse(r.content[0].text);
     expect(parsed.total_notes).toBe(3);
     const byDomain = new Map(parsed.notes_by_domain.map((d: any) => [d.domain, d.count]));
-    expect(byDomain.get('biology')).toBe(2);
+    expect(byDomain.get('cognitive-science')).toBe(2);
     expect(byDomain.get('economics')).toBe(2);
   });
 
   it('groups by kind', async () => {
     const now = Date.now();
-    await seed('a', ['biology'], 'concept', now);
-    await seed('b', ['biology'], 'concept', now);
-    await seed('c', ['biology'], 'insight', now);
+    await seed('a', ['cognitive-science'], 'concept', now);
+    await seed('b', ['cognitive-science'], 'concept', now);
+    await seed('c', ['cognitive-science'], 'insight', now);
 
     const r = await reg().stats({});
     const parsed = JSON.parse(r.content[0].text);
@@ -120,8 +120,8 @@ describe('stats', () => {
 
   it('notes_by_kind includes a {kind: null} bucket for legacy notes', async () => {
     const now = Date.now();
-    await seed('new1', ['biology'], 'concept', now);
-    await seed('new2', ['biology'], 'insight', now);
+    await seed('new1', ['cognitive-science'], 'concept', now);
+    await seed('new2', ['cognitive-science'], 'insight', now);
     // Legacy note inserted directly with kind=null (pre-kind-required era).
     await E.DB.prepare(
       `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`

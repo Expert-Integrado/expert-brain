@@ -16,12 +16,15 @@ const inputSchema = {
   title: z.string().min(1).max(200).describe('Atomic title. No "and".'),
   body: z.string().min(1).describe('Body in markdown'),
   tldr: z.string().min(10).max(280).describe('One sentence. Feynman test.'),
-  domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3)'),
+  domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
   kind: z.enum(NOTE_KINDS).describe(
     'concept | decision | insight | fact | pattern | principle | question'
   ),
   tags: z.array(z.string()).optional(),
   edges: z.array(edgeSchema).optional(),
+  allow_new_domain: z.boolean().optional().describe(
+    'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area; syntactic validation (kebab-case) still applies.'
+  ),
 };
 
 const DESCRIPTION = `Saves an atomic note to the vault, optionally with edges to existing notes.
@@ -35,7 +38,7 @@ The tldr field is a Feynman test: if you cannot summarize the concept in one con
 
 Write title/body/tldr in the CONVERSATION LANGUAGE (if the user is speaking Portuguese, save in Portuguese; English → English). The embedding model is multilingual.
 
-The domains field MUST always use canonical English kebab-case slugs (e.g. 'evolutionary-biology', 'behavioral-economics', 'systems-thinking'), regardless of conversation language. Domains are schema — do NOT translate them.
+The domains field MUST be one of the 12 canonical domains: management, sales, marketing, education, ai-applied, leadership, product, operations, personal-development, entrepreneurship, music, cognitive-science. These are the schema of the vault — kebab-case English slugs, stable identifiers, do NOT translate to other languages. If a note doesn't fit any of the 12, pick the closest match — the canon is the unit of cross-domain recall, so the analogy lives in the canonical slot, not in a bespoke one. If the user genuinely opens a new area (e.g. moves into a new market), pass allow_new_domain: true on this call to bypass the canon check; the syntactic kebab-case rule still applies. The error message on a canon violation suggests the closest canonical — re-tries are cheap.
 
 The kind field is REQUIRED and must be one of 7 values — pick the one that best fits the note's epistemic status:
 - 'concept'   — an abstract idea, model, or framework (most common default)
@@ -58,6 +61,7 @@ interface SaveNoteInput {
   kind: NoteKind;
   tags?: string[];
   edges?: Array<{ to_id: string; relation_type: EdgeType; why: string }>;
+  allow_new_domain?: boolean;
 }
 
 export function registerSaveNote(server: any, env: Env): void {
@@ -74,7 +78,9 @@ export function registerSaveNote(server: any, env: Env): void {
       },
     },
     safeToolHandler(async (input: SaveNoteInput) => {
-      const domainError = validateDomains(input.domains);
+      const domainError = validateDomains(input.domains, {
+        allowNewDomain: input.allow_new_domain ?? false,
+      });
       if (domainError) {
         return toolError(domainError);
       }

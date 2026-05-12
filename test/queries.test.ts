@@ -14,7 +14,7 @@ describe('queries', () => {
   it('insert + read note', async () => {
     await insertNote(E, {
       id: 'n1', title: 'Red Queen', body: 'bod', tldr: 'coevolution forces running',
-      domains: JSON.stringify(['evolutionary-biology']), kind: 'idea',
+      domains: JSON.stringify(['cognitive-science']), kind: 'idea',
       created_at: 1, updated_at: 1,
     });
     const n = await getNoteById(E, 'n1');
@@ -29,7 +29,7 @@ describe('queries', () => {
   it('edge uniqueness', async () => {
     await insertNote(E, {
       id:'n2',title:'Arms race',body:'',tldr:'x',
-      domains:JSON.stringify(['military-history']),kind:null,created_at:1,updated_at:1,
+      domains:JSON.stringify(['leadership']),kind:null,created_at:1,updated_at:1,
     });
     await insertEdge(E, { id:'e1',from_id:'n1',to_id:'n2',relation_type:'analogous_to',why:'same coevolutionary pressure dynamic',created_at:1 });
     // Duplicate is silently ignored (INSERT OR IGNORE) so save_note partial-writes can't happen

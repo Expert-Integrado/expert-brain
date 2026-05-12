@@ -7,10 +7,10 @@ const E = env as any;
 
 async function seed() {
   const rows: Array<[string,string,string,string]> = [
-    ['a','Red Queen','coevolution forces running','["evolutionary-biology"]'],
+    ['a','Red Queen','coevolution forces running','["cognitive-science"]'],
     ['b','Arms race','military escalation loop','["military-history"]'],
     ['c','Tech debt spiral','compounding code rot','["software-engineering"]'],
-    ['d','Predator-prey','population oscillation','["evolutionary-biology"]'],
+    ['d','Predator-prey','population oscillation','["cognitive-science"]'],
     ['e','Moloch','multi-party race to bottom','["game-theory"]'],
   ];
   for (const [id,t,tl,dom] of rows) {
@@ -60,6 +60,9 @@ describe('recall', () => {
     const r = await registered.recall({ query: 'x', domains_filter: ['INVALID'] });
     expect(r.isError).toBe(true);
     expect(r.content[0].text).toContain('INVALID');
+    // The validator's error message references 'evolutionary-biology' as the
+    // canonical example for translating non-English slugs — that's the example,
+    // not the project's actual canonical domain. Keeping the assertion stable.
     expect(r.content[0].text).toContain('evolutionary-biology');
   });
 
@@ -67,7 +70,7 @@ describe('recall', () => {
     const registered: any = {};
     const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
     registerRecall(server, E);
-    const r = await registered.recall({ query: 'coevolution', domains_filter: ['evolutionary-biology'] });
+    const r = await registered.recall({ query: 'coevolution', domains_filter: ['cognitive-science'] });
     expect(r.isError).toBeUndefined();
   });
 
@@ -75,14 +78,14 @@ describe('recall', () => {
     // Seed one extra note where evolutionary-biology is the SECONDARY domain.
     await E.DB.prepare(
       `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0)`
-    ).bind('f', 'Secondary evo', 'b', 'selection as feedback', '["systems-thinking","evolutionary-biology"]').run();
+    ).bind('f', 'Secondary evo', 'b', 'selection as feedback', '["systems-thinking","cognitive-science"]').run();
     // Mock vector match to surface the new note.
     E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'f', score: 0.95 }] }));
 
     const registered: any = {};
     const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
     registerRecall(server, E);
-    const r = await registered.recall({ query: 'feedback', domains_filter: ['evolutionary-biology'] });
+    const r = await registered.recall({ query: 'feedback', domains_filter: ['cognitive-science'] });
     const parsed = JSON.parse(r.content[0].text);
     // Note 'f' has evolutionary-biology as the SECOND domain. Old code would
     // drop it (primary is systems-thinking); fixed code keeps it.
@@ -96,7 +99,7 @@ describe('recall', () => {
     // enters the pool via the domain filter retrieval.
     await E.DB.prepare(
       `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0)`
-    ).bind('g', 'Cambrian explosion', 'b', 'rapid diversification of body plans', '["evolutionary-biology"]').run();
+    ).bind('g', 'Cambrian explosion', 'b', 'rapid diversification of body plans', '["cognitive-science"]').run();
     E.VECTORIZE.query = vi.fn(async () => ({ matches: [] })); // no semantic match
 
     const registered: any = {};
@@ -104,7 +107,7 @@ describe('recall', () => {
     registerRecall(server, E);
     const r = await registered.recall({
       query: 'completely unrelated query that matches nothing',
-      domains_filter: ['evolutionary-biology'],
+      domains_filter: ['cognitive-science'],
     });
     const parsed = JSON.parse(r.content[0].text);
     const ids = parsed.results.map((x: any) => x.id);
