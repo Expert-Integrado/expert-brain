@@ -52,6 +52,9 @@ html, body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Mobile: evita swipe-from-edge disparar back-nav do browser e impede
+     bounce/overscroll vertical interferindo nos gestos do canvas. */
+  overscroll-behavior: contain;
   background:
     radial-gradient(ellipse 90% 60% at 30% 0%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
     radial-gradient(ellipse 80% 70% at 85% 100%, rgba(94, 234, 212, 0.09) 0%, transparent 55%),
@@ -426,8 +429,10 @@ a:hover { color: var(--text); }
 /* ==========================================================================
    Graph page (Obsidian-style overlay + slide panel + filter chips)
    ========================================================================== */
-.graph-wrap { position: relative; height: 100vh; overflow: hidden; }
-.graph-canvas { position: absolute; inset: 0; }
+.graph-wrap { position: relative; height: 100vh; height: 100dvh; overflow: hidden; }
+/* touch-action: none entrega TODOS os gestos pro Sigma (pan/pinch/zoom) e
+   impede o browser de interceptar swipe-from-edge ou pull-to-refresh. */
+.graph-canvas { position: absolute; inset: 0; touch-action: none; }
 
 /* Left overlay: search, filters, status */
 .graph-overlay {
