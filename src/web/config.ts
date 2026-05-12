@@ -3,6 +3,7 @@ import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse } from './render.js';
 import { getVaultStatus } from '../auth/setup.js';
+import { listApiKeys } from '../auth/api-keys.js';
 
 const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP — é meu grafo de conhecimento pessoal cross-domain.
 
@@ -17,6 +18,8 @@ Comportamento esperado:
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
+  const url = new URL(req.url);
+  const justCreatedKey = url.searchParams.get('new');
 
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
@@ -26,6 +29,35 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const badge = stats.connected
     ? `<span class="badge-pill badge-ok">● Claude connected</span>`
     : `<span class="badge-pill badge-warn">○ Waiting for Claude connection</span>`;
+
+  // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
+  const keys = await listApiKeys(env, session.email);
+  const keyRows = keys
+    .map((k) => {
+      const created = new Date(k.created_at).toLocaleString('en-US');
+      const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('en-US') : '—';
+      const revokeBtn = `<form method="post" action="/app/api-keys/revoke" style="display:inline">
+             <input type="hidden" name="id" value="${esc(k.id)}">
+             <button type="submit" class="btn-danger">Delete</button>
+           </form>`;
+      return `<tr>
+        <td><strong>${esc(k.name)}</strong></td>
+        <td><code>${esc(k.prefix)}…</code></td>
+        <td><span class="badge-pill badge-ok">● active</span></td>
+        <td>${esc(created)}</td>
+        <td>${esc(lastUsed)}</td>
+        <td>${revokeBtn}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const createdBanner = justCreatedKey
+    ? `<div class="card" style="border:1px solid #5a8a5a;background:#1a2a1a">
+         <h2>Key created — save it now</h2>
+         <p style="color:var(--text-dim)">This is the only time the full key is shown. Click the field to select all, then Ctrl+C / Cmd+C.</p>
+         <input type="text" readonly value="${esc(justCreatedKey)}" onclick="this.select()" style="width:100%;padding:10px;background:#0f1a0f;color:#9f9;border:1px solid #2a4a2a;border-radius:4px;font-family:monospace;font-size:13px">
+       </div>`
+    : '';
 
   const body = `
     <div class="page-header">
@@ -62,6 +94,38 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <p style="color:var(--text-dim)">Paste into <em>Claude → Settings → Personalization → Custom instructions</em> to activate the latticework behavior proactively in every conversation, not just when the topic is obvious.</p>
       <pre id="prefs-block">${esc(PREFS_BLOCK)}</pre>
       <button type="button" data-copy="prefs-block">Copy prompt</button>
+    </div>
+
+    <h2 id="api-keys" style="margin-top:40px;margin-bottom:14px">API Keys</h2>
+
+    ${createdBanner}
+
+    <div class="card">
+      <h2>What are API keys?</h2>
+      <p style="color:var(--text-dim)">Long-lived personal access tokens for the MCP server. Use these when your client can't do OAuth refresh (agents, scripts, containers). Send them in the <code>Authorization: Bearer eb_pat_...</code> header on <code>/mcp</code>.</p>
+      <p style="color:var(--text-dim)">They never expire. Revoke a key to kill it instantly.</p>
+    </div>
+
+    <div class="card">
+      <h2>Create new key</h2>
+      <form method="post" action="/app/api-keys/create">
+        <label>Name (so you remember where it's used)
+          <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." style="width:100%;padding:8px;background:#1a1a1a;color:#fff;border:1px solid #444;border-radius:4px">
+        </label>
+        <button type="submit" style="margin-top:12px">Create key</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Your keys</h2>
+      ${keys.length === 0 ? '<p style="color:var(--text-dim)">No keys yet.</p>' : `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="text-align:left;color:var(--text-dim);font-size:13px">
+          <th style="padding:8px">Name</th><th style="padding:8px">Prefix</th><th style="padding:8px">Status</th>
+          <th style="padding:8px">Created</th><th style="padding:8px">Last used</th><th style="padding:8px"></th>
+        </tr></thead>
+        <tbody>${keyRows}</tbody>
+      </table>`}
     </div>
 
     <script src="/app/config/bundle.js" defer></script>
