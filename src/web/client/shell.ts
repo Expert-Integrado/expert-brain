@@ -261,31 +261,61 @@ loadNotes();
 registerServiceWorker();
 wireMobileSidebar();
 
-// Sidebar collapse em mobile — clique na logo recolhe (width 0); botão
-// circular no canto top-left reabre. Desktop fica intocado: CSS esconde
-// o botão de reabrir e não tem transição de width.
+// Sidebar collapse em mobile — clique na logo recolhe (width 0). Quando
+// recolhida, aparece um botão hambúrguer no canto top-left que abre um
+// dropdown de navegação (Graph / Notes / Config / API Keys / Log out).
+// Desktop fica intocado: CSS esconde tanto o botão quanto o dropdown.
 function wireMobileSidebar() {
   const logo = document.querySelector('.sidebar .logo') as HTMLElement | null;
-  const reopen = document.querySelector('.sidebar-reopen') as HTMLElement | null;
-  if (!logo || !reopen) return;
+  const reopen = document.querySelector('.sidebar-reopen') as HTMLButtonElement | null;
+  const menu = document.querySelector('.sidebar-menu') as HTMLElement | null;
+  if (!logo || !reopen || !menu) return;
+
+  const isMobile = () => window.matchMedia('(max-width: 767px)').matches;
 
   const collapse = () => {
-    if (!window.matchMedia('(max-width: 767px)').matches) return;
+    if (!isMobile()) return;
     document.body.classList.add('sidebar-collapsed');
     reopen.setAttribute('aria-hidden', 'false');
   };
   const expand = () => {
     document.body.classList.remove('sidebar-collapsed');
     reopen.setAttribute('aria-hidden', 'true');
+    closeMenu();
+  };
+  const openMenu = () => {
+    menu.hidden = false;
+    menu.classList.add('open');
+    reopen.setAttribute('aria-expanded', 'true');
+  };
+  const closeMenu = () => {
+    menu.classList.remove('open');
+    menu.hidden = true;
+    reopen.setAttribute('aria-expanded', 'false');
+  };
+  const toggleMenu = () => {
+    if (menu.classList.contains('open')) closeMenu();
+    else openMenu();
   };
 
   logo.addEventListener('click', collapse);
   logo.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); collapse(); }
   });
-  reopen.addEventListener('click', expand);
+  reopen.addEventListener('click', toggleMenu);
 
-  // Voltar pra desktop reseta o estado (caso usuário rotacione/redimensione).
+  // Tap fora do menu fecha-o (mas não recolhe nem expande a sidebar).
+  document.addEventListener('click', (e) => {
+    if (!menu.classList.contains('open')) return;
+    const target = e.target as Node;
+    if (menu.contains(target) || reopen.contains(target)) return;
+    closeMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menu.classList.contains('open')) closeMenu();
+  });
+
+  // Voltar pra desktop reseta o estado.
   window.matchMedia('(min-width: 768px)').addEventListener('change', (e) => {
     if (e.matches) expand();
   });

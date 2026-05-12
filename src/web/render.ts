@@ -24,9 +24,24 @@ ${FONT_LINKS}
 <style>${NEBULA_CSS}</style>
 ${opts.extraHead ?? ''}
 </head><body>
-<button class="sidebar-reopen" type="button" aria-label="Mostrar menu" aria-hidden="true">
-  <span class="sidebar-reopen-dot" aria-hidden="true"></span>
+<button class="sidebar-reopen" type="button" aria-label="Abrir menu" aria-haspopup="menu" aria-expanded="false" aria-hidden="true">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <line x1="3" y1="6" x2="21" y2="6"/>
+    <line x1="3" y1="12" x2="21" y2="12"/>
+    <line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
 </button>
+<div class="sidebar-menu" role="menu" aria-label="Navegação" hidden>
+  <a class="sidebar-menu-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" role="menuitem">Graph</a>
+  <a class="sidebar-menu-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" role="menuitem">Notes</a>
+  <a class="sidebar-menu-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" role="menuitem">Config</a>
+  <a class="sidebar-menu-item${opts.active === 'api-keys' ? ' active' : ''}" href="/app/api-keys" role="menuitem">API Keys</a>
+  <div class="sidebar-menu-sep" role="separator"></div>
+  <div class="sidebar-menu-email">${esc(opts.email)}</div>
+  <form method="post" action="/app/logout" role="none">
+    <button class="sidebar-menu-logout" type="submit" role="menuitem">Log out</button>
+  </form>
+</div>
 <div class="shell">
   <aside class="sidebar">
     <div class="logo" role="button" tabindex="0" aria-label="Recolher menu (mobile)">Expert Brain</div>

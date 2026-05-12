@@ -814,13 +814,64 @@ a:hover { color: var(--text); }
 }
 .sidebar-reopen:hover { background: rgba(167, 139, 250, 0.18); }
 .sidebar-reopen:active { transform: scale(0.96); }
-.sidebar-reopen-dot {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: url('/expert-integrado-logo.png') center/cover no-repeat #fff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 12px rgba(167, 139, 250, 0.35);
+/* Dropdown de navegação acionado pelo botão hambúrguer (mobile). */
+.sidebar-menu {
+  position: fixed;
+  top: max(60px, calc(env(safe-area-inset-top) + 52px));
+  left: 12px;
+  z-index: 90;
+  min-width: 200px;
+  background: rgba(10, 6, 24, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+  animation: cmdFadeIn 140ms var(--ease);
 }
+.sidebar-menu.open { display: flex; }
+.sidebar-menu-item {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: background 140ms var(--ease), color 140ms var(--ease);
+}
+.sidebar-menu-item:hover { background: rgba(167, 139, 250, 0.08); color: var(--text); }
+.sidebar-menu-item.active { background: rgba(167, 139, 250, 0.14); color: var(--text); }
+.sidebar-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 4px;
+}
+.sidebar-menu-email {
+  padding: 4px 14px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-family: var(--font-body);
+}
+.sidebar-menu form { margin: 0; }
+.sidebar-menu-logout {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 140ms var(--ease), color 140ms var(--ease);
+}
+.sidebar-menu-logout:hover { background: rgba(255, 122, 144, 0.12); color: var(--danger); }
 
 /* Mobile: collapse overlay below, make panel full width */
 @media (max-width: 767px) {
