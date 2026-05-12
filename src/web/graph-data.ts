@@ -42,10 +42,13 @@ function firstDomain(raw: string): string {
 }
 
 async function buildPayload(env: Env): Promise<GraphPayload> {
-  const notesRes = await env.DB.prepare(`SELECT id, title, domains FROM notes`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>();
+  // Paraleliza as 2 queries independentes — D1 trata bem requests concorrentes
+  // do mesmo Worker e cada uma roda em sua própria conexão.
+  const [notesRes, edgesRes] = await Promise.all([
+    env.DB.prepare(`SELECT id, title, domains FROM notes`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
+    env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>(),
+  ]);
   const notes = notesRes.results ?? [];
-
-  const edgesRes = await env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>();
   const explicitEdges = edgesRes.results ?? [];
 
   const explicitPairs = new Set<string>();
@@ -57,10 +60,13 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   if (notes.length > 0) {
     const ids = notes.map((n) => n.id);
     try {
-      // Cloudflare Vectorize caps getByIds at 20 ids per call (error 40007).
-      for (let i = 0; i < ids.length; i += 20) {
-        const chunk = ids.slice(i, i + 20);
-        const res = await env.VECTORIZE.getByIds(chunk);
+      // Cloudflare Vectorize caps getByIds at 20 ids por call (erro 40007).
+      // Paraleliza os chunks em vez de sequencial — pra 370 notas, vai de
+      // ~19 chamadas serializadas (~2-5s) pra 19 em paralelo (~200-500ms).
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
+      const results = await Promise.all(chunks.map((chunk) => env.VECTORIZE.getByIds(chunk)));
+      for (const res of results) {
         for (const v of res) {
           if (v.values) noteVectors.push({ id: v.id, values: Array.from(v.values) });
         }

@@ -79,9 +79,26 @@ const MIGRATION_0002_STMTS: string[] = [
    END`,
 ];
 
+// 0003 — tabela api_keys (PATs com hash sha256). Match com migrations/0002_api_keys.sql.
+const MIGRATION_0003_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS api_keys (
+    id            TEXT PRIMARY KEY,
+    owner_email   TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    prefix        TEXT NOT NULL,
+    key_hash      TEXT NOT NULL UNIQUE,
+    created_at    INTEGER NOT NULL,
+    last_used_at  INTEGER,
+    revoked_at    INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash)`,
+  `CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_email)`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
+  { id: '0003_api_keys', stmts: MIGRATION_0003_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

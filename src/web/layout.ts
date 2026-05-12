@@ -36,11 +36,11 @@ export function computeLayout(nodes: LayoutNode[], edges: LayoutEdge[]): LaidOut
 
   const settings = forceAtlas2.inferSettings(g);
   forceAtlas2.assign(g, {
-    // Phase A.5 — layout radial Obsidian-style: aumentar repulsão entre nós
-    // (scalingRatio 10→18) + reduzir gravidade central (1→0.5) faz hubs
-    // virarem "fogos de artifício" com leafs distribuídos radialmente.
-    // 800 iterações dá tempo de convergir bem nesse setup mais espalhado.
-    iterations: 800,
+    // Server-side só gera SEED inicial — o D3-force client-side em Web Worker
+    // (A.24+) refina o layout de verdade. Reduzimos de 800 → 150 iterações
+    // pra cortar ~80% do CPU do Worker server e acelerar /app/graph/data.
+    // 150 ainda dá um seed razoável (não amontoado no centro).
+    iterations: 150,
     settings: {
       ...settings,
       barnesHutOptimize: true,
