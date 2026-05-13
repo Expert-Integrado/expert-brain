@@ -6,15 +6,46 @@ import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
 
-const PREFS_BLOCK = `Expert Brain está conectado como servidor MCP — é meu grafo de conhecimento pessoal cross-domain.
+// Template padrão pra primeira visita — placeholders entre [colchetes] que o
+// usuário substitui pelo próprio contexto. O texto fica editável inline em
+// /app/config e persiste na tabela `meta` com a chave `personalization_prompt`.
+const DEFAULT_PREFS_BLOCK = `Expert Brain está conectado como servidor MCP — é meu grafo de conhecimento pessoal cross-domain.
 
-Contexto: sou Eric Luciano, CEO da Expert Integrado. Trabalho com IA aplicada, vendas, gestão, educação, liderança e empreendedorismo.
+Contexto: sou [seu nome]. Trabalho com [suas áreas/domínios principais — ex: gestão, vendas, educação, IA aplicada].
 
 Comportamento esperado:
 - Antes de responder perguntas conceituais ou estratégicas, consulte o vault em busca de analogias — especialmente de domínios diferentes do tema da conversa.
 - Quando eu compartilhar uma ideia, decisão ou aprendizado que vale preservar, ofereça salvar. Se eu concordar: atomize em um conceito por nota, escolha um domínio específico, varra outros domínios em busca de analogias estruturais, e crie conexões com justificativa do mecanismo compartilhado.
 - Quando eu perguntar sobre algo que pode estar no vault, prefira buscar lá antes de responder do zero.
 - Não use o vault em tarefas operacionais (código, debug, tarefas do dia a dia) — só para ideias, insights, decisões e aprendizados que valem ser reencontrados no futuro.`;
+
+const PREFS_META_KEY = 'personalization_prompt';
+const PREFS_MAX_LEN = 8000;
+
+async function getPersonalizationPrompt(env: Env): Promise<string> {
+  const row = await env.DB.prepare(`SELECT value FROM meta WHERE key = ?`)
+    .bind(PREFS_META_KEY)
+    .first<{ value: string }>();
+  return row?.value ?? DEFAULT_PREFS_BLOCK;
+}
+
+export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+  const prompt = String(form.get('prompt') ?? '').trim();
+  if (!prompt) return htmlResponse('Prompt não pode ficar vazio', 400);
+  if (prompt.length > PREFS_MAX_LEN) {
+    return htmlResponse(`Prompt longo demais (máx ${PREFS_MAX_LEN} caracteres)`, 400);
+  }
+  await env.DB.prepare(
+    `INSERT INTO meta (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  )
+    .bind(PREFS_META_KEY, prompt)
+    .run();
+  return new Response(null, { status: 302, headers: { location: '/app/config#prefs' } });
+}
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -36,6 +67,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     }
   }
 
+  const prefsPrompt = await getPersonalizationPrompt(env);
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
     ? new Date(stats.lastWrite).toLocaleString('pt-BR')
@@ -87,7 +119,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <div class="card">
       <h2>1. URL do servidor MCP</h2>
-      <p style="color:var(--text-dim)">Cole essa URL no Claude Desktop / Web → Settings → Connectors → Add custom connector.</p>
+      <p style="color:var(--text-dim)">Cole essa URL no Claude → <strong>Customize → Conectores → Adicionar Conector Personalizado</strong>.</p>
       <div class="row">
         <div id="mcp-url" class="url-box">/mcp</div>
         <button type="button" data-copy="mcp-url">Copiar URL</button>
@@ -104,11 +136,16 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </p>
     </div>
 
-    <div class="card">
+    <div class="card" id="prefs">
       <h2>2. Prompt de personalização</h2>
-      <p style="color:var(--text-dim)">Cole em <em>Claude → Settings → Personalization → Custom instructions</em> pra ativar o comportamento latticework de forma proativa em toda conversa, não só quando o tema é óbvio.</p>
-      <pre id="prefs-block">${esc(PREFS_BLOCK)}</pre>
-      <button type="button" data-copy="prefs-block">Copiar prompt</button>
+      <p style="color:var(--text-dim)">Edite com seu nome e suas áreas, clique <strong>Salvar</strong>, e cole em <em>Claude → <strong>Configurações → Geral → Instruções para o Claude</strong></em> pra ativar o comportamento latticework de forma proativa em toda conversa, não só quando o tema é óbvio.</p>
+      <form method="post" action="/app/config/prefs">
+        <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" style="width:100%;font-family:monospace;font-size:13px;background:#0f0f0f;color:#ddd;border:1px solid #333;border-radius:4px;padding:10px;resize:vertical;box-sizing:border-box">${esc(prefsPrompt)}</textarea>
+        <div class="row" style="margin-top:10px;gap:8px">
+          <button type="submit">Salvar</button>
+          <button type="button" data-copy="prefs-block">Copiar prompt</button>
+        </div>
+      </form>
     </div>
 
     <h2 id="api-keys" style="margin-top:40px;margin-bottom:14px">Chaves de API</h2>
@@ -181,7 +218,7 @@ export function configPageScript(): string {
       var id = btn.getAttribute('data-copy');
       var el = document.getElementById(id);
       if (!el) return;
-      var text = (el.textContent || '').trim();
+      var text = ('value' in el ? el.value : (el.textContent || '')).trim();
       var ok = await copyText(text);
       var original = btn.textContent;
       btn.textContent = ok ? 'Copiado ✓' : 'Selecione + Ctrl+C';

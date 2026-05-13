@@ -42,6 +42,79 @@ describe('/app/config', () => {
     const js = await res.text();
     expect(js).toContain("location.origin + '/mcp'");
   });
+
+  it('renders default placeholder prompt on first visit', async () => {
+    // Garante banco limpo pra esse teste — apaga qualquer valor salvo antes.
+    await (env as any).DB.prepare(`DELETE FROM meta WHERE key = ?`)
+      .bind('personalization_prompt')
+      .run();
+    const res = await SELF.fetch('https://x.test/app/config', {
+      headers: { cookie: await authCookie() },
+    });
+    const html = await res.text();
+    expect(html).toContain('[seu nome]');
+    expect(html).not.toContain('Eric Luciano');
+  });
+
+  it('saves edited prompt and persists it on next render', async () => {
+    const custom = 'Sou Asafe. Trabalho com automações e produto.';
+    const form = new URLSearchParams({ prompt: `Expert Brain ${custom}` });
+    const post = await SELF.fetch('https://x.test/app/config/prefs', {
+      method: 'POST',
+      headers: {
+        cookie: await authCookie(),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+      redirect: 'manual',
+    });
+    expect(post.status).toBe(302);
+
+    const get = await SELF.fetch('https://x.test/app/config', {
+      headers: { cookie: await authCookie() },
+    });
+    const html = await get.text();
+    expect(html).toContain('Sou Asafe');
+    expect(html).not.toContain('[seu nome]');
+  });
+
+  it('rejects empty prompt', async () => {
+    const form = new URLSearchParams({ prompt: '   ' });
+    const res = await SELF.fetch('https://x.test/app/config/prefs', {
+      method: 'POST',
+      headers: {
+        cookie: await authCookie(),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects prompt over max length', async () => {
+    const form = new URLSearchParams({ prompt: 'x'.repeat(8001) });
+    const res = await SELF.fetch('https://x.test/app/config/prefs', {
+      method: 'POST',
+      headers: {
+        cookie: await authCookie(),
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects prefs POST without session', async () => {
+    const form = new URLSearchParams({ prompt: 'foo' });
+    const res = await SELF.fetch('https://x.test/app/config/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString(),
+      redirect: 'manual',
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toMatch(/^\/app\/login/);
+  });
 });
 
 describe('/app routing defaults', () => {
