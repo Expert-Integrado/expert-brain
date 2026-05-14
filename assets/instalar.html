@@ -509,45 +509,33 @@
 
     <!-- SLIDE 4: OBSIDIAN -->
     <div class="slide" id="s4obs">
-      <div class="label">Comparação</div>
-      <h2>Obsidian, Smart Connections ou Expert Brain?</h2>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin-top:24px">
-
-        <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:12px">
-          <div style="font-size:11px; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:0.1em">Obsidian puro</div>
-          <div style="font-size:13px; color:#666; line-height:1.5; display:flex; flex-direction:column; gap:10px">
-            <div>📝 <strong style="color:#777">Você anota manualmente</strong><br>A IA não acessa o vault. Você precisa colar o conteúdo na conversa.</div>
-            <div>🔍 <strong style="color:#777">Busca textual</strong><br>"crescimento" não encontra "expansão de mercado". Só palavras exatas.</div>
-            <div>🔗 <strong style="color:#777">Links 100% manuais</strong><br>Você cria as conexões. A IA não participa.</div>
-            <div>📦 <strong style="color:#777">Isolado do Claude</strong><br>Fica fora do fluxo — outra janela, outro app.</div>
+      <div class="label">Contexto</div>
+      <h2>A lógica é a mesma do Obsidian</h2>
+      <p style="font-size:18px; color:var(--muted); max-width:960px">Notas atômicas, conexões com significado, grafo de conhecimento — Expert Brain não inventou nada. É a mesma filosofia do Obsidian e do Zettelkasten. A diferença é para quem foi construído.</p>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:28px">
+        <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:26px">
+          <div style="font-size:12px; font-weight:700; color:#555; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px">Obsidian — feito para humanos</div>
+          <div style="display:flex; flex-direction:column; gap:12px; font-size:14px; color:#777; line-height:1.5">
+            <div>Você escreve as notas. Você cria os links. Você percebe os padrões. A ferramenta organiza o que você capturou.</div>
+            <div>Funciona muito bem — mas exige disciplina constante. A maioria das pessoas começa animada e abandona em semanas.</div>
+            <div>Com o Smart Connections, a IA ajuda a <em>encontrar</em> o que você já escreveu. Mas você ainda precisa escrever.</div>
           </div>
         </div>
-
-        <div style="background:#1a1a0a; border:1px solid #3a3a00; border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:12px">
-          <div style="font-size:11px; font-weight:700; color:#777730; text-transform:uppercase; letter-spacing:0.1em">Obsidian + Smart Connections</div>
-          <div style="font-size:13px; color:#888; line-height:1.5; display:flex; flex-direction:column; gap:10px">
-            <div>📝 <strong style="color:#aaa8">Você ainda anota manualmente</strong><br>O plugin lê suas notas, mas você continua escrevendo tudo.</div>
-            <div>✅ <strong style="color:#aaa8">Busca semântica — com API key</strong><br>Usa OpenAI para encontrar notas por significado. Paga por uso.</div>
-            <div>💬 <strong style="color:#aaa8">Chat com suas notas</strong><br>Pergunta sobre o vault dentro do Obsidian. Mas precisa trocar de app pra usar com o Claude.</div>
-            <div>⚙️ <strong style="color:#aaa8">Plugin externo, configuração manual</strong><br>Precisa instalar, configurar chave de API e manter atualizado.</div>
+        <div style="background:#0a1f12; border:1px solid var(--green-dim); border-radius:12px; padding:26px">
+          <div style="font-size:12px; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:0.1em; margin-bottom:16px">Expert Brain — feito para IA usar</div>
+          <div style="display:flex; flex-direction:column; gap:12px; font-size:14px; color:#aaa; line-height:1.5">
+            <div>O Claude escreve as notas durante a conversa. Você não precisa mudar de app nem lembrar de capturar.</div>
+            <div>O vault cresce sozinho à medida que você usa o Claude — sem disciplina adicional da sua parte.</div>
+            <div>O Claude também <em>consulta</em> o vault antes de responder. Não é só armazenamento — é memória ativa dentro do fluxo.</div>
           </div>
         </div>
-
-        <div style="background:#0a1f12; border:1px solid var(--green-dim); border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:12px">
-          <div style="font-size:11px; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:0.1em">Expert Brain</div>
-          <div style="font-size:13px; color:#aaa; line-height:1.5; display:flex; flex-direction:column; gap:10px">
-            <div>🤖 <strong style="color:#d1fae5">Claude escreve as notas</strong><br>Você conversa. Ele decide o que guardar, atomiza e salva — sem você pensar nisso.</div>
-            <div>✅ <strong style="color:#d1fae5">Busca semântica nativa</strong><br>bge-m3 multilíngue incluso. Sem API key extra, sem custo adicional.</div>
-            <div>🔗 <strong style="color:#d1fae5">Edges com mecanismo explicado</strong><br>Não é só "parecido" — é "conectam porque compartilham o mesmo mecanismo". Cross-domain automático.</div>
-            <div>⚡ <strong style="color:#d1fae5">Vive dentro do Claude</strong><br>MCP nativo. Sem trocar de app. Funciona em Claude Code, Desktop e Web.</div>
-          </div>
-        </div>
-
+      </div>
+      <div style="margin-top:16px; background:#0a0a0a; border:1px solid #222; border-radius:10px; padding:16px 24px; font-size:14px; color:#555; line-height:1.6">
+        <strong style="color:#888">Tem Obsidian há anos?</strong> Não precisa abandonar. São ferramentas com propósitos diferentes — um organiza o que você pensa, o outro lembra pelo Claude o que você já discutiu.
       </div>
       <div class="legend">
-        <div class="legend-item"><strong>Smart Connections</strong> — plugin gratuito do Obsidian que adiciona busca semântica via OpenAI</div>
-        <div class="legend-item"><strong>bge-m3</strong> — modelo de IA para busca semântica em 100+ idiomas, incluso no Expert Brain</div>
-        <div class="legend-item"><strong>edges</strong> — conexões tipadas entre notas, com justificativa do mecanismo compartilhado</div>
+        <div class="legend-item"><strong>Zettelkasten</strong> — método de notas atômicas criado por Niklas Luhmann, base filosófica do Obsidian e do Expert Brain</div>
+        <div class="legend-item"><strong>Smart Connections</strong> — plugin do Obsidian que adiciona busca semântica via OpenAI</div>
       </div>
     </div>
 
