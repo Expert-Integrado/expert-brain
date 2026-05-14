@@ -302,6 +302,31 @@
     #s6 li::before { content: "→"; color: var(--green); flex-shrink: 0; }
     #s6 code { font-family: "SF Mono", monospace; color: #86efac; }
 
+    /* ── LEGENDA ── */
+    .legend {
+      position: absolute;
+      bottom: 56px;
+      left: 96px;
+      right: 96px;
+      padding-top: 10px;
+      border-top: 1px solid #1e1e1e;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .legend-item {
+      font-size: 12px;
+      color: #4a4a4a;
+      line-height: 1.4;
+    }
+
+    .legend-item strong {
+      font-family: "SF Mono", monospace;
+      color: #555;
+      font-weight: 600;
+    }
+
     /* ── NAV ── */
     #nav {
       position: absolute;
@@ -459,6 +484,10 @@
           urgência em produto
         </div>
       </div>
+      <div class="legend">
+        <div class="legend-item"><strong>cross-domain</strong> — conexão entre áreas de conhecimento diferentes (ex: vendas ↔ produto)</div>
+        <div class="legend-item"><strong>same_mechanism_as</strong> — tipo de aresta que indica mecanismo subjacente compartilhado entre dois conceitos</div>
+      </div>
     </div>
 
     <!-- SLIDE 4: OBSIDIAN -->
@@ -502,6 +531,11 @@
           </div>
         </div>
       </div>
+      <div class="legend">
+        <div class="legend-item"><strong>bge-m3</strong> — modelo de IA especializado em busca semântica em mais de 100 idiomas</div>
+        <div class="legend-item"><strong>edges</strong> — arestas: as conexões entre nós no grafo, cada uma com um "porquê" explicado</div>
+        <div class="legend-item"><strong>cross-domain</strong> — conexão entre áreas de conhecimento diferentes</div>
+      </div>
     </div>
 
     <!-- SLIDE 5: COMPATIBILIDADE -->
@@ -530,6 +564,9 @@
           <h3>Outros agentes</h3>
           <p>ChatGPT, Cursor, Windsurf, ou qualquer ferramenta que suporte o protocolo MCP pode se conectar.</p>
         </div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><strong>MCP</strong> (Model Context Protocol) — protocolo aberto que permite ferramentas de IA se conectarem a serviços externos. Criado pela Anthropic, adotado pela indústria.</div>
       </div>
     </div>
 
