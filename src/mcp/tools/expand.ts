@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { EDGE_TYPES, getEdgesFrom, getEdgesTo, getNoteById, type EdgeRow, type NoteRow } from '../../db/queries.js';
 
 const inputSchema = {
@@ -64,7 +64,7 @@ export function registerExpand(server: any, env: Env): void {
         if (!n) return null;
         const domains: string[] = JSON.parse(n.domains);
         return {
-          note: { id: n.id, title: n.title, domain: domains[0] ?? 'unknown', tldr: n.tldr },
+          note: { id: n.id, url: noteUrl(env, n.id), title: n.title, domain: domains[0] ?? 'unknown', tldr: n.tldr },
           edge: { relation_type: x.edge.relation_type, why: x.edge.why },
         };
       }).filter(Boolean);

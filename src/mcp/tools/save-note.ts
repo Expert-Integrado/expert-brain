@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { newId } from '../../util/id.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { EDGE_TYPES, NOTE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
@@ -147,6 +147,7 @@ export function registerSaveNote(server: any, env: Env): void {
 
       return toolSuccess({
         id,
+        url: noteUrl(env, id),
         saved: { title: input.title, domains: input.domains },
         edges_created: input.edges?.length ?? 0,
       });

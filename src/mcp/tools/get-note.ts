@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { getEdgesFrom, getEdgesTo, getNoteById, getTagsByNote } from '../../db/queries.js';
 
 const inputSchema = { id: z.string().min(1) };
@@ -33,6 +33,7 @@ export function registerGetNote(server: any, env: Env): void {
       ]);
       return toolSuccess({
         id: n.id,
+        url: noteUrl(env, n.id),
         title: n.title,
         body: n.body,
         tldr: n.tldr,

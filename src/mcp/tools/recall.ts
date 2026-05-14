@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { ftsSearch, type NoteRow } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, queryVector } from '../../vector/index.js';
@@ -137,7 +137,10 @@ export function registerRecall(server: any, env: Env): void {
 
       // Strip allDomains before returning — it's only used internally for
       // filter matching. External response shape stays {id, title, domain, kind, tldr}.
-      const results = picked.map(({ allDomains: _drop, ...rest }) => rest);
+      const results = picked.map(({ allDomains: _drop, ...rest }) => ({
+        ...rest,
+        url: noteUrl(env, rest.id),
+      }));
       return toolSuccess({ results });
     }) as any
   );

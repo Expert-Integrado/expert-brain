@@ -52,8 +52,9 @@ async function main() {
 
   const fuse = new Fuse(notes, {
     keys: [
-      { name: 'title', weight: 0.7 },
+      { name: 'title', weight: 0.6 },
       { name: 'tldr', weight: 0.3 },
+      { name: 'id', weight: 0.1 },
     ],
     threshold: 0.35,
     minMatchCharLength: 2,

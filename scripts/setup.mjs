@@ -343,6 +343,15 @@ async function main() {
   const workerUrl = urlMatch[0];
   log.ok(`Worker deployado: ${workerUrl}`);
 
+  // WORKER_URL como secret para que o Durable Object (MCP) gere links clicaveis das notas
+  log.info('Setando WORKER_URL...');
+  const wuResult = runWrangler(['secret', 'put', 'WORKER_URL'], { input: workerUrl, allowFail: true });
+  if (wuResult.status !== 0) {
+    log.warn(`wrangler secret put WORKER_URL falhou (nao critico): ${wuResult.stderr}`);
+  } else {
+    log.ok('WORKER_URL OK.');
+  }
+
   // 9. aplica migrations via /setup/provision
   log.step(9, 'Aplicando schema do D1');
   log.info(`POST ${workerUrl}/setup/provision`);

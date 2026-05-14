@@ -200,6 +200,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       ${note.kind ? `<span class="kind-badge">${esc(note.kind)}</span>` : ''}
       ${domainsToBadges(note.domains)}
       <span>Atualizada ${formatDate(note.updated_at)}</span>
+      <button id="btn-copy-link" onclick="(function(){navigator.clipboard.writeText(location.href).then(function(){var b=document.getElementById('btn-copy-link');b.textContent='Link copiado!';setTimeout(function(){b.textContent='Copiar link'},2000)});})()" style="margin-left:auto;background:none;border:1px solid #333;border-radius:6px;color:#888;cursor:pointer;font-size:12px;padding:4px 10px">Copiar link</button>
     </div>
 
     ${relatedIds.length > 0 ? `

@@ -1,3 +1,10 @@
+import type { Env } from '../env.js';
+
+export function noteUrl(env: Env, id: string): string {
+  const base = env.WORKER_URL?.replace(/\/$/, '') ?? '';
+  return `${base}/app/notes/${id}`;
+}
+
 export type ToolResult =
   | { content: Array<{ type: 'text'; text: string }> }
   | { content: Array<{ type: 'text'; text: string }>; isError: true };
