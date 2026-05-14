@@ -378,6 +378,23 @@
       font-size: 13px;
       color: #444;
     }
+
+    #btn-fullscreen {
+      position: absolute;
+      top: 24px;
+      right: 32px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #555;
+      font-size: 12px;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+
+    #btn-fullscreen:hover { color: #aaa; border-color: #555; }
   </style>
 </head>
 <body>
@@ -613,6 +630,7 @@
     </div>
 
     <div id="slide-counter"></div>
+    <button id="btn-fullscreen" onclick="toggleFS()" title="Tela cheia (F)">⛶ tela cheia</button>
 
   </div>
 </div>
@@ -666,6 +684,20 @@
 
   window.addEventListener('resize', scale);
   scale();
+
+  function toggleFS() {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen();
+      document.getElementById('btn-fullscreen').textContent = '✕ sair';
+    } else {
+      document.exitFullscreen();
+      document.getElementById('btn-fullscreen').textContent = '⛶ tela cheia';
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'f' || e.key === 'F') toggleFS();
+  });
 
   function copyCode(btn) {
     const block = btn.parentElement;
