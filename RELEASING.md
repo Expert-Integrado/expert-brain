@@ -81,7 +81,7 @@ Se o `npm view` ainda retornar a versão antiga depois de 2min, espera mais um p
 
 ## Modos de falha
 
-- **Workflow falha no step "Publish to npm" com 403**: o Trusted Publisher do npm tá desconfigurado, ou o NPM_TOKEN (fallback) expirou. Conferir em <https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access>. Se o token expirou: gera novo Granular Access Token em npmjs.com → Settings → Access Tokens → Generate New Token, atualiza `NPM_TOKEN` em GitHub → repo Settings → Secrets and variables → Actions.
+- **Workflow falha no step "Publish to npm" com 403**: o Trusted Publisher do npm tá desconfigurado. Conferir em <https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access> — deve listar o repo `expertintegrado/expertbrain` + workflow `publish-create.yml`. Se foi removido por engano: clica "Add trusted publisher", preenche Publisher=GitHub Actions, Org=`expertintegrado`, Repo=`expertbrain`, Workflow filename=`publish-create.yml`, Environment vazio.
 - **Workflow falha no step "Resolve version" com "Versao invalida"**: a tag não tá no formato `vX.Y.Z`. Apaga a release e cria de novo com a tag certa.
 - **Publish passa mas `npm view` retorna 404 por mais de 10min**: rara propagação prolongada. Se persistir após 30min, abre suporte do npm; provavelmente conta foi bloqueada.
 - **Renomeou o arquivo `publish-create.yml`**: o Trusted Publisher do npm tá amarrado nesse filename específico. Atualiza no painel de Access do npm o "Workflow filename" pro novo nome.

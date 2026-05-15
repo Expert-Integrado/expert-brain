@@ -5,11 +5,12 @@ name: Publish create-expert-brain to npm
 # `@expertintegrado/create-expert-brain` no npm. Disparado quando uma release e
 # publicada no GitHub.
 #
-# Autenticacao: prioriza OIDC (Trusted Publishers do npm — configurado em
+# Autenticacao: OIDC (Trusted Publishers do npm — configurado em
 # https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access).
-# Se OIDC falhar/nao estiver configurado, faz fallback pro secret NPM_TOKEN.
+# Nao usa NPM_TOKEN — o token foi removido depois que OIDC foi validado em v1.0.1.
 # A flag `--access public` no npm publish e' necessaria porque pacotes scoped sao
-# privados por default.
+# privados por default. `--provenance` ativa o badge "Verified" na pagina do pacote
+# (so funciona com OIDC).
 #
 # IMPORTANTE: o nome deste arquivo (publish-create.yml) e' parte da configuracao
 # do Trusted Publisher no npm. Se renomear, atualiza tambem em npmjs.com/package/
@@ -106,8 +107,4 @@ jobs:
 
       - name: Publish to npm
         working-directory: create
-        env:
-          # Fallback caso o Trusted Publisher (OIDC) nao esteja configurado.
-          # Pode remover esse secret depois que confirmar que OIDC funciona em 1+ release.
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --access public --provenance
