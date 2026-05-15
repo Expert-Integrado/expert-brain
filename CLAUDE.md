@@ -2,6 +2,8 @@
 
 Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Expert Brain", "instalar o Expert Brain", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
 
+> **Se você é mantenedor (não usuário final)** e precisa publicar uma nova versão do pacote npm `@expertintegrado/create-expert-brain`, o runbook é outro: [RELEASING.md](RELEASING.md). Esse arquivo aqui é só pra setup da instalação do Expert Brain em si.
+
 ## O que o Expert Brain precisa
 
 Um único Cloudflare Worker com cinco recursos vinculados a ele:

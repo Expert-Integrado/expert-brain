@@ -5,11 +5,16 @@ name: Publish create-expert-brain to npm
 # `@expertintegrado/create-expert-brain` no npm. Disparado quando uma release e
 # publicada no GitHub.
 #
-# Pre-req: secret NPM_TOKEN configurado em Settings -> Secrets and variables -> Actions.
-# Cria o token em npmjs.com -> Access Tokens -> Generate New Token -> Granular
-# Access Token com permissao de publish no scope @expertintegrado.
+# Autenticacao: prioriza OIDC (Trusted Publishers do npm — configurado em
+# https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access).
+# Se OIDC falhar/nao estiver configurado, faz fallback pro secret NPM_TOKEN.
 # A flag `--access public` no npm publish e' necessaria porque pacotes scoped sao
 # privados por default.
+#
+# IMPORTANTE: o nome deste arquivo (publish-create.yml) e' parte da configuracao
+# do Trusted Publisher no npm. Se renomear, atualiza tambem em npmjs.com/package/
+# @expertintegrado/create-expert-brain/access — caso contrario o publish via
+# OIDC para de funcionar.
 
 on:
   release:
@@ -23,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write  # necessario pro OIDC do Trusted Publisher
 
 jobs:
   publish:
@@ -60,9 +66,10 @@ jobs:
           rm -rf "$TEMPLATE_DIR"
           mkdir -p "$TEMPLATE_DIR"
 
-          # Copia o que faz parte do template (tudo que o aluno precisa pra rodar setup + deploy).
-          # NAO copia: create/, .github/, .git/, node_modules/, wrangler.toml (gerado), test/ (opcional).
-          for item in src scripts wrangler.example.toml package.json package-lock.json tsconfig.json vitest.config.ts vitest.auth.config.ts CLAUDE.md README.md LICENSE docs assets; do
+          # NAO incluimos docs/ nem assets/ — gif/png pesam ~8MB e o tarball publicado
+          # ficaria gigante. As imagens do README sao reescritas pra apontar pro GitHub raw
+          # no proximo step, entao o README do template renderiza normalmente.
+          for item in src scripts wrangler.example.toml package.json package-lock.json tsconfig.json vitest.config.ts vitest.auth.config.ts CLAUDE.md README.md LICENSE; do
             if [ -e "$item" ]; then
               cp -R "$item" "$TEMPLATE_DIR/"
             fi
@@ -73,8 +80,17 @@ jobs:
             cp .gitignore "$TEMPLATE_DIR/_gitignore"
           fi
 
+          # Reescreve refs a docs/ e assets/ no README do template pra absolute URLs do GitHub.
+          # Imagens (![]()) usam raw.githubusercontent.com. Links de markdown ([]()) usam github.com/blob.
+          if [ -f "$TEMPLATE_DIR/README.md" ]; then
+            sed -i -E 's|!\[([^]]*)\]\((docs|assets)/|![\1](https://raw.githubusercontent.com/expertintegrado/expertbrain/master/\2/|g' "$TEMPLATE_DIR/README.md"
+            sed -i -E 's|([^!])\[([^]]*)\]\((docs|assets)/|\1[\2](https://github.com/expertintegrado/expertbrain/blob/master/\3/|g' "$TEMPLATE_DIR/README.md"
+          fi
+
           echo "Conteudo do template:"
           ls -la "$TEMPLATE_DIR"
+          echo "Tamanho do template:"
+          du -sh "$TEMPLATE_DIR"
 
       - name: Bump create/package.json version
         run: |
@@ -90,5 +106,7 @@ jobs:
       - name: Publish to npm
         working-directory: create
         env:
+          # Fallback caso o Trusted Publisher (OIDC) nao esteja configurado.
+          # Pode remover esse secret depois que confirmar que OIDC funciona em 1+ release.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --access public
+        run: npm publish --access public --provenance

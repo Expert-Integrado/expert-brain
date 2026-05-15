@@ -379,6 +379,10 @@ npm run deploy       # build bundle + wrangler deploy
 
 Os testes rodam em dois pools: o pool principal de workers (pra testes de D1 + tool MCP com Vectorize / Workers AI mockados), e um pool node separado pro teste de hash de senha (`crypto.subtle` tá disponível nos dois, mas o pool node mantém o módulo de auth isolado das restrições do runtime dos workers).
 
+### Publicar nova versão no npm
+
+O pacote `@expertintegrado/create-expert-brain` é publicado automaticamente quando você cria uma release no GitHub. O runbook completo (quando publicar, como, como validar) tá em [RELEASING.md](RELEASING.md).
+
 ## Segurança
 
 **Single-user por design.** Não compartilha a URL do Worker. Acesso é gated por OAuth 2.1 usando email + hash de passphrase armazenados como secrets do Worker. A passphrase em si é hasheada com PBKDF2-SHA256 em 100k iterações (cap do Workers — veja `src/auth/password.ts`). Os tokens emitidos pelo OAuth provider ficam no namespace `OAUTH_KV`.
