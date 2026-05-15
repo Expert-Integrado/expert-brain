@@ -112,49 +112,28 @@ Pra metodologia completa e o breakdown por tool, veja [docs/token-cost.md](docs/
 - Um computador com Node.js 20+ ([nodejs.org](https://nodejs.org))
 - Uma conta Cloudflare gratuita ([cadastro](https://dash.cloudflare.com/sign-up) — sem cartão)
 
-### Opção A — `npm create @expertintegrado/expert-brain` (recomendada, sem clone)
+### Opção 1 — Claude Code faz pra você (recomendada)
 
-Um comando só pra baixar o projeto, instalar deps, provisionar Cloudflare e fazer deploy:
+Abre o Claude Code (ou Cursor / Windsurf / qualquer IDE agêntica com MCP) numa pasta vazia e cola esse prompt:
 
-```bash
-npm create @expertintegrado/expert-brain@latest meu-vault
-cd meu-vault
-npx wrangler login   # abre o browser → clica "Allow"
-npm run setup        # responde 2 perguntas (e-mail + senha) e espera ~3min
+```text
+Instala o Expert Brain pra mim. Roda `npm create @expertintegrado/expert-brain@latest expert-brain` numa subpasta nova, entra na pasta `expert-brain`, lê o `CLAUDE.md` que aparece lá dentro e segue o runbook até o fim (vai te pedir e-mail e senha de 12+ caracteres no meio do caminho).
 ```
 
-`npm create` baixa o pacote `@expertintegrado/create-expert-brain` do registry npm, copia o projeto pra `meu-vault/` e roda `npm install` — sem Git, sem clone, sem ter que saber qual branch usar. O `npm run setup` faz o provisionamento Cloudflare (D1, Vectorize, 2 KV namespaces, hash da passphrase, session secret, deploy, migrations). No final, imprime a URL do Worker, o comando MCP pra conectar no Claude, e o link do dashboard.
+O agente faz tudo: baixa o projeto, instala dependências, te autentica na Cloudflare se precisar, te pede e-mail + senha, provisiona D1/Vectorize/KV, faz deploy, roda migrations. ~5min do colar do prompt até a URL do Worker no ar.
 
-Pra pinar uma versão específica: `npm create @expertintegrado/expert-brain@1.0.0 meu-vault`.
-
-### Opção B — `git clone` (pra quem vai contribuir ou forkar)
-
-Mesmo fluxo, mas a partir do repo:
+### Opção 2 — Manualmente no terminal
 
 ```bash
-git clone https://github.com/expertintegrado/expertbrain.git
-cd expertbrain
-npm install
-npx wrangler login
-npm run setup
+npm create @expertintegrado/expert-brain@latest expert-brain
+cd expert-brain
+npx wrangler login    # abre o browser, clica "Allow"
+npm run setup         # responde 2 perguntas (e-mail + senha) e espera ~3min
 ```
 
-### Opção C — Claude Code (quem prefere IDE agêntica)
+Ao final, o `npm run setup` imprime a URL do Worker, o comando MCP pra conectar no Claude, e o link do dashboard.
 
-Se você usa Claude Code (ou Cursor/Windsurf com MCP), o repo tem um runbook determinístico em [CLAUDE.md](CLAUDE.md) que o agente segue ponta a ponta:
-
-```bash
-git clone https://github.com/expertintegrado/expertbrain.git
-cd expertbrain
-npm install
-npx wrangler login
-```
-
-Abre a pasta na IDE e fala:
-
-> Configura o Expert Brain.
-
-O agente lê o [CLAUDE.md](CLAUDE.md), te pede e-mail e senha (12+ caracteres), e roda o runbook completo. Resultado igual ao da Opção A.
+Pra pinar uma versão específica: `npm create @expertintegrado/expert-brain@1.0.0 expert-brain`.
 
 ### Conectar ao Claude
 
