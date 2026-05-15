@@ -1,0 +1,94 @@
+name: Publish create-expert-brain to npm
+
+# Espelha o repo (src/, scripts/, wrangler.example.toml, package.json raiz, etc) pra
+# create/template/, bumpa a versao do pacote pra match da release tag, e publica
+# `@expertintegrado/create-expert-brain` no npm. Disparado quando uma release e
+# publicada no GitHub.
+#
+# Pre-req: secret NPM_TOKEN configurado em Settings -> Secrets and variables -> Actions.
+# Cria o token em npmjs.com -> Access Tokens -> Generate New Token -> Granular
+# Access Token com permissao de publish no scope @expertintegrado.
+# A flag `--access public` no npm publish e' necessaria porque pacotes scoped sao
+# privados por default.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao a publicar (ex: 1.0.0). Sem 'v' na frente."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Tag esperado no formato vX.Y.Z — strip do "v"
+            RAW="${{ github.event.release.tag_name }}"
+            VERSION="${RAW#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Versao invalida: $VERSION (esperado semver tipo 1.2.3)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Mirror repo into create/template/
+        run: |
+          TEMPLATE_DIR="create/template"
+          rm -rf "$TEMPLATE_DIR"
+          mkdir -p "$TEMPLATE_DIR"
+
+          # Copia o que faz parte do template (tudo que o aluno precisa pra rodar setup + deploy).
+          # NAO copia: create/, .github/, .git/, node_modules/, wrangler.toml (gerado), test/ (opcional).
+          for item in src scripts wrangler.example.toml package.json package-lock.json tsconfig.json vitest.config.ts vitest.auth.config.ts CLAUDE.md README.md LICENSE docs assets; do
+            if [ -e "$item" ]; then
+              cp -R "$item" "$TEMPLATE_DIR/"
+            fi
+          done
+
+          # .gitignore vira _gitignore (npm publish ignora .gitignore por design — bin.mjs renomeia de volta no destino).
+          if [ -f .gitignore ]; then
+            cp .gitignore "$TEMPLATE_DIR/_gitignore"
+          fi
+
+          echo "Conteudo do template:"
+          ls -la "$TEMPLATE_DIR"
+
+      - name: Bump create/package.json version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('create/package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('create/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cat create/package.json
+
+      - name: Publish to npm
+        working-directory: create
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

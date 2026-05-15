@@ -1,0 +1,29 @@
+{
+  "name": "@expertintegrado/create-expert-brain",
+  "version": "0.0.0",
+  "description": "Scaffolder do Expert Brain — um grafo de conhecimento pessoal pro Claude rodando 100% no free tier da Cloudflare.",
+  "type": "module",
+  "bin": "./bin.mjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin.mjs",
+    "template",
+    "README.md"
+  ],
+  "keywords": [
+    "claude",
+    "mcp",
+    "knowledge-graph",
+    "cloudflare",
+    "expert-brain"
+  ],
+  "homepage": "https://github.com/expertintegrado/expertbrain#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/expertintegrado/expertbrain.git",
+    "directory": "create"
+  },
+  "license": "MIT"
+}

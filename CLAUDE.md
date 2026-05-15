@@ -26,6 +26,8 @@ Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito.
 
 ## Preflight (uma vez por máquina)
 
+Se o usuário ainda não tem o projeto local (clone fresco ou primeira instalação), o caminho recomendado é `npm create @expertintegrado/expert-brain@latest <pasta>` — esse comando baixa o template do npm sem precisar de Git e roda `npm install` automaticamente. Depois, o runbook continua a partir da pasta criada. Quem já clonou o repo direto pula esse aviso.
+
 Antes de rodar o runbook pela primeira vez, confirma que o host tem a CLI `wrangler` autenticada na Cloudflare:
 
 ```bash
