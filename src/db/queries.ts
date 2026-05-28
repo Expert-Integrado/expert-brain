@@ -98,19 +98,26 @@ export async function getEdgesTo(env: Env, id: string): Promise<EdgeRow[]> {
   return r.results ?? [];
 }
 
-function sanitizeFtsQuery(raw: string): string | null {
+function sanitizeFtsQuery(raw: string, prefix = false): string | null {
+  // FTS5: AND/OR/NOT/NEAR são operadores (case-insensitive). Tokens já vêm só
+  // com letras/números; em modo prefixo uso `token*` (bareword + estrela), mas
+  // guardo os operadores entre aspas pra não virarem sintaxe. Sem prefixo,
+  // mantém o termo exato entre aspas (comportamento usado pelo recall).
   const tokens = raw
     .split(/\s+/)
     .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ''))
     .filter((t) => t.length > 0)
-    .map((t) => `"${t}"`);
+    .map((t) => {
+      if (!prefix) return `"${t}"`;
+      return /^(and|or|not|near)$/i.test(t) ? `"${t}"` : `${t}*`;
+    });
   return tokens.length === 0 ? null : tokens.join(' OR ');
 }
 
 export async function ftsSearch(
-  env: Env, query: string, limit: number
+  env: Env, query: string, limit: number, prefix = false
 ): Promise<Array<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>> {
-  const safe = sanitizeFtsQuery(query);
+  const safe = sanitizeFtsQuery(query, prefix);
   if (!safe) return [];
   const r = await env.DB.prepare(
     `SELECT n.id, n.title, n.tldr, n.domains, n.kind

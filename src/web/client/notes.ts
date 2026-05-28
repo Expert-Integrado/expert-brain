@@ -50,6 +50,11 @@ async function main() {
     return; // SSR list stays — degraded mode
   }
 
+  const notesById = new Map(notes.map((n) => [n.id, n]));
+
+  // Fuse fica como fallback client-side (título/tldr) caso o endpoint server-side
+  // de busca full-text falhe. O caminho normal busca no servidor (título + resumo
+  // + CORPO via FTS5), que o Fuse não alcança porque o corpo não é enviado pro client.
   const fuse = new Fuse(notes, {
     keys: [
       { name: 'title', weight: 0.6 },
@@ -63,23 +68,51 @@ async function main() {
 
   const state = {
     query: '',
+    // Resultado da busca server-side (notas ranqueadas pelo FTS) ou null quando
+    // não há query. apply() usa isso em vez de filtrar `notes` localmente.
+    searchResults: null as NoteMeta[] | null,
     domainFilter: new Set<string>(),
     kindFilter: new Set<string>(),
     sort: (sortEl?.value as SortKey) ?? 'updated_desc',
     layout: ((layoutEl?.value as Layout) ?? 'cards'),
   };
 
+  // Busca full-text no servidor; resolve os ids retornados (já ranqueados) nos
+  // metadados que o client tem em memória. Fallback pro Fuse local se falhar.
+  async function runSearch(q: string): Promise<NoteMeta[]> {
+    try {
+      const res = await fetch('/app/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('search ' + res.status);
+      const ids = (await res.json()) as string[];
+      return ids.map((id) => notesById.get(id)).filter(Boolean) as NoteMeta[];
+    } catch (err) {
+      console.warn('notes: busca server-side falhou, usando Fuse local', err);
+      return fuse.search(q).map((r) => r.item);
+    }
+  }
+
   renderChips();
   apply();
 
   if (searchEl) {
     let t: number | null = null;
+    let seq = 0; // descarta respostas fora de ordem (digitação rápida)
     searchEl.addEventListener('input', () => {
       if (t) window.clearTimeout(t);
-      t = window.setTimeout(() => {
-        state.query = searchEl.value.trim();
+      t = window.setTimeout(async () => {
+        const q = searchEl.value.trim();
+        state.query = q;
+        if (!q) {
+          state.searchResults = null;
+          apply();
+          return;
+        }
+        const mySeq = ++seq;
+        const results = await runSearch(q);
+        if (mySeq !== seq) return; // chegou uma busca mais nova, ignora esta
+        state.searchResults = results;
         apply();
-      }, 80);
+      }, 140);
     });
     // Global `/` shortcut focuses search
     window.addEventListener('keydown', (e) => {
@@ -158,11 +191,10 @@ async function main() {
   }
 
   function apply() {
-    let pool = notes;
+    // Com query: usa o resultado ranqueado da busca server-side (full-text em
+    // título + resumo + corpo). Sem query: todas as notas.
+    let pool = state.query ? (state.searchResults ?? []) : notes;
 
-    if (state.query) {
-      pool = fuse.search(state.query).map((r) => r.item);
-    }
     if (state.domainFilter.size > 0) {
       pool = pool.filter((n) => n.domains.some((d) => state.domainFilter.has(d)));
     }
