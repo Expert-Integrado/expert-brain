@@ -4,7 +4,9 @@
 // de auth, MCP ou dados (graph/data, graph/meta, notes/*, api-keys). Sem precache
 // agressivo — cache cresce orgânico conforme o usuário navega.
 
-const VERSION = 'v1';
+// v2: limpa o cache acumulado da era `?v=Date.now()` (cada load gerava uma URL
+// nova e entulhava o cache). Agora os bundles usam ?v=<hash> estável.
+const VERSION = 'v2';
 const CACHE = `brain-${VERSION}`;
 const ASSET_RE = /\.(js|css|png|svg|webmanifest|woff2?)$/;
 

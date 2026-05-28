@@ -7,6 +7,8 @@
 
 import { build } from 'esbuild';
 import { fileURLToPath } from 'url';
+import { createHash } from 'crypto';
+import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -34,3 +36,23 @@ for (const b of bundles) {
   });
   console.log(`built ${b.out}`);
 }
+
+// Hash de conteúdo por bundle → src/web/asset-version.ts. Usado como `?v=` nas
+// tags <script>: estável dentro de um deploy (browser/SW cacheiam entre loads),
+// muda quando o conteúdo muda (busta sozinho no próximo deploy). Substitui o
+// antigo `?v=Date.now()`, que furava o cache a cada page load (rebaixava 210KB+).
+const hashes: Record<string, string> = {};
+for (const b of bundles) {
+  const name = path.basename(b.out);
+  const bytes = readFileSync(path.join(root, b.out));
+  hashes[name] = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+}
+const generated =
+  `// AUTO-GERADO por scripts/build-bundles.ts — não editar à mão.\n` +
+  `// Hash de conteúdo de cada bundle pra cache-busting estável (?v=).\n` +
+  `export const ASSET_HASHES: Record<string, string> = ${JSON.stringify(hashes, null, 2)};\n\n` +
+  `export function assetVersion(name: string): string {\n` +
+  `  return ASSET_HASHES[name] ?? '0';\n` +
+  `}\n`;
+writeFileSync(path.join(root, 'src/web/asset-version.ts'), generated);
+console.log('wrote src/web/asset-version.ts', hashes);

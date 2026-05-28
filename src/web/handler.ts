@@ -29,9 +29,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
   if (path === '/app/graph/link' && req.method === 'POST') return handleGraphLink(req, env);
 
-  // Bundle assets — no-cache pra evitar browser segurar JS antigo entre deploys.
-  // Cache-busting via ?v=<timestamp> no <script src> também usado nas templates.
-  const bundleHeaders = { 'cache-control': 'no-cache, must-revalidate' };
+  // Bundle assets — cache longo + immutable. Seguro porque o <script src> usa
+  // ?v=<hash-de-conteudo> (ver asset-version.ts): a URL muda quando o bundle
+  // muda, entao o browser/SW cacheiam entre loads e bustam sozinhos no deploy.
+  const bundleHeaders = { 'cache-control': 'public, max-age=31536000, immutable' };
   async function serveBundle(asset: string): Promise<Response> {
     const r = await env.ASSETS.fetch(new Request(new URL(asset, url.origin)));
     const h = new Headers(r.headers);

@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
+import { assetVersion } from './asset-version.js';
 
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -476,7 +477,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </button>
       </div>
 
-      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento"></div>
+      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}"></div>
 
       <!-- A.31 — Cmd+K command palette -->
       <div id="graph-palette-backdrop" class="graph-palette-backdrop" role="dialog" aria-label="Buscar nota">
@@ -516,12 +517,13 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
       </div>
     </div>
 
-    <script src="/app/graph/bundle.js?v=${Date.now()}" defer></script>
+    <script src="/app/graph/bundle.js?v=${assetVersion('graph.bundle.js')}" defer></script>
   `;
 
   // Preload do bundle pesado do graph (210KB+) — browser começa o download
   // em paralelo com o parse do HTML, cortando ~100-300ms do tempo até render.
-  const extraHead = `<link rel="preload" href="/app/graph/bundle.js" as="script">`;
+  // Mesma URL versionada do <script> pra reusar o download (senão baixa 2x).
+  const extraHead = `<link rel="preload" href="/app/graph/bundle.js?v=${assetVersion('graph.bundle.js')}" as="script">`;
 
   return htmlResponse(
     renderShell({ title: 'Graph', active: 'graph', email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })

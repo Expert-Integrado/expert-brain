@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
+import { assetVersion } from './asset-version.js';
 import { renderMarkdown } from './markdown.js';
 import {
   getNoteById,
@@ -120,7 +121,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
     ${notes.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma nota ainda.</p>' : ''}
     <div id="notes-list" data-layout="cards">${ssrItems}</div>
 
-    <script src="/app/notes/bundle.js?v=${Date.now()}" defer></script>
+    <script src="/app/notes/bundle.js?v=${assetVersion('notes.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
@@ -226,7 +227,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ${outboundHtml}
     ${inboundHtml}
 
-    ${relatedIds.length > 0 ? `<script src="/app/notes/local-graph.bundle.js?v=${Date.now()}" defer></script>` : ''}
+    ${relatedIds.length > 0 ? `<script src="/app/notes/local-graph.bundle.js?v=${assetVersion('local-graph.bundle.js')}" defer></script>` : ''}
   `;
 
   return htmlResponse(

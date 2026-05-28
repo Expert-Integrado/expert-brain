@@ -1,6 +1,7 @@
 import { esc } from '../util/html.js';
 import { NEBULA_CSS, FONT_LINKS } from './styles.js';
 import { readCookie } from './session.js';
+import { assetVersion } from './asset-version.js';
 
 // Lê a preferência de menu recolhido do cookie (gravado client-side pelo shell
 // bundle). Server-side render evita o "flash" de menu abrindo/fechando ao trocar
@@ -82,7 +83,7 @@ ${opts.extraHead ?? ''}
     </button>
   </form>
 </nav>
-<script src="/app/shell/bundle.js" defer></script>
+<script src="/app/shell/bundle.js?v=${assetVersion('shell.bundle.js')}" defer></script>
 </body></html>`;
 }
 

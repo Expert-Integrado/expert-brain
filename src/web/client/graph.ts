@@ -520,7 +520,10 @@ async function main() {
     r: n.size,  // A.25 — passa raio pro worker
   }));
 
-  const worker = new Worker('/app/graph/sim-worker.bundle.js?v=' + Date.now());
+  // Versão estável injetada pelo server (data-sw-ver no #graph-canvas) — cacheia
+  // entre loads em vez de rebaixar o worker a cada page load (era Date.now()).
+  const swVer = (document.getElementById('graph-canvas') as HTMLElement | null)?.dataset.swVer || '0';
+  const worker = new Worker('/app/graph/sim-worker.bundle.js?v=' + swVer);
 
   // A.26 — recentralizar a câmera periodicamente durante o reveal.
   // Sem isso, a câmera fica fixa e os nós (que voam de range com D3-force)
