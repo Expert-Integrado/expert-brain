@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
-import { renderShell, htmlResponse } from './render.js';
+import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
@@ -184,7 +184,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Configurações', active: 'config', email: session.email, body })
+    renderShell({ title: 'Configurações', active: 'config', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

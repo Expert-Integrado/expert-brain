@@ -154,6 +154,63 @@ a:hover { color: var(--text); }
 }
 .sidebar .bottom button:hover { color: var(--accent-lav); }
 
+/* nav-item agora carrega ícone + label. Ícone fixo, label some no modo recolhido. */
+.sidebar .nav-item svg { flex-shrink: 0; }
+.sidebar .nav-label { white-space: nowrap; overflow: hidden; }
+
+/* Botão de recolher + logout viram linha de ícone+texto no rodapé do menu. */
+.sidebar .bottom .sidebar-toggle,
+.sidebar .bottom .sidebar-logout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
+}
+.sidebar .bottom .sidebar-toggle { margin-bottom: 8px; }
+.sidebar .bottom .sidebar-toggle svg { transition: transform 220ms var(--ease); flex-shrink: 0; }
+.sidebar .bottom .sidebar-toggle:hover,
+.sidebar .bottom .sidebar-logout:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
+.sidebar .bottom .sidebar-logout:hover { color: var(--danger); }
+.sidebar .sidebar-email { font-family: var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Sidebar recolhida (régua de ícones, desktop) ---- */
+.sidebar { transition: width 200ms var(--ease), padding 200ms var(--ease); }
+.shell.sidebar-collapsed .sidebar {
+  width: 60px;
+  padding-left: 8px;
+  padding-right: 8px;
+  align-items: center;
+}
+.shell.sidebar-collapsed .sidebar .logo-text,
+.shell.sidebar-collapsed .sidebar .nav-label,
+.shell.sidebar-collapsed .sidebar .sidebar-email {
+  display: none;
+}
+.shell.sidebar-collapsed .sidebar .logo { justify-content: center; margin-bottom: 28px; gap: 0; }
+.shell.sidebar-collapsed .sidebar .nav-item,
+.shell.sidebar-collapsed .sidebar-toggle,
+.shell.sidebar-collapsed .sidebar .sidebar-logout {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  width: 44px;
+}
+.shell.sidebar-collapsed .sidebar .nav-item::before { display: none; }
+.shell.sidebar-collapsed .sidebar .bottom { align-items: center; display: flex; flex-direction: column; }
+.shell.sidebar-collapsed .sidebar .bottom form { width: 44px; }
+/* Chevron aponta pra fora (expandir) quando recolhido. */
+.shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+
 /* ---- Main ---- */
 .main { flex: 1; padding: 48px 56px 80px; min-width: 0; max-width: 980px; }
 .main h1 {

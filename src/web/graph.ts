@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
-import { renderShell, htmlResponse } from './render.js';
+import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -472,6 +472,6 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
   const extraHead = `<link rel="preload" href="/app/graph/bundle.js" as="script">`;
 
   return htmlResponse(
-    renderShell({ title: 'Graph', active: 'graph', email: session.email, body, extraHead })
+    renderShell({ title: 'Graph', active: 'graph', email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }

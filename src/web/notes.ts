@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
-import { renderShell, htmlResponse } from './render.js';
+import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { renderMarkdown } from './markdown.js';
 import {
   getNoteById,
@@ -124,7 +124,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Notas', active: 'notes', email: session.email, body })
+    renderShell({ title: 'Notas', active: 'notes', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 
@@ -140,6 +140,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
         active: 'notes',
         email: session.email,
         body: '<h1>Nota não encontrada</h1><p><a href="/app/notes">← Voltar pras notas</a></p>',
+        sidebarCollapsed: sidebarCollapsedFromReq(req),
       }),
       404
     );
@@ -229,6 +230,6 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    renderShell({ title: note.title, active: 'notes', email: session.email, body })
+    renderShell({ title: note.title, active: 'notes', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }

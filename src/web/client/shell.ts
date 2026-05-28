@@ -21,8 +21,28 @@ const COMMANDS: Command[] = [
   { id: 'go-graph',  label: 'Ir pro Grafo',         hint: 'Ctrl+G', action: () => (window.location.href = '/app/graph') },
   { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
   { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
+  { id: 'toggle-sidebar', label: 'Recolher/expandir menu', hint: 'Ctrl+B', action: () => toggleSidebar() },
   { id: 'logout',    label: 'Sair',                 action: () => submitLogout() },
 ];
+
+// Recolhe/expande o menu lateral. Persiste em cookie (não localStorage) pra que
+// o servidor já renderize o estado certo na próxima página — sem flash.
+function setSidebar(collapsed: boolean) {
+  const shell = document.querySelector('.shell');
+  if (!shell) return;
+  shell.classList.toggle('sidebar-collapsed', collapsed);
+  const btn = shell.querySelector('.sidebar-toggle');
+  if (btn) {
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('aria-label', collapsed ? 'Expandir menu' : 'Recolher menu');
+  }
+  document.cookie = `eb_sidebar=${collapsed ? 'collapsed' : 'expanded'}; path=/; max-age=31536000; samesite=lax`;
+}
+
+function toggleSidebar() {
+  const shell = document.querySelector('.shell');
+  setSidebar(!shell?.classList.contains('sidebar-collapsed'));
+}
 
 function submitLogout() {
   const form = document.createElement('form');
@@ -238,7 +258,14 @@ function onKey(e: KeyboardEvent) {
   if (isTypingInInput()) return;
   if (meta && e.key.toLowerCase() === 'g') { e.preventDefault(); window.location.href = '/app/graph'; }
   else if (meta && e.key.toLowerCase() === 'n') { e.preventDefault(); window.location.href = '/app/notes'; }
+  else if (meta && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleSidebar(); }
   else if (meta && e.key === ',') { e.preventDefault(); window.location.href = '/app/config'; }
+}
+
+function wireSidebarToggle() {
+  const btn = document.querySelector('.sidebar-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => toggleSidebar());
 }
 
 function escText(s: string): string {
@@ -256,6 +283,7 @@ function escText(s: string): string {
 
 ensurePalette();
 wire();
+wireSidebarToggle();
 window.addEventListener('keydown', onKey);
 loadNotes();
 registerServiceWorker();
