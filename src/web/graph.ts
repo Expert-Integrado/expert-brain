@@ -265,6 +265,58 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         border-color: rgba(255, 200, 100, 0.5);
       }
       .graph-suggest-modal-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* Tooltip CSS-only (sem JS, ok com CSP) pra explicar os botões/seções.
+         Aparece no hover e no foco por teclado. data-tip no elemento. */
+      .has-tip { position: relative; }
+      .has-tip::after {
+        content: attr(data-tip);
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 8px);
+        transform: translateX(-50%) translateY(4px);
+        width: max-content;
+        max-width: 220px;
+        padding: 7px 10px;
+        background: rgba(20, 20, 26, 0.98);
+        border: 1px solid rgba(167, 139, 250, 0.35);
+        border-radius: 6px;
+        color: #f4ecff;
+        font-size: 11px;
+        font-weight: 400;
+        line-height: 1.35;
+        text-align: left;
+        white-space: normal;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 140ms var(--ease, ease), transform 140ms var(--ease, ease);
+        z-index: 9500;
+      }
+      .has-tip:hover::after,
+      .has-tip:focus-visible::after { opacity: 1; transform: translateX(-50%) translateY(0); }
+      /* Zoom controls ficam na borda direita — tooltip abre pra esquerda pra não vazar. */
+      .graph-zoom-controls .has-tip::after { left: auto; right: calc(100% + 8px); bottom: 50%; transform: translateY(50%) translateX(4px); }
+      .graph-zoom-controls .has-tip:hover::after,
+      .graph-zoom-controls .has-tip:focus-visible::after { transform: translateY(50%) translateX(0); }
+      /* Ícone ⓘ ao lado dos títulos de seção. */
+      .graph-info-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 14px;
+        height: 14px;
+        margin-left: 6px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.35);
+        color: rgba(255,255,255,0.6);
+        font-size: 9px;
+        font-style: normal;
+        font-weight: 700;
+        cursor: help;
+        vertical-align: middle;
+      }
+      .graph-info-icon:hover { color: var(--accent-lav, #a78bfa); border-color: var(--accent-lav, #a78bfa); }
     </style>
 
     <div class="graph-wrap">
@@ -326,7 +378,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </label>
 
         <details class="graph-section" open>
-          <summary class="graph-section-summary">Notas parecidas</summary>
+          <summary class="graph-section-summary">Notas parecidas<i class="graph-info-icon" title="Linhas semânticas conectam notas com conteúdo parecido (mesmo sem ligação explícita). Ajuste a intensidade, esconda, ou mostre conexões sugeridas pra criar links.">i</i></summary>
           <label class="graph-slider-label">
             <span>Intensidade</span>
             <input
@@ -364,7 +416,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
         <!-- A.30 — Forces aberto / Display fechado (Contrário: power-user mexe em forças, não em display) -->
         <details class="graph-section" open>
-          <summary class="graph-section-summary">Forças</summary>
+          <summary class="graph-section-summary">Forças<i class="graph-info-icon" title="Controlam o layout físico do grafo: o quanto os nós se atraem, se repelem e a distância das ligações. Mexa pra espalhar ou compactar o grafo.">i</i></summary>
           <label class="graph-slider-label">
             <span>Quão centralizado</span>
             <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.1" aria-label="Força de centralização" />
@@ -388,7 +440,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </details>
 
         <details class="graph-section">
-          <summary class="graph-section-summary">Visual</summary>
+          <summary class="graph-section-summary">Visual<i class="graph-info-icon" title="Aparência do grafo: tamanho das bolinhas, espessura das linhas e quão cedo os nomes das notas aparecem ao dar zoom.">i</i></summary>
           <label class="graph-slider-label">
             <span>Tamanho das bolinhas</span>
             <input type="range" id="node-size-mult" min="0.3" max="3" step="0.1" value="1" aria-label="Tamanho dos nós" />
@@ -417,9 +469,9 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
 
       <!-- RIGHT FLOATING: zoom controls -->
       <div class="graph-zoom-controls" role="group" aria-label="Controles de zoom">
-        <button class="graph-zoom-btn" data-graph-action="zoom-in" title="Aproximar" aria-label="Aproximar">+</button>
-        <button class="graph-zoom-btn" data-graph-action="zoom-out" title="Afastar" aria-label="Afastar">&minus;</button>
-        <button class="graph-zoom-btn graph-zoom-fit" data-graph-action="fit" title="Ajustar à tela" aria-label="Ajustar à tela">
+        <button class="graph-zoom-btn has-tip" data-graph-action="zoom-in" data-tip="Aproximar o grafo" aria-label="Aproximar">+</button>
+        <button class="graph-zoom-btn has-tip" data-graph-action="zoom-out" data-tip="Afastar o grafo" aria-label="Afastar">&minus;</button>
+        <button class="graph-zoom-btn graph-zoom-fit has-tip" data-graph-action="fit" data-tip="Ajustar à tela: recentraliza e enquadra o grafo inteiro" aria-label="Ajustar à tela">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         </button>
       </div>

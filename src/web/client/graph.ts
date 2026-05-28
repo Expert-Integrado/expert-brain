@@ -173,6 +173,9 @@ async function main() {
     renderEdgeLabels: false,
     minCameraRatio: 0.08,
     maxCameraRatio: 12,
+    // Passo de zoom mais suave que o default (~1.7) — controle fino na roda e
+    // nos botões +/− (ambos usam zoomingRatio via animatedZoom/animatedUnzoom).
+    zoomingRatio: 1.3,
     defaultDrawNodeHover: drawDarkHover as any,
   });
 
@@ -556,9 +559,34 @@ async function main() {
       }
     } else if (msg.type === 'end') {
       cameraSettled = true;
+      // Centraliza no cluster principal: alguns órfãos/outliers distantes
+      // esticam a bounding box e jogam o miolo do grafo pra um canto. Em vez
+      // de enquadrar tudo, enquadro a bbox robusta (percentil) do núcleo.
+      applyCoreBBox();
       void renderer.getCamera().animatedReset({ duration: 400 });
     }
   });
+
+  // Bounding box robusta do núcleo: ignora ~2% de outliers em cada extremo de
+  // cada eixo, pra os poucos nós isolados/distantes não desenquadrarem o miolo.
+  function applyCoreBBox() {
+    const xs: number[] = [];
+    const ys: number[] = [];
+    graph.forEachNode((_id, attr) => {
+      if (isFinite(attr.x) && isFinite(attr.y)) { xs.push(attr.x); ys.push(attr.y); }
+    });
+    if (xs.length < 8) { renderer.setCustomBBox(null); return; }
+    xs.sort((a, b) => a - b);
+    ys.sort((a, b) => a - b);
+    const p = 0.02;
+    const lo = (arr: number[]) => arr[Math.floor(arr.length * p)];
+    const hi = (arr: number[]) => arr[Math.min(arr.length - 1, Math.ceil(arr.length * (1 - p)))];
+    let minX = lo(xs), maxX = hi(xs), minY = lo(ys), maxY = hi(ys);
+    // Margem de 8% pra não colar os nós da borda na moldura da viewport.
+    const mx = (maxX - minX) * 0.08 || 1;
+    const my = (maxY - minY) * 0.08 || 1;
+    renderer.setCustomBBox({ x: [minX - mx, maxX + mx], y: [minY - my, maxY + my] });
+  }
 
   const workerLinks = [];
   for (const e of payload.edges) {
@@ -791,7 +819,10 @@ async function main() {
     onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 280 }),
     onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 280 }),
     onFit: () => {
-      renderer.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1.05 }, { duration: 400 });
+      // Reaplica a bbox do núcleo antes de enquadrar — "ajustar à tela" sempre
+      // centraliza o miolo, mesmo depois de pan/zoom ou mudança de filtro.
+      applyCoreBBox();
+      renderer.getCamera().animatedReset({ duration: 400 });
     },
     // A.22 + A.29 — Display
     onNodeSizeMult: (v) => { state.nodeSizeMult = v; renderer.refresh(); },
