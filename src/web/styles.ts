@@ -490,6 +490,189 @@ a:hover { color: var(--text); }
 .badge-ok { background: rgba(111, 227, 154, 0.12); color: #6fe39a; border: 1px solid rgba(111, 227, 154, 0.3); }
 .badge-warn { background: rgba(255, 184, 112, 0.12); color: #ffb870; border: 1px solid rgba(255, 184, 112, 0.3); }
 
+/* ---- Config page: disclosure progressivo (2 passos + gaveta avancada + rodape) ---- */
+.config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 32px; }
+
+/* Cards de passo numerado (trilha essencial) */
+.card-step { border-left: 3px solid var(--accent-lav); }
+.card-step h2.step-head { display: flex; align-items: center; gap: 12px; margin: 0; }
+.step-num {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  font-family: var(--font-display); font-weight: 600; font-size: 15px;
+  background: rgba(167, 139, 250, 0.16);
+  color: var(--accent-lav);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 0 14px rgba(167, 139, 250, 0.25);
+}
+
+/* Hint/instrucao curta abaixo do titulo de um passo */
+.config-hint { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; margin: 8px 0 14px; }
+.config-hint code, .callout-info code {
+  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+}
+
+/* Callout OAuth (cyan do design system) */
+.callout-info {
+  margin-top: 16px; padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px; line-height: 1.55; color: var(--text-dim);
+  background: rgba(94, 234, 212, 0.06);
+  border: 1px solid rgba(94, 234, 212, 0.20);
+}
+.callout-info strong { color: var(--accent-cyan); }
+.callout-info em { font-style: italic; color: var(--text); }
+
+/* Acao primaria (Salvar prompt) — gradiente lavanda->violeta */
+.btn-primary {
+  padding: 10px 18px; border: none; border-radius: var(--radius-sm); cursor: pointer;
+  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: #fff;
+  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
+  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
+  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
+.btn-primary:active { transform: translateY(0); }
+
+/* Textarea do prompt */
+.prefs-textarea {
+  width: 100%; box-sizing: border-box;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.55;
+  background: rgba(0, 0, 0, 0.4); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 12px 14px; resize: vertical;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.prefs-textarea:focus { border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.05); }
+
+/* ---- Gaveta avancada (1 unico <details>) ---- */
+.disclosure-advanced {
+  margin-top: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition: border-color 180ms var(--ease);
+}
+.disclosure-advanced[open] { border-color: var(--border-strong); }
+.disclosure-advanced > summary {
+  list-style: none; cursor: pointer;
+  padding: 16px 20px;
+  display: flex; flex-direction: column; gap: 3px;
+  color: var(--text-dim);
+  transition: background 160ms var(--ease), color 160ms var(--ease);
+}
+.disclosure-advanced > summary::-webkit-details-marker { display: none; }
+.disclosure-advanced > summary:hover { background: rgba(167, 139, 250, 0.06); color: var(--text); }
+.disclosure-advanced > summary .adv-title {
+  font-family: var(--font-display); font-weight: 500; font-size: 16px;
+  display: flex; align-items: center; gap: 10px; color: var(--text);
+}
+.disclosure-advanced > summary .adv-title::before {
+  content: "▸";
+  font-size: 12px; color: var(--accent-lav);
+  transition: transform 200ms var(--ease);
+  display: inline-block;
+}
+.disclosure-advanced[open] > summary .adv-title::before { transform: rotate(90deg); }
+.disclosure-advanced > summary .adv-sub {
+  font-size: 12.5px; color: var(--text-faint); padding-left: 22px;
+}
+.disclosure-advanced .adv-body {
+  padding: 4px 20px 22px;
+  display: flex; flex-direction: column; gap: 24px;
+}
+.adv-section h3 {
+  font-family: var(--font-display); font-weight: 500; font-size: 15px;
+  margin: 0 0 8px; color: var(--text);
+}
+.adv-section p { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; margin: 0 0 8px; }
+.adv-section p code, .adv-section code {
+  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+}
+.adv-section label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
+
+/* Input de texto do bloco avancado */
+.input-text {
+  width: 100%; box-sizing: border-box; margin-top: 6px;
+  padding: 9px 12px;
+  background: rgba(0, 0, 0, 0.4); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 14px;
+  transition: border-color 180ms var(--ease);
+}
+.input-text:focus { border-color: var(--accent-lav); }
+
+/* Tabela de chaves */
+.keys-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.keys-table th {
+  text-align: left; padding: 8px 10px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-faint); border-bottom: 1px solid var(--border);
+}
+.keys-table td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
+.keys-table tr:last-child td { border-bottom: none; }
+.keys-table code {
+  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
+}
+.btn-danger {
+  padding: 6px 12px;
+  background: rgba(255, 122, 144, 0.12); color: var(--danger);
+  border: 1px solid rgba(255, 122, 144, 0.3); border-radius: var(--radius-sm);
+  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background 160ms var(--ease);
+}
+.btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
+
+/* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
+.key-flash {
+  margin-bottom: 18px; padding: 16px 18px;
+  border: 1px solid rgba(111, 227, 154, 0.4);
+  background: rgba(111, 227, 154, 0.08);
+  border-radius: var(--radius);
+  box-shadow: 0 0 24px -10px rgba(111, 227, 154, 0.3);
+}
+.key-flash h2 { font-family: var(--font-display); font-weight: 500; font-size: 16px; margin: 0 0 6px; color: #6fe39a; }
+.key-flash p { color: var(--text-dim); font-size: 13px; margin: 0 0 10px; }
+.key-flash input.key-flash-value {
+  width: 100%; box-sizing: border-box; padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.4); color: #b9f6ca;
+  border: 1px solid rgba(111, 227, 154, 0.3); border-radius: var(--radius-sm);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
+}
+
+/* ---- Rodape: status do vault (movido do topo) ---- */
+.vault-stats-foot { margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
+.vault-stats-foot h3 {
+  font-family: var(--font-display); font-weight: 500; font-size: 16px;
+  color: var(--text-dim); margin: 0 0 14px;
+}
+.vault-stat-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+.stat-pill {
+  display: inline-flex; flex-direction: column; gap: 2px;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  background: rgba(167, 139, 250, 0.08); border: 1px solid var(--border);
+}
+.stat-pill .v {
+  font-family: var(--font-display); font-size: 18px; font-weight: 600;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.stat-pill .k { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
+.vault-stats-foot .links { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
+.vault-stats-foot .links a { color: var(--accent-lav); }
+.vault-stats-foot .empty-hint { margin-top: 10px; font-size: 13px; color: var(--text-dim); }
+
+@media (max-width: 767px) {
+  .vault-stat-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .disclosure-advanced > summary .adv-sub { padding-left: 0; }
+}
+
 /* ==========================================================================
    Graph page (Obsidian-style overlay + slide panel + filter chips)
    ========================================================================== */
