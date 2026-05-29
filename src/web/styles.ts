@@ -91,6 +91,13 @@ a:hover { color: var(--text); }
   flex-direction: column;
   gap: 2px;
   background: linear-gradient(180deg, rgba(167, 139, 250, 0.05), transparent 30%);
+  /* Fixa: não rola junto com a lista de notas. O botão Recolher (no .bottom)
+     fica sempre visível, sem precisar descer a página. */
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  height: 100vh;
+  overflow-y: auto;
 }
 .sidebar .logo {
   font-family: var(--font-display);
@@ -1072,7 +1079,17 @@ a:hover { color: var(--text); }
 .notes-chip .count { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 
 /* Notes list layout variants */
-#notes-list[data-layout="cards"] { display: block; }
+/* Lista de notas usa a largura toda da tela (detalhe da nota e config seguem
+   capados em 980px pra leitura). Cards viram grade responsiva: várias colunas
+   que se ajustam, em vez de uma coluna única de cards gigantes. */
+.main:has(#notes-list) { max-width: none; }
+#notes-list[data-layout="cards"] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+#notes-list[data-layout="cards"] .note-card { margin-bottom: 0; }
 #notes-list[data-layout="compact"] { display: flex; flex-direction: column; gap: 0; }
 
 .note-card-head {
