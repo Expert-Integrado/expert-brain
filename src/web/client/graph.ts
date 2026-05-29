@@ -769,6 +769,8 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // Controls: search + domain/kind filters + opacity slider + zoom buttons
   // ────────────────────────────────────────────────────────────────────────
+  // Fuse fica como fallback instantâneo (label + tldr) se a busca server-side
+  // falhar. Caminho normal: /app/search (FTS5 em título + resumo + CORPO).
   const fuse = new Fuse(payload.nodes, {
     keys: [
       { name: 'label', weight: 0.7 },
@@ -779,22 +781,41 @@ async function main() {
     ignoreLocation: true,
   });
 
+  // Busca full-text no servidor; restringe aos nós presentes no grafo (o FTS
+  // pode retornar ids filtrados fora). Fallback pro Fuse local em caso de erro.
+  let searchSeq = 0;
+  async function serverSearchIds(q: string, limit: number): Promise<string[]> {
+    try {
+      const res = await fetch('/app/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('search ' + res.status);
+      const ids = (await res.json()) as string[];
+      return ids.filter((id) => graph.hasNode(id)).slice(0, limit);
+    } catch (err) {
+      console.warn('graph: busca server-side falhou, usando Fuse', err);
+      return fuse.search(q, { limit }).map((h) => h.item.id);
+    }
+  }
+
   wireControls({
     onSearch: (q) => {
       state.searchQuery = q;
       if (!q) {
         state.searchMatches = new Set();
-      } else {
-        const hits = fuse.search(q, { limit: 20 });
-        state.searchMatches = new Set(hits.map((h) => h.item.id));
+        (window as any).__updateActiveFilters?.();
+        renderer.refresh();
+        return;
       }
-      (window as any).__updateActiveFilters?.();
-      renderer.refresh();
+      const mySeq = ++searchSeq;
+      void serverSearchIds(q, 50).then((ids) => {
+        if (mySeq !== searchSeq) return; // chegou busca mais nova
+        state.searchMatches = new Set(ids);
+        (window as any).__updateActiveFilters?.();
+        renderer.refresh();
+      });
     },
     onSearchSubmit: (q) => {
       if (!q) return;
-      const hits = fuse.search(q, { limit: 1 });
-      if (hits[0]) focusNode(hits[0].item.id);
+      void serverSearchIds(q, 1).then((ids) => { if (ids[0]) focusNode(ids[0]); });
     },
     onDomainToggle: (domain, active) => {
       if (!state.domainFilter) state.domainFilter = new Set();

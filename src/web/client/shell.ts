@@ -53,7 +53,10 @@ function submitLogout() {
 }
 
 let notes: NoteMeta[] = [];
+let notesById = new Map<string, NoteMeta>();
 let fuseNotes: Fuse<NoteMeta> | null = null;
+// Resultado da última busca de notas no servidor (FTS5: título + resumo + corpo).
+let noteHits: NoteMeta[] = [];
 const fuseCommands = new Fuse(COMMANDS, {
   keys: ['label'],
   threshold: 0.4,
@@ -65,6 +68,7 @@ async function loadNotes() {
     const res = await fetch('/app/graph/meta', { credentials: 'same-origin' });
     if (!res.ok) return;
     notes = (await res.json()) as NoteMeta[];
+    notesById = new Map(notes.map((n) => [n.id, n]));
     fuseNotes = new Fuse(notes, {
       keys: [
         { name: 'title', weight: 0.7 },
@@ -158,13 +162,14 @@ function render(query: string, list: HTMLElement) {
         hint: n.kind || undefined,
         action: () => (window.location.href = `/app/notes/${encodeURIComponent(n.id)}`),
       }));
-    } else if (fuseNotes) {
-      items = fuseNotes.search(q, { limit: 12 }).map((r) => ({
+    } else {
+      // noteHits é preenchido pela busca server-side (FTS5) no listener de input.
+      items = noteHits.slice(0, 12).map((n) => ({
         kind: 'note',
-        id: r.item.id,
-        label: r.item.title,
-        hint: r.item.kind || undefined,
-        action: () => (window.location.href = `/app/notes/${encodeURIComponent(r.item.id)}`),
+        id: n.id,
+        label: n.title,
+        hint: n.kind || undefined,
+        action: () => (window.location.href = `/app/notes/${encodeURIComponent(n.id)}`),
       }));
     }
   }
@@ -222,9 +227,42 @@ function close() {
   root.classList.remove('open');
 }
 
+// Busca full-text de notas no servidor (FTS5: título + resumo + corpo). Resolve
+// os ids nos metadados já carregados. Fallback pro Fuse local em caso de erro.
+async function searchNotes(q: string): Promise<NoteMeta[]> {
+  try {
+    const res = await fetch('/app/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('search ' + res.status);
+    const ids = (await res.json()) as string[];
+    return ids.map((id) => notesById.get(id)).filter(Boolean).slice(0, 12) as NoteMeta[];
+  } catch (err) {
+    console.warn('palette: busca server-side falhou, usando Fuse', err);
+    return fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [];
+  }
+}
+
 function wire() {
   const { input, list } = ensurePalette();
-  input.addEventListener('input', () => render(input.value, list));
+  let searchT: number | null = null;
+  let searchSeq = 0;
+  input.addEventListener('input', () => {
+    const val = input.value;
+    // Comandos (> ...) e query vazia: render local instantâneo.
+    if (val.trim().startsWith('>') || !val.trim()) {
+      render(val, list);
+      return;
+    }
+    // Notas: busca no servidor (debounce + guard de ordem das respostas).
+    if (searchT) window.clearTimeout(searchT);
+    searchT = window.setTimeout(async () => {
+      const q = val.trim();
+      const mySeq = ++searchSeq;
+      const hits = await searchNotes(q);
+      if (mySeq !== searchSeq) return; // chegou busca mais nova
+      noteHits = hits;
+      render(val, list);
+    }, 130);
+  });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setCursor(1, list); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setCursor(-1, list); }
