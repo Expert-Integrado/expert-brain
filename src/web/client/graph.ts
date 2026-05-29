@@ -345,7 +345,11 @@ async function main() {
       // When hovering a node, boost similar edges touching its ego network
       // and dim the rest so the local structure reads without hiding context.
       let alpha = state.similarOpacity;
-      if (state.hoveredNeighbors) {
+      if (state.searchMatches.size > 0) {
+        // Search ativo: só realça a semântica entre dois matches; o resto apaga.
+        const both = state.searchMatches.has(e.source) && state.searchMatches.has(e.target);
+        alpha = both ? Math.max(0.6, state.similarOpacity) : state.similarOpacity * 0.1;
+      } else if (state.hoveredNeighbors) {
         const inEgo = state.hoveredNeighbors.has(e.source) && state.hoveredNeighbors.has(e.target);
         alpha = inEgo ? Math.max(0.55, state.similarOpacity) : state.similarOpacity * 0.25;
       }
@@ -452,9 +456,13 @@ async function main() {
       return { ...attrs, color: 'rgba(70, 70, 90, 0.12)', label: '', size: baseSize * 0.6 };
     }
 
-    // Search hit: bright + enlarged
-    if (state.searchMatches.size > 0 && state.searchMatches.has(n)) {
-      return { ...attrs, color: baseColor, size: baseSize * 1.6, zIndex: 10 };
+    // Search ativo: foco igual ao hover. Match = aceso + maior + rótulo;
+    // o resto escurece (vira fantasma), pra os relevantes "pularem" na tela.
+    if (state.searchMatches.size > 0) {
+      if (state.searchMatches.has(n)) {
+        return { ...attrs, color: baseColor, size: baseSize * 1.6, label: baseLabel.get(n) ?? '', zIndex: 10 };
+      }
+      return { ...attrs, color: 'rgba(70, 70, 90, 0.22)', size: baseSize, label: '' };
     }
 
     // A.6 — hovered node: NÃO faz scale (Obsidian não escala). Ring fino
@@ -494,6 +502,14 @@ async function main() {
     const baseSize = (attrs.size as number) * state.lineSizeMult * state.mobileEdgeScale;
     if (!isNodeActive(s) || !isNodeActive(t)) {
       return { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize, hidden: true };
+    }
+    // Search ativo: igual ao hover — só destaca ligações entre dois matches,
+    // o resto some.
+    if (state.searchMatches.size > 0) {
+      const keep = state.searchMatches.has(s) && state.searchMatches.has(t);
+      return keep
+        ? { ...attrs, color: 'rgba(191, 191, 191, 0.75)', size: baseSize * 1.6 }
+        : { ...attrs, color: 'rgba(5, 5, 5, 0.02)', size: baseSize };
     }
     if (state.hoveredNeighbors) {
       const keep = state.hoveredNeighbors.has(s) && state.hoveredNeighbors.has(t);
