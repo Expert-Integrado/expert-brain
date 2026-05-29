@@ -146,27 +146,74 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   };
 }
 
+// Cache-ou-build do payload completo. Reutilizado pelo grafo principal e pelo
+// subgrafo ego (mini-grafo da nota). Não cacheia payload degradado (0 notas ou
+// sem edges semânticas — Vectorize falhou/ainda indexando) pra auto-curar.
+async function getPayload(env: Env): Promise<GraphPayload> {
+  const sourceHash = await computeSourceHash(env);
+  const cached = await env.GRAPH_CACHE.get(CACHE_KEY, 'json') as GraphPayload | null;
+  if (cached && cached.sourceHash === sourceHash) return cached;
+
+  const payload = await buildPayload(env);
+  const hasSimilar = payload.edges.some((e) => e.type === 'similar');
+  if (payload.nodes.length === 0 || hasSimilar) {
+    await env.GRAPH_CACHE.put(CACHE_KEY, JSON.stringify(payload));
+  }
+  return payload;
+}
+
 export async function handleGraphData(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
-
-  const sourceHash = await computeSourceHash(env);
-  const cached = await env.GRAPH_CACHE.get(CACHE_KEY, 'json') as GraphPayload | null;
-  if (cached && cached.sourceHash === sourceHash) {
-    return Response.json(cached, { headers: { 'cache-control': 'no-store' } });
-  }
-
-  const payload = await buildPayload(env);
-  // Don't cache obviously degraded payloads: if we have notes but zero similar
-  // edges, either Vectorize failed or the index is still populating. Skip the
-  // write so the next request auto-heals instead of serving the bad payload
-  // until notes/edges mutate and sourceHash changes.
-  const hasSimilar = payload.edges.some((e) => e.type === 'similar');
-  const notesCount = payload.nodes.length;
-  if (notesCount === 0 || hasSimilar) {
-    await env.GRAPH_CACHE.put(CACHE_KEY, JSON.stringify(payload));
-  }
+  const payload = await getPayload(env);
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
+}
+
+// Subgrafo ego (até 3 hops por edges EXPLÍCITAS) ao redor de uma nota. O BFS roda
+// no servidor e devolve só os nós envolvidos + edges entre eles — o mini-grafo da
+// página da nota não precisa mais baixar o grafo inteiro (era a causa da lentidão).
+export async function handleNoteGraph(req: Request, env: Env, focusId: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const payload = await getPayload(env);
+  const MAX_HOPS = 3;
+  const MAX_NODES = 200; // teto pra um hub gigante não explodir o mini-grafo
+
+  const adj = new Map<string, string[]>();
+  const link = (a: string, b: string) => {
+    const l = adj.get(a);
+    if (l) l.push(b); else adj.set(a, [b]);
+  };
+  for (const e of payload.edges) {
+    if (e.type !== 'explicit') continue;
+    link(e.source, e.target);
+    link(e.target, e.source);
+  }
+
+  const keep = new Set<string>([focusId]);
+  let frontier = [focusId];
+  for (let h = 0; h < MAX_HOPS && keep.size < MAX_NODES; h++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (!keep.has(nb)) { keep.add(nb); next.push(nb); }
+        if (keep.size >= MAX_NODES) break;
+      }
+      if (keep.size >= MAX_NODES) break;
+    }
+    if (next.length === 0) break;
+    frontier = next;
+  }
+
+  const nodes = payload.nodes.filter((n) => keep.has(n.id));
+  const edges = payload.edges.filter(
+    (e) => e.type === 'explicit' && keep.has(e.source) && keep.has(e.target),
+  );
+  return Response.json(
+    { nodes, edges, computedAt: payload.computedAt, sourceHash: payload.sourceHash },
+    { headers: { 'cache-control': 'no-store' } },
+  );
 }
 
 // Parse the domains field: JSON-encoded array (new schema) or legacy CSV.

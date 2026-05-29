@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
-import { handleGraphData, handleGraphMeta, handleGraphLink } from './graph-data.js';
+import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
@@ -20,6 +20,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
   if (path === '/app/notes' && req.method === 'GET') return handleNotesList(req, env);
   if (path === '/app/search' && req.method === 'GET') return handleNoteSearch(req, env);
+
+  const noteGraphMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/graph$/);
+  if (noteGraphMatch && req.method === 'GET') return handleNoteGraph(req, env, noteGraphMatch[1]);
 
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);

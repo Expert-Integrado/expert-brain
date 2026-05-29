@@ -3,7 +3,7 @@
 export const ASSET_HASHES: Record<string, string> = {
   "graph.bundle.js": "58cd238b75a1",
   "notes.bundle.js": "44e75a045829",
-  "local-graph.bundle.js": "14e89514f5c5",
+  "local-graph.bundle.js": "f00f8b707a5f",
   "shell.bundle.js": "5380044ee5d5",
   "sim-worker.bundle.js": "670aeb4a708f"
 };

@@ -178,7 +178,9 @@ async function main() {
 
   let payload: Payload;
   try {
-    const res = await fetch('/app/graph/data', { credentials: 'same-origin' });
+    // Subgrafo ego (só a vizinhança desta nota), não o grafo inteiro — o BFS
+    // roda no servidor. Era /app/graph/data (payload gigante) e travava ao abrir.
+    const res = await fetch(`/app/notes/${encodeURIComponent(focusId)}/graph`, { credentials: 'same-origin' });
     if (!res.ok) throw new Error(`data ${res.status}`);
     payload = (await res.json()) as Payload;
   } catch (err) {
