@@ -805,16 +805,25 @@ async function main() {
         renderer.refresh();
         return;
       }
+      // Instantâneo: Fuse local (título + resumo) destaca já, sem esperar rede.
+      const localIds = fuse.search(q, { limit: 50 }).map((h) => h.item.id);
+      state.searchMatches = new Set(localIds);
+      (window as any).__updateActiveFilters?.();
+      renderer.refresh();
+      // Background: amplia com matches do CORPO (server FTS), unindo aos locais.
       const mySeq = ++searchSeq;
       void serverSearchIds(q, 50).then((ids) => {
-        if (mySeq !== searchSeq) return; // chegou busca mais nova
-        state.searchMatches = new Set(ids);
+        if (mySeq !== searchSeq || ids.length === 0) return;
+        state.searchMatches = new Set([...localIds, ...ids]);
         (window as any).__updateActiveFilters?.();
         renderer.refresh();
       });
     },
     onSearchSubmit: (q) => {
       if (!q) return;
+      // Instantâneo se houver match local; senão tenta o servidor (match só no corpo).
+      const local = fuse.search(q, { limit: 1 });
+      if (local[0]) { focusNode(local[0].item.id); return; }
       void serverSearchIds(q, 1).then((ids) => { if (ids[0]) focusNode(ids[0]); });
     },
     onDomainToggle: (domain, active) => {

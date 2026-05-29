@@ -252,14 +252,20 @@ function wire() {
       render(val, list);
       return;
     }
-    // Notas: busca no servidor (debounce + guard de ordem das respostas).
+    const q = val.trim();
+    // Instantâneo: Fuse local (título + resumo) — sem esperar a rede.
+    noteHits = fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [];
+    render(val, list);
+    // Background: amplia com matches do CORPO (server FTS), unindo aos locais.
     if (searchT) window.clearTimeout(searchT);
     searchT = window.setTimeout(async () => {
-      const q = val.trim();
       const mySeq = ++searchSeq;
-      const hits = await searchNotes(q);
-      if (mySeq !== searchSeq) return; // chegou busca mais nova
-      noteHits = hits;
+      const serverHits = await searchNotes(q);
+      if (mySeq !== searchSeq || serverHits.length === 0) return;
+      const seen = new Set(serverHits.map((n) => n.id));
+      const localExtra = (fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [])
+        .filter((n) => !seen.has(n.id));
+      noteHits = [...serverHits, ...localExtra].slice(0, 12);
       render(val, list);
     }, 130);
   });

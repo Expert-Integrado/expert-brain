@@ -99,18 +99,24 @@ async function main() {
     let seq = 0; // descarta respostas fora de ordem (digitação rápida)
     searchEl.addEventListener('input', () => {
       if (t) window.clearTimeout(t);
+      const q = searchEl.value.trim();
+      state.query = q;
+      if (!q) {
+        state.searchResults = null;
+        apply();
+        return;
+      }
+      // Instantâneo: Fuse local (título + resumo) — sem esperar a rede.
+      state.searchResults = fuse.search(q).map((r) => r.item);
+      apply();
+      // Background: amplia com matches do CORPO (server FTS), unindo aos locais.
       t = window.setTimeout(async () => {
-        const q = searchEl.value.trim();
-        state.query = q;
-        if (!q) {
-          state.searchResults = null;
-          apply();
-          return;
-        }
         const mySeq = ++seq;
-        const results = await runSearch(q);
+        const serverResults = await runSearch(q);
         if (mySeq !== seq) return; // chegou uma busca mais nova, ignora esta
-        state.searchResults = results;
+        const seen = new Set(serverResults.map((n) => n.id));
+        const localExtra = fuse.search(q).map((r) => r.item).filter((n) => !seen.has(n.id));
+        state.searchResults = [...serverResults, ...localExtra];
         apply();
       }, 140);
     });
