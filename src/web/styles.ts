@@ -491,7 +491,11 @@ a:hover { color: var(--text); }
 .badge-warn { background: rgba(255, 184, 112, 0.12); color: #ffb870; border: 1px solid rgba(255, 184, 112, 0.3); }
 
 /* ---- Config page: disclosure progressivo (2 passos + gaveta avancada + rodape) ---- */
-.config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 32px; }
+.config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 12px; }
+
+/* Grupo "Conexoes": heading + abas-acordeao (reusa .disclosure-advanced) */
+.conn-heading { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 36px 0 2px; }
+.conn-section { margin-top: 12px; }
 
 /* Cards de passo numerado (trilha essencial) */
 .card-step { border-left: 3px solid var(--accent-lav); }

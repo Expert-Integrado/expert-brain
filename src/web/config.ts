@@ -44,7 +44,7 @@ export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Res
   )
     .bind(PREFS_META_KEY, prompt)
     .run();
-  return new Response(null, { status: 302, headers: { location: '/app/config#prefs' } });
+  return new Response(null, { status: 302, headers: { location: '/app/config?saved=prefs#prefs' } });
 }
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
@@ -67,6 +67,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     }
   }
 
+  // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
+  // "Sistemas web" (que contém o prompt) já expandida.
+  const savedPrefs = url.searchParams.get('saved') === 'prefs';
+
   const prefsPrompt = await getPersonalizationPrompt(env);
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
@@ -75,7 +79,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   const badge = stats.connected
     ? `<span class="badge-pill badge-ok">● Claude conectado</span>`
-    : `<span class="badge-pill badge-warn">○ Aguardando — conecte no passo 1 abaixo</span>`;
+    : `<span class="badge-pill badge-warn">○ Aguardando — conecte numa das opções abaixo</span>`;
 
   // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
   const keys = await listApiKeys(env, session.email);
@@ -110,54 +114,80 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     <div class="page-header">
       <h1>Configurações ${badge}</h1>
     </div>
-    <p class="config-subtitle">Dois passos pra ligar seu Expert Brain ao Claude. Só o passo 1 é obrigatório.</p>
 
-    <div class="card card-step">
-      <h2 class="step-head"><span class="step-num">1</span>URL do servidor MCP</h2>
-      <p class="config-hint">Cole no Claude pra conectar seu vault — esse é o único passo obrigatório.</p>
-      <p style="color:var(--text-dim)">No Claude → <strong>Customize → Conectores → Adicionar Conector Personalizado</strong>, cole esta URL:</p>
-      <div class="row">
-        <div id="mcp-url" class="url-box">/mcp</div>
-        <button type="button" data-copy="mcp-url">Copiar URL</button>
-      </div>
-      <p class="callout-info">
-        <strong>Não precisa de API key.</strong> Ao conectar, o Claude abre o navegador pedindo login — use o <em>mesmo e-mail e senha</em> deste painel. A autenticação é OAuth 2.1 e o token é guardado automaticamente pelo Claude.
-      </p>
+    <div class="card">
+      <h2>Status do vault</h2>
+      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
+      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
     </div>
 
-    <div class="card card-step" id="prefs">
-      <h2 class="step-head"><span class="step-num">2</span>Prompt de personalização</h2>
-      <p class="config-hint">O texto que faz o Claude usar o vault sozinho em toda conversa — não só quando o tema é óbvio.</p>
-      <p style="color:var(--text-dim)">Edite com seu nome e suas áreas, clique <strong>Salvar</strong>, e cole em <em>Claude → <strong>Configurações → Geral → Instruções para o Claude</strong></em>.</p>
-      <form method="post" action="/app/config/prefs">
-        <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" class="prefs-textarea">${esc(prefsPrompt)}</textarea>
-        <div class="row" style="margin-top:10px;gap:8px">
-          <button type="submit" class="btn-primary">Salvar</button>
-          <button type="button" data-copy="prefs-block">Copiar prompt</button>
-        </div>
-      </form>
-    </div>
+    <h2 class="conn-heading">Conexões</h2>
+    <p class="config-subtitle">Como você liga o Expert Brain ao seu cliente de IA. Abra o caso que é o seu.</p>
 
-    ${createdBanner}
-
-    <details class="disclosure-advanced" id="api-keys"${justCreatedKey ? ' open' : ''}>
+    <details class="disclosure-advanced conn-section" open>
       <summary>
-        <span class="adv-title">Para desenvolvedores e automações</span>
-        <span class="adv-sub">Claude Code (CLI), chaves de API para scripts, agentes e containers — opcional</span>
+        <span class="adv-title">1. Agente no seu computador</span>
+        <span class="adv-sub">Claude Code, Codex ou qualquer agente instalado na sua máquina — conecta por login, sem chave</span>
       </summary>
       <div class="adv-body">
         <div class="adv-section">
-          <h3>Claude Code (CLI)</h3>
-          <p>Conecta o Expert Brain ao Claude Code pelo terminal.</p>
+          <p>Esses clientes conectam direto na <strong>URL do servidor MCP</strong> e fazem login via OAuth. Cole a URL no cliente:</p>
           <div class="row">
-            <div id="code-add" class="url-box">claude mcp add --transport http expert-brain &lt;URL&gt;</div>
+            <div id="mcp-url" class="js-mcp-url url-box">/mcp</div>
+            <button type="button" data-copy="mcp-url">Copiar URL</button>
+          </div>
+          <p class="callout-info">
+            <strong>Não precisa de chave de API.</strong> Ao conectar, abre o navegador pedindo login — use o <em>mesmo e-mail e senha</em> deste painel. O token é guardado automaticamente pelo cliente (OAuth 2.1).
+          </p>
+        </div>
+        <div class="adv-section">
+          <h3>Claude Code (CLI)</h3>
+          <p>No terminal, rode:</p>
+          <div class="row">
+            <div id="code-add" class="js-code-add url-box">claude mcp add --transport http expert-brain &lt;URL&gt;</div>
             <button type="button" data-copy="code-add">Copiar comando</button>
           </div>
         </div>
+      </div>
+    </details>
+
+    <details class="disclosure-advanced conn-section" id="prefs"${savedPrefs ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">2. Sistemas web</span>
+        <span class="adv-sub">ChatGPT (modo desenvolvedor) ou Claude.ai — conector MCP no navegador</span>
+      </summary>
+      <div class="adv-body">
         <div class="adv-section">
-          <h3>O que são chaves de API</h3>
-          <p>Tokens pessoais de longa duração pro servidor MCP. Use quando o cliente não consegue fazer refresh OAuth (agentes, scripts, containers). Envie no header <code>Authorization: Bearer eb_pat_...</code> em <code>/mcp</code>. Não expiram — revogue a chave pra matar o acesso na hora.</p>
+          <p>No Claude.ai ou no ChatGPT (modo desenvolvedor), adicione um <strong>conector MCP personalizado</strong> e cole esta URL. A conexão também é por login (OAuth), sem chave.</p>
+          <div class="row">
+            <div id="mcp-url-web" class="js-mcp-url url-box">/mcp</div>
+            <button type="button" data-copy="mcp-url-web">Copiar URL</button>
+          </div>
         </div>
+        <div class="adv-section">
+          <h3>Prompt de personalização</h3>
+          <p>Cole este texto nas <em>instruções</em> do cliente (Claude.ai → <strong>Configurações → Geral → Instruções para o Claude</strong>; ChatGPT → instruções do projeto) pra ele usar o vault sozinho em toda conversa, não só quando o tema é óbvio. Edite com seu nome e suas áreas e clique <strong>Salvar</strong>.</p>
+          <form method="post" action="/app/config/prefs">
+            <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" class="prefs-textarea">${esc(prefsPrompt)}</textarea>
+            <div class="row" style="margin-top:10px;gap:8px">
+              <button type="submit" class="btn-primary">Salvar</button>
+              <button type="button" data-copy="prefs-block">Copiar prompt</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </details>
+
+    <details class="disclosure-advanced conn-section" id="api-keys"${justCreatedKey ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">3. Agentes externos e automações</span>
+        <span class="adv-sub">OpenClaw ou sistemas rodando numa VPS — precisam de uma chave de API (token)</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Agentes que rodam fora da sua máquina (ex: OpenClaw, scripts e containers numa VPS) não conseguem fazer o login OAuth no navegador. Pra esses, crie uma <strong>chave de API</strong> e envie no header <code>Authorization: Bearer eb_pat_...</code> em <code>/mcp</code>. As chaves não expiram — revogue pra matar o acesso na hora.</p>
+        </div>
+        ${createdBanner}
         <div class="adv-section">
           <h3>Criar nova chave</h3>
           <form method="post" action="/app/api-keys/create">
@@ -180,19 +210,6 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    <div class="vault-stats-foot">
-      <h3>Seu vault até agora</h3>
-      <div class="vault-stat-grid">
-        <div class="stat-pill"><span class="v">${stats.notes}</span><span class="k">Notas</span></div>
-        <div class="stat-pill"><span class="v">${stats.edges}</span><span class="k">Conexões</span></div>
-        <div class="stat-pill"><span class="v">${esc(lastWriteStr)}</span><span class="k">Última escrita</span></div>
-        <div class="stat-pill"><span class="v">${stats.clients}</span><span class="k">Clientes OAuth</span></div>
-        <div class="stat-pill"><span class="v">${stats.tokens}</span><span class="k">Tokens ativos</span></div>
-      </div>
-      ${lastWriteStr === 'Nunca' ? '<p class="empty-hint">Salve sua primeira nota pelo Claude pra ver o grafo crescer.</p>' : ''}
-      <p class="links"><a href="/app/graph">Ver grafo</a> · <a href="/app/notes">Ver notas</a></p>
-    </div>
-
     <script src="/app/config/bundle.js" defer></script>
   `;
 
@@ -207,10 +224,11 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 export function configPageScript(): string {
   return `(function () {
   var url = location.origin + '/mcp';
-  var urlEl = document.getElementById('mcp-url');
-  if (urlEl) urlEl.textContent = url;
-  var codeEl = document.getElementById('code-add');
-  if (codeEl) codeEl.textContent = 'claude mcp add --transport http expert-brain ' + url;
+  // Pode haver mais de um box de URL (aba "agente local" e aba "sistemas web").
+  document.querySelectorAll('.js-mcp-url').forEach(function (el) { el.textContent = url; });
+  document.querySelectorAll('.js-code-add').forEach(function (el) {
+    el.textContent = 'claude mcp add --transport http expert-brain ' + url;
+  });
 
   async function copyText(text) {
     if (navigator.clipboard && window.isSecureContext) {
