@@ -1,11 +1,15 @@
 import type { Env } from '../env.js';
-import { requireSession } from './session.js';
+import { requireSession, readCookie } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
 
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
+
+  // Painel de controles recolhido? Lido do cookie pra renderizar já no estado
+  // certo (sem flash). Toggle client-side grava o cookie.
+  const panelCollapsed = readCookie(req.headers.get('cookie'), 'eb_graphpanel') === 'collapsed';
 
   const body = `
     <style>
@@ -318,6 +322,32 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         vertical-align: middle;
       }
       .graph-info-icon:hover { color: var(--accent-lav, #a78bfa); border-color: var(--accent-lav, #a78bfa); }
+
+      /* Botão de recolher o painel de controles do grafo — deixa só a busca. */
+      .graph-search-row { position: relative; }
+      .graph-search-row .graph-search-input { padding-right: 32px; }
+      .graph-panel-toggle {
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: transparent;
+        border: none;
+        border-radius: 5px;
+        color: rgba(255, 255, 255, 0.5);
+        cursor: pointer;
+        transition: color 140ms ease, background 140ms ease;
+      }
+      .graph-panel-toggle:hover { color: var(--accent-lav, #a78bfa); background: rgba(255, 255, 255, 0.08); }
+      .graph-panel-toggle svg { transition: transform 200ms ease; }
+      /* Recolhido: esconde tudo menos a barra de busca; chevron inverte. */
+      .graph-overlay.collapsed #graph-overlay-body { display: none; }
+      .graph-overlay.collapsed .graph-panel-toggle svg { transform: rotate(180deg); }
     </style>
 
     <div class="graph-wrap">
@@ -343,7 +373,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </svg>
       </button>
       <!-- LEFT OVERLAY: search + filters + status -->
-      <div id="graph-overlay" class="graph-overlay" role="region" aria-label="Graph controls">
+      <div id="graph-overlay" class="graph-overlay${panelCollapsed ? ' collapsed' : ''}" role="region" aria-label="Graph controls">
         <div class="graph-overlay-row graph-search-row">
           <span class="graph-search-icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
@@ -357,8 +387,19 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             spellcheck="false"
             aria-label="Buscar notas"
           />
+          <button
+            id="graph-panel-toggle"
+            class="graph-panel-toggle"
+            type="button"
+            aria-label="Recolher filtros"
+            aria-expanded="true"
+            title="Recolher filtros — deixa só a busca"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
         </div>
 
+        <div id="graph-overlay-body">
         <div id="graph-count" class="graph-overlay-row graph-status">Carregando...</div>
 
         <!-- A.30 — Indicador de filtro ativo (Contrário: crítico pra leigo não achar que "quebrou"). -->
@@ -466,6 +507,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           <span class="legend-swatch swatch-similar"></span> semântica
           <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.35</span>
         </div>
+        </div><!-- /#graph-overlay-body -->
       </div>
 
       <!-- RIGHT FLOATING: zoom controls -->

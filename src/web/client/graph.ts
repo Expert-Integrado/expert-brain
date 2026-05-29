@@ -57,6 +57,7 @@ async function main() {
   // canvas em telas pequenas. Em desktop o botão fica escondido via CSS e
   // o overlay continua sempre visível.
   wireOverlayToggle();
+  wirePanelToggle();
 
   // Parallel load: graph topology + note metadata. Meta endpoint is additive —
   // if it fails we degrade to id-only panel content rather than aborting.
@@ -1528,6 +1529,21 @@ function ensurePanel(): HTMLElement {
   el.setAttribute('aria-label', 'Note preview');
   document.body.appendChild(el);
   return el;
+}
+
+// Recolher o painel de controles (desktop): esconde filtros/forças/visual e
+// deixa só a barra de busca. Estado persiste em cookie (server renderiza já
+// recolhido, sem flash).
+function wirePanelToggle() {
+  const btn = document.getElementById('graph-panel-toggle') as HTMLButtonElement | null;
+  const overlay = document.getElementById('graph-overlay');
+  if (!btn || !overlay) return;
+  btn.addEventListener('click', () => {
+    const collapsed = overlay.classList.toggle('collapsed');
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.setAttribute('aria-label', collapsed ? 'Expandir filtros' : 'Recolher filtros');
+    document.cookie = `eb_graphpanel=${collapsed ? 'collapsed' : 'expanded'}; path=/; max-age=31536000; samesite=lax`;
+  });
 }
 
 function wireOverlayToggle() {
