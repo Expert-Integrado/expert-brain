@@ -42,6 +42,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Remove token auth (forca OIDC Trusted Publisher)
+        run: npm config delete //registry.npmjs.org/:_authToken || true
 
       - name: Resolve version
         id: version
