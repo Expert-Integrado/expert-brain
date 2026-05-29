@@ -224,7 +224,7 @@ flowchart LR
     Claude[Claude Code<br/>Desktop / Web]
     Worker[Cloudflare Worker<br/>endpoint único]
     OAuth[OAuth 2.1<br/>grants em KV]
-    MCP[Servidor MCP<br/>9 tools]
+    MCP[Servidor MCP<br/>10 tools]
     D1[(D1<br/>notas + edges<br/>FTS5)]
     Vec[(Vectorize<br/>1024-dim<br/>cosine)]
     AI[Workers AI<br/>bge-m3 multilíngue]
@@ -268,7 +268,7 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 - `ASSETS` — assets estáticos (bundle do grafo)
 
 **Schema (5 tabelas):**
-- `notes(id, title, body, tldr, domains JSON, kind, created_at, updated_at)`
+- `notes(id, title, body, tldr, domains JSON, kind, created_at, updated_at, deleted_at)` — `deleted_at` NULL = viva; preenchido = soft-deletada (escondida de tudo, recuperável via `restore_note`)
 - `notes_fts` (FTS5 virtual em title + tldr + body, sincronizado por triggers)
 - `tags(note_id, tag)` (escape hatch; a estrutura real mora nos edges)
 - `edges(id, from_id, to_id, relation_type, why, created_at)` com `CHECK` enum de 9 tipos de relação e `UNIQUE(from_id, to_id, relation_type)`
@@ -280,7 +280,8 @@ Um único Cloudflare Worker serve três responsabilidades na mesma URL:
 |---|---|
 | `save_note` | Nota atômica + edges em uma única chamada. Valida `why` de edge ≥ 20 chars, domínio contra a lista canônica de 12 (escape hatch via `allow_new_domain: true`), existência do edge target, e `kind` contra o enum fechado. |
 | `update_note` | Edita título/body/tldr/domínios/kind/tags de uma nota existente. Re-embed automático se o `tldr` mudou. |
-| `delete_note` | Remove a nota do D1 (cascata em edges/tags) e o vetor correspondente do Vectorize. Irreversível. |
+| `delete_note` | **Soft-delete (recuperável):** marca a nota como apagada — ela some de recall, busca, grafo e stats, e o vetor sai do índice. Mas o conteúdo e os edges ficam no D1, recuperáveis via `restore_note` a qualquer momento, sem prazo. |
+| `restore_note` | Restaura uma nota que o `delete_note` apagou (traz de volta pra recall/busca/grafo, re-indexa o vetor e devolve os edges). Sem limite de tempo. |
 | `recall` | Busca híbrida: embedding Workers AI + FTS5, mesclados e **balanceados por domínio** (máx 3 por domínio, até 5 domínios distintos). Retorna só `{id, title, domain, kind, tldr}` — nunca o corpo. |
 | `expand` | Vizinhos de 1 hop de uma nota no grafo. |
 | `get_note` | Corpo completo + tags + edges de uma nota por id. |

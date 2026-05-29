@@ -75,25 +75,14 @@ export async function handleStatus(env: Env): Promise<Response> {
 }
 
 export async function handleProvision(env: Env): Promise<Response> {
-  // Migrations are idempotent today (CREATE TABLE IF NOT EXISTS + tracking via
-  // _migrations), but this endpoint is unauthenticated, so we want to block
-  // re-runs once the vault has been initialized. We can't use isSetup() as the
-  // guard because setup.mjs calls /setup/provision AFTER `wrangler secret put`,
-  // so isSetup() is already true on the very first legitimate call.
-  // Instead, check whether _migrations has any rows — that table is only
-  // populated by runMigrations, so it's a reliable "already provisioned" signal
-  // that doesn't depend on the order in which the bootstrap script runs.
-  try {
-    const row = await env.DB.prepare(`SELECT count(*) c FROM _migrations`).first<{ c: number }>();
-    if ((row?.c ?? 0) > 0) {
-      return new Response(JSON.stringify({ error: 'Already provisioned' }), {
-        status: 409,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-  } catch {
-    // _migrations table doesn't exist yet — fresh DB, fall through and run.
-  }
+  // SEMPRE roda as migrations. Elas são idempotentes — runMigrations registra
+  // cada uma em _migrations e pula as já aplicadas, então rodar de novo é no-op.
+  // Isto é CRÍTICO pro caminho de ATUALIZAÇÃO: uma instalação já existente que
+  // sobe uma versão nova aplica as migrations novas (ex: 0004 soft-delete) por
+  // aqui. O gate anterior ("Already provisioned" 409 quando _migrations tinha
+  // linhas) pulava as migrations num update e quebrava o código novo (coluna
+  // deleted_at inexistente). Endpoint não-autenticado, mas re-rodar é inofensivo
+  // (no máximo alguns SELECTs em _migrations).
   await runMigrations(env);
   return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
 }
