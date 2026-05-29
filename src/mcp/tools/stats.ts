@@ -49,7 +49,9 @@ export function registerStats(server: any, env: Env): void {
         env.DB.prepare(
           `SELECT
              (SELECT count(*) FROM notes WHERE deleted_at IS NULL) AS notes,
-             (SELECT count(*) FROM edges) AS edges,
+             (SELECT count(*) FROM edges e
+              JOIN notes f ON f.id = e.from_id JOIN notes t ON t.id = e.to_id
+              WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL) AS edges,
              (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r7,
              (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r30`
         ).bind(d7, d30).first<{ notes: number; edges: number; r7: number; r30: number }>(),

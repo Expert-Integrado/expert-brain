@@ -35,7 +35,7 @@ describe('soft-delete', () => {
     const statAfter = await getVaultStatus(E);
     expect(statAfter.notes).toBe(statBefore.notes - 1);
     // MAS a linha continua no D1 (recuperável) e visível com includeDeleted
-    const raw = await E.DB.prepare(`SELECT count(*) c FROM notes WHERE id=?`).bind(ID).first<{ c: number }>();
+    const raw = await E.DB.prepare(`SELECT count(*) c FROM notes WHERE id=?`).bind(ID).first();
     expect(raw?.c).toBe(1);
     const trashed = await getNoteById(E, ID, true);
     expect(trashed).not.toBeNull();
