@@ -135,6 +135,31 @@ Ao final, o `npm run setup` imprime a URL do Worker, o comando MCP pra conectar 
 
 Pra pinar uma versão específica: `npm create @expertintegrado/expert-brain@1.0.0 expert-brain`.
 
+### Atualizando pra uma versão nova
+
+Cada pessoa roda o Expert Brain no **seu próprio** Worker da Cloudflare, então atualizar é pegar o código novo e redeployar — **seus dados (notas, ligações) e seu login ficam 100% intactos**, porque vivem no seu D1/Vectorize, não no código.
+
+**Se você instalou via `git clone`** (tem a pasta com `.git`):
+
+```bash
+git pull
+npm install
+npm run setup     # detecta que já está instalado e entra em modo ATUALIZAÇÃO
+```
+
+**Se você instalou via `npm create`** (cópia sem git) ou perdeu a pasta:
+
+```bash
+git clone https://github.com/expertintegrado/expertbrain.git expert-brain
+cd expert-brain
+npm install
+npm run setup     # descobre seus recursos na conta e atualiza — não pede e-mail/senha de novo
+```
+
+O `npm run setup` é **idempotente**: se já existe um Expert Brain na sua conta Cloudflare, ele detecta, reaproveita os recursos (D1/Vectorize/KV) e só rebuilda + redeploya o Worker, sem mexer em credenciais nem dados. Depois é só dar `Ctrl+Shift+R` no dashboard.
+
+> Quer reprovisionar do zero (trocar senha, recriar recursos)? Rode `npm run setup -- --reinstall`.
+
 ### Conectar ao Claude
 
 Depois do setup, o comando MCP é:

@@ -178,6 +178,72 @@ function checkNodeVersion() {
   }
 }
 
+// Descobre IDs de recursos Expert Brain ja existentes na conta — usado no modo
+// ATUALIZACAO pra reaproveitar tudo sem recriar (clone fresco que so quer
+// atualizar). KV casa por title exato (== binding) ou sufixo (-binding).
+function discoverResources() {
+  const out = { d1: null, oauthKv: null, graphCache: null };
+  const d1 = runWrangler(['d1', 'list', '--json'], { allowFail: true });
+  if (d1.status === 0) {
+    try {
+      const dbs = JSON.parse(d1.stdout || '[]');
+      out.d1 = dbs.find((d) => d.name === 'expert-brain')?.uuid ?? null;
+    } catch { /* ignore parse */ }
+  }
+  const kv = runWrangler(['kv', 'namespace', 'list'], { allowFail: true });
+  if (kv.status === 0) {
+    try {
+      const ns = JSON.parse(kv.stdout || '[]');
+      const pick = (b) => ns.find((n) => n.title === b || (n.title || '').endsWith(`-${b}`))?.id ?? null;
+      out.oauthKv = pick('OAUTH_KV');
+      out.graphCache = pick('GRAPH_CACHE');
+    } catch { /* ignore parse */ }
+  }
+  return out;
+}
+
+// Garante o indice Vectorize (idempotente — ignora "already exists").
+function ensureVectorize() {
+  const vec = runWrangler(['vectorize', 'create', 'expert-brain-embeddings', '--dimensions=1024', '--metric=cosine'], { allowFail: true });
+  if (vec.status !== 0) {
+    const combined = (vec.stdout || '') + (vec.stderr || '');
+    if (/already exists/i.test(combined)) { log.info('Vectorize ja existe - reutilizando.'); return; }
+    die(`wrangler vectorize create falhou: ${vec.stderr}`);
+  }
+  log.ok('Indice Vectorize criado.');
+}
+
+// Build + deploy + WORKER_URL + migrations. Compartilhado por instalacao e atualizacao.
+async function buildDeployProvision() {
+  log.info('Buildando bundles...');
+  const build = spawnSync('npm', ['run', 'build:bundles'], { stdio: 'inherit', shell: process.platform === 'win32' });
+  if (build.status !== 0) die('npm run build:bundles falhou.');
+  log.ok('Bundles buildados.');
+
+  log.info('Deployando...');
+  const deploy = await runWranglerStream(['deploy']).catch((err) => die(err.message));
+  const urlMatch = deploy.stdout.match(/https:\/\/expert-brain\.[a-z0-9-]+\.workers\.dev/);
+  if (!urlMatch) die('Nao consegui extrair a URL do Worker. Cheque o output acima.');
+  const workerUrl = urlMatch[0];
+  log.ok(`Worker deployado: ${workerUrl}`);
+
+  log.info('Setando WORKER_URL...');
+  const wuResult = runWrangler(['secret', 'put', 'WORKER_URL'], { input: workerUrl, allowFail: true });
+  if (wuResult.status !== 0) log.warn(`wrangler secret put WORKER_URL falhou (nao critico): ${wuResult.stderr}`);
+  else log.ok('WORKER_URL OK.');
+
+  log.info(`POST ${workerUrl}/setup/provision`);
+  try {
+    const res = await fetch(`${workerUrl}/setup/provision`, { method: 'POST' });
+    const body = await res.text();
+    if (!res.ok) die(`/setup/provision retornou ${res.status}: ${body}`);
+    log.ok(`Migrations aplicadas: ${body}`);
+  } catch (err) {
+    die(`Nao consegui chamar /setup/provision: ${err.message}`);
+  }
+  return workerUrl;
+}
+
 async function main() {
   checkNodeVersion();
 
@@ -215,6 +281,53 @@ async function main() {
     toml = replacePlaceholder(toml, 'REPLACE_ME_ACCOUNT_ID', accountId);
     writeToml(toml);
     log.ok('account_id substituido.');
+  }
+
+  // 2.5 Instalacao nova OU atualizacao? Se ja existe um Expert Brain nesta conta
+  // (wrangler.toml configurado, ou recursos achados na conta), entra em modo
+  // ATUALIZACAO: descobre os IDs, NAO toca em credenciais/secrets/dados, so
+  // rebuilda e redeploya o codigo. `npm run setup -- --reinstall` forca do zero.
+  const forceReinstall = process.argv.includes('--reinstall');
+  let isUpdate = false;
+  if (!forceReinstall) {
+    if (!toml.includes('REPLACE_ME_')) {
+      isUpdate = true; // wrangler.toml ja configurado (pasta de uma instalacao previa)
+    } else {
+      log.info('Procurando uma instalacao Expert Brain existente na sua conta...');
+      const found = discoverResources();
+      if (found.d1 && found.oauthKv && found.graphCache) {
+        toml = replacePlaceholder(toml, 'REPLACE_ME_D1_ID', found.d1);
+        toml = replacePlaceholder(toml, 'REPLACE_ME_OAUTH_KV_ID', found.oauthKv);
+        toml = replacePlaceholder(toml, 'REPLACE_ME_GRAPH_CACHE_ID', found.graphCache);
+        writeToml(toml);
+        isUpdate = true;
+      }
+    }
+  }
+
+  if (isUpdate) {
+    console.log(`\n${CYAN}${BOLD}[atualizar]${RESET} ${BOLD}Instalacao existente detectada - modo ATUALIZACAO${RESET}`);
+    log.info('Mantenho seus dados (D1/Vectorize), credenciais e login. So atualizo o codigo.');
+    ensureVectorize();
+    if (toml.includes('REPLACE_ME_')) {
+      die('Faltou resolver algum ID no wrangler.toml. Rode `npm run setup -- --reinstall` pra reprovisionar do zero.');
+    }
+    const workerUrl = await buildDeployProvision();
+    try {
+      const st = await fetch(`${workerUrl}/status`).then((r) => r.json());
+      if (st && st.configured === false) {
+        log.warn('Worker subiu mas /status = configured:false (secrets faltando). Rode `npm run setup -- --reinstall`.');
+      }
+    } catch { /* ignore */ }
+    console.log(`
+${GREEN}${BOLD}Expert Brain atualizado.${RESET}
+
+  ${BOLD}URL:${RESET}  ${workerUrl}
+  ${BOLD}MCP:${RESET}  ${workerUrl}/mcp
+
+${DIM}Dados e login continuam os mesmos. Abra ${workerUrl}/app/graph e de Ctrl+Shift+R.${RESET}
+`);
+    return;
   }
 
   // 3. prompt email + senha
