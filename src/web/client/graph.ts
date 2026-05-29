@@ -202,6 +202,9 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // UI state
   // ────────────────────────────────────────────────────────────────────────
+  // Declarado cedo (antes do afterRender) pra evitar TDZ — usado por P2 (pular
+  // camadas 2D durante o reveal) e pelo recentro da câmera no settle.
+  let cameraSettled = false;
   const state = {
     hoveredNode: null as string | null,
     hoveredNeighbors: null as Set<string> | null,
@@ -365,9 +368,15 @@ async function main() {
   // 2D que sobrepõem a WebGL canvas (similar dashed, hover ring, suggested
   // links). Reduz overhead de event dispatch e mantém ordem determinística.
   renderer.on('afterRender', () => {
-    drawSimilarEdges();
+    // P2 (perf) — durante o reveal da simulação (cameraSettled=false) as linhas
+    // semânticas/sugeridas são caras (loop em todas + 2 conversões de coordenada
+    // por linha) e seriam redesenhadas a cada frame do settle. Só desenha depois
+    // que assenta. O hover ring é barato e não acontece durante o load.
+    if (cameraSettled) {
+      drawSimilarEdges();
+      drawSuggestedEdges();
+    }
     drawHoverRing();
-    drawSuggestedEdges();
   });
   renderer.on('resize', sizeOverlay);
 
@@ -530,43 +539,49 @@ async function main() {
   // saem da viewport — edges parecem invisíveis. Recentro a cada 30 ticks
   // até a simulação esfriar; depois disso fica fixa pro usuário pan/zoom.
   let tickCount = 0;
-  let cameraSettled = false;
+  // P1 (perf) — coalescer por requestAnimationFrame: o worker emite ~300 ticks
+  // no reveal; em vez de aplicar posições + refresh a CADA tick, guardo a última
+  // e dou UM refresh por frame de tela. Corta refreshes (e redesenhos 2D)
+  // redundantes que travavam o load.
+  let pendingPositions: Record<string, [number, number]> | null = null;
+  let rafId = 0;
+  function flushPositions() {
+    rafId = 0;
+    const positions = pendingPositions;
+    pendingPositions = null;
+    if (!positions) return;
+    for (const id in positions) {
+      const [x, y] = positions[id];
+      if (!isFinite(x) || !isFinite(y)) continue;
+      if (graph.hasNode(id)) {
+        graph.setNodeAttribute(id, 'x', x);
+        graph.setNodeAttribute(id, 'y', y);
+      }
+    }
+    renderer.refresh();
+  }
   worker.addEventListener('message', (e: MessageEvent) => {
     const msg = e.data;
     if (msg.type === 'tick') {
-      const positions: Record<string, [number, number]> = msg.positions;
-      let nanCount = 0;
-      let firstId = '';
-      for (const id in positions) {
-        const [x, y] = positions[id];
-        if (!isFinite(x) || !isFinite(y)) {
-          nanCount++;
-          continue;
-        }
-        if (!firstId) firstId = id;
-        if (graph.hasNode(id)) {
-          graph.setNodeAttribute(id, 'x', x);
-          graph.setNodeAttribute(id, 'y', y);
-        }
-      }
-      // A.27 — log uma vez pra Eric checar console
-      if (tickCount === 0) {
-        const sample = positions[firstId];
-        console.log('[graph] tick #1', { sampleId: firstId, samplePos: sample, nanCount });
-      }
-      renderer.refresh();
+      pendingPositions = msg.positions as Record<string, [number, number]>;
+      if (!rafId) rafId = requestAnimationFrame(flushPositions);
       tickCount++;
       // Recentro nos primeiros frames pra acompanhar o reveal explosivo
       if (!cameraSettled && (tickCount === 1 || tickCount % 30 === 0)) {
         void renderer.getCamera().animatedReset({ duration: 300 });
       }
     } else if (msg.type === 'end') {
+      // Aplica as últimas posições pendentes (rAF pode não ter rodado ainda).
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+      flushPositions();
       cameraSettled = true;
       // Centraliza no cluster principal: alguns órfãos/outliers distantes
       // esticam a bounding box e jogam o miolo do grafo pra um canto. Em vez
       // de enquadrar tudo, enquadro a bbox robusta (percentil) do núcleo.
       applyCoreBBox();
       void renderer.getCamera().animatedReset({ duration: 400 });
+      // Redesenha as camadas 2D (semânticas/sugeridas) agora que assentou — P2.
+      renderer.refresh();
     }
   });
 
