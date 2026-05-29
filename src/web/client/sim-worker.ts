@@ -54,7 +54,7 @@ let sim: Simulation<SimNode, SimLink> | null = null;
 let forces: Forces = { ...DEFAULTS };
 const pinned = new Map<string, { x: number; y: number }>();
 
-function rebuildSimulation() {
+function rebuildSimulation(initialAlpha = 1) {
   if (sim) sim.stop();
 
   // Re-aplica pins ao reconstruir
@@ -91,6 +91,7 @@ function rebuildSimulation() {
     // não fica em cima de pequeno.
     .force('collide', forceCollide<SimNode>().radius((d) => (d.r ?? 10) + 4).strength(0.8))
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 (~300 ticks pra esfriar)
+    .alpha(initialAlpha)
     .on('tick', emitTick)
     .on('end', () => {
       (self as DedicatedWorkerGlobalScope).postMessage({ type: 'end' });
@@ -118,7 +119,10 @@ self.addEventListener('message', (e: MessageEvent) => {
       links = msg.links.map((l: any) => ({ source: l.source, target: l.target }));
       if (msg.forces) forces = { ...forces, ...msg.forces };
       pinned.clear();
-      rebuildSimulation();
+      // alpha do init (default 1): o client manda baixo (~0.25) quando já
+      // renderizou no layout pré-computado, pra um ajuste fino suave em vez do
+      // reveal explosivo. forceSimulation começa em alpha=1; baixamos aqui.
+      rebuildSimulation(typeof msg.alpha === 'number' ? msg.alpha : 1);
       break;
     }
     case 'forces': {

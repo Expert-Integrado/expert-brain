@@ -99,8 +99,11 @@ async function main() {
   for (const n of payload.nodes) {
     graph.addNode(n.id, {
       label: n.label,
-      x: (Math.random() - 0.5) * 2,
-      y: (Math.random() - 0.5) * 2,
+      // Renderiza JÁ no layout pré-computado pelo servidor (ForceAtlas2) em vez
+      // de posição aleatória — o grafo aparece organizado no 1º frame, sem o
+      // "explode e reorganiza por 5s" a cada load. A simulação D3 só refina.
+      x: n.x,
+      y: n.y,
       // A.9 — n.size já é o valor final do Obsidian (range 8-30). Usar direto.
       size: n.size,
       color: NEUTRAL_NODE_COLOR,
@@ -616,6 +619,10 @@ async function main() {
     nodes: initialPositions,
     links: workerLinks,
     forces: mapForces(currentForces),
+    // Começa com alpha baixo: como já renderizamos no layout pré-computado do
+    // servidor, a simulação só precisa de um ajuste fino suave — não do reveal
+    // explosivo do alpha=1 (que reorganizava tudo do zero por ~5s).
+    alpha: 0.25,
   });
 
   function setForces(o: { center?: number; repel?: number; link?: number; distance?: number }) {
