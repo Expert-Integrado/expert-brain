@@ -207,7 +207,7 @@ function ensureVectorize() {
   const vec = runWrangler(['vectorize', 'create', 'expert-brain-embeddings', '--dimensions=1024', '--metric=cosine'], { allowFail: true });
   if (vec.status !== 0) {
     const combined = (vec.stdout || '') + (vec.stderr || '');
-    if (/already exists/i.test(combined)) { log.info('Vectorize ja existe - reutilizando.'); return; }
+    if (/already exists|duplicate_name|3002/i.test(combined)) { log.info('Vectorize ja existe - reutilizando.'); return; }
     die(`wrangler vectorize create falhou: ${vec.stderr}`);
   }
   log.ok('Indice Vectorize criado.');
