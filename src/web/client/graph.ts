@@ -179,7 +179,7 @@ async function main() {
     maxCameraRatio: 12,
     // Passo de zoom da RODA do mouse bem mais fino que o default (~1.5).
     // (Os botões +/− usam factor próprio em onZoomIn/onZoomOut.)
-    zoomingRatio: 1.2,
+    zoomingRatio: 1.12,
     defaultDrawNodeHover: drawDarkHover as any,
   });
 
@@ -888,11 +888,11 @@ async function main() {
       state.colorMode = (['neutral','domain','kind','degree'].includes(mode) ? mode : 'neutral') as any;
       renderer.refresh();
     },
-    // factor explícito pequeno (1.2 = ~20% por clique). Sem isso o Sigma usa
+    // factor explícito pequeno (1.12 = ~12% por clique). Sem isso o Sigma usa
     // DEFAULT_ZOOMING_RATIO (1.5), que pulava demais — o zoomingRatio das
     // settings só vale pra roda do mouse, não pros botões.
-    onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 220, factor: 1.2 }),
-    onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 220, factor: 1.2 }),
+    onZoomIn: () => renderer.getCamera().animatedZoom({ duration: 200, factor: 1.12 }),
+    onZoomOut: () => renderer.getCamera().animatedUnzoom({ duration: 200, factor: 1.12 }),
     onFit: () => {
       // Reaplica a bbox do núcleo antes de enquadrar — "ajustar à tela" sempre
       // centraliza o miolo, mesmo depois de pan/zoom ou mudança de filtro.

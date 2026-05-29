@@ -1,7 +1,7 @@
 // AUTO-GERADO por scripts/build-bundles.ts — não editar à mão.
 // Hash de conteúdo de cada bundle pra cache-busting estável (?v=).
 export const ASSET_HASHES: Record<string, string> = {
-  "graph.bundle.js": "989baa5ec26c",
+  "graph.bundle.js": "58cd238b75a1",
   "notes.bundle.js": "44e75a045829",
   "local-graph.bundle.js": "14e89514f5c5",
   "shell.bundle.js": "5380044ee5d5",
