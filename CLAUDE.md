@@ -1,8 +1,29 @@
 # CLAUDE.md — Runbook de setup do agente Expert Brain
 
-Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Expert Brain", "instalar o Expert Brain", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
+Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a ponta a partir de uma IDE agêntica (Claude Code, Cursor, etc). Se o usuário pedir pra "configurar o Expert Brain", "instalar o Expert Brain", "atualizar o Expert Brain", "pegar a última versão", ou algo do gênero, segue esse runbook passo a passo. Não improvisa.
+
+> **Atualizar uma instalação que já existe?** Pula direto pra seção [Atualizar](#atualizar-uma-instalação-existente) abaixo — é um fluxo curto (pegar código novo + `npm run setup`) e NÃO mexe nos dados nem pede credenciais de novo.
 
 > **Se você é mantenedor (não usuário final)** e precisa publicar uma nova versão do pacote npm `@expertintegrado/create-expert-brain`, o runbook é outro: [RELEASING.md](RELEASING.md). Esse arquivo aqui é só pra setup da instalação do Expert Brain em si.
+
+## Atualizar uma instalação existente
+
+Se o usuário já tem o Expert Brain rodando e quer a última versão, o trabalho é seu (agente) — ele não precisa digitar comando nenhum. **A regra de ouro: os dados dele (notas, ligações) vivem no D1/Vectorize da conta Cloudflare dele, NUNCA no código. Atualizar é só trocar o código e redeployar — nada de nota se perde.**
+
+Faz nesta ordem, parando e reportando se algo falhar:
+
+1. **Pega o código novo.**
+   - Se a pasta atual é o repo do Expert Brain (tem `.git` + este `CLAUDE.md`): `git pull`.
+   - Se o usuário tem a pasta da instalação em outro lugar: `cd` nela e `git pull`.
+   - Se ele instalou via `npm create` (cópia sem git) ou não acha a pasta: clona fresco com `git clone https://github.com/expertintegrado/expertbrain.git expert-brain` e, se ele tiver a pasta antiga, copia o `wrangler.toml` dela pra pasta nova (esse arquivo tem os IDs dos recursos dele). Se não tiver o `wrangler.toml`, segue assim mesmo — o passo 3 redescobre os recursos pela conta.
+
+2. `npm install` (na pasta do projeto).
+
+3. `npm run setup` — esse comando é **idempotente**: detecta que já existe um Expert Brain (pelo `wrangler.toml` configurado ou achando os recursos na conta), entra em **modo ATUALIZAÇÃO**, redeploya o Worker e **aplica migrations novas via `/setup/provision`**, SEM pedir e-mail/senha de novo e SEM tocar nos dados. (Pra reprovisionar do zero — trocar senha, recriar recursos — é `npm run setup -- --reinstall`, mas isso é raro.)
+
+4. **Avisa o usuário pra reconectar o cliente de IA** pra ele enxergar ferramentas novas: Claude Code/Desktop → reiniciar; Claude.ai → conversa nova. (Migrations de schema e comportamento de tools já valem na hora, server-side.)
+
+Pré-requisito: o host precisa do `wrangler` autenticado na conta certa (mesmo do Preflight). Se `npx wrangler whoami` falhar, pede pro usuário rodar `npx wrangler login`.
 
 ## O que o Expert Brain precisa
 
