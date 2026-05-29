@@ -219,7 +219,7 @@ a:hover { color: var(--text); }
 .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 /* ---- Main ---- */
-.main { flex: 1; padding: 48px 56px 80px; min-width: 0; max-width: 980px; }
+.main { flex: 1; padding: 48px 56px 80px; min-width: 0; max-width: 980px; margin-inline: auto; }
 .main h1 {
   font-family: var(--font-display);
   font-weight: 500;
