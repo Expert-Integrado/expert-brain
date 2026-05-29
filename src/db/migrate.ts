@@ -95,10 +95,21 @@ const MIGRATION_0003_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_api_keys_owner ON api_keys(owner_email)`,
 ];
 
+// 0004 — soft-delete. delete_note passa a marcar deleted_at em vez de DELETE,
+// pra que uma nota apagada (por engano, ou por um agente) seja recuperavel.
+// ADD COLUMN e seguro: nao recria a tabela (rebuild cascatearia edges/tags).
+// IMPORTANTE: o FTS e external-content e o trigger notes_au (AFTER UPDATE)
+// reinsere a linha no indice — entao a nota soft-deletada CONTINUA no notes_fts.
+// Por isso TODOS os read paths filtram `deleted_at IS NULL` (ver queries.ts etc).
+const MIGRATION_0004_STMTS: string[] = [
+  `ALTER TABLE notes ADD COLUMN deleted_at INTEGER`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
   { id: '0003_api_keys', stmts: MIGRATION_0003_STMTS },
+  { id: '0004_soft_delete', stmts: MIGRATION_0004_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

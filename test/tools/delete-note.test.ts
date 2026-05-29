@@ -38,7 +38,7 @@ describe('delete_note', () => {
     await resetDb();
   });
 
-  it('deletes the note, cascades edges+tags, removes vector', async () => {
+  it('soft-deletes the note (recoverable), hides edges+tags, removes vector', async () => {
     await seed('a');
     await seed('b');
     await E.DB.prepare(
@@ -50,17 +50,24 @@ describe('delete_note', () => {
     expect(r.isError).toBeUndefined();
     const parsed = JSON.parse(r.content[0].text);
     expect(parsed.deleted).toBe(true);
-    expect(parsed.edges_removed).toBe(1);
-    expect(parsed.tags_removed).toBe(1);
+    expect(parsed.recoverable).toBe(true);
+    expect(parsed.edges_hidden).toBe(1);
+    expect(parsed.tags_hidden).toBe(1);
 
     expect(E.VECTORIZE.deleteByIds).toHaveBeenCalledWith(['a']);
 
-    const gone = await E.DB.prepare('SELECT id FROM notes WHERE id = ?').bind('a').first();
-    expect(gone).toBeNull();
+    // Soft-delete: some das leituras normais (deleted_at IS NULL)...
+    const visible = await E.DB.prepare('SELECT id FROM notes WHERE id = ? AND deleted_at IS NULL').bind('a').first();
+    expect(visible).toBeNull();
+    // ...mas a linha sobrevive no D1 com deleted_at preenchido (recuperável).
+    const raw = await E.DB.prepare('SELECT deleted_at FROM notes WHERE id = ?').bind('a').first();
+    expect(raw).not.toBeNull();
+    expect(raw.deleted_at).toBeTruthy();
+    // Edges e tags NÃO são apagadas — ficam escondidas e voltam no restore.
     const edges = await E.DB.prepare('SELECT count(*) c FROM edges').first();
-    expect(edges.c).toBe(0);
+    expect(edges.c).toBe(1);
     const tags = await E.DB.prepare('SELECT count(*) c FROM tags').first();
-    expect(tags.c).toBe(0);
+    expect(tags.c).toBe(1);
 
     const survivor = await E.DB.prepare('SELECT id FROM notes WHERE id = ?').bind('b').first();
     expect(survivor).not.toBeNull();

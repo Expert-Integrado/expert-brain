@@ -16,6 +16,7 @@ export interface NoteRow {
   id: string; title: string; body: string; tldr: string;
   domains: string; kind: string | null;
   created_at: number; updated_at: number;
+  deleted_at?: number | null; // soft-delete: null = viva, timestamp = na lixeira
 }
 
 export interface EdgeRow {
@@ -67,8 +68,18 @@ export async function updateNote(env: Env, id: string, patch: NotePatch): Promis
   ).bind(...values).run();
 }
 
+// Soft-delete: marca deleted_at em vez de apagar a linha. A nota some de todos
+// os read paths (que filtram deleted_at IS NULL) mas o conteudo + as edges
+// continuam no D1, recuperaveis via restoreNote. `AND deleted_at IS NULL` evita
+// sobrescrever o timestamp original num delete duplicado.
 export async function deleteNote(env: Env, id: string): Promise<void> {
-  await env.DB.prepare(`DELETE FROM notes WHERE id = ?`).bind(id).run();
+  await env.DB.prepare(`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
+    .bind(Date.now(), id).run();
+}
+
+// Restaura uma nota soft-deletada (re-embed do vetor fica a cargo do caller).
+export async function restoreNote(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(`UPDATE notes SET deleted_at = NULL WHERE id = ?`).bind(id).run();
 }
 
 export async function replaceTags(env: Env, noteId: string, tags: string[]): Promise<void> {
@@ -79,8 +90,13 @@ export async function replaceTags(env: Env, noteId: string, tags: string[]): Pro
   }
 }
 
-export async function getNoteById(env: Env, id: string): Promise<NoteRow | null> {
-  return env.DB.prepare(`SELECT * FROM notes WHERE id = ?`).bind(id).first<NoteRow>();
+// Por padrao ignora notas soft-deletadas (deleted_at IS NULL). includeDeleted=true
+// e usado só pelo restore_note, que precisa ler a nota na lixeira pra recuperar.
+export async function getNoteById(env: Env, id: string, includeDeleted = false): Promise<NoteRow | null> {
+  const sql = includeDeleted
+    ? `SELECT * FROM notes WHERE id = ?`
+    : `SELECT * FROM notes WHERE id = ? AND deleted_at IS NULL`;
+  return env.DB.prepare(sql).bind(id).first<NoteRow>();
 }
 
 export async function getTagsByNote(env: Env, id: string): Promise<string[]> {
@@ -88,13 +104,22 @@ export async function getTagsByNote(env: Env, id: string): Promise<string[]> {
   return (r.results ?? []).map((x) => x.tag);
 }
 
+// Edges cujo OUTRO extremo esteja soft-deletado sao filtradas (o JOIN garante
+// que a nota vizinha esta viva). Soft-delete nao cascateia (a linha fica), entao
+// sem esse filtro apareceriam edges fantasma pra notas na lixeira.
 export async function getEdgesFrom(env: Env, id: string): Promise<EdgeRow[]> {
-  const r = await env.DB.prepare(`SELECT * FROM edges WHERE from_id = ?`).bind(id).all<EdgeRow>();
+  const r = await env.DB.prepare(
+    `SELECT e.* FROM edges e JOIN notes n ON n.id = e.to_id
+     WHERE e.from_id = ? AND n.deleted_at IS NULL`
+  ).bind(id).all<EdgeRow>();
   return r.results ?? [];
 }
 
 export async function getEdgesTo(env: Env, id: string): Promise<EdgeRow[]> {
-  const r = await env.DB.prepare(`SELECT * FROM edges WHERE to_id = ?`).bind(id).all<EdgeRow>();
+  const r = await env.DB.prepare(
+    `SELECT e.* FROM edges e JOIN notes n ON n.id = e.from_id
+     WHERE e.to_id = ? AND n.deleted_at IS NULL`
+  ).bind(id).all<EdgeRow>();
   return r.results ?? [];
 }
 
@@ -123,7 +148,7 @@ export async function ftsSearch(
     `SELECT n.id, n.title, n.tldr, n.domains, n.kind
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
-     WHERE notes_fts MATCH ?
+     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL
      ORDER BY rank
      LIMIT ?`
   ).bind(safe, limit).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>();

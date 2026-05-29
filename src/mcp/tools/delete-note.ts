@@ -8,9 +8,9 @@ const inputSchema = {
   confirm: z.literal(true).describe('Must be true — acknowledges the delete is irreversible'),
 };
 
-const DESCRIPTION = `Permanently deletes a note from the vault. IRREVERSIBLE.
+const DESCRIPTION = `Removes a note from the vault. RECOVERABLE — this is a soft-delete.
 
-Removes: the note row in D1, all edges pointing to or from it (schema cascade), all tags, and the vector in Vectorize.
+The note disappears from recall, search, the graph and stats, and its vector is removed from the semantic index. But the content and its edges stay in D1 (flagged deleted_at), so it can be brought back with restore_note(id) at any time, with no time limit.
 
 FLOW:
 1. Call recall() or get_note() first to confirm the id is correct. Do NOT delete on an invented id.
@@ -23,7 +23,7 @@ Use delete_note when:
 
 Do NOT use delete_note to "clean up" notes you judge low-quality on your own — that is a policy decision that belongs to the user. When in doubt, suggest update_note instead (refine, don't destroy).
 
-ORDER: deletes vector FIRST, then D1 row. If the vector delete fails, the D1 row is preserved so the note is still accessible via get_note. If the D1 delete fails after the vector was removed, the note exists in D1 without a searchable vector — use reembed to restore recall.`;
+ORDER: removes the vector FIRST, then flags the D1 row deleted. If the vector delete fails, nothing is flagged so the note stays fully accessible. restore_note re-embeds the vector so recall works again after a restore.`;
 
 interface DeleteNoteInput { id: string; confirm: true; }
 
@@ -52,8 +52,10 @@ export function registerDeleteNote(server: any, env: Env): void {
         `SELECT (SELECT count(*) FROM edges WHERE from_id = ?1 OR to_id = ?1) AS e,
                 (SELECT count(*) FROM tags WHERE note_id = ?1) AS t`
       ).bind(input.id).first<{ e: number; t: number }>();
-      const edgesRemoved = countRow?.e ?? 0;
-      const tagsRemoved = countRow?.t ?? 0;
+      // Soft-delete: edges/tags NÃO são removidas — ficam escondidas e voltam
+      // junto no restore. Reportamos como "hidden", não "removed".
+      const edgesHidden = countRow?.e ?? 0;
+      const tagsHidden = countRow?.t ?? 0;
 
       // Vectorize FIRST, D1 after. If the vector delete fails, D1 is preserved
       // so the note stays reachable via get_note/recall — no inconsistent state.
@@ -77,9 +79,11 @@ export function registerDeleteNote(server: any, env: Env): void {
       return toolSuccess({
         id: input.id,
         deleted: true,
+        recoverable: true,
+        restore_with: `restore_note(id: "${input.id}")`,
         title: existing.title,
-        edges_removed: edgesRemoved,
-        tags_removed: tagsRemoved,
+        edges_hidden: edgesHidden,
+        tags_hidden: tagsHidden,
       });
     }) as any
   );

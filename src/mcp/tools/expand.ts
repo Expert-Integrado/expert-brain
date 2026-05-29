@@ -55,7 +55,7 @@ export function registerExpand(server: any, env: Env): void {
       if (ids.length === 0) return toolSuccess({ neighbors: [] });
       const placeholders = ids.map(() => '?').join(',');
       const rows = await env.DB.prepare(
-        `SELECT id,title,tldr,domains FROM notes WHERE id IN (${placeholders})`
+        `SELECT id,title,tldr,domains FROM notes WHERE id IN (${placeholders}) AND deleted_at IS NULL`
       ).bind(...ids).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'>>();
       const byId = new Map((rows.results ?? []).map((r) => [r.id, r]));
 

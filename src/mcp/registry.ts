@@ -7,12 +7,14 @@ import { registerLink } from './tools/link.js';
 import { registerReembed } from './tools/reembed.js';
 import { registerUpdateNote } from './tools/update-note.js';
 import { registerDeleteNote } from './tools/delete-note.js';
+import { registerRestoreNote } from './tools/restore-note.js';
 import { registerStats } from './tools/stats.js';
 
 export function registerAllTools(server: any, env: Env): void {
   registerSaveNote(server, env);
   registerUpdateNote(server, env);
   registerDeleteNote(server, env);
+  registerRestoreNote(server, env);
   registerRecall(server, env);
   registerExpand(server, env);
   registerGetNote(server, env);

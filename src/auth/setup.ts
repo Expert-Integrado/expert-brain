@@ -32,9 +32,9 @@ export async function getVaultStatus(env: Env): Promise<{
   connected: boolean;
 }> {
   const [n, e, lw, clients, tokens] = await Promise.all([
-    env.DB.prepare(`SELECT count(*) c FROM notes`).first<{ c: number }>(),
+    env.DB.prepare(`SELECT count(*) c FROM notes WHERE deleted_at IS NULL`).first<{ c: number }>(),
     env.DB.prepare(`SELECT count(*) c FROM edges`).first<{ c: number }>(),
-    env.DB.prepare(`SELECT max(updated_at) m FROM notes`).first<{ m: number | null }>(),
+    env.DB.prepare(`SELECT max(updated_at) m FROM notes WHERE deleted_at IS NULL`).first<{ m: number | null }>(),
     countKvPrefix(env, 'client:'),
     countKvPrefix(env, 'token:'),
   ]);

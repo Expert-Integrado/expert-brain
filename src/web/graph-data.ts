@@ -22,7 +22,9 @@ const SIMILARITY_TOP_K = 4;
 const SIMILARITY_MIN_SCORE = 0.5;
 
 async function computeSourceHash(env: Env): Promise<string> {
-  const n = await env.DB.prepare(`SELECT COALESCE(MAX(updated_at), 0) m, COUNT(*) c FROM notes`).first<{ m: number; c: number }>();
+  // COUNT só de notas vivas: soft-delete (UPDATE deleted_at) não muda updated_at,
+  // mas muda o count -> hash muda -> cache do grafo invalida e a nota some.
+  const n = await env.DB.prepare(`SELECT COALESCE(MAX(updated_at), 0) m, COUNT(*) c FROM notes WHERE deleted_at IS NULL`).first<{ m: number; c: number }>();
   const e = await env.DB.prepare(`SELECT COALESCE(MAX(created_at), 0) m, COUNT(*) c FROM edges`).first<{ m: number; c: number }>();
   return `n${n?.m ?? 0}x${n?.c ?? 0}_e${e?.m ?? 0}x${e?.c ?? 0}`;
 }
@@ -46,11 +48,16 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   // Paraleliza as 2 queries independentes — D1 trata bem requests concorrentes
   // do mesmo Worker e cada uma roda em sua própria conexão.
   const [notesRes, edgesRes] = await Promise.all([
-    env.DB.prepare(`SELECT id, title, domains FROM notes`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
+    env.DB.prepare(`SELECT id, title, domains FROM notes WHERE deleted_at IS NULL`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
     env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>(),
   ]);
   const notes = notesRes.results ?? [];
-  const explicitEdges = edgesRes.results ?? [];
+  // Edges cujo extremo foi soft-deletado (a linha fica, não cascateia) precisam
+  // ser dropadas pra não referenciar nós que não estão mais no payload.
+  const aliveIds = new Set(notes.map((n) => n.id));
+  const explicitEdges = (edgesRes.results ?? []).filter(
+    (e) => aliveIds.has(e.from_id) && aliveIds.has(e.to_id),
+  );
 
   const explicitPairs = new Set<string>();
   for (const e of explicitEdges) explicitPairs.add(explicitPairKey(e.from_id, e.to_id));
@@ -259,7 +266,7 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
     return new Response(JSON.stringify({ error: 'why minimum 8 characters' }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
   // Verifica que ambas notas existem
-  const exists = await env.DB.prepare(`SELECT id FROM notes WHERE id IN (?, ?)`).bind(source, target).all<{ id: string }>();
+  const exists = await env.DB.prepare(`SELECT id FROM notes WHERE id IN (?, ?) AND deleted_at IS NULL`).bind(source, target).all<{ id: string }>();
   if ((exists.results?.length ?? 0) < 2) {
     return new Response(JSON.stringify({ error: 'one or both notes not found' }), { status: 404, headers: { 'content-type': 'application/json' } });
   }
@@ -279,7 +286,7 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
 
   const rows = await env.DB.prepare(
     `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains
-     FROM notes`
+     FROM notes WHERE deleted_at IS NULL`
   ).all<{ id: string; title: string; tldr: string; kind: string; domains: string }>();
   const results = rows.results ?? [];
 

@@ -11,9 +11,9 @@ describe('expand', () => {
     await E.DB.exec('DELETE FROM edges');
     await E.DB.exec('DELETE FROM tags');
     await E.DB.exec('DELETE FROM notes');
-    await E.DB.prepare(`INSERT INTO notes VALUES ('a','A','b','tl','["x"]',null,0,0)`).run();
-    await E.DB.prepare(`INSERT INTO notes VALUES ('b','B','b','tl','["y"]',null,0,0)`).run();
-    await E.DB.prepare(`INSERT INTO notes VALUES ('c','C','b','tl','["z"]',null,0,0)`).run();
+    await E.DB.prepare(`INSERT INTO notes VALUES ('a','A','b','tl','["x"]',null,0,0,null)`).run();
+    await E.DB.prepare(`INSERT INTO notes VALUES ('b','B','b','tl','["y"]',null,0,0,null)`).run();
+    await E.DB.prepare(`INSERT INTO notes VALUES ('c','C','b','tl','["z"]',null,0,0,null)`).run();
     await E.DB.prepare(`INSERT INTO edges VALUES ('ex1','a','b','analogous_to','long enough mechanism why text',0)`).run();
     await E.DB.prepare(`INSERT INTO edges VALUES ('ex2','c','a','causes','long enough mechanism why text',0)`).run();
   });

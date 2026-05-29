@@ -14,7 +14,7 @@ describe('reembed', () => {
     await E.DB.exec('DELETE FROM tags');
     await E.DB.exec('DELETE FROM notes');
     await E.DB.prepare(
-      `INSERT INTO notes VALUES ('abc','Title','body','a tldr long enough','["biology"]','idea',1,1)`
+      `INSERT INTO notes VALUES ('abc','Title','body','a tldr long enough','["biology"]','idea',1,1,null)`
     ).run();
   });
 

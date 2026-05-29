@@ -48,15 +48,15 @@ export function registerStats(server: any, env: Env): void {
       const [totalsRow, domainRows, kindRows] = await Promise.all([
         env.DB.prepare(
           `SELECT
-             (SELECT count(*) FROM notes) AS notes,
+             (SELECT count(*) FROM notes WHERE deleted_at IS NULL) AS notes,
              (SELECT count(*) FROM edges) AS edges,
-             (SELECT count(*) FROM notes WHERE created_at >= ?) AS r7,
-             (SELECT count(*) FROM notes WHERE created_at >= ?) AS r30`
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r7,
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r30`
         ).bind(d7, d30).first<{ notes: number; edges: number; r7: number; r30: number }>(),
         env.DB.prepare(
           `SELECT je.value AS domain, count(*) AS count
            FROM notes, json_each(notes.domains) je
-           WHERE json_valid(notes.domains)
+           WHERE json_valid(notes.domains) AND notes.deleted_at IS NULL
            GROUP BY je.value
            ORDER BY count DESC, domain ASC
            LIMIT ?`
@@ -68,6 +68,7 @@ export function registerStats(server: any, env: Env): void {
         env.DB.prepare(
           `SELECT kind, count(*) AS count
            FROM notes
+           WHERE deleted_at IS NULL
            GROUP BY kind
            ORDER BY (kind IS NULL) ASC, count DESC, kind ASC`
         ).all<KindRow>(),

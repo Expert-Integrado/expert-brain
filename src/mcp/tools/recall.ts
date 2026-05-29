@@ -75,7 +75,7 @@ export function registerRecall(server: any, env: Env): void {
         const domainRows = await env.DB.prepare(
           `SELECT DISTINCT n.id
            FROM notes n, json_each(n.domains) je
-           WHERE je.value IN (${dfPlaceholders})
+           WHERE je.value IN (${dfPlaceholders}) AND n.deleted_at IS NULL
            ORDER BY n.updated_at DESC
            LIMIT 50`
         ).bind(...input.domains_filter).all<{ id: string }>();
@@ -89,7 +89,7 @@ export function registerRecall(server: any, env: Env): void {
 
       const placeholders = Array.from(ids).map(() => '?').join(',');
       const rows = await env.DB.prepare(
-        `SELECT id, title, tldr, domains, kind FROM notes WHERE id IN (${placeholders})`
+        `SELECT id, title, tldr, domains, kind FROM notes WHERE id IN (${placeholders}) AND deleted_at IS NULL`
       ).bind(...Array.from(ids)).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>();
 
       const byId = new Map<string, RecallHit>();

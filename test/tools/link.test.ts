@@ -11,8 +11,8 @@ describe('link', () => {
     await E.DB.exec('DELETE FROM edges');
     await E.DB.exec('DELETE FROM tags');
     await E.DB.exec('DELETE FROM notes');
-    await E.DB.prepare(`INSERT INTO notes VALUES ('a','A','','tl','[]',null,0,0)`).run();
-    await E.DB.prepare(`INSERT INTO notes VALUES ('b','B','','tl','[]',null,0,0)`).run();
+    await E.DB.prepare(`INSERT INTO notes VALUES ('a','A','','tl','[]',null,0,0,null)`).run();
+    await E.DB.prepare(`INSERT INTO notes VALUES ('b','B','','tl','[]',null,0,0,null)`).run();
   });
   function reg() {
     const r: any = {};

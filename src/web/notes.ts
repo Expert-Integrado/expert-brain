@@ -51,7 +51,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const rows = await env.DB.prepare(
-    `SELECT id, title, domains, kind, tldr, updated_at FROM notes ORDER BY updated_at DESC`
+    `SELECT id, title, domains, kind, tldr, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC`
   ).all<NoteListItem>();
   const notes = rows.results ?? [];
 
@@ -149,7 +149,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
 
   // Build a title-index for wikilink resolution.
   // (Small table — under a few thousand rows — single query is fine.)
-  const allTitlesRes = await env.DB.prepare(`SELECT id, title FROM notes`).all<{ id: string; title: string }>();
+  const allTitlesRes = await env.DB.prepare(`SELECT id, title FROM notes WHERE deleted_at IS NULL`).all<{ id: string; title: string }>();
   const titleIndex = new Map<string, string>(); // lowercased title → id
   const idSet = new Set<string>();
   for (const r of allTitlesRes.results ?? []) {
@@ -169,7 +169,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   if (relatedIds.length > 0) {
     const placeholders = relatedIds.map(() => '?').join(',');
     const rs = await env.DB.prepare(
-      `SELECT * FROM notes WHERE id IN (${placeholders})`
+      `SELECT * FROM notes WHERE id IN (${placeholders}) AND deleted_at IS NULL`
     ).bind(...relatedIds).all<NoteRow>();
     for (const r of rs.results ?? []) related.set(r.id, r);
   }
