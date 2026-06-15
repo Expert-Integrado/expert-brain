@@ -226,6 +226,7 @@ async function main() {
     lineSizeMult: 1,
     textFadeMult: 0,
     hideOrphans: false,
+    noOverlap: false,                   // modo "não sobrepor as bolinhas" (collide forte)
     // Escala extra aplicada por cima dos multiplicadores acima.
     // Em mobile (<768px) reduz nodes/edges proporcionalmente pra manter
     // a mesma "leitura" visual do desktop sem ficar gigante na tela pequena.
@@ -541,6 +542,55 @@ async function main() {
   }
   let currentForces = { ...FORCE_DEFAULTS };
 
+  // Aplica a config salva (data-graph-prefs no #graph-canvas, injetada pelo server
+  // a partir do meta) ANTES de inicializar a simulação: seta state + currentForces e
+  // sincroniza os inputs/checkboxes/chips do painel. Sem nada salvo, mantém os
+  // defaults dos próprios inputs HTML. CSP-safe: lê de data-attribute, não inline JS.
+  function applySavedPrefs() {
+    const canvas = document.getElementById('graph-canvas');
+    const raw = canvas?.dataset.graphPrefs;
+    if (!raw) return;
+    let p: any;
+    try { p = JSON.parse(raw); } catch { return; }
+    if (!p || typeof p !== 'object') return;
+    const clamp = (v: any, lo: number, hi: number, d: number) =>
+      (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : d;
+    if (p.forces && typeof p.forces === 'object') {
+      currentForces = {
+        center: clamp(p.forces.center, 0, 1, currentForces.center),
+        repel: clamp(p.forces.repel, 0, 20, currentForces.repel),
+        link: clamp(p.forces.link, 0, 1, currentForces.link),
+        distance: clamp(p.forces.distance, 30, 500, currentForces.distance),
+      };
+    }
+    if (['neutral', 'domain', 'kind', 'degree'].includes(p.colorMode)) state.colorMode = p.colorMode;
+    state.similarOpacity = clamp(p.similarOpacity, 0, 1, state.similarOpacity);
+    if (typeof p.hideSimilar === 'boolean') state.hideSimilar = p.hideSimilar;
+    state.nodeSizeMult = clamp(p.nodeSizeMult, 0.3, 3, state.nodeSizeMult);
+    state.lineSizeMult = clamp(p.lineSizeMult, 0, 3, state.lineSizeMult);
+    state.textFadeMult = clamp(p.textFadeMult, -3, 3, state.textFadeMult);
+    if (typeof p.hideOrphans === 'boolean') state.hideOrphans = p.hideOrphans;
+    if (typeof p.noOverlap === 'boolean') state.noOverlap = p.noOverlap;
+    // Sincroniza o painel HTML com os valores carregados.
+    const setVal = (id: string, v: number) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.value = String(v); };
+    const setCheck = (id: string, c: boolean) => { const el = document.getElementById(id) as HTMLInputElement | null; if (el) el.checked = c; };
+    setVal('force-center', currentForces.center);
+    setVal('force-repel', currentForces.repel);
+    setVal('force-link', currentForces.link);
+    setVal('force-distance', currentForces.distance);
+    setVal('similar-opacity', Math.round(state.similarOpacity * 100));
+    setCheck('similar-hide', state.hideSimilar);
+    setVal('node-size-mult', state.nodeSizeMult);
+    setVal('line-size-mult', state.lineSizeMult);
+    setVal('text-fade-mult', state.textFadeMult);
+    setCheck('hide-orphans', state.hideOrphans);
+    setCheck('no-overlap', state.noOverlap);
+    document.querySelectorAll('.graph-color-chip').forEach((el) => {
+      el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === state.colorMode);
+    });
+  }
+  applySavedPrefs();
+
   // Snapshot inicial pra Reset + raio pra collide proporcional
   const initialPositions: Array<{ id: string; x: number; y: number; r: number }> = payload.nodes.map((n) => ({
     id: n.id,
@@ -636,6 +686,7 @@ async function main() {
     nodes: initialPositions,
     links: workerLinks,
     forces: mapForces(currentForces),
+    noOverlap: state.noOverlap,   // respeita o modo "não sobrepor" salvo já no 1º layout
     // Começa com alpha baixo: como já renderizamos no layout pré-computado do
     // servidor, a simulação só precisa de um ajuste fino suave — não do reveal
     // explosivo do alpha=1 (que reorganizava tudo do zero por ~5s).
@@ -909,6 +960,39 @@ async function main() {
     onForceRepel: (v) => setForces({ repel: v }),
     onForceLink: (v) => setForces({ link: v }),
     onForceDistance: (v) => setForces({ distance: v }),
+    // Liga/desliga "não sobrepor": manda pro worker reforçar a colisão e reaquecer.
+    onNoOverlap: (on) => {
+      state.noOverlap = on;
+      worker.postMessage({ type: 'collide', noOverlap: on });
+    },
+    // Salva a configuração atual como padrão do dono (persiste no meta, sincroniza
+    // entre máquinas). Filtros/busca NÃO entram — são exploração, não preferência.
+    onSavePrefs: () => {
+      const prefs = {
+        forces: { ...currentForces },
+        colorMode: state.colorMode,
+        similarOpacity: state.similarOpacity,
+        hideSimilar: state.hideSimilar,
+        nodeSizeMult: state.nodeSizeMult,
+        lineSizeMult: state.lineSizeMult,
+        textFadeMult: state.textFadeMult,
+        hideOrphans: state.hideOrphans,
+        noOverlap: state.noOverlap,
+      };
+      const btn = document.getElementById('graph-save-prefs');
+      const restore = () => { if (btn) setTimeout(() => { btn.textContent = 'Salvar como padrão'; }, 1600); };
+      fetch('/app/graph/prefs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(prefs),
+      }).then((r) => {
+        if (btn) btn.textContent = r.ok ? 'Salvo! ✓' : 'Erro ao salvar';
+        restore();
+      }).catch(() => {
+        if (btn) btn.textContent = 'Erro ao salvar';
+        restore();
+      });
+    },
     // A.29 — único Reset que reseta TUDO: filters, display, forces, layout.
     onResetAll: () => {
       // 1. Filters
@@ -931,6 +1015,9 @@ async function main() {
         forces: mapForces(currentForces),
         alpha: 0.5,
       });
+      // Não-sobrepor volta a off (collide suave).
+      state.noOverlap = false;
+      worker.postMessage({ type: 'collide', noOverlap: false });
       // 4. Layout (snapshot inicial)
       resetGraphLayout();
       // 5. Sync HTML inputs/checkboxes
@@ -953,6 +1040,7 @@ async function main() {
       setVal('force-repel', FORCE_DEFAULTS.repel);
       setVal('force-link', FORCE_DEFAULTS.link);
       setVal('force-distance', FORCE_DEFAULTS.distance);
+      setCheck('no-overlap', false);
       // A.35 — chips de coloração: remove active, ativa o "neutral"
       document.querySelectorAll('.graph-color-chip').forEach((el) => {
         el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === 'neutral');
@@ -1423,6 +1511,9 @@ interface ControlCallbacks {
   onResetAll: () => void;
   // A.33 — modo de coloração
   onColorMode: (mode: string) => void;
+  // Não-sobrepor as bolinhas (collide forte) + salvar config como padrão do dono.
+  onNoOverlap: (on: boolean) => void;
+  onSavePrefs: () => void;
 }
 
 function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
@@ -1458,6 +1549,7 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
       if (action === 'zoom-out') cb.onZoomOut();
       if (action === 'fit') cb.onFit();
       if (action === 'reset-all') cb.onResetAll();
+      if (action === 'save-prefs') cb.onSavePrefs();
       // A.30 — botão "Limpar" do indicador de filtros ativos
       if (action === 'clear-filters') cb.onResetAll();
     }
@@ -1498,6 +1590,10 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
   const hideOrphans = document.getElementById('hide-orphans') as HTMLInputElement | null;
   if (hideOrphans) {
     hideOrphans.addEventListener('change', () => cb.onHideOrphans(hideOrphans.checked));
+  }
+  const noOverlap = document.getElementById('no-overlap') as HTMLInputElement | null;
+  if (noOverlap) {
+    noOverlap.addEventListener('change', () => cb.onNoOverlap(noOverlap.checked));
   }
   // Populate kind chips from nodes that carry `kind`
   const kindsEl = document.getElementById('graph-kinds');

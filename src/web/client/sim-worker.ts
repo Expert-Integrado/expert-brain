@@ -52,6 +52,13 @@ let nodes: SimNode[] = [];
 let links: SimLink[] = [];
 let sim: Simulation<SimNode, SimLink> | null = null;
 let forces: Forces = { ...DEFAULTS };
+// Modo "não sobrepor": collide forte (strength 1 + 4 iterações + padding maior)
+// que resolve a sobreposição de verdade. Default off = collide suave (0.8/1 iter)
+// que só evita encavalamento grosseiro sem custar perf no caso comum.
+let noOverlap = false;
+const collideRadius = (d: SimNode) => (d.r ?? 10) + (noOverlap ? 6 : 4);
+const collideStrength = () => (noOverlap ? 1 : 0.8);
+const collideIterations = () => (noOverlap ? 4 : 1);
 const pinned = new Map<string, { x: number; y: number }>();
 
 function rebuildSimulation(initialAlpha = 1) {
@@ -87,9 +94,9 @@ function rebuildSimulation(initialAlpha = 1) {
         .distance(forces.distance),
     )
     .force('center', forceCenter<SimNode>(0, 0).strength(forces.center))
-    // A.25 — collide com raio = size + padding. Garante que nó grande
-    // não fica em cima de pequeno.
-    .force('collide', forceCollide<SimNode>().radius((d) => (d.r ?? 10) + 4).strength(0.8))
+    // A.25 — collide com raio = size + padding. Garante que nó grande não fica em
+    // cima de pequeno. Intensidade/iterações sobem no modo "não sobrepor".
+    .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(collideStrength()).iterations(collideIterations()))
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 (~300 ticks pra esfriar)
     .alpha(initialAlpha)
     .on('tick', emitTick)
@@ -118,6 +125,7 @@ self.addEventListener('message', (e: MessageEvent) => {
       nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y, r: n.r ?? 10 }));
       links = msg.links.map((l: any) => ({ source: l.source, target: l.target }));
       if (msg.forces) forces = { ...forces, ...msg.forces };
+      if (typeof msg.noOverlap === 'boolean') noOverlap = msg.noOverlap;
       pinned.clear();
       // alpha do init (default 1): o client manda baixo (~0.25) quando já
       // renderizou no layout pré-computado, pra um ajuste fino suave em vez do
@@ -132,6 +140,19 @@ self.addEventListener('message', (e: MessageEvent) => {
         (sim.force('link') as any)?.strength(forces.link).distance(forces.distance);
         (sim.force('center') as any)?.strength(forces.center);
         sim.alpha(msg.alpha ?? 0.3).restart();
+      }
+      break;
+    }
+    case 'collide': {
+      // Liga/desliga o modo "não sobrepor" ao vivo e reaquece pra re-resolver as
+      // posições sem encavalar (alpha 0.5 dá um empurrão suficiente).
+      noOverlap = !!msg.noOverlap;
+      if (sim) {
+        (sim.force('collide') as any)
+          ?.radius(collideRadius)
+          .strength(collideStrength())
+          .iterations(collideIterations());
+        sim.alpha(0.5).restart();
       }
       break;
     }

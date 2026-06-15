@@ -3,6 +3,7 @@ import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
 import { handleGraphPage } from './graph.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
+import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
@@ -31,6 +32,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
   if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
   if (path === '/app/graph/link' && req.method === 'POST') return handleGraphLink(req, env);
+  if (path === '/app/graph/prefs' && req.method === 'POST') return handleGraphPrefsPost(req, env);
 
   // Bundle assets — cache longo + immutable. Seguro porque o <script src> usa
   // ?v=<hash-de-conteudo> (ver asset-version.ts): a URL muda quando o bundle

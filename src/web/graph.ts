@@ -2,10 +2,18 @@ import type { Env } from '../env.js';
 import { requireSession, readCookie } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
+import { getGraphPrefs } from './graph-prefs.js';
+import { esc } from '../util/html.js';
 
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
+
+  // Config salva do dono (forças, cores, anti-sobreposição). Injetada como
+  // data-attribute no #graph-canvas (CSP é script-src 'self', sem inline script);
+  // o cliente lê e aplica antes de inicializar a simulação. '' = usa os defaults.
+  const savedPrefs = await getGraphPrefs(env);
+  const prefsAttr = savedPrefs ? esc(JSON.stringify(savedPrefs)) : '';
 
   // Painel de controles recolhido? Lido do cookie pra renderizar já no estado
   // certo (sem flash). Toggle client-side grava o cookie.
@@ -479,6 +487,11 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
             <input type="range" id="force-distance" min="30" max="500" step="5" value="250" aria-label="Distância do link" />
             <small class="graph-slider-help">Distância natural entre bolinhas conectadas</small>
           </label>
+          <label class="graph-check-label">
+            <input type="checkbox" id="no-overlap" />
+            <span>Não sobrepor as bolinhas</span>
+          </label>
+          <small class="graph-slider-help">Força as bolinhas a não ficarem em cima umas das outras (colisão forte)</small>
         </details>
 
         <details class="graph-section">
@@ -500,6 +513,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
           </label>
         </details>
 
+        <button id="graph-save-prefs" class="graph-reset-btn graph-reset-all" data-graph-action="save-prefs" title="Salva forças, cores, visual e não-sobrepor como seu padrão — abre sempre assim (sincroniza entre seus dispositivos)">Salvar como padrão</button>
         <button class="graph-reset-btn graph-reset-all" data-graph-action="reset-all" title="Volta filtros, visual, forças e posições para o estado inicial">Restaurar padrão</button>
 
         <div class="graph-legend-line">
@@ -519,7 +533,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </button>
       </div>
 
-      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}"></div>
+      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}"></div>
 
       <!-- A.31 — Cmd+K command palette -->
       <div id="graph-palette-backdrop" class="graph-palette-backdrop" role="dialog" aria-label="Buscar nota">
