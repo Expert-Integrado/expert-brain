@@ -11,6 +11,7 @@
     "dev": "wrangler dev",
     "build:bundles": "tsx scripts/build-bundles.ts",
     "deploy": "npm run build:bundles && wrangler deploy",
+    "backfill-similar": "node scripts/backfill-similar.mjs",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/web/client/tsconfig.json",

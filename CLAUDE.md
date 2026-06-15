@@ -21,7 +21,9 @@ Faz nesta ordem, parando e reportando se algo falhar:
 
 3. `npm run setup` — esse comando é **idempotente**: detecta que já existe um Expert Brain (pelo `wrangler.toml` configurado ou achando os recursos na conta), entra em **modo ATUALIZAÇÃO**, redeploya o Worker e **aplica migrations novas via `/setup/provision`**, SEM pedir e-mail/senha de novo e SEM tocar nos dados. (Pra reprovisionar do zero — trocar senha, recriar recursos — é `npm run setup -- --reinstall`, mas isso é raro.)
 
-4. **Avisa o usuário pra reconectar o cliente de IA** pra ele enxergar ferramentas novas: Claude Code/Desktop → reiniciar; Claude.ai → conversa nova. (Migrations de schema e comportamento de tools já valem na hora, server-side.)
+4. **Se esta atualização introduziu a migration `0005_similar_edges`** (tabela `similar_edges`, fix de escala do grafo): rode UMA VEZ o backfill da teia de similaridade das notas que já existiam — `npm run backfill-similar <worker-url>`. Ele dirige o endpoint `/setup/backfill-similar` em loop por cursor (cada lote processa ~20 notas pra caber no cap de subrequests do Cloudflare). Sem esse passo o grafo até carrega, mas SEM as ligações semânticas das notas antigas (notas novas se auto-populam pelo write path). É idempotente — re-rodar é seguro. Pula este passo se a tabela já existia antes desta atualização.
+
+5. **Avisa o usuário pra reconectar o cliente de IA** pra ele enxergar ferramentas novas: Claude Code/Desktop → reiniciar; Claude.ai → conversa nova. (Migrations de schema e comportamento de tools já valem na hora, server-side.)
 
 Pré-requisito: o host precisa do `wrangler` autenticado na conta certa (mesmo do Preflight). Se `npx wrangler whoami` falhar, pede pro usuário rodar `npx wrangler login`.
 

@@ -3,6 +3,7 @@ import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { getNoteById, restoreNote } from '../../db/queries.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
+import { refreshSimilarEdges } from '../../web/similarity.js';
 
 const inputSchema = {
   id: z.string().min(1),
@@ -56,6 +57,13 @@ export function registerRestoreNote(server: any, env: Env): void {
         kind: note.kind,
         created_at: note.created_at,
       });
+      // Recomputa a vizinhança semântica — pode ter mudado enquanto a nota esteve
+      // fora do índice. Best-effort (a nota já foi restaurada e re-embedada).
+      try {
+        await refreshSimilarEdges(env, input.id, vec);
+      } catch (err) {
+        console.error('restore_note: refreshSimilarEdges failed (note restored anyway)', err);
+      }
 
       return toolSuccess({
         id: input.id,

@@ -5,6 +5,7 @@ import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js'
 import { EDGE_TYPES, NOTE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
+import { refreshSimilarEdges } from '../../web/similarity.js';
 
 const edgeSchema = z.object({
   to_id: z.string().min(1),
@@ -144,6 +145,15 @@ export function registerSaveNote(server: any, env: Env): void {
         kind: input.kind,
         created_at: now,
       });
+
+      // Pré-computa as similar edges desta nota (top-k vizinhos) e grava no D1, pra
+      // o grafo só ler depois. Best-effort: a nota já está salva — se o Vectorize
+      // falhar aqui, o backfill ou um próximo edit preenche. Não falha o save_note.
+      try {
+        await refreshSimilarEdges(env, id, vec);
+      } catch (err) {
+        console.error('save_note: refreshSimilarEdges failed (note saved anyway)', err);
+      }
 
       return toolSuccess({
         id,

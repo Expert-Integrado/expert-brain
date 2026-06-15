@@ -4,6 +4,7 @@ import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { NOTE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
+import { refreshSimilarEdges } from '../../web/similarity.js';
 
 const inputSchema = {
   id: z.string().min(1),
@@ -142,6 +143,13 @@ export function registerUpdateNote(server: any, env: Env): void {
           kind: finalKind,
           created_at: existing.created_at,
         });
+        // tldr mudou → vizinhança semântica mudou: recomputa as similar edges
+        // desta nota. Best-effort (a edição já está persistida em D1).
+        try {
+          await refreshSimilarEdges(env, id, vec);
+        } catch (err) {
+          console.error('update_note: refreshSimilarEdges failed (edit persisted anyway)', err);
+        }
         reembedded = true;
       }
 

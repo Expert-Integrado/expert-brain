@@ -63,3 +63,48 @@ describe('/app/graph/data', () => {
     expect(d2.sourceHash).not.toBe(d1.sourceHash);
   });
 });
+
+describe('/app/graph/data — similar edges lidas do D1', () => {
+  beforeAll(async () => {
+    // terceira nota viva (g3) + uma soft-deletada (gdel)
+    await (env as any).DB.prepare(`INSERT OR IGNORE INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
+      VALUES ('g3','Graph Three','b','t','["music"]',NULL,4,4)`).run();
+    await (env as any).DB.prepare(`INSERT OR IGNORE INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at)
+      VALUES ('gdel','Deleted','b','t','["operations"]',NULL,5,5,5)`).run();
+    await (env as any).DB.prepare(`DELETE FROM similar_edges`).run();
+    const ins = (a: string, b: string, s: number) => (env as any).DB
+      .prepare(`INSERT OR IGNORE INTO similar_edges (from_id,to_id,score) VALUES (?,?,?)`).bind(a, b, s).run();
+    await ins('g1', 'g2', 0.90);   // par que JÁ tem edge explícita → não vira 'similar'
+    await ins('g1', 'g3', 0.80);   // par novo → vira 'similar'
+    await ins('g3', 'g1', 0.80);   // simétrico do anterior → deduplicado
+    await ins('g1', 'gdel', 0.70); // alvo soft-deletado → descartado
+  });
+
+  it('dedup simétrico, descarta par explícito e nota soft-deletada', async () => {
+    const res = await SELF.fetch('https://x.test/app/graph/data', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    const data = await res.json() as any;
+    const similar = data.edges.filter((e: any) => e.type === 'similar');
+
+    // exatamente 1 edge similar: g1↔g3 (g1-g2 caiu por ser explícita, g1-gdel por deletada,
+    // g3→g1 deduplicado contra g1→g3)
+    expect(similar).toHaveLength(1);
+    expect([similar[0].source, similar[0].target].sort()).toEqual(['g1', 'g3']);
+    expect(similar[0].score).toBeCloseTo(0.80);
+
+    // g3 entrou como nó vivo; gdel (soft-deletada) não aparece
+    expect(data.nodes.find((n: any) => n.id === 'g3')).toBeDefined();
+    expect(data.nodes.find((n: any) => n.id === 'gdel')).toBeUndefined();
+  });
+
+  it('sourceHash muda quando o CONTEUDO de similar_edges muda (mesma cardinalidade) — anti cache-stale', async () => {
+    const r1 = await SELF.fetch('https://x.test/app/graph/data', { headers: { cookie: await authCookie() } });
+    const d1 = await r1.json() as any;
+    // muda só o SCORE de uma similar edge — count permanece igual. Sem o SUM(score) no
+    // sourceHash isto serviria cache stale (cenário reembed/re-backfill).
+    await (env as any).DB.prepare(`UPDATE similar_edges SET score = 0.55 WHERE from_id = 'g1' AND to_id = 'g3'`).run();
+    const r2 = await SELF.fetch('https://x.test/app/graph/data', { headers: { cookie: await authCookie() } });
+    const d2 = await r2.json() as any;
+    expect(d2.sourceHash).not.toBe(d1.sourceHash);
+  });
+});

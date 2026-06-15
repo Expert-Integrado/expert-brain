@@ -24,6 +24,8 @@ export interface EdgeRow {
   relation_type: EdgeType; why: string; created_at: number;
 }
 
+export interface SimilarEdgeRow { from_id: string; to_id: string; score: number; }
+
 export async function insertNote(env: Env, n: NoteRow): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
@@ -42,6 +44,32 @@ export async function insertTags(env: Env, noteId: string, tags: string[]): Prom
   if (tags.length === 0) return;
   const stmt = env.DB.prepare(`INSERT OR IGNORE INTO tags (note_id, tag) VALUES (?, ?)`);
   await env.DB.batch(tags.map((t) => stmt.bind(noteId, t)));
+}
+
+// Substitui as similar edges de UMA nota (from_id = fromId) pelo novo conjunto.
+// DELETE + INSERTs vão num único env.DB.batch (1 subrequest D1, transacional) —
+// crítico pro backfill caber no cap de subrequests do Cloudflare. Chamado pelo
+// write path após o upsert do vetor. Ver migration 0005.
+export async function replaceSimilarEdges(
+  env: Env, fromId: string, neighbors: Array<{ to_id: string; score: number }>
+): Promise<void> {
+  const del = env.DB.prepare(`DELETE FROM similar_edges WHERE from_id = ?`).bind(fromId);
+  if (neighbors.length === 0) {
+    await del.run();
+    return;
+  }
+  const ins = env.DB.prepare(`INSERT OR IGNORE INTO similar_edges (from_id, to_id, score) VALUES (?, ?, ?)`);
+  await env.DB.batch([del, ...neighbors.map((n) => ins.bind(fromId, n.to_id, n.score))]);
+}
+
+// Lê TODAS as similar edges. O filtro por nota viva e a deduplicação de pares
+// simétricos/explícitos ficam no read path do grafo (graph-data.ts), que já tem
+// o conjunto de notas vivas e de pares explícitos em mãos.
+export async function getAllSimilarEdges(env: Env): Promise<SimilarEdgeRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT from_id, to_id, score FROM similar_edges`
+  ).all<SimilarEdgeRow>();
+  return r.results ?? [];
 }
 
 export interface NotePatch {

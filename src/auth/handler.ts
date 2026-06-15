@@ -1,5 +1,5 @@
 import type { Env } from '../env.js';
-import { handleRoot, handleProvision, handleStatus, isSetup } from './setup.js';
+import { handleRoot, handleProvision, handleStatus, handleBackfillSimilar, isSetup } from './setup.js';
 import { verifyPassword } from './password.js';
 import { NEBULA_CSS, FONT_LINKS } from '../web/styles.js';
 import { esc } from '../util/html.js';
@@ -17,6 +17,7 @@ export const authHandler = {
     if (url.pathname === '/') return handleRoot(req, env);
     if (url.pathname === '/status') return handleStatus(env);
     if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(env);
+    if (url.pathname === '/setup/backfill-similar' && req.method === 'POST') return handleBackfillSimilar(req, env);
 
     if (url.pathname === '/authorize') {
       if (!isSetup(env)) return new Response('Vault não configurado', { status: 503 });

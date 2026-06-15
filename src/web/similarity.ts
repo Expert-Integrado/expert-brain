@@ -1,34 +1,30 @@
 import type { Env } from '../env.js';
 import { queryVector } from '../vector/index.js';
+import { replaceSimilarEdges } from '../db/queries.js';
 
-export interface SimilarityEdge { source: string; target: string; score: number; }
+// Parâmetros da similaridade — fonte única, usada tanto pela escrita
+// (refreshSimilarEdges, backfill) quanto pela leitura indireta (mesmos valores
+// que produziram as edges gravadas). topK vizinhos por nota, acima do score min.
+export const SIMILARITY_TOP_K = 4;
+export const SIMILARITY_MIN_SCORE = 0.5;
 
-// For each note, query Vectorize for its top-k neighbors and keep those above threshold.
-// Then deduplicate symmetric pairs (a↔b only once) and drop pairs that already have
-// an explicit edge. The caller provides explicit pairs so this stays pure.
-export async function computeSimilarityEdges(
-  env: Env,
-  noteVectors: Array<{ id: string; values: number[] }>,
-  explicitPairs: Set<string>,
-  opts: { topK: number; minScore: number }
-): Promise<SimilarityEdge[]> {
-  const seen = new Set<string>();
-  const out: SimilarityEdge[] = [];
-
-  for (const n of noteVectors) {
-    const matches = await queryVector(env, n.values, opts.topK + 1); // +1 for self
-    for (const m of matches) {
-      if (m.id === n.id) continue;
-      if (m.score < opts.minScore) continue;
-      const [a, b] = [n.id, m.id].sort();
-      const key = `${a}|${b}`;
-      if (seen.has(key) || explicitPairs.has(key)) continue;
-      seen.add(key);
-      out.push({ source: a, target: b, score: m.score });
-    }
-  }
-
-  return out;
+// Recomputa e PERSISTE as similar edges de uma única nota: consulta o Vectorize
+// pelos top-k vizinhos do vetor e grava (from_id = noteId). 1 query Vectorize +
+// 1 batch D1. Chamado no write path (save_note/update_note/reembed) e no backfill.
+// Substitui o antigo loop O(n) que rodava no carregamento do grafo e estourava o
+// cap de subrequests do Cloudflare além de ~950 notas. Retorna quantos vizinhos
+// foram gravados.
+export async function refreshSimilarEdges(
+  env: Env, noteId: string, vector: number[],
+  opts: { topK: number; minScore: number } = { topK: SIMILARITY_TOP_K, minScore: SIMILARITY_MIN_SCORE }
+): Promise<number> {
+  const matches = await queryVector(env, vector, opts.topK + 1); // +1 pro próprio nó
+  const neighbors = matches
+    .filter((m) => m.id !== noteId && m.score >= opts.minScore)
+    .slice(0, opts.topK)
+    .map((m) => ({ to_id: m.id, score: m.score }));
+  await replaceSimilarEdges(env, noteId, neighbors);
+  return neighbors.length;
 }
 
 export function explicitPairKey(a: string, b: string): string {

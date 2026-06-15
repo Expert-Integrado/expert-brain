@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { runMigrations } from '../db/migrate.js';
 import { renderNotConfigured } from '../static/wizard.js';
+import { refreshSimilarEdges, SIMILARITY_TOP_K, SIMILARITY_MIN_SCORE } from '../web/similarity.js';
 
 export function isSetup(env: Env): boolean {
   return Boolean(env.OWNER_EMAIL && env.OWNER_PASSWORD_HASH && env.SESSION_SECRET);
@@ -72,6 +73,66 @@ export async function handleStatus(env: Env): Promise<Response> {
   return new Response(JSON.stringify({ configured: true, ...status }), {
     headers: { 'content-type': 'application/json' },
   });
+}
+
+// Backfill das similar edges das notas que já existiam ANTES desta feature. Roda
+// UM lote por chamada (cursor por id) pra caber no cap de subrequests do Cloudflare
+// — o cliente chama em loop passando ?after=<cursor> até receber done:true.
+// Idempotente: refreshSimilarEdges sobrescreve; re-rodar do zero é seguro.
+// Budget por lote: 1 getByIds + N×(1 query Vectorize + 1 batch D1) = 1 + 2N. O limit
+// é teto-clampeado em 20 → no MÁXIMO 41 subrequests, com folga sob os 50 do free tier.
+// (Não relaxar o teto sem refazer essa conta: o bug original era justamente estouro
+// do cap de subrequests.)
+export async function handleBackfillSimilar(req: Request, env: Env): Promise<Response> {
+  if (!isSetup(env)) {
+    return new Response(JSON.stringify({ error: 'not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const url = new URL(req.url);
+  const after = url.searchParams.get('after') ?? '';
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 20, 1), 20);
+
+  // Próximas notas vivas após o cursor, ordenadas por id (PK estável e resumível).
+  const rows = await env.DB.prepare(
+    `SELECT id FROM notes WHERE deleted_at IS NULL AND id > ? ORDER BY id LIMIT ?`
+  ).bind(after, limit).all<{ id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.id);
+  if (ids.length === 0) {
+    return new Response(JSON.stringify({ done: true, processed: 0, cursor: after }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  // Busca os vetores já indexados (getByIds tem cap de 20 ids/call).
+  const vecById = new Map<string, number[]>();
+  for (let i = 0; i < ids.length; i += 20) {
+    const chunk = ids.slice(i, i + 20);
+    const vs = await env.VECTORIZE.getByIds(chunk);
+    for (const v of vs) if (v.values) vecById.set(v.id, Array.from(v.values));
+  }
+
+  let processed = 0, edges = 0, missing = 0, failed = 0;
+  for (const id of ids) {
+    const vec = vecById.get(id);
+    if (!vec) { missing++; continue; } // vetor ainda não indexado — próxima passada pega
+    // try/catch CRÍTICO: se refreshSimilarEdges lançar (ex: um vizinho retornado pelo
+    // Vectorize aponta pra uma nota hard-deletada do D1 — vetor órfão no índice — o
+    // INSERT viola a FK e o batch aborta), NÃO deixamos o handler dar 500. Sem isso, o
+    // cursor novo nunca seria emitido, o cliente repetiria o mesmo ?after e o backfill
+    // TRAVARIA pra sempre. Aqui a nota problemática é só contada e pulada; o sweep segue.
+    try {
+      edges += await refreshSimilarEdges(env, id, vec, { topK: SIMILARITY_TOP_K, minScore: SIMILARITY_MIN_SCORE });
+      processed++;
+    } catch (err) {
+      failed++;
+      console.error('backfill: refreshSimilarEdges failed for', id, err);
+    }
+  }
+
+  return new Response(JSON.stringify({
+    done: false, processed, edges, missing, failed, cursor: ids[ids.length - 1],
+  }), { headers: { 'content-type': 'application/json' } });
 }
 
 export async function handleProvision(env: Env): Promise<Response> {

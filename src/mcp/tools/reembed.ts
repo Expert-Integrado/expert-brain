@@ -3,6 +3,7 @@ import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { getNoteById } from '../../db/queries.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
+import { refreshSimilarEdges } from '../../web/similarity.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The id of the note to re-embed'),
@@ -48,6 +49,12 @@ export function registerReembed(server: any, env: Env): void {
         kind: n.kind,
         created_at: n.created_at,
       });
+      // Reembed também atualiza a vizinhança semântica gravada. Best-effort.
+      try {
+        await refreshSimilarEdges(env, input.id, vec);
+      } catch (err) {
+        console.error('reembed: refreshSimilarEdges failed (vector re-embedded anyway)', err);
+      }
       return toolSuccess({
         id: input.id,
         reembedded: true,

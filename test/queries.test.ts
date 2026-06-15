@@ -4,6 +4,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import {
   insertNote, insertEdge, insertTags,
   getNoteById, getTagsByNote, getEdgesFrom, ftsSearch,
+  replaceSimilarEdges, getAllSimilarEdges,
 } from '../src/db/queries.js';
 
 const E = env as any;
@@ -40,5 +41,36 @@ describe('queries', () => {
   it('fts search', async () => {
     const r = await ftsSearch(E, 'coevolution', 10);
     expect(r.find((x) => x.id === 'n1')).toBeTruthy();
+  });
+
+  it('replaceSimilarEdges: write, overwrite and clear', async () => {
+    // Notas dedicadas + filtro por from_id próprio: storage é COMPARTILHADO entre
+    // arquivos de teste (isolatedStorage:false), então não dá pra assumir o estado
+    // global de notes/similar_edges nem comparar a tabela inteira.
+    for (const id of ['se_a', 'se_b']) {
+      await insertNote(E, {
+        id, title: id, body: '', tldr: 'x',
+        domains: JSON.stringify(['music']), kind: null, created_at: 1, updated_at: 1,
+      }).catch(() => { /* já existe nesta storage compartilhada */ });
+    }
+    const mineFrom = async (from: string) =>
+      (await getAllSimilarEdges(E)).filter((s) => s.from_id === from);
+
+    // grava o conjunto inicial de se_a
+    await replaceSimilarEdges(E, 'se_a', [{ to_id: 'se_b', score: 0.81 }]);
+    let mine = await mineFrom('se_a');
+    expect(mine).toHaveLength(1);
+    expect(mine[0].to_id).toBe('se_b');
+    expect(mine[0].score).toBeCloseTo(0.81);
+
+    // overwrite substitui (não acumula) — se_a continua com 1 edge
+    await replaceSimilarEdges(E, 'se_a', [{ to_id: 'se_b', score: 0.95 }]);
+    mine = await mineFrom('se_a');
+    expect(mine).toHaveLength(1);
+    expect(mine[0].score).toBeCloseTo(0.95);
+
+    // conjunto vazio limpa as edges de se_a
+    await replaceSimilarEdges(E, 'se_a', []);
+    expect(await mineFrom('se_a')).toHaveLength(0);
   });
 });

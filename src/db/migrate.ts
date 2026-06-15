@@ -105,11 +105,31 @@ const MIGRATION_0004_STMTS: string[] = [
   `ALTER TABLE notes ADD COLUMN deleted_at INTEGER`,
 ];
 
+// 0005 — similar edges PRE-COMPUTADAS. O grafo deixava de carregar acima de
+// ~950 notas porque buildPayload computava similaridade ao vivo: 1 query
+// Vectorize POR NOTA (loop sequencial em similarity.ts) estourava o cap de
+// subrequests do Cloudflare (50 free / 1000 paid). Agora cada nota grava seus
+// top-k vizinhos no write path (save_note/update_note/reembed/backfill) e o
+// grafo só LE desta tabela — zero Vectorize por load, escala pra qualquer N.
+// from_id = a nota cujo vetor gerou a query; to_id = o vizinho. Pares simetricos
+// e pares ja com edge explicita sao deduplicados no read (graph-data.ts).
+const MIGRATION_0005_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS similar_edges (
+    from_id  TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    to_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    score    REAL NOT NULL,
+    PRIMARY KEY (from_id, to_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_similar_from ON similar_edges(from_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_similar_to   ON similar_edges(to_id)`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
   { id: '0003_api_keys', stmts: MIGRATION_0003_STMTS },
   { id: '0004_soft_delete', stmts: MIGRATION_0004_STMTS },
+  { id: '0005_similar_edges', stmts: MIGRATION_0005_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {
