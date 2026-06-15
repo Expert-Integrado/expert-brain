@@ -124,8 +124,10 @@ describe('recall', () => {
     const r = await registered.recall({ query: 'coevolution' });
     const parsed = JSON.parse(r.content[0].text);
     for (const hit of parsed.results) {
+      // O essencial: allDomains (campo interno de filtro) NÃO pode vazar.
       expect(hit.allDomains).toBeUndefined();
-      expect(Object.keys(hit).sort()).toEqual(['domain', 'id', 'kind', 'title', 'tldr']);
+      // url é intencional (link clicável da nota, como o save_note) — faz parte do shape externo.
+      expect(Object.keys(hit).sort()).toEqual(['domain', 'id', 'kind', 'title', 'tldr', 'url']);
     }
   });
 });

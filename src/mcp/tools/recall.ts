@@ -136,7 +136,8 @@ export function registerRecall(server: any, env: Env): void {
       }
 
       // Strip allDomains before returning — it's only used internally for
-      // filter matching. External response shape stays {id, title, domain, kind, tldr}.
+      // filter matching. External shape is {id, title, domain, kind, tldr, url}
+      // (url is a clickable link to the note, like save_note returns).
       const results = picked.map(({ allDomains: _drop, ...rest }) => ({
         ...rest,
         url: noteUrl(env, rest.id),
