@@ -10,6 +10,10 @@ export interface Env {
   GRAPH_CACHE: KVNamespace;
   MCP_OBJECT: DurableObjectNamespace;
   WORKER_URL?: string;
+  // Bearer token que libera leitura/escrita das rotas /app/graph/* sem sessão de
+  // browser. Usado pelo Expert Console (adapter do vault brain) pra consumir o
+  // grafo via HTTP. Aditivo: se ausente, só a sessão de cookie autoriza.
+  GRAPH_EXPORT_TOKEN?: string;
 }
 
 export interface AuthContext extends Record<string, unknown> {

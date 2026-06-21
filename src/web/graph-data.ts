@@ -6,6 +6,26 @@ import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { explicitPairKey } from './similarity.js';
 import { getAllSimilarEdges } from '../db/queries.js';
 
+// Porta de auth ADITIVA pras rotas /app/graph/*: além da sessão de cookie do
+// browser, aceita `Authorization: Bearer <token>` quando o token bate com
+// env.GRAPH_EXPORT_TOKEN. Usado pelo Expert Console (adapter do vault brain) pra
+// ler/escrever o grafo via HTTP sem sessão. Se o secret não estiver setado ou o
+// header não bater, retorna false e o chamador cai no requireSession normal —
+// comportamento de browser fica intacto. Comparação de tamanho-constante pra não
+// vazar o token por timing.
+function authorizeGraphExport(req: Request, env: Env): boolean {
+  const expected = env.GRAPH_EXPORT_TOKEN;
+  if (!expected) return false;
+  const header = req.headers.get('authorization') || '';
+  const m = header.match(/^Bearer\s+(.+)$/i);
+  if (!m) return false;
+  const got = m[1].trim();
+  if (got.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
 interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; }
 interface ExplicitGraphEdge { id: string; source: string; target: string; type: 'explicit'; why: string; relation_type: string; }
 interface SimilarGraphEdge { id: string; source: string; target: string; type: 'similar'; score: number; }
@@ -167,8 +187,10 @@ async function getPayload(env: Env): Promise<GraphPayload> {
 }
 
 export async function handleGraphData(req: Request, env: Env): Promise<Response> {
-  const session = await requireSession(req, env);
-  if (!session.ok) return session.response;
+  if (!authorizeGraphExport(req, env)) {
+    const session = await requireSession(req, env);
+    if (!session.ok) return session.response;
+  }
   const payload = await getPayload(env);
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
 }
@@ -247,8 +269,10 @@ export interface NoteMetaRow {
 // A.32 — POST /app/graph/link: cria edge explícita justificada (Latticework).
 // Aceita { source, target, why } e invalida cache.
 export async function handleGraphLink(req: Request, env: Env): Promise<Response> {
-  const session = await requireSession(req, env);
-  if (!session.ok) return session.response;
+  if (!authorizeGraphExport(req, env)) {
+    const session = await requireSession(req, env);
+    if (!session.ok) return session.response;
+  }
   let body: { source?: string; target?: string; why?: string };
   try { body = await req.json(); } catch {
     return new Response(JSON.stringify({ error: 'invalid json' }), { status: 400, headers: { 'content-type': 'application/json' } });
@@ -278,8 +302,10 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
 }
 
 export async function handleGraphMeta(req: Request, env: Env): Promise<Response> {
-  const session = await requireSession(req, env);
-  if (!session.ok) return session.response;
+  if (!authorizeGraphExport(req, env)) {
+    const session = await requireSession(req, env);
+    if (!session.ok) return session.response;
+  }
 
   const rows = await env.DB.prepare(
     `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains
