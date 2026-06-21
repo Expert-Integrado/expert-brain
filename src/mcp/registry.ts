@@ -9,6 +9,9 @@ import { registerUpdateNote } from './tools/update-note.js';
 import { registerDeleteNote } from './tools/delete-note.js';
 import { registerRestoreNote } from './tools/restore-note.js';
 import { registerStats } from './tools/stats.js';
+import { registerSaveTask } from './tools/save-task.js';
+import { registerListTasksDueToday } from './tools/list-tasks-due-today.js';
+import { registerCompleteTask } from './tools/complete-task.js';
 
 export function registerAllTools(server: any, env: Env): void {
   registerSaveNote(server, env);
@@ -21,4 +24,8 @@ export function registerAllTools(server: any, env: Env): void {
   registerLink(server, env);
   registerStats(server, env);
   registerReembed(server, env);
+  // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
+  registerSaveTask(server, env);
+  registerListTasksDueToday(server, env);
+  registerCompleteTask(server, env);
 }

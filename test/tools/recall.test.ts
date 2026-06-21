@@ -15,7 +15,7 @@ async function seed() {
   ];
   for (const [id,t,tl,dom] of rows) {
     await E.DB.prepare(
-      `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0,null)`
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,null,0,0,null)`
     ).bind(id,t,'body',tl,dom).run();
   }
 }
@@ -77,7 +77,7 @@ describe('recall', () => {
   it('domains_filter matches any domain on the note, not just primary', async () => {
     // Seed one extra note where evolutionary-biology is the SECONDARY domain.
     await E.DB.prepare(
-      `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0,null)`
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,null,0,0,null)`
     ).bind('f', 'Secondary evo', 'b', 'selection as feedback', '["systems-thinking","cognitive-science"]').run();
     // Mock vector match to surface the new note.
     E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'f', score: 0.95 }] }));
@@ -98,7 +98,7 @@ describe('recall', () => {
     // query. Mock vector + FTS to return ZERO matches for this note — it only
     // enters the pool via the domain filter retrieval.
     await E.DB.prepare(
-      `INSERT INTO notes VALUES (?,?,?,?,?,null,0,0,null)`
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,null,0,0,null)`
     ).bind('g', 'Cambrian explosion', 'b', 'rapid diversification of body plans', '["cognitive-science"]').run();
     E.VECTORIZE.query = vi.fn(async () => ({ matches: [] })); // no semantic match
 

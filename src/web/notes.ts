@@ -51,7 +51,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const rows = await env.DB.prepare(
-    `SELECT id, title, domains, kind, tldr, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY updated_at DESC`
+    `SELECT id, title, domains, kind, tldr, updated_at FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task') ORDER BY updated_at DESC`
   ).all<NoteListItem>();
   const notes = rows.results ?? [];
 

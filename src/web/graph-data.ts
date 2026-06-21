@@ -52,7 +52,7 @@ async function computeSourceHash(env: Env): Promise<string> {
   // Então combinamos COUNT + SUM(score): o SUM muda quando os pares/scores mudam, mesmo
   // com cardinalidade igual — sem isso o getPayload (que agora cacheia sempre) serviria
   // uma teia stale pra sempre após um reembed em lote (uso pós-migração de modelo).
-  const n = await env.DB.prepare(`SELECT COALESCE(MAX(updated_at), 0) m, COUNT(*) c FROM notes WHERE deleted_at IS NULL`).first<{ m: number; c: number }>();
+  const n = await env.DB.prepare(`SELECT COALESCE(MAX(updated_at), 0) m, COUNT(*) c FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).first<{ m: number; c: number }>();
   const e = await env.DB.prepare(`SELECT COALESCE(MAX(created_at), 0) m, COUNT(*) c FROM edges`).first<{ m: number; c: number }>();
   const s = await env.DB.prepare(`SELECT COUNT(*) c, COALESCE(SUM(score), 0) sum FROM similar_edges`).first<{ c: number; sum: number }>();
   return `n${n?.m ?? 0}x${n?.c ?? 0}_e${e?.m ?? 0}x${e?.c ?? 0}_s${s?.c ?? 0}c${(s?.sum ?? 0).toFixed(4)}`;
@@ -77,7 +77,8 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   // Paraleliza as 2 queries independentes — D1 trata bem requests concorrentes
   // do mesmo Worker e cada uma roda em sua própria conexão.
   const [notesRes, edgesRes] = await Promise.all([
-    env.DB.prepare(`SELECT id, title, domains FROM notes WHERE deleted_at IS NULL`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
+    // Tasks (kind='task') ficam fora do grafo de conhecimento — são to-dos, não ideias.
+    env.DB.prepare(`SELECT id, title, domains FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
     env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>(),
   ]);
   const notes = notesRes.results ?? [];
@@ -309,7 +310,7 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
 
   const rows = await env.DB.prepare(
     `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains
-     FROM notes WHERE deleted_at IS NULL`
+     FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`
   ).all<{ id: string; title: string; tldr: string; kind: string; domains: string }>();
   const results = rows.results ?? [];
 

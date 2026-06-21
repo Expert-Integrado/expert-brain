@@ -21,6 +21,9 @@ export default defineWorkersConfig({
         isolatedStorage: false,
       },
     },
-    exclude: ['**/node_modules/**', '**/test/auth.test.ts'],
+    // .claude/worktrees são checkouts isolados de sessões agênticas — têm seus
+    // próprios *.test.ts com schemas possivelmente divergentes. Sem excluí-los, o
+    // vitest da árvore principal globa e roda essas cópias, poluindo o resultado.
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/test/auth.test.ts'],
   },
 });

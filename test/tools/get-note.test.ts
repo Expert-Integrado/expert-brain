@@ -11,7 +11,7 @@ describe('get_note', () => {
     await E.DB.exec('DELETE FROM edges');
     await E.DB.exec('DELETE FROM tags');
     await E.DB.exec('DELETE FROM notes');
-    await E.DB.prepare(`INSERT INTO notes VALUES ('a','Title','full body','tl','["x"]','idea',1,1,null)`).run();
+    await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('a','Title','full body','tl','["x"]','idea',1,1,null)`).run();
     await E.DB.prepare(`INSERT INTO tags (note_id,tag) VALUES ('a','t1'),('a','t2')`).run();
   });
 

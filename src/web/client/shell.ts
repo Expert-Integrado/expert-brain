@@ -20,6 +20,7 @@ interface Command {
 const COMMANDS: Command[] = [
   { id: 'go-graph',  label: 'Ir pro Grafo',         hint: 'Ctrl+G', action: () => (window.location.href = '/app/graph') },
   { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
+  { id: 'go-tasks',  label: 'Ir pras Tarefas',      hint: 'Ctrl+T', action: () => (window.location.href = '/app/tasks') },
   { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
   { id: 'toggle-sidebar', label: 'Recolher/expandir menu', hint: 'Ctrl+B', action: () => toggleSidebar() },
   { id: 'logout',    label: 'Sair',                 action: () => submitLogout() },
@@ -302,6 +303,7 @@ function onKey(e: KeyboardEvent) {
   if (isTypingInInput()) return;
   if (meta && e.key.toLowerCase() === 'g') { e.preventDefault(); window.location.href = '/app/graph'; }
   else if (meta && e.key.toLowerCase() === 'n') { e.preventDefault(); window.location.href = '/app/notes'; }
+  else if (meta && e.key.toLowerCase() === 't') { e.preventDefault(); window.location.href = '/app/tasks'; }
   else if (meta && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleSidebar(); }
   else if (meta && e.key === ',') { e.preventDefault(); window.location.href = '/app/config'; }
 }

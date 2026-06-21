@@ -7,6 +7,7 @@ import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost } from './tasks.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -27,6 +28,13 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);
+
+  // Tasks (Kanban + API). /app/tasks/data + status + complete aceitam Bearer
+  // (VPS/cron) OU sessão; a página /app/tasks exige sessão de browser.
+  if (path === '/app/tasks' && req.method === 'GET') return handleTasksPage(req, env);
+  if (path === '/app/tasks/data' && req.method === 'GET') return handleTasksData(req, env);
+  if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
+  if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
@@ -59,6 +67,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   }
   if (path === '/app/shell/bundle.js' && req.method === 'GET') {
     return serveBundle('/shell.bundle.js');
+  }
+  if (path === '/app/tasks/bundle.js' && req.method === 'GET') {
+    return serveBundle('/tasks.bundle.js');
   }
 
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);

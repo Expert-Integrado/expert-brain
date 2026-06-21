@@ -54,7 +54,7 @@ describe('save_note', () => {
     const { server, registered } = makeServer();
     registerSaveNote(server, E);
     await E.DB.prepare(
-      `INSERT INTO notes VALUES ('target','t','b','tl','["seed-domain"]',null,0,0,null)`
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('target','t','b','tl','["seed-domain"]',null,0,0,null)`
     ).run();
     const r = await registered.save_note({
       title: 'X',

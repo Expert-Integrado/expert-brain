@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { EDGE_TYPES, NOTE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
+import { EDGE_TYPES, KNOWLEDGE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 import { refreshSimilarEdges } from '../../web/similarity.js';
@@ -18,7 +18,7 @@ const inputSchema = {
   body: z.string().min(1).describe('Body in markdown'),
   tldr: z.string().min(10).max(280).describe('One sentence. Feynman test.'),
   domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
-  kind: z.enum(NOTE_KINDS).describe(
+  kind: z.enum(KNOWLEDGE_KINDS).describe(
     'concept | decision | insight | fact | pattern | principle | question'
   ),
   tags: z.array(z.string()).optional(),

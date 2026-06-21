@@ -6,11 +6,29 @@ export const EDGE_TYPES = [
 ] as const;
 export type EdgeType = typeof EDGE_TYPES[number];
 
-export const NOTE_KINDS = [
+// Os 7 kinds de CONHECIMENTO. save_note só aceita estes — task tem caminho próprio
+// (save_task), pra não arrastar o fluxo de recall/edges/Feynman pra cima de um to-do.
+export const KNOWLEDGE_KINDS = [
   'concept','decision','insight','fact',
   'pattern','principle','question',
 ] as const;
+export type KnowledgeKind = typeof KNOWLEDGE_KINDS[number];
+
+// Todos os kinds da tabela notes. 'task' é to-do operacional migrado do ClickUp:
+// mora na MESMA tabela (kind='task' + colunas status/due_at/priority/completed_at),
+// mas é EXCLUÍDO do grafo, do recall (não embeda) e da lista de notas. Acesso via
+// /app/tasks (Kanban) e as tools save_task/list_tasks_due_today/complete_task.
+// Ver migration 0006_task_fields.
+export const NOTE_KINDS = [...KNOWLEDGE_KINDS, 'task'] as const;
 export type NoteKind = typeof NOTE_KINDS[number];
+
+export const TASK_STATUSES = ['open','in_progress','done','canceled'] as const;
+export type TaskStatus = typeof TASK_STATUSES[number];
+
+// Filtro reutilizado por todos os read paths de CONHECIMENTO (grafo, lista de
+// notas, stats, FTS, meta) pra esconder os to-dos. `kind IS NULL` cobre notas
+// legadas sem kind; `kind <> 'task'` esconde os tasks.
+export const NON_TASK_FILTER = `(kind IS NULL OR kind <> 'task')`;
 
 export interface NoteRow {
   id: string; title: string; body: string; tldr: string;
@@ -177,8 +195,108 @@ export async function ftsSearch(
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
      WHERE notes_fts MATCH ? AND n.deleted_at IS NULL
+       AND (n.kind IS NULL OR n.kind <> 'task')
      ORDER BY rank
      LIMIT ?`
   ).bind(safe, limit).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>();
   return r.results ?? [];
+}
+
+// ───────────────────────────── TASKS ─────────────────────────────
+// Tasks são notas (kind='task') com 4 colunas extras. Estas funções leem/escrevem
+// SÓ tasks e nunca tocam Vectorize — o to-do não vira vetor (mantém o recall limpo).
+
+export interface TaskRow {
+  id: string; title: string; body: string; tldr: string; domains: string;
+  kind: string | null;
+  status: string | null; due_at: number | null;
+  priority: number | null; completed_at: number | null;
+  created_at: number; updated_at: number;
+}
+
+export interface InsertTaskInput {
+  id: string; title: string; body: string; tldr: string; domains: string;
+  status: TaskStatus; due_at: number | null; priority: number | null;
+  created_at: number; updated_at: number;
+}
+
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, created_at, updated_at`;
+
+// Insere uma task. NÃO embeda — diferente de insertNote, que é seguido por
+// upsertNoteVector no save_note. Aqui não há vetor de propósito.
+export async function insertTask(env: Env, t: InsertTaskInput): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.created_at, t.updated_at).run();
+}
+
+export async function getTaskById(env: Env, id: string): Promise<TaskRow | null> {
+  return env.DB.prepare(
+    `SELECT ${TASK_COLS} FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(id).first<TaskRow>();
+}
+
+// Tasks ativas (open + in_progress), ordenadas por vencimento (sem due primeiro? não:
+// NULLs por último), depois prioridade (1 = mais alta). Usado pela coluna esquerda do
+// Kanban e como base das outras visões.
+export async function listActiveTasks(env: Env): Promise<TaskRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT ${TASK_COLS} FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('open','in_progress')
+     ORDER BY (due_at IS NULL) ASC, due_at ASC, COALESCE(priority, 9) ASC, created_at ASC`
+  ).all<TaskRow>();
+  return r.results ?? [];
+}
+
+// Tasks finalizadas (done/canceled) mais recentes — limitadas pra a coluna direita
+// do Kanban não crescer pra sempre conforme o histórico acumula.
+export async function listRecentClosedTasks(env: Env, limit = 100): Promise<TaskRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT ${TASK_COLS} FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('done','canceled')
+     ORDER BY COALESCE(completed_at, updated_at) DESC
+     LIMIT ?`
+  ).bind(limit).all<TaskRow>();
+  return r.results ?? [];
+}
+
+// Tasks que vencem até `beforeMs` (inclui as já vencidas, pois due_at < now < beforeMs).
+// Só conta tasks com due_at definido e ainda abertas. Ordenadas por vencimento +
+// prioridade. Base do list_tasks_due_today e do lembrete da VPS.
+export async function listTasksDueBefore(env: Env, beforeMs: number): Promise<TaskRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT ${TASK_COLS} FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL
+       AND status IN ('open','in_progress')
+       AND due_at IS NOT NULL AND due_at <= ?
+     ORDER BY due_at ASC, COALESCE(priority, 9) ASC`
+  ).bind(beforeMs).all<TaskRow>();
+  return r.results ?? [];
+}
+
+// Muda o status de uma task. Ao marcar done/canceled grava completed_at=now; ao
+// reabrir (open/in_progress) limpa completed_at. Retorna false se o id não é uma task.
+export async function setTaskStatus(env: Env, id: string, status: TaskStatus, now: number): Promise<boolean> {
+  const closing = status === 'done' || status === 'canceled';
+  const res = await env.DB.prepare(
+    `UPDATE notes SET status = ?, completed_at = ${closing ? '?' : 'NULL'}, updated_at = ?
+     WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(...(closing ? [status, now, now, id] : [status, now, id])).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Conclui uma task (status=done, completed_at=now). Se `outcome` vier, faz append
+// no corpo como "**Resultado:** ...". Retorna a task atualizada ou null.
+export async function completeTask(env: Env, id: string, now: number, outcome?: string): Promise<TaskRow | null> {
+  const task = await getTaskById(env, id);
+  if (!task) return null;
+  const body = outcome && outcome.trim()
+    ? `${task.body}\n\n**Resultado:** ${outcome.trim()}`
+    : task.body;
+  await env.DB.prepare(
+    `UPDATE notes SET status = 'done', completed_at = ?, updated_at = ?, body = ?
+     WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(now, now, body, id).run();
+  return { ...task, status: 'done', completed_at: now, updated_at: now, body };
 }

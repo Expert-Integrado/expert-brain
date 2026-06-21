@@ -46,19 +46,21 @@ export function registerStats(server: any, env: Env): void {
       const limit = input.top_domains_limit ?? 50;
 
       const [totalsRow, domainRows, kindRows] = await Promise.all([
+        // Tasks (kind='task') ficam fora do panorama do vault — stats é sobre
+        // CONHECIMENTO. Os to-dos têm seu próprio contador no /app/tasks.
         env.DB.prepare(
           `SELECT
-             (SELECT count(*) FROM notes WHERE deleted_at IS NULL) AS notes,
+             (SELECT count(*) FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS notes,
              (SELECT count(*) FROM edges e
               JOIN notes f ON f.id = e.from_id JOIN notes t ON t.id = e.to_id
               WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL) AS edges,
-             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r7,
-             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL) AS r30`
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS r7,
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS r30`
         ).bind(d7, d30).first<{ notes: number; edges: number; r7: number; r30: number }>(),
         env.DB.prepare(
           `SELECT je.value AS domain, count(*) AS count
            FROM notes, json_each(notes.domains) je
-           WHERE json_valid(notes.domains) AND notes.deleted_at IS NULL
+           WHERE json_valid(notes.domains) AND notes.deleted_at IS NULL AND (notes.kind IS NULL OR notes.kind <> 'task')
            GROUP BY je.value
            ORDER BY count DESC, domain ASC
            LIMIT ?`
@@ -70,7 +72,7 @@ export function registerStats(server: any, env: Env): void {
         env.DB.prepare(
           `SELECT kind, count(*) AS count
            FROM notes
-           WHERE deleted_at IS NULL
+           WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')
            GROUP BY kind
            ORDER BY (kind IS NULL) ASC, count DESC, kind ASC`
         ).all<KindRow>(),

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
-import { NOTE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
+import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 import { refreshSimilarEdges } from '../../web/similarity.js';
@@ -12,7 +12,7 @@ const inputSchema = {
   body: z.string().min(1).optional(),
   tldr: z.string().min(10).max(280).optional(),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
-  kind: z.enum(NOTE_KINDS).optional().describe(
+  kind: z.enum(KNOWLEDGE_KINDS).optional().describe(
     'concept | decision | insight | fact | pattern | principle | question'
   ),
   tags: z.array(z.string()).optional(),
@@ -86,6 +86,16 @@ export function registerUpdateNote(server: any, env: Env): void {
       if (!existing) {
         return toolError(
           `Note '${id}' not found in the vault. Call recall() or get_note() to confirm the id. Do NOT retry with this id.`
+        );
+      }
+
+      // Tasks (kind='task') NÃO se editam por aqui: update_note re-embeda em
+      // mudança de tldr/domains, e task de propósito não tem vetor. Use as tools
+      // de task (complete_task pra concluir; o Kanban /app/tasks pro resto).
+      if (existing.kind === 'task') {
+        return toolError(
+          `Note '${id}' is a task (kind='task'), not a knowledge note. Edit tasks via complete_task ` +
+          `(to finish) or the /app/tasks board — update_note is for knowledge notes only.`
         );
       }
 
