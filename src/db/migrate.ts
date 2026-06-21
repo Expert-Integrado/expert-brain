@@ -124,12 +124,29 @@ const MIGRATION_0005_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_similar_to   ON similar_edges(to_id)`,
 ];
 
+// 0006 — TASK FIELDS. Migração ClickUp → Brain native tasks. Uma task é uma nota
+// com kind='task' + 4 colunas nullable. ADD COLUMN é seguro (não recria a tabela,
+// que cascatearia edges/tags). As colunas ficam NULL pra TODAS as notas existentes
+// (que são de conhecimento) — o CHECK passa em NULL (NULL não viola CHECK em SQLite),
+// então a migração não toca nenhuma linha antiga. Índices PARCIAIS (WHERE kind='task')
+// não indexam as ~1000 notas de conhecimento — custo zero pra elas, query rápida pro
+// Kanban/lembretes. due_at e completed_at em unix ms (Date.now()), igual created_at.
+const MIGRATION_0006_STMTS: string[] = [
+  `ALTER TABLE notes ADD COLUMN status TEXT CHECK (status IS NULL OR status IN ('open','in_progress','done','canceled'))`,
+  `ALTER TABLE notes ADD COLUMN due_at INTEGER`,
+  `ALTER TABLE notes ADD COLUMN priority INTEGER CHECK (priority IS NULL OR (priority BETWEEN 1 AND 4))`,
+  `ALTER TABLE notes ADD COLUMN completed_at INTEGER`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_task_open ON notes (status, due_at) WHERE kind = 'task' AND status = 'open'`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_task_due ON notes (due_at) WHERE kind = 'task' AND status IN ('open','in_progress')`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
   { id: '0003_api_keys', stmts: MIGRATION_0003_STMTS },
   { id: '0004_soft_delete', stmts: MIGRATION_0004_STMTS },
   { id: '0005_similar_edges', stmts: MIGRATION_0005_STMTS },
+  { id: '0006_task_fields', stmts: MIGRATION_0006_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {
