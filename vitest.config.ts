@@ -11,6 +11,7 @@ export default defineWorkersConfig({
           compatibilityFlags: ['nodejs_compat'],
           d1Databases: ['DB'],
           kvNamespaces: ['OAUTH_KV', 'GRAPH_CACHE'],
+          r2Buckets: ['MEDIA'],
           bindings: {
             SESSION_SECRET: 'test-secret-0123456789abcdef0123456789abcdef',
             OWNER_EMAIL: 'robson@example.com',

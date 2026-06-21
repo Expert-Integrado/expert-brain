@@ -25,6 +25,13 @@ migrations_dir = "src/db/migrations"
 binding = "VECTORIZE"
 index_name = "expert-brain-embeddings"
 
+# Bucket R2 pra mídia das notas (imagens/vídeos/docs/áudio). Crie com
+# `wrangler r2 bucket create expert-brain-media`. Dedup por SHA-256 (key
+# sha256/<hash>.<ext>); servido por rota autenticada com signed token (não público).
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "expert-brain-media"
+
 [ai]
 binding = "AI"
 

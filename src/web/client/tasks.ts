@@ -193,3 +193,5 @@ function wireFilters() {
 
 wireFilters();
 load();
+
+export {};

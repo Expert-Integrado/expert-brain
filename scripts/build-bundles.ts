@@ -18,6 +18,7 @@ const bundles: Array<{ entry: string; out: string }> = [
   { entry: 'src/web/client/graph.ts', out: 'assets/graph.bundle.js' },
   { entry: 'src/web/client/notes.ts', out: 'assets/notes.bundle.js' },
   { entry: 'src/web/client/local-graph.ts', out: 'assets/local-graph.bundle.js' },
+  { entry: 'src/web/client/note-media.ts', out: 'assets/note-media.bundle.js' },
   { entry: 'src/web/client/shell.ts', out: 'assets/shell.bundle.js' },
   // Kanban de tarefas (/app/tasks): filtros + drag-drop + concluir
   { entry: 'src/web/client/tasks.ts', out: 'assets/tasks.bundle.js' },

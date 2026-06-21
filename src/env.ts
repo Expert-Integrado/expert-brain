@@ -8,6 +8,9 @@ export interface Env {
   SESSION_SECRET?: string;
   OAUTH_KV: KVNamespace;
   GRAPH_CACHE: KVNamespace;
+  // Bucket R2 pra mídia das notas. Opcional: se ausente, os endpoints de mídia
+  // respondem 503 (o resto do Brain funciona normal). Ver migration 0007_note_media.
+  MEDIA?: R2Bucket;
   MCP_OBJECT: DurableObjectNamespace;
   WORKER_URL?: string;
   // Bearer token que libera leitura/escrita das rotas /app/graph/* sem sessão de

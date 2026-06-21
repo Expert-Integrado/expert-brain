@@ -140,6 +140,29 @@ const MIGRATION_0006_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_notes_task_due ON notes (due_at) WHERE kind = 'task' AND status IN ('open','in_progress')`,
 ];
 
+// 0007 — NOTE MEDIA. Mídia (imagem/vídeo/documento/áudio) anexada a uma nota.
+// O blob vive no R2 (bucket expert-brain-media), key = sha256/<hash>.<ext>. A
+// tabela só guarda o ponteiro + metadados. content_hash habilita dedup: a MESMA
+// foto anexada em N notas vira N linhas note_media apontando pro MESMO r2_key (1
+// blob). ON DELETE CASCADE limpa as linhas quando a nota é HARD-deletada (o
+// soft-delete não cascateia — a mídia sobrevive pra restauração). created_at em
+// unix ms (gravado em código, igual notes.created_at).
+const MIGRATION_0007_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS note_media (
+    id                TEXT PRIMARY KEY,
+    note_id           TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL CHECK (kind IN ('image','video','document','audio')),
+    r2_key            TEXT NOT NULL,
+    content_hash      TEXT NOT NULL,
+    mime_type         TEXT NOT NULL,
+    size_bytes        INTEGER NOT NULL,
+    original_filename TEXT,
+    created_at        INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_note_media_note ON note_media(note_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_note_media_hash ON note_media(content_hash)`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -147,6 +170,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0004_soft_delete', stmts: MIGRATION_0004_STMTS },
   { id: '0005_similar_edges', stmts: MIGRATION_0005_STMTS },
   { id: '0006_task_fields', stmts: MIGRATION_0006_STMTS },
+  { id: '0007_note_media', stmts: MIGRATION_0007_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

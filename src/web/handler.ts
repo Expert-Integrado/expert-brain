@@ -8,6 +8,7 @@ import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './con
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost } from './tasks.js';
+import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -25,6 +26,16 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   const noteGraphMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/graph$/);
   if (noteGraphMatch && req.method === 'GET') return handleNoteGraph(req, env, noteGraphMatch[1]);
+
+  // Mídia de uma nota (imagens/vídeos/docs/áudio no R2). Auth Bearer OU sessão.
+  const noteMediaMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/media$/);
+  if (noteMediaMatch && req.method === 'POST') return handleMediaUpload(req, env, noteMediaMatch[1]);
+  if (noteMediaMatch && req.method === 'GET') return handleMediaList(req, env, noteMediaMatch[1]);
+
+  // Blob individual: GET serve (signed token OU sessão), DELETE remove.
+  const mediaMatch = path.match(/^\/app\/media\/([A-Za-z0-9_-]+)$/);
+  if (mediaMatch && req.method === 'GET') return handleMediaServe(req, env, mediaMatch[1]);
+  if (mediaMatch && req.method === 'DELETE') return handleMediaDelete(req, env, mediaMatch[1]);
 
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);
@@ -64,6 +75,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   }
   if (path === '/app/notes/local-graph.bundle.js' && req.method === 'GET') {
     return serveBundle('/local-graph.bundle.js');
+  }
+  if (path === '/app/notes/media.bundle.js' && req.method === 'GET') {
+    return serveBundle('/note-media.bundle.js');
   }
   if (path === '/app/shell/bundle.js' && req.method === 'GET') {
     return serveBundle('/shell.bundle.js');

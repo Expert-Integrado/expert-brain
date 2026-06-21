@@ -224,13 +224,61 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ` : ''}
 
     <div class="note-body">${renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })}</div>
+
+    <section class="note-media" data-note-id="${esc(note.id)}">
+      <h2>Mídia</h2>
+      <div id="media-grid" class="media-grid"></div>
+      <label id="media-dropzone" class="media-dropzone">
+        <input type="file" id="media-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.zip" hidden />
+        <span>Arraste arquivos aqui ou <u>clique pra escolher</u> · até 50MB</span>
+      </label>
+    </section>
+
     ${outboundHtml}
     ${inboundHtml}
 
     ${relatedIds.length > 0 ? `<script src="/app/notes/local-graph.bundle.js?v=${assetVersion('local-graph.bundle.js')}" defer></script>` : ''}
+    <script src="/app/notes/media.bundle.js?v=${assetVersion('note-media.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
-    renderShell({ title: note.title, active: 'notes', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    renderShell({ title: note.title, active: 'notes', email: session.email, body, extraHead: `<style>${NOTE_MEDIA_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
+
+// CSS da seção de mídia da nota (injetado via extraHead — CSP permite inline style).
+const NOTE_MEDIA_CSS = `
+.note-media { margin: 32px 0 8px; }
+.note-media h2 { font-size: 15px; margin-bottom: 12px; }
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.media-grid:empty { display: none; }
+.media-tile {
+  position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden;
+  border: 1px solid var(--border); background: var(--bg-accent); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: var(--text-dim);
+}
+.media-tile:hover { border-color: var(--border-strong); }
+.media-tile img, .media-tile video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-tile .media-doc { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; text-align: center; font-size: 11px; word-break: break-word; }
+.media-tile .media-doc svg { width: 28px; height: 28px; }
+.media-dropzone {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius); padding: 18px;
+  color: var(--text-dim); font-size: 13px; cursor: pointer; transition: all 160ms var(--ease);
+}
+.media-dropzone:hover, .media-dropzone.drag-over { color: var(--text); background: rgba(167,139,250,0.07); border-color: var(--accent-lav); }
+.media-dropzone.uploading { opacity: 0.6; pointer-events: none; }
+.media-modal {
+  position: fixed; inset: 0; background: rgba(7,10,19,0.88); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 24px; flex-direction: column; gap: 14px;
+}
+.media-modal[hidden] { display: none; }
+.media-modal img, .media-modal video { max-width: 90vw; max-height: 78vh; border-radius: var(--radius); }
+.media-modal .media-modal-bar { display: flex; gap: 12px; align-items: center; }
+.media-modal a, .media-modal button {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 7px 14px; font-size: 13px; cursor: pointer; text-decoration: none;
+}
+.media-modal .media-del { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+.media-modal .media-del:hover { background: rgba(239,68,68,0.14); }
+`;
