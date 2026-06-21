@@ -14,6 +14,10 @@ export interface Env {
   // browser. Usado pelo Expert Console (adapter do vault brain) pra consumir o
   // grafo via HTTP. Aditivo: se ausente, só a sessão de cookie autoriza.
   GRAPH_EXPORT_TOKEN?: string;
+  // Bearer token escopado pro lembrete de tasks (cron na VPS) ler /app/tasks/data.
+  // Separado do GRAPH_EXPORT_TOKEN de propósito: o cron tem sua própria credencial,
+  // então rotacionar/revogar uma não afeta a outra (Expert Console x lembrete).
+  TASK_REMINDER_TOKEN?: string;
 }
 
 export interface AuthContext extends Record<string, unknown> {
