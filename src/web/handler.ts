@@ -9,6 +9,7 @@ import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api
 import { handleNoteSearch } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
+import { handleContactsSso } from './contacts-sso.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -46,6 +47,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/data' && req.method === 'GET') return handleTasksData(req, env);
   if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
   if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
+
+  // SSO pro Expert Console (Contatos): usa a sessão do Brain pra logar no Console.
+  if (path === '/app/contacts-sso' && req.method === 'GET') return handleContactsSso(req, env);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
