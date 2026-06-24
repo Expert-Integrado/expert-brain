@@ -59,11 +59,16 @@ async function main() {
   wireOverlayToggle();
   wirePanelToggle();
 
+  // Fonte de dados parametrizável: o /app/graph usa /app/graph/{data,meta} (Brain);
+  // o /app/contacts (mesmo renderer embutido no shell do Brain) usa /app/contacts/*,
+  // que proxia o vault de contatos. Lido do data-graph-src no #graph-canvas.
+  const graphSrc = (document.getElementById('graph-canvas') as HTMLElement | null)?.dataset.graphSrc || '/app/graph';
+
   // Parallel load: graph topology + note metadata. Meta endpoint is additive —
   // if it fails we degrade to id-only panel content rather than aborting.
   const [graphRes, metaRes] = await Promise.all([
-    fetch('/app/graph/data', { credentials: 'same-origin' }),
-    fetch('/app/graph/meta', { credentials: 'same-origin' }),
+    fetch(`${graphSrc}/data`, { credentials: 'same-origin' }),
+    fetch(`${graphSrc}/meta`, { credentials: 'same-origin' }),
   ]);
   if (!graphRes.ok) {
     setStatus('Falha ao carregar grafo');

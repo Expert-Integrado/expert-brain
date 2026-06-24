@@ -1,7 +1,8 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail } from './notes.js';
-import { handleGraphPage } from './graph.js';
+import { handleGraphPage, handleContactsPage } from './graph.js';
+import { handleContactsData, handleContactsMeta } from './contacts-data.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
@@ -48,7 +49,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
   if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
 
-  // SSO pro Expert Console (Contatos): usa a sessão do Brain pra logar no Console.
+  // Contatos embutido NO Brain: mesma sidebar/URL, painel direito = grafo de contatos
+  // (dados puxados do Worker do Contacts via binding). /app/contacts-sso fica como
+  // fallback legado (não é mais usado pelo nav).
+  if (path === '/app/contacts' && req.method === 'GET') return handleContactsPage(req, env);
+  if (path === '/app/contacts/data' && req.method === 'GET') return handleContactsData(req, env);
+  if (path === '/app/contacts/meta' && req.method === 'GET') return handleContactsMeta(req, env);
   if (path === '/app/contacts-sso' && req.method === 'GET') return handleContactsSso(req, env);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);

@@ -25,6 +25,10 @@ export interface Env {
   // /app/contacts-sso assina um handoff curto que o /app/sso do Console valida.
   // MESMO valor nos dois Workers. Ausente → o link cai no Console com login normal.
   SSO_SECRET?: string;
+  // Service binding + Bearer pro Worker do Expert Contacts: /app/contacts (no Brain)
+  // embute o grafo de contatos puxando /app/graph/{data,meta}?vault=contacts por trás.
+  CONTACTS?: Fetcher;
+  CONTACTS_PROXY_TOKEN?: string;
 }
 
 export interface AuthContext extends Record<string, unknown> {

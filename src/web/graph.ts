@@ -5,7 +5,23 @@ import { assetVersion } from './asset-version.js';
 import { getGraphPrefs } from './graph-prefs.js';
 import { esc } from '../util/html.js';
 
+// O mesmo renderizador de grafo serve o vault do Brain (/app/graph) e o de Contatos
+// embutido (/app/contacts) — muda só a FONTE de dados (graphSrc), que o bundle lê do
+// data-attribute data-graph-src no #graph-canvas. Eric quer o Contatos DENTRO do
+// Brain (mesma sidebar/URL, só o painel direito troca), não pulando pro Console.
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
+  return renderGraphLikePage(req, env, { active: 'graph', graphSrc: '/app/graph', title: 'Graph' });
+}
+
+export async function handleContactsPage(req: Request, env: Env): Promise<Response> {
+  return renderGraphLikePage(req, env, { active: 'contacts', graphSrc: '/app/contacts', title: 'Contatos' });
+}
+
+async function renderGraphLikePage(
+  req: Request,
+  env: Env,
+  opts: { active: 'graph' | 'contacts'; graphSrc: string; title: string },
+): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
@@ -533,7 +549,7 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
         </button>
       </div>
 
-      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}"></div>
+      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}" data-graph-src="${opts.graphSrc}"></div>
 
       <!-- A.31 — Cmd+K command palette -->
       <div id="graph-palette-backdrop" class="graph-palette-backdrop" role="dialog" aria-label="Buscar nota">
@@ -582,6 +598,6 @@ export async function handleGraphPage(req: Request, env: Env): Promise<Response>
   const extraHead = `<link rel="preload" href="/app/graph/bundle.js?v=${assetVersion('graph.bundle.js')}" as="script">`;
 
   return htmlResponse(
-    renderShell({ title: 'Graph', active: 'graph', email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    renderShell({ title: opts.title, active: opts.active, email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
