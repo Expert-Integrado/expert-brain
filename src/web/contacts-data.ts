@@ -20,6 +20,11 @@ async function proxyToContacts(req: Request, env: Env, consolePath: string): Pro
   const out = new URL(`https://contacts${consolePath}`);
   inUrl.searchParams.forEach((v, k) => { if (k !== 'vault') out.searchParams.set(k, v); });
   out.searchParams.set('vault', 'contacts');
+  // all=1: traz TODOS os contatos (inclui os ~6,5k isolados), não só os conectados.
+  // O modo "all" do adapter pula a similaridade, então é leve mesmo com milhares.
+  if (consolePath.endsWith('/data') && !inUrl.searchParams.has('focus') && !inUrl.searchParams.get('q')) {
+    out.searchParams.set('all', '1');
+  }
 
   const res = await env.CONTACTS.fetch(new Request(out.toString(), {
     method: 'GET',
