@@ -15,6 +15,7 @@ import { registerCompleteTask } from './tools/complete-task.js';
 import { registerAttachMedia } from './tools/attach-media.js';
 import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
+import { registerContactsTools } from './tools/contacts.js';
 
 export function registerAllTools(server: any, env: Env): void {
   registerSaveNote(server, env);
@@ -35,4 +36,6 @@ export function registerAllTools(server: any, env: Env): void {
   registerAttachMedia(server, env);
   registerGetNoteMedia(server, env);
   registerDeleteNoteMedia(server, env);
+  // Contatos (leitura) — mesmo MCP do Brain lê o vault de Contacts via service binding.
+  registerContactsTools(server, env);
 }
