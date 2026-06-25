@@ -25,6 +25,12 @@ async function renderGraphLikePage(
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
+  // Contatos reusa o mesmo renderer, mas o painel é de NOTA — adapta o que não faz
+  // sentido pra contato: o substantivo e a seção de similaridade (contatos não têm
+  // arestas semânticas, é sempre 0). Forças/visual/isoladas valem pros dois.
+  const isContacts = opts.active === 'contacts';
+  const noun = isContacts ? 'contatos' : 'notas';
+
   // Config salva do dono (forças, cores, anti-sobreposição). Injetada como
   // data-attribute no #graph-canvas (CSP é script-src 'self', sem inline script);
   // o cliente lê e aplica antes de inicializar a simulação. '' = usa os defaults.
@@ -406,10 +412,10 @@ async function renderGraphLikePage(
             type="search"
             id="graph-search-input"
             class="graph-search-input"
-            placeholder="Buscar notas (/ pra focar, Enter pra abrir)"
+            placeholder="Buscar ${noun} (/ pra focar, Enter pra abrir)"
             autocomplete="off"
             spellcheck="false"
-            aria-label="Buscar notas"
+            aria-label="Buscar ${noun}"
           />
           <button
             id="graph-panel-toggle"
@@ -432,18 +438,18 @@ async function renderGraphLikePage(
           <button data-graph-action="clear-filters" type="button">Limpar</button>
         </div>
 
-        <div class="graph-overlay-row graph-filter-header">Áreas</div>
-        <div id="graph-legend" class="graph-chips" role="group" aria-label="Filtrar por área"></div>
+        <div class="graph-overlay-row graph-filter-header">${isContacts ? 'Tipo' : 'Áreas'}</div>
+        <div id="graph-legend" class="graph-chips" role="group" aria-label="Filtrar"></div>
 
-        <div class="graph-overlay-row graph-filter-header">Tipos</div>
-        <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filtrar por tipo"></div>
+        <div class="graph-overlay-row graph-filter-header"${isContacts ? ' style="display:none"' : ''}>Tipos</div>
+        <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filtrar por tipo"${isContacts ? ' style="display:none"' : ''}></div>
 
         <label class="graph-check-label graph-orphans-toggle">
           <input type="checkbox" id="hide-orphans" />
           <span>Esconder isoladas</span>
         </label>
 
-        <details class="graph-section" open>
+        <details class="graph-section" open${isContacts ? ' style="display:none"' : ''}>
           <summary class="graph-section-summary">Notas parecidas<i class="graph-info-icon" title="Linhas semânticas conectam notas com conteúdo parecido (mesmo sem ligação explícita). Ajuste a intensidade, esconda, ou mostre conexões sugeridas pra criar links.">i</i></summary>
           <label class="graph-slider-label">
             <span>Intensidade</span>
@@ -549,7 +555,7 @@ async function renderGraphLikePage(
         </button>
       </div>
 
-      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}" data-graph-src="${opts.graphSrc}"></div>
+      <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}" data-graph-src="${opts.graphSrc}" data-vault="${isContacts ? 'contacts' : 'notes'}"></div>
 
       <!-- A.31 — Cmd+K command palette -->
       <div id="graph-palette-backdrop" class="graph-palette-backdrop" role="dialog" aria-label="Buscar nota">

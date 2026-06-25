@@ -142,7 +142,12 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // Status + legend
   // ────────────────────────────────────────────────────────────────────────
-  setStatus(`${payload.nodes.length} notas · ${explicitCount} ligações explícitas · ${similarCount} semânticas`);
+  const isContacts = (document.getElementById('graph-canvas') as HTMLElement | null)?.dataset.vault === 'contacts';
+  const noun = isContacts ? 'contatos' : 'notas';
+  // Contatos não têm arestas semânticas (são puladas) — não mostra "X semânticas".
+  setStatus(isContacts
+    ? `${payload.nodes.length} ${noun} · ${explicitCount} ligações`
+    : `${payload.nodes.length} ${noun} · ${explicitCount} ligações explícitas · ${similarCount} semânticas`);
 
   renderLegend(payload.nodes);
 
