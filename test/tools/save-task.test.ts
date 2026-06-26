@@ -45,6 +45,13 @@ describe('save_task', () => {
     expect(row.body).toBe('Boleto vence sexta');
   });
 
+  it('persists tags into the tags table', async () => {
+    const res = await reg().save_task({ title: 'Falar com PSP', tags: ['PSP', 'advogados'] });
+    const p = JSON.parse(res.content[0].text);
+    const rows = await E.DB.prepare(`SELECT tag FROM tags WHERE note_id = ? ORDER BY tag`).bind(p.id).all();
+    expect(rows.results.map((r: any) => r.tag)).toEqual(['PSP', 'advogados']);
+  });
+
   it('rejects an invalid due string', async () => {
     const res = await reg().save_task({ title: 'X', due: 'amanhã às tantas' });
     expect(res.isError).toBe(true);

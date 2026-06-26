@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, insertTask } from '../../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, insertTask, insertTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 
@@ -91,6 +91,8 @@ export function registerSaveTask(server: any, env: Env): void {
         created_at: now,
         updated_at: now,
       });
+
+      if (input.tags && input.tags.length > 0) await insertTags(env, id, input.tags);
 
       return toolSuccess({
         id,
