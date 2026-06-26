@@ -23,19 +23,21 @@ export function registerContactsTools(server: any, env: Env): void {
   server.registerTool(
     'list_contacts',
     {
-      description: `Lists contacts from the Contacts vault (people and companies). Optional filters: kind ('person' | 'company'), has_phone, limit (default 100). Returns id, name, phone, email, role, company, sector. Read-only. Use search_contacts for a semantic/name lookup; get_contact for one contact's detail + connections.`,
+      description: `Lists contacts from the Contacts vault (people and companies). Optional filters: kind ('person' | 'company'), has_phone, limit (default 100, max 1000), offset (pagination). Returns id, name, phone, email, role, company, sector. Read-only. To EXPORT all contacts, page with limit+offset (e.g. limit 1000, offset 0, 1000, 2000...). Use search_contacts for a semantic/name lookup; get_contact_by_phone for an EXACT phone match; get_contact for one contact's detail + connections.`,
       inputSchema: {
         kind: z.enum(['person', 'company']).optional(),
         has_phone: z.boolean().optional().describe('Only contacts that have a phone.'),
-        limit: z.number().int().min(1).max(1000).optional().describe('Default 100.'),
+        limit: z.number().int().min(1).max(1000).optional().describe('Default 100, max 1000.'),
+        offset: z.number().int().min(0).optional().describe('Pagination offset (default 0). Page with limit+offset to export everything.'),
       },
       annotations: { title: 'List contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
-    safeToolHandler(async (input: { kind?: string; has_phone?: boolean; limit?: number }) => {
+    safeToolHandler(async (input: { kind?: string; has_phone?: boolean; limit?: number; offset?: number }) => {
       const qs = new URLSearchParams();
       if (input.kind) qs.set('kind', input.kind);
       if (input.has_phone) qs.set('has_phone', 'true');
       qs.set('limit', String(input.limit ?? 100));
+      if (typeof input.offset === 'number') qs.set('offset', String(input.offset));
       const r = await callContacts(env, `/list_entities?${qs.toString()}`);
       if (!r.ok) return toolError(`Contacts read failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
       return toolSuccess({ count: r.data.count, contacts: r.data.results });
@@ -72,6 +74,21 @@ export function registerContactsTools(server: any, env: Env): void {
     safeToolHandler(async (input: { id: string }) => {
       const r = await callContacts(env, `/entity/${encodeURIComponent(input.id)}`);
       if (!r.ok) return toolError(`Contact '${input.id}' not found (HTTP ${r.status}).`);
+      return toolSuccess(r.data);
+    }) as any
+  );
+
+  // ── get_contact_by_phone ─────────────────────────────────────────
+  server.registerTool(
+    'get_contact_by_phone',
+    {
+      description: `Deterministic EXACT lookup of a contact by phone (handles the BR mobile 9th digit). Unlike search_contacts (semantic/approximate), this returns the EXACT phone match — use it to cross-reference or dedupe by phone. Accepts +, spaces and dashes. Returns { match, results, variants }.`,
+      inputSchema: { phone: z.string().min(8).describe('Phone E.164 without + (e.g. 5511996647492).') },
+      annotations: { title: 'Get contact by phone', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    safeToolHandler(async (input: { phone: string }) => {
+      const r = await callContacts(env, `/get_contact_by_phone?phone=${encodeURIComponent(input.phone)}`);
+      if (!r.ok) return toolError(`Phone lookup failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
       return toolSuccess(r.data);
     }) as any
   );

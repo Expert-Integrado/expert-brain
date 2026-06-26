@@ -10,3 +10,6 @@ assets/using-expert-brain.zip
 .claude/
 .superpowers/
 outputs/
+
+# Artefatos locais do Playwright MCP
+.playwright-mcp/
