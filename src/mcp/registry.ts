@@ -12,6 +12,7 @@ import { registerStats } from './tools/stats.js';
 import { registerSaveTask } from './tools/save-task.js';
 import { registerListTasksDueToday } from './tools/list-tasks-due-today.js';
 import { registerCompleteTask } from './tools/complete-task.js';
+import { registerUpdateTask } from './tools/update-task.js';
 import { registerAttachMedia } from './tools/attach-media.js';
 import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
@@ -32,6 +33,7 @@ export function registerAllTools(server: any, env: Env): void {
   registerSaveTask(server, env);
   registerListTasksDueToday(server, env);
   registerCompleteTask(server, env);
+  registerUpdateTask(server, env);
   // Mídia das notas (R2 + dedup SHA-256).
   registerAttachMedia(server, env);
   registerGetNoteMedia(server, env);

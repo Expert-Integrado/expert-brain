@@ -2,7 +2,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import {
-  insertTask, listActiveTasks, listRecentClosedTasks, setTaskStatus, ftsSearch,
+  insertTask, listActiveTasks, listRecentClosedTasks, setTaskStatus, updateTask, ftsSearch,
 } from '../src/db/queries.js';
 import { registerStats } from '../src/mcp/tools/stats.js';
 
@@ -45,6 +45,50 @@ describe('task queries', () => {
   it('setTaskStatus returns false for a non-task id', async () => {
     await knowledgeNote('k', 'concept');
     expect(await setTaskStatus(E, 'k', 'done', Date.now())).toBe(false);
+  });
+
+  it('updateTask patches only the passed fields and leaves the rest', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 'old', body: 'old body', tldr: 'old', domains: '["operations"]', status: 'open', due_at: now + 1000, priority: 3, created_at: now, updated_at: now });
+    const updated = await updateTask(E, 'u', { priority: 1 }, now + 5);
+    expect(updated).not.toBeNull();
+    expect(updated!.priority).toBe(1);
+    expect(updated!.title).toBe('old');        // untouched
+    expect(updated!.body).toBe('old body');    // untouched
+    expect(updated!.due_at).toBe(now + 1000);  // untouched
+    expect(updated!.updated_at).toBe(now + 5);
+  });
+
+  it('updateTask title also refreshes tldr', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 'old', body: 'b', tldr: 'old', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    const updated = await updateTask(E, 'u', { title: 'new title' }, now + 1);
+    expect(updated!.title).toBe('new title');
+    expect(updated!.tldr).toBe('new title');
+  });
+
+  it('updateTask can clear due_at with explicit null', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 't', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: now + 1000, priority: null, created_at: now, updated_at: now });
+    const updated = await updateTask(E, 'u', { due_at: null }, now + 1);
+    expect(updated!.due_at).toBeNull();
+  });
+
+  it('updateTask status done stamps completed_at; reopen clears it', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 't', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    let updated = await updateTask(E, 'u', { status: 'done' }, now + 1);
+    expect(updated!.status).toBe('done');
+    expect(updated!.completed_at).toBe(now + 1);
+    updated = await updateTask(E, 'u', { status: 'in_progress' }, now + 2);
+    expect(updated!.status).toBe('in_progress');
+    expect(updated!.completed_at).toBeNull();
+  });
+
+  it('updateTask returns null for a non-task id', async () => {
+    await knowledgeNote('k', 'concept');
+    expect(await updateTask(E, 'k', { priority: 1 }, Date.now())).toBeNull();
+    expect(await updateTask(E, 'missing', { priority: 1 }, Date.now())).toBeNull();
   });
 
   it('listRecentClosedTasks caps and returns done/canceled', async () => {

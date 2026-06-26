@@ -300,3 +300,48 @@ export async function completeTask(env: Env, id: string, now: number, outcome?: 
   ).bind(now, now, body, id).run();
   return { ...task, status: 'done', completed_at: now, updated_at: now, body };
 }
+
+// Campos editáveis de uma task. Todos opcionais — só os presentes entram no UPDATE.
+// due_at aceita null pra LIMPAR o vencimento (diferente de omitir, que mantém).
+export interface TaskPatch {
+  title?: string;
+  body?: string;
+  due_at?: number | null;
+  priority?: number | null;
+  status?: TaskStatus;
+  domains?: string; // JSON string, igual ao insertTask
+}
+
+// Edita campos de uma task existente. Faz UPDATE só das colunas presentes no patch
+// (patch parcial, espelha updateNote mas pra tasks). NÃO toca Vectorize — task não
+// tem vetor de propósito. Valida que o id é kind='task' (como completeTask): retorna
+// null se não for. Mudar title atualiza o tldr junto (tldr de task espelha o título).
+// Status pra done/canceled grava completed_at=now; reabrir (open/in_progress) limpa.
+export async function updateTask(env: Env, id: string, patch: TaskPatch, now: number): Promise<TaskRow | null> {
+  const task = await getTaskById(env, id);
+  if (!task) return null;
+
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  if (patch.title !== undefined) {
+    sets.push('title = ?'); binds.push(patch.title);
+    sets.push('tldr = ?'); binds.push(patch.title.slice(0, 280));
+  }
+  if (patch.body !== undefined) { sets.push('body = ?'); binds.push(patch.body); }
+  if (patch.due_at !== undefined) { sets.push('due_at = ?'); binds.push(patch.due_at); }
+  if (patch.priority !== undefined) { sets.push('priority = ?'); binds.push(patch.priority); }
+  if (patch.domains !== undefined) { sets.push('domains = ?'); binds.push(patch.domains); }
+  if (patch.status !== undefined) {
+    const closing = patch.status === 'done' || patch.status === 'canceled';
+    sets.push('status = ?'); binds.push(patch.status);
+    sets.push(`completed_at = ${closing ? '?' : 'NULL'}`);
+    if (closing) binds.push(now);
+  }
+  sets.push('updated_at = ?'); binds.push(now);
+
+  await env.DB.prepare(
+    `UPDATE notes SET ${sets.join(', ')} WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(...binds, id).run();
+
+  return getTaskById(env, id);
+}

@@ -15,6 +15,7 @@ Fluxo recomendado:
 6. \`kind\` é OBRIGATÓRIO no save_note — escolha entre os 7 valores canônicos (concept | decision | insight | fact | pattern | principle | question).
 7. Para editar uma nota, chame \`update_note\` com o id e só os campos que mudam. Para remover, chame \`delete_note\` com \`confirm: true\` — pergunte ao USUÁRIO antes.
 8. \`stats\` dá um panorama do vault; use quando o usuário perguntar sobre composição ou crescimento.
+9. Tasks (kind='task') têm fluxo próprio: \`save_task\` cria, \`list_tasks_due_today\` lista o que vence/venceu, \`update_task\` edita (título, corpo, prazo, prioridade, status, domínios, tags — patch parcial) e \`complete_task\` conclui (com outcome opcional). \`update_note\` NÃO edita task — use \`update_task\`.
 
 Domínios canônicos do vault (TRAVA, não é sugestão):
 management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science
