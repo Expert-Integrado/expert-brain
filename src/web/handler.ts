@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta } from './contacts-data.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
@@ -48,6 +48,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/data' && req.method === 'GET') return handleTasksData(req, env);
   if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
   if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
+
+  // Detalhe de uma task (superfície própria — NÃO o editor de nota). Vem DEPOIS dos
+  // paths exatos acima pra não capturar /data /status /complete. /bundle.js tem ponto,
+  // então o regex (sem '.') não casa com ele.
+  const taskMatch = path.match(/^\/app\/tasks\/([A-Za-z0-9_-]+)$/);
+  if (taskMatch && req.method === 'GET') return handleTaskDetail(req, env, taskMatch[1]);
 
   // Contatos embutido NO Brain: mesma sidebar/URL, painel direito = grafo de contatos
   // (dados puxados do Worker do Contacts via binding). /app/contacts-sso fica como

@@ -4,8 +4,10 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
 import { renderMarkdown } from './markdown.js';
+import { formatBrtShort, relativeDue } from '../util/time.js';
 import {
   getNoteById,
+  getTaskById,
   getEdgesFrom,
   getEdgesTo,
   type NoteRow,
@@ -147,6 +149,13 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     );
   }
 
+  // Task não é nota: ela tem superfície própria (/app/tasks/<id>). Redireciona pra
+  // URL canônica de task — assim qualquer link antigo (card do board, noteUrl do MCP,
+  // list_tasks_due_today) cai no detalhe de task em vez de no editor de nota.
+  if (note.kind === 'task') {
+    return new Response(null, { status: 302, headers: { location: `/app/tasks/${id}` } });
+  }
+
   // Build a title-index for wikilink resolution.
   // (Small table — under a few thousand rows — single query is fine.)
   const allTitlesRes = await env.DB.prepare(`SELECT id, title FROM notes WHERE deleted_at IS NULL`).all<{ id: string; title: string }>();
@@ -245,6 +254,105 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     renderShell({ title: note.title, active: 'notes', email: session.email, body, extraHead: `<style>${NOTE_MEDIA_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  open: 'A fazer',
+  in_progress: 'Em progresso',
+  done: 'Concluído',
+  canceled: 'Cancelado',
+};
+
+// Detalhe de TASK (/app/tasks/<id>). Task mora na mesma tabela que nota (kind='task'),
+// mas NÃO se apresenta como nota: sem grafo, sem edges, sem "Copiar link" de nota —
+// banner "Esta é uma task" + status/prazo/prioridade + descrição + anexos. Reusa o
+// editor de mídia (task é nota por baixo, então attach_media já funciona pelo mesmo id).
+export async function handleTaskDetail(req: Request, env: Env, id: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const task = await getTaskById(env, id);
+  if (!task) {
+    return htmlResponse(
+      renderShell({
+        title: 'Não encontrada',
+        active: 'tasks',
+        email: session.email,
+        body: '<h1>Task não encontrada</h1><p><a href="/app/tasks">← Voltar pras tasks</a></p>',
+        sidebarCollapsed: sidebarCollapsedFromReq(req),
+      }),
+      404
+    );
+  }
+
+  const now = Date.now();
+  const status = task.status ?? 'open';
+  const statusLabel = TASK_STATUS_LABELS[status] ?? status;
+  const overdue = task.due_at !== null && task.due_at < now && status !== 'done' && status !== 'canceled';
+  const dueStr = task.due_at !== null ? `${formatBrtShort(task.due_at)} · ${relativeDue(task.due_at, now)}` : null;
+  const canClose = status === 'open' || status === 'in_progress';
+
+  const metaBits = [
+    `<span class="task-d-status task-d-status-${esc(status)}">${esc(statusLabel)}</span>`,
+    task.priority !== null ? `<span class="task-d-pill">P${task.priority}</span>` : '',
+    dueStr ? `<span class="task-d-due${overdue ? ' overdue' : ''}">⏱ ${esc(dueStr)}</span>` : '',
+    domainsToBadges(task.domains),
+  ].filter(Boolean).join('');
+
+  // Botão concluir reusa POST /app/tasks/complete (mesmo padrão inline-onclick do
+  // "Copiar link" da nota — CSP do app permite handler inline).
+  const completeBtn = canClose
+    ? `<button type="button" class="task-d-btn task-d-complete" onclick="(function(b){b.disabled=true;b.textContent='concluindo...';fetch('/app/tasks/complete',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({id:'${esc(task.id)}'})}).then(function(r){if(!r.ok)throw 0;location.href='/app/tasks'}).catch(function(){b.disabled=false;b.textContent='✓ concluir';alert('Falha ao concluir')})})(this)">✓ concluir</button>`
+    : '';
+
+  const body = `
+    <div class="task-d-banner">
+      <a href="/app/tasks" class="task-d-back">← Tasks</a>
+      <span class="task-d-tag">Esta é uma task</span>
+    </div>
+    <h1>${esc(task.title)}</h1>
+    <div class="task-d-meta">${metaBits}</div>
+    <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="task-d-btn">abrir no board</a></div>
+
+    <div class="note-body">${renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })}</div>
+
+    <section class="note-media" data-note-id="${esc(task.id)}">
+      <h2>Anexos</h2>
+      <div id="media-grid" class="media-grid"></div>
+      <label id="media-dropzone" class="media-dropzone">
+        <input type="file" id="media-file-input" multiple accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.md,.zip" hidden />
+        <span>Arraste arquivos aqui ou <u>clique pra escolher</u> · até 50MB</span>
+      </label>
+    </section>
+
+    <script src="/app/notes/media.bundle.js?v=${assetVersion('note-media.bundle.js')}" defer></script>
+  `;
+
+  return htmlResponse(
+    renderShell({ title: task.title, active: 'tasks', email: session.email, body, extraHead: `<style>${NOTE_MEDIA_CSS}${TASK_DETAIL_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+  );
+}
+
+// CSS do detalhe de task (banner + chips de status/prazo/prioridade + ações).
+const TASK_DETAIL_CSS = `
+.task-d-banner { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.task-d-back { color:var(--text-dim); font-size:13px; text-decoration:none; }
+.task-d-back:hover { color:var(--text); }
+.task-d-tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-lav); border:1px solid rgba(167,139,250,0.35); border-radius:999px; padding:2px 10px; }
+.task-d-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+.task-d-status { font-size:12px; border-radius:999px; padding:3px 10px; border:1px solid var(--border-strong); color:var(--text); }
+.task-d-status-open { border-color:rgba(167,139,250,0.4); }
+.task-d-status-in_progress { border-color:rgba(96,165,250,0.5); color:#bfdbfe; }
+.task-d-status-done { border-color:rgba(74,222,128,0.4); color:#bbf7d0; }
+.task-d-status-canceled { color:var(--text-dim); }
+.task-d-pill { font-size:12px; border-radius:6px; padding:3px 8px; background:var(--bg-accent); color:var(--text-dim); }
+.task-d-due { font-size:12px; color:var(--text-dim); }
+.task-d-due.overdue { color:#fca5a5; }
+.task-d-actions { display:flex; gap:10px; margin-bottom:24px; }
+.task-d-btn { font-size:13px; padding:7px 14px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; }
+.task-d-btn:hover { border-color:var(--border-strong); }
+.task-d-complete { border-color:rgba(74,222,128,0.4); color:#bbf7d0; }
+.task-d-complete:hover { background:rgba(74,222,128,0.12); }
+`;
 
 // CSS da seção de mídia da nota (injetado via extraHead — CSP permite inline style).
 const NOTE_MEDIA_CSS = `

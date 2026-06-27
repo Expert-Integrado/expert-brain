@@ -76,10 +76,10 @@ function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}" draggable="true">
     <div class="task-card-head">${prioPill(t.priority)}${dueBadge(t)}</div>
-    <a class="task-card-title" href="/app/notes/${esc(t.id)}">${esc(t.title)}</a>
+    <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
     <div class="task-card-actions">
       ${canClose ? `<button class="task-btn task-complete" data-id="${esc(t.id)}" type="button">✓ concluir</button>` : ''}
-      <a class="task-btn task-open" href="/app/notes/${esc(t.id)}">abrir</a>
+      <a class="task-btn task-open" href="/app/tasks/${esc(t.id)}">abrir</a>
     </div>
   </div>`;
 }

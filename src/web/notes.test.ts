@@ -18,6 +18,8 @@ async function seed() {
     VALUES ('n2','Beta','# Beta','sum','["retrieval"]',NULL,2,2)`).run();
   await db.prepare(`INSERT OR IGNORE INTO edges (id,from_id,to_id,relation_type,why,created_at)
     VALUES ('e1','n1','n2','depends_on','shared mechanism explained here',3)`).run();
+  await db.prepare(`INSERT OR REPLACE INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,created_at,updated_at)
+    VALUES ('t1','Ligar pro PSP','detalhe da task','Ligar pro PSP','["operations"]','task','open',NULL,2,4,4)`).run();
 }
 
 beforeAll(async () => {
@@ -58,5 +60,42 @@ describe('/app/notes', () => {
   it('returns 404 for unknown note id', async () => {
     const res = await SELF.fetch('https://x.test/app/notes/nope', { headers: { cookie: await authCookie() } });
     expect(res.status).toBe(404);
+  });
+
+  it('does not list tasks among notes', async () => {
+    const res = await SELF.fetch('https://x.test/app/notes', { headers: { cookie: await authCookie() } });
+    const html = await res.text();
+    expect(html).not.toContain('Ligar pro PSP');
+  });
+});
+
+describe('/app/tasks/:id (task tem superfície própria, não é nota)', () => {
+  it('redirects /app/notes/<task> to the canonical task url', async () => {
+    const res = await SELF.fetch('https://x.test/app/notes/t1', { headers: { cookie: await authCookie() }, redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/app/tasks/t1');
+  });
+
+  it('renders the task detail as a task, not a note', async () => {
+    const res = await SELF.fetch('https://x.test/app/tasks/t1', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Esta é uma task');
+    expect(html).toContain('Ligar pro PSP');
+    expect(html).toContain('A fazer');           // status label
+    expect(html).toContain('detalhe da task');   // body
+    expect(html).toContain('data-note-id="t1"'); // seção de anexos (mídia reusa o id)
+    expect(html).not.toContain('id="local-graph"'); // sem grafo de nota
+  });
+
+  it('returns 404 for an unknown task id', async () => {
+    const res = await SELF.fetch('https://x.test/app/tasks/nope', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(404);
+  });
+
+  it('requires auth', async () => {
+    const res = await SELF.fetch('https://x.test/app/tasks/t1', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('/app/login');
   });
 });
