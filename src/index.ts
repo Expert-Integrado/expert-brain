@@ -2,6 +2,7 @@ import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { ExpertBrainMCP } from './mcp/agent.js';
 import { authHandler } from './auth/handler.js';
 import { validateApiKey } from './auth/api-keys.js';
+import { runDueReminder } from './notify.js';
 import type { Env } from './env.js';
 
 export { ExpertBrainMCP };
@@ -37,5 +38,16 @@ export default {
       }
     }
     return (oauthProvider as any).fetch(req, env, ctx);
+  },
+
+  // Cron diário (ver [triggers] no wrangler.toml: 0 11 * * * = 08:00 BRT). Push do
+  // lembrete de prazo: digest das tasks vencendo hoje + atrasadas pro Telegram.
+  // No-op seguro se os secrets do Telegram não estiverem setados.
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      runDueReminder(env, Date.now())
+        .then((r) => console.log('due-reminder', JSON.stringify(r)))
+        .catch((e) => console.error('due-reminder failed', e))
+    );
   },
 };
