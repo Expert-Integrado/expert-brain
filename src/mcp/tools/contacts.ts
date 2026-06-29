@@ -82,7 +82,7 @@ export function registerContactsTools(server: any, env: Env): void {
       annotations: { title: 'Get contact', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { id: string }) => {
-      const r = await callContacts(env, `/entity/${encodeURIComponent(input.id)}`);
+      const r = await callContacts(env, `/entities/${encodeURIComponent(input.id)}`);
       if (!r.ok) return toolError(`Contact '${input.id}' not found (HTTP ${r.status}).`);
       return toolSuccess(r.data);
     }) as any
