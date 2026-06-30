@@ -150,6 +150,27 @@ export async function getTagsByNote(env: Env, id: string): Promise<string[]> {
   return (r.results ?? []).map((x) => x.tag);
 }
 
+// Tags de VÁRIAS notas numa query (chunked p/ não estourar binds do D1). Usado pelo
+// list_tasks pra devolver as tags de cada task sem N+1 — habilita dedup ("essa task já
+// existe?") e a convenção de tag de máquina (maquina:pc / maquina:vps).
+export async function getTagsForNotes(env: Env, ids: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (ids.length === 0) return out;
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const ph = chunk.map(() => '?').join(',');
+    const r = await env.DB.prepare(
+      `SELECT note_id, tag FROM tags WHERE note_id IN (${ph})`
+    ).bind(...chunk).all<{ note_id: string; tag: string }>();
+    for (const row of r.results ?? []) {
+      const arr = out.get(row.note_id) ?? [];
+      arr.push(row.tag);
+      out.set(row.note_id, arr);
+    }
+  }
+  return out;
+}
+
 // Edges cujo OUTRO extremo esteja soft-deletado sao filtradas (o JOIN garante
 // que a nota vizinha esta viva). Soft-delete nao cascateia (a linha fica), entao
 // sem esse filtro apareceriam edges fantasma pra notas na lixeira.

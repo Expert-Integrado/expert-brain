@@ -11,6 +11,7 @@ import { registerRestoreNote } from './tools/restore-note.js';
 import { registerStats } from './tools/stats.js';
 import { registerSaveTask } from './tools/save-task.js';
 import { registerListTasksDueToday } from './tools/list-tasks-due-today.js';
+import { registerListTasks } from './tools/list-tasks.js';
 import { registerCompleteTask } from './tools/complete-task.js';
 import { registerUpdateTask } from './tools/update-task.js';
 import { registerAttachMedia } from './tools/attach-media.js';
@@ -32,6 +33,7 @@ export function registerAllTools(server: any, env: Env): void {
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
   registerSaveTask(server, env);
   registerListTasksDueToday(server, env);
+  registerListTasks(server, env);
   registerCompleteTask(server, env);
   registerUpdateTask(server, env);
   // Mídia das notas (R2 + dedup SHA-256).
