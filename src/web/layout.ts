@@ -22,6 +22,23 @@ function seededPosition(id: string): { x: number; y: number } {
 }
 
 export function computeLayout(nodes: LayoutNode[], edges: LayoutEdge[]): LaidOutNode[] {
+  // GUARD DE ESCALA (fix Error 1102 — Worker exceeded resource limits). O vault
+  // cresceu (backfill) pra ~1800+ nos + ~10k arestas similares, e o forceAtlas2
+  // server-side (150 iter) passou a estourar o CPU do Worker toda vez que o cache
+  // do grafo invalidava (o que acontece a cada escrita de nota/edge). O layout
+  // server e SO um SEED inicial — o d3-force client-side (Web Worker) refina o
+  // layout de verdade. Entao acima do teto pulamos o FA2 e devolvemos direto um
+  // seed deterministico ESPALHADO (O(n), custo trivial): a bolinha nao nasce
+  // amontoada e o cliente refina. Abaixo do teto, FA2 da um seed mais bonito.
+  const FA2_MAX_NODES = 900;
+  if (nodes.length > FA2_MAX_NODES) {
+    const spread = 40 * Math.sqrt(nodes.length);
+    return nodes.map((n) => {
+      const s = seededPosition(n.id);
+      return { id: n.id, x: s.x * spread, y: s.y * spread };
+    });
+  }
+
   const g = new Graph({ type: 'undirected', multi: false });
   for (const n of nodes) {
     const seed = seededPosition(n.id);

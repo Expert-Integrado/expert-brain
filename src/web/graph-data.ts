@@ -40,7 +40,7 @@ export interface GraphPayload {
 
 // v6: similar edges agora vêm pré-computadas do D1 (não mais Vectorize ao vivo).
 // Bump invalida o cache antigo no deploy, forçando uma rebuild com a nova fonte.
-const CACHE_KEY = 'graph:v6'; // A.9 fórmula Obsidian exata: max(8, min(3*sqrt(d+1), 30))
+const CACHE_KEY = 'graph:v7'; // v7: guard de escala no computeLayout (fix Error 1102 em vault grande). Bump descarta o payload v6 antigo.
 
 async function computeSourceHash(env: Env): Promise<string> {
   // COUNT só de notas vivas: soft-delete (UPDATE deleted_at) não muda updated_at,
