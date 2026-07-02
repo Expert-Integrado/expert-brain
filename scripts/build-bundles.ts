@@ -16,6 +16,8 @@ const root = path.resolve(here, '..');
 
 const bundles: Array<{ entry: string; out: string }> = [
   { entry: 'src/web/client/graph.ts', out: 'assets/graph.bundle.js' },
+  // Grafo 3D (/app/graph3d) — "globo que gira" via 3d-force-graph (three incluso).
+  { entry: 'src/web/client/graph3d.ts', out: 'assets/graph3d.bundle.js' },
   { entry: 'src/web/client/notes.ts', out: 'assets/notes.bundle.js' },
   { entry: 'src/web/client/local-graph.ts', out: 'assets/local-graph.bundle.js' },
   { entry: 'src/web/client/note-media.ts', out: 'assets/note-media.bundle.js' },

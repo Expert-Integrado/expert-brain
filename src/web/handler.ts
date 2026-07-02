@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail } from './notes.js';
-import { handleGraphPage, handleContactsPage } from './graph.js';
+import { handleGraphPage, handleContactsPage, handleGraph3DPage } from './graph.js';
 import { handleContactsData, handleContactsMeta } from './contacts-data.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
@@ -64,6 +64,8 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts-sso' && req.method === 'GET') return handleContactsSso(req, env);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
+  // Grafo 3D — "globo que gira" (mesmo payload /app/graph/data do 2D).
+  if (path === '/app/graph3d' && req.method === 'GET') return handleGraph3DPage(req, env);
   if (path === '/app/graph/data' && req.method === 'GET') return handleGraphData(req, env);
   if (path === '/app/graph/meta' && req.method === 'GET') return handleGraphMeta(req, env);
   if (path === '/app/graph/link' && req.method === 'POST') return handleGraphLink(req, env);
@@ -85,6 +87,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   }
   if (path === '/app/graph/sim-worker.bundle.js' && req.method === 'GET') {
     return serveBundle('/sim-worker.bundle.js');
+  }
+  if (path === '/app/graph3d/bundle.js' && req.method === 'GET') {
+    return serveBundle('/graph3d.bundle.js');
   }
   if (path === '/app/notes/bundle.js' && req.method === 'GET') {
     return serveBundle('/notes.bundle.js');

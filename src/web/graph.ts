@@ -17,6 +17,91 @@ export async function handleContactsPage(req: Request, env: Env): Promise<Respon
   return renderGraphLikePage(req, env, { active: 'contacts', graphSrc: '/app/contacts', title: 'Contatos' });
 }
 
+// Grafo 3D — o "globo que gira". Shell mínimo (mesma sidebar, aba 'graph' ativa)
+// + canvas full-height que o bundle graph3d preenche com o render WebGL/three.
+// Usa o MESMO payload /app/graph/data do 2D (só arestas explícitas viram links no
+// 3D — ver src/web/client/graph3d.ts). Sessão obrigatória, igual ao 2D.
+export async function handleGraph3DPage(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const body = `
+    <style>
+      /* Canvas do 3D ocupa a área toda; fundo escuro casa com o tema do 2D. */
+      .graph3d-wrap { position: relative; width: 100%; height: 100%; background: #0c0c10; }
+      .main:has(#graph3d-canvas) {
+        max-width: none;
+        width: auto;
+        padding: 0;
+        background: #0c0c10;
+        position: relative;
+        z-index: 2;
+      }
+      #graph3d-canvas { width: 100%; height: 100%; }
+      /* three insere o <canvas> como bloco; sem isso sobra uma faixa embaixo. */
+      #graph3d-canvas canvas { display: block; }
+      /* Status discreto no canto inferior esquerdo (contagem de nós/ligações). */
+      .graph3d-status {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        z-index: 5;
+        padding: 4px 10px;
+        font-size: 11px;
+        color: rgba(255, 255, 255, 0.6);
+        background: rgba(14, 14, 18, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        pointer-events: none;
+        font-variant-numeric: tabular-nums;
+      }
+      /* Botão discreto pra voltar ao grafo 2D. */
+      .graph3d-back {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        z-index: 5;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.75);
+        background: rgba(14, 14, 18, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 6px;
+        text-decoration: none;
+        transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+      }
+      .graph3d-back:hover {
+        color: #f4ecff;
+        border-color: rgba(167, 139, 250, 0.5);
+        background: rgba(20, 20, 26, 0.95);
+      }
+    </style>
+
+    <div class="graph3d-wrap">
+      <div id="graph3d-loading" class="center-loading" role="status" aria-live="polite">
+        <div class="center-loading-spinner" aria-hidden="true"></div>
+        <div>Carregando grafo 3D...</div>
+      </div>
+      <a class="graph3d-back" href="/app/graph" title="Voltar pro grafo 2D">&#x27F2; 2D</a>
+      <div id="graph3d-status" class="graph3d-status" aria-live="polite">Carregando...</div>
+      <div id="graph3d-canvas" role="img" aria-label="Grafo de conhecimento em 3D"></div>
+    </div>
+
+    <script src="/app/graph3d/bundle.js?v=${assetVersion('graph3d.bundle.js')}" defer></script>
+  `;
+
+  // Preload do bundle pesado (three + 3d-force-graph) — download em paralelo com
+  // o parse do HTML. Mesma URL versionada do <script> pra reusar o download.
+  const extraHead = `<link rel="preload" href="/app/graph3d/bundle.js?v=${assetVersion('graph3d.bundle.js')}" as="script">`;
+
+  return htmlResponse(
+    renderShell({ title: 'Grafo 3D', active: 'graph', email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+  );
+}
+
 async function renderGraphLikePage(
   req: Request,
   env: Env,
@@ -553,6 +638,8 @@ async function renderGraphLikePage(
         <button class="graph-zoom-btn graph-zoom-fit has-tip" data-graph-action="fit" data-tip="Ajustar à tela: recentraliza e enquadra o grafo inteiro" aria-label="Ajustar à tela">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
         </button>
+        <!-- Botão discreto pro grafo 3D (o "globo que gira"). Link direto, sem JS. -->
+        <a class="graph-zoom-btn has-tip" href="/app/graph3d" data-tip="Ver em 3D — o globo que gira" aria-label="Ver grafo em 3D" style="text-decoration:none;font-size:11px;font-weight:600;">3D</a>
       </div>
 
       <div id="graph-canvas" class="graph-canvas" role="img" aria-label="Grafo de conhecimento" data-sw-ver="${assetVersion('sim-worker.bundle.js')}" data-graph-prefs="${prefsAttr}" data-graph-src="${opts.graphSrc}" data-vault="${isContacts ? 'contacts' : 'notes'}"></div>

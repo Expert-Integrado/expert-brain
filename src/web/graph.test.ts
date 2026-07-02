@@ -108,3 +108,21 @@ describe('/app/graph/data — similar edges lidas do D1', () => {
     expect(d2.sourceHash).not.toBe(d1.sourceHash);
   });
 });
+
+describe('/app/graph3d (grafo 3D — o globo que gira)', () => {
+  it('redirects to login without session', async () => {
+    const res = await SELF.fetch('https://x.test/app/graph3d', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toContain('/app/login');
+  });
+
+  it('renders the 3D shell with a session', async () => {
+    const res = await SELF.fetch('https://x.test/app/graph3d', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // canvas do 3D + bundle carregado + botão de voltar pro 2D
+    expect(html).toContain('id="graph3d-canvas"');
+    expect(html).toContain('/app/graph3d/bundle.js');
+    expect(html).toContain('href="/app/graph"');
+  });
+});
