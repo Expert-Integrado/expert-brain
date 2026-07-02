@@ -1,0 +1,184 @@
+# Roadmap de execução com fases, dependências e gates
+
+> **Status:** draft · **Prioridade:** P0 · **Esforço:** S · **Repo:** ambos (`expert-brain` e `expert-contacts`)
+> **Depende de:** nenhuma
+
+## Contexto
+
+A árvore `specs/` contém o backlog spec-driven completo dos dois Workers (`expert-brain` e `expert-contacts`): 33 specs de trabalho + 4 documentos-base (`README.md`, `00-sistema/01`, `00-sistema/02` e este arquivo). O índice completo (path, título, prioridade, esforço, dependências) vive em `specs/README.md`, seção 7; a rastreabilidade finding → spec vive em `specs/00-sistema/02-inventario-de-falhas.md`.
+
+O que nenhuma spec individual declara é a **ordem global de execução**: qual fase vem antes de qual, e o que precisa estar comprovadamente pronto (gate) antes de avançar. Este arquivo é essa camada.
+
+**Regra transversal (vale pra toda spec):** o agente executa a spec → typecheck + testes verdes → commit referenciando o path da spec. Deploy de produção, push com side-effect, release npm pros alunos e rotação de tokens SEMPRE com OK explícito do dono da instância. Specs de `expert-contacts` executam no working tree de `C:/repos/expert-contacts`, embora vivam nesta árvore.
+
+## Problema / Motivação
+
+- Várias specs têm dependências cruzadas declaradas apenas no próprio frontmatter — um agente que abra a árvore sem ordem definida pode executá-las na sequência errada. Exemplos: `10-backend/19`, `20`, `22` e `20-frontend/27` dependem de `40-ops/42` (o `expert-contacts` hoje não tem script `test` nem `typecheck`); `10-backend/21` depende de `20-frontend/22` (implementação de referência do seed clusterizado) e de `40-ops/44` (trilho de migrations antes de criar migration nova no contacts).
+- Sem gates escritos, "fase concluída" vira opinião: nada obriga typecheck/testes verdes nem o OK do dono antes de avançar, contrariando o protocolo da spec-zero (`specs/README.md`, seção 1).
+- Sem um registro central, duas sessões de agente em máquinas diferentes podem pegar specs conflitantes (mesmos arquivos em "Arquivos afetados") sem perceber.
+
+## Objetivo
+
+Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual spec executar em seguida, quais estão bloqueadas por dependência ou gate, e qual evidência precisa registrar aqui antes de declarar uma fase concluída.
+
+## Design proposto
+
+### 0. Pré-fase (concluída) — documentos-base
+
+`specs/README.md`, `00-sistema/01-mapa-do-sistema.md`, `00-sistema/02-inventario-de-falhas.md` e este `90-roadmap.md` commitados e revisados pelo dono. Nenhuma spec de código executa antes de os 4 existirem.
+
+### Fase 0 — Rede de proteção (paralelizável, ANTES de mexer em código de produto)
+
+| Spec | Repo | Prioridade · Esforço |
+|---|---|---|
+| `40-ops/41-ci-typecheck-e-testes-criticos-brain.md` | expert-brain | P1 · M |
+| `40-ops/42-contacts-testes-typecheck-ci.md` | expert-contacts | P1 · M |
+| `40-ops/43-observabilidade-e-alerting.md` | ambos | P1 · S |
+
+**GATE G0:** `npm run typecheck` e `npm test` verdes nos 2 repos em CI; alertas de erro ativos nos 2 Workers. **Nenhuma spec de código avança sem G0 no repo correspondente.**
+
+### Fase 1 — P0: quebrado ou risco ativo em produção
+
+| Spec | Repo | Prioridade · Esforço |
+|---|---|---|
+| `10-backend/11-instructions-parametrizadas.md` | expert-brain | P0 · S |
+| `10-backend/12-recall-isolamento-tasks-e-limites.md` | expert-brain | P0 · M |
+| `10-backend/13-migrations-idempotentes-e-deploy.md` | expert-brain | P0 · M |
+| `20-frontend/21-csp-botoes-mortos-e-sessao-expirada.md` | expert-brain | P0 · S |
+
+**GATE G1:** teste de regressão pra cada fix; release nova do pacote de alunos (seguir `RELEASING.md`) agrupando as specs 11+12+13, publicada SÓ com OK do dono; provision idempotente validado em preview antes da release.
+
+### Fase 2 — P1: correções núcleo (paralelizável por repo)
+
+**Trilha expert-brain:**
+
+| Spec | Prioridade · Esforço |
+|---|---|
+| `10-backend/14-tasks-concorrencia-idempotencia-dedupe.md` | P1 · M |
+| `10-backend/15-tasks-busca-e-superficie-de-consulta.md` | P1 · M |
+| `10-backend/16-edges-integridade-e-delete-link.md` | P1 · S |
+| `10-backend/18-setup-endpoints-auth-e-login-rate-limit.md` | P1 · M |
+| `20-frontend/22-grafo-seed-clusterizado-e-layout-persistente.md` | P1 · M |
+| `20-frontend/23-notes-paginacao-e-meta-com-cache.md` | P1 · M |
+
+**Trilha expert-contacts** (ordem interna obrigatória: `40-ops/44` ANTES de qualquer schema novo):
+
+| Spec | Prioridade · Esforço | Depende de |
+|---|---|---|
+| `40-ops/44-contacts-migrations-tracking.md` | P1 · M | `40-ops/42` (G0) |
+| `10-backend/19-contacts-write-path-e-canon-unico.md` | P1 · M | `40-ops/42` (G0) |
+| `10-backend/20-contacts-recall-raw-e-metadata-vectorize.md` | P1 · S | `40-ops/42` (G0) |
+| `10-backend/22-contacts-cron-pipedrive-robusto.md` | P1 · M | `40-ops/42` (G0) |
+| `20-frontend/24-console-contacts-avatar-e-cache-do-vault-brain.md` | P1 · S | nenhuma |
+
+**GATE G2:** write path do contacts coberto por teste (pré-requisito do apply de seeds da Fase 3); regressão do guard 1102 testada no brain (spec `20-frontend/22`); validação visual do grafo pelo dono no vault real.
+
+### Fase 3 — P1 estruturante (dependências fortes)
+
+| Spec | Repo | Depende de |
+|---|---|---|
+| `10-backend/17-credenciais-escopos-pat-e-bearer.md` | expert-brain | — |
+| `30-features/31-selo-de-privacidade.md` | expert-brain | `10-backend/17` |
+| `10-backend/21-contacts-prevencao-1102-similaridade-e-layout.md` | expert-contacts | `20-frontend/22` (Fase 2) + `40-ops/44` (Fase 2) |
+| `40-ops/45-contacts-category-seeds-e-4a-fonte.md` | expert-contacts | `10-backend/19` + `40-ops/44` (Fase 2) |
+
+**GATE G3:** após os escopos (17), rotacionar os PATs de TODAS as instâncias do dono (com OK dele); o selo de privacidade (31) só é `done` após teste de vazamento em TODOS os read paths (recall com/sem filtro, FTS, expand, get_note, grafo, stats) + validação manual do dono; seeds (45) aplicados com dry-run revisado pelo dono antes do apply real.
+
+### Fase 4 — P2: valor e polish (oportunístico, qualquer ordem salvo dependências)
+
+| Spec | Repo | Depende de |
+|---|---|---|
+| `30-features/32-task-lifecycle-e-digest-saudavel.md` | expert-brain | — |
+| `40-ops/46-reativacao-lembrete-telegram.md` | ops | `30-features/32` + `40-ops/43` — canal dedicado, OK do dono, rollback por remoção de secret |
+| `30-features/33-compartilhamento-publico-read-only.md` | expert-brain | `30-features/31` — só deploya com checklist de segurança completo e revisão dedicada |
+| `30-features/34-contacts-delete-e-merge-de-entidades.md` | expert-contacts | `40-ops/42` + `10-backend/19` — backup do D1 antes do primeiro uso |
+| `30-features/35-whatsapp-hub-integracao-contatos.md` | ops | `40-ops/45` + `10-backend/19` — spec de interface; implementação no repo externo do dono |
+| `10-backend/23-mcp-robustez-erros-e-midia.md` | expert-brain | — |
+| `10-backend/24-contacts-tokens-api-escopo.md` | expert-contacts | — |
+| `20-frontend/25-grafo-client-interacao-e-render.md` | expert-brain | — |
+| `20-frontend/26-grafo-payload-escala-servidor.md` | expert-brain | — |
+| `20-frontend/27-console-contacts-sessao-sso-e-rate-limit.md` | expert-contacts | `40-ops/42` (G0) |
+| `20-frontend/28-web-polish-cache-e-consistencia.md` | expert-brain | — |
+
+**GATE G4:** cada feature nova entra com testes; o share público (33) exige 2 semanas de rodagem na instância do dono antes de ir pra release de alunos.
+
+### Grafo de dependências formais
+
+```text
+31 ← 17
+46 ← 32, 43
+33 ← 31
+34 ← 42, 19
+35 ← 45, 19
+45 ← 19, 44
+21 (backend contacts) ← 22 (frontend brain), 44
+19, 20, 22, 27 ← 42 (suíte de testes do contacts)
+```
+
+Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
+
+### Regras de paralelização
+
+1. Dentro de uma fase, specs sem dependência entre si podem rodar em paralelo (agentes/sessões diferentes), DESDE que não compartilhem arquivos em "Arquivos afetados".
+2. Entre fases, o gate da fase anterior precisa estar registrado (tabela abaixo) antes de iniciar a próxima. Exceção: specs P2 da Fase 4 sem dependência pendente podem ser adiantadas se não tocarem arquivos de specs em andamento.
+3. Toda spec segue o protocolo da spec-zero (`specs/README.md`): `ready` antes de executar, `in-progress` ao começar, `done` ao terminar, migrations sempre aditivas, deploy/push de produção SÓ com OK explícito do dono da instância.
+
+### Registro de gates (manutenção deste arquivo)
+
+Ao concluir uma fase, o agente executor registra aqui a data e a evidência do gate — hash de commit, link de CI verde ou OK do dono dado na sessão — no mesmo commit que promove a última spec da fase pra `done`.
+
+| Gate | Concluído em | Evidência (commit/CI/OK do dono) |
+|---|---|---|
+| Pré-fase (docs-base) | — | — |
+| G0 | — | — |
+| G1 | — | — |
+| G2 | — | — |
+| G3 | — | — |
+| G4 | — | — |
+
+Regras de manutenção:
+
+- Spec nova entra na árvore → adicioná-la à fase adequada aqui (pela prioridade e dependências do frontmatter) E ao índice do `specs/README.md`, no mesmo commit.
+- Dependência nova declarada numa spec → refletir na tabela da fase e no grafo de dependências.
+- Spec fechada (`done`) → marcar os findings correspondentes no `00-sistema/02-inventario-de-falhas.md` com a data, no mesmo commit.
+
+## Fora de escopo
+
+- Escrever ou alterar o conteúdo técnico das specs individuais (cada uma é sua própria entrega).
+- Automatizar a verificação de gates (lint de status, bot de CI) — pode virar spec futura em `40-ops/`.
+- Definir processo de release npm (coberto por `RELEASING.md`).
+- Priorizar itens fora da árvore `specs/` (issues antigas, backlog externo).
+
+## Critérios de aceite
+
+- [ ] `specs/90-roadmap.md` lista TODAS as 33 specs de trabalho da árvore, cada uma alocada em exatamente uma fase (0 a 4)
+- [ ] Toda dependência declarada no frontmatter de uma spec está refletida no sequenciamento (nenhuma spec aparece numa fase anterior à sua dependência)
+- [ ] Cada fase tem um gate explícito e verificável (G0 a G4), com a evidência exigida descrita
+- [ ] O grafo de dependências formais confere com os frontmatters das specs
+- [ ] Existe a tabela de registro de gates com instrução de preenchimento (data + evidência)
+- [ ] O arquivo não contém telefone, nome de cliente, token, ID de chat ou qualquer dado pessoal real
+- [ ] Todo o texto está em PT-BR com acentuação correta
+
+## Validação
+
+Este documento é só Markdown — não há código a validar. Sanidade ao commitá-lo:
+
+```bash
+cd C:/repos/expert-brain
+npm run typecheck
+npm test
+```
+
+Teste manual: pedir a um agente sem contexto que leia apenas `specs/README.md` + este arquivo e responda (a) qual spec executar primeiro hoje e (b) por que a `10-backend/21` está bloqueada — se ele responder Fase 0 (`40-ops/41`, `42`, `43`) e citar `20-frontend/22` + `40-ops/44`, o roadmap cumpre a função.
+
+Deploy: não se aplica (documento). Push pro remoto segue o gate padrão — SÓ com OK do dono da instância.
+
+## Arquivos afetados
+
+- `specs/90-roadmap.md` (este arquivo)
+
+## Riscos e reversão
+
+- **Risco:** roadmap desatualizar em relação à árvore (spec nova sem fase, dependência nova não refletida). Mitigação: regras de manutenção — atualização no mesmo commit da mudança.
+- **Risco:** agente pular gate por pressa. Mitigação: a tabela de registro exige evidência concreta; gate sem linha preenchida = não passou.
+- **Reversão:** `git revert` do commit que adicionou/alterou este arquivo. Nenhum código de runtime é afetado — rollback trivial e sem efeito colateral.
