@@ -128,10 +128,11 @@ async function main() {
     if (e.type === 'explicit') {
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
-        // A.29 — base size + cor pré-multiplicada fixa (alpha 25%).
-        // Slider Line thickness é multiplier puro sobre `size` (igual Obsidian).
-        size: 1.5,
-        color: 'rgba(64, 64, 64, 0.25)',
+        // A.36 — fio fino discreto (Obsidian): base size 0.8 + cinza-escuro
+        // com alpha baixa. Slider "Espessura das linhas" é multiplier puro
+        // sobre `size`; o edgeReducer engorda no hover/search.
+        size: 0.8,
+        color: 'rgba(63, 63, 70, 0.35)',
       });
     } else {
       similarCount++;
@@ -173,8 +174,10 @@ async function main() {
     // forçando label em zoom <0.6 / hubs em zoom <1.3 / hover.
     labelRenderedSizeThreshold: 18,
     defaultNodeColor: DOMAIN_FALLBACK,
-    // A.13 — alinhado: 6% (linha quase invisível, só destaca no hover).
-    defaultEdgeColor: 'rgba(204, 204, 204, 0.8)',
+    // A.36 — fio discreto estilo Obsidian: cinza-escuro (#3f3f46) com alpha
+    // baixa, quase invisível parado, só ganha corpo no hover/search (edgeReducer).
+    // Antes era rgba(204,204,204,0.8) — cinza-claro forte que competia com os nós.
+    defaultEdgeColor: 'rgba(63, 63, 70, 0.35)',
     // A.16 — Sigma 3 só registra EdgeLineProgram por default. Pra usar
     // 'rectangle' (triangle strips com blending de alpha de verdade) precisa
     // registrar o programa via edgeProgramClasses E setar defaultEdgeType.
@@ -534,20 +537,22 @@ async function main() {
 
   // ────────────────────────────────────────────────────────────────────────
   // A.24 — Physics: D3-force em Web Worker dedicado
-  // A.29 — defaults e ranges alinhados com Obsidian:
-  //   center: 0..1   default 0.1  (forceCenter strength sutil)
-  //   repel:  0..20  default 10   (forceManyBody strength magnitude)
-  //   link:   0..1   default 1    (forceLink strength)
-  //   distance: 30..500 default 250 (forceLink distance)
+  // A.36 — defaults RETUNADOS pra dente-de-leão do Obsidian (folhas grudadas nos
+  // hubs, ilhas separadas por espaço vazio). Ranges dos sliders continuam iguais
+  // (Obsidian-like), só os DEFAULTS mudaram — o slider default vira, via mapForces:
+  //   center: 0..1     default 0.04 → 0.02 efetivo  (puxão pro centro fraquíssimo)
+  //   repel:  0..20    default 9    → 450 efetivo    (repulsão moderada, distanceMax curto no worker)
+  //   link:   0..1     default 1    → 1 (scaled por grau no worker: folha gruda mais)
+  //   distance: 30..500 default 40  → 40 efetivo     (ligação curta = folha colada)
   // ────────────────────────────────────────────────────────────────────────
-  const FORCE_DEFAULTS = { center: 0.1, repel: 10, link: 1, distance: 250 };
+  const FORCE_DEFAULTS = { center: 0.04, repel: 9, link: 1, distance: 40 };
   function mapForces(o: { center: number; repel: number; link: number; distance: number }) {
     return {
       // Slider Obsidian-like → parâmetros que o worker D3-force consome.
-      center: o.center * 0.5,         // 0.1 → 0.05 forceCenter strength
-      repel: o.repel * 50,            // 10 → 500 forceManyBody magnitude
-      link: o.link,                   // direto
-      distance: o.distance,           // direto
+      center: o.center * 0.5,         // 0.04 → 0.02 forceCenter strength (fraquíssimo → ilhas se afastam)
+      repel: o.repel * 50,            // 9 → 450 forceManyBody magnitude (moderada)
+      link: o.link,                   // direto (worker escala por grau)
+      distance: o.distance,           // direto (40 = curto, folha colada no hub)
     };
   }
   let currentForces = { ...FORCE_DEFAULTS };
@@ -686,6 +691,11 @@ async function main() {
     renderer.setCustomBBox({ x: [minX - mx, maxX + mx], y: [minY - my, maxY + my] });
   }
 
+  // A.36 — SÓ ligações explícitas entram na física. As arestas 'similar'
+  // (semânticas) são overlay VISUAL, nunca estrutura: se entrassem no forceLink,
+  // puxariam nós de ilhas diferentes pra perto e as ilhas se fundiriam — o
+  // oposto do dente-de-leão do Obsidian, onde a estrutura vem só dos links reais.
+  // Elas continuam renderizáveis (drawSimilarEdges), mas fora da simulação SEMPRE.
   const workerLinks = [];
   for (const e of payload.edges) {
     if (e.type !== 'explicit') continue;
@@ -1314,8 +1324,9 @@ async function main() {
       const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       try {
         graph.addEdgeWithKey(id, suggestModalState.source, suggestModalState.target, {
-          size: 1.5,
-          color: 'rgba(64, 64, 64, 0.25)',
+          // A.36 — mesmo fio discreto das demais explícitas (ver bloco de load).
+          size: 0.8,
+          color: 'rgba(63, 63, 70, 0.35)',
         });
       } catch { /* duplicate */ }
       // Remove o par da lista de sugeridos

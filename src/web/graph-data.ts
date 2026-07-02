@@ -40,7 +40,7 @@ export interface GraphPayload {
 
 // v6: similar edges agora vêm pré-computadas do D1 (não mais Vectorize ao vivo).
 // Bump invalida o cache antigo no deploy, forçando uma rebuild com a nova fonte.
-const CACHE_KEY = 'graph:v8'; // v8: seed clusterizado por domínio + layout persistente (spec 20-frontend/22). Bump descarta o payload v7 antigo (posições espalhadas ao acaso).
+const CACHE_KEY = 'graph:v9'; // v9 (A.36): retune de física dente-de-leão (Obsidian). Bump descarta o payload v8, que carregava as posições da física antiga (bolha).
 
 // Invalida o cache do grafo (KV). Exportado pra que qualquer mutação de edge —
 // endpoint web handleGraphLink E a tool MCP delete_link — use o MESMO caminho, sem
@@ -55,7 +55,10 @@ export async function invalidateGraphCache(env: Env): Promise<void> {
 // não deve redistribuir os ~1800 nós já posicionados). Mesmo namespace KV
 // (GRAPH_CACHE), chave própria. Reset manual: deletar esta chave no KV
 // re-semeia tudo do zero (não há endpoint de reset nesta spec).
-const LAYOUT_KEY = 'graph-layout:v1';
+// v2 (A.36): bump força re-seed do zero — as posições em graph-layout:v1 foram
+// geradas pela física antiga (bolha) e estavam PINADAS aqui; sem o bump, o
+// layout novo nasceria com o dente-de-leão contaminado pelas posições velhas.
+const LAYOUT_KEY = 'graph-layout:v2';
 type StoredLayout = Record<string, { x: number; y: number }>;
 
 async function computeSourceHash(env: Env): Promise<string> {
@@ -179,13 +182,13 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
       id: n.id,
       label: n.title,
       domain: firstDomain(n.domains),
-      // A.9 — FÓRMULA EXATA EXTRAÍDA DO app.js DO OBSIDIAN:
-      //   getSize() = max(8, min(3 * sqrt(weight+1), 30))
-      // - Floor 8: todo nó tem tamanho mínimo visível
-      // - Cap 30: hub gigante não estoura
-      // - 3*sqrt = curva mais agressiva que sqrt simples
-      // Range: 8 a 30 (4x), igual Obsidian. Linha = 1 → razão node:line de 8x-30x.
-      size: Math.max(8, Math.min(3 * Math.sqrt((degree.get(n.id) ?? 0) + 1), 30)),
+      // A.9/A.36 — FÓRMULA do app.js DO OBSIDIAN: getSize() = max(floor, min(3*sqrt(weight+1), 30))
+      // - Floor 6 (A.36, era 8): folha fica MENOR → contraste maior com o hub,
+      //   reforçando o dente-de-leão (folhinhas pequenas orbitando hub grande).
+      // - Cap 30: hub gigante não estoura.
+      // - 3*sqrt = curva mais agressiva que sqrt simples.
+      // Range: 6 a 30 (5x), contraste node:line ainda maior com a linha em 0.8.
+      size: Math.max(6, Math.min(3 * Math.sqrt((degree.get(n.id) ?? 0) + 1), 30)),
       x: p.x,
       y: p.y,
     };

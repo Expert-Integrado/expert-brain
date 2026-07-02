@@ -43,10 +43,20 @@ interface Forces {
   center: number;     // forceCenter strength (0..0.2 sutil)
   repel: number;      // forceManyBody strength magnitude (200..2000)
   link: number;       // forceLink strength (0..2)
-  distance: number;   // forceLink distance (50..400)
+  distance: number;   // forceLink distance (30..400)
 }
 
-const DEFAULTS: Forces = { center: 0.05, repel: 1000, link: 0.4, distance: 200 };
+// A.36 — Paridade visual com o graph view do Obsidian (dentes-de-leão): folhas
+// orbitam grudadas nos hubs, ilhas afastadas por espaço vazio. A receita:
+//   center  MUITO fraco (0.02) → não puxa tudo pro miolo, deixa as ilhas se
+//           afastarem em vez de virar uma bola única;
+//   repel   MODERADO (450) com distanceMax curto (250) → empurra vizinhos pra
+//           não encavalar, mas NÃO repele entre clusters distantes (o que
+//           colapsaria as ilhas num disco só e custa O(n²));
+//   link    FORTE (1) e distância CURTA (40) → a folha gruda no hub; o strength
+//           por-link ainda é escalado por grau (ver chargeStrength/linkStrength
+//           abaixo) pra folha (grau 1) colar mais que hub<->hub.
+const DEFAULTS: Forces = { center: 0.02, repel: 450, link: 1, distance: 40 };
 
 let nodes: SimNode[] = [];
 let links: SimLink[] = [];
@@ -60,6 +70,35 @@ const collideRadius = (d: SimNode) => (d.r ?? 10) + (noOverlap ? 6 : 4);
 const collideStrength = () => (noOverlap ? 1 : 0.8);
 const collideIterations = () => (noOverlap ? 4 : 1);
 const pinned = new Map<string, { x: number; y: number }>();
+
+// A.36 — grau (nº de links explícitos) por nó. Usado pra escalar o strength do
+// forceLink como o d3 faz por default (1 / min(grau_a, grau_b)): a ponta de
+// menor grau (a folha) "manda" e gruda mais forte no hub. Recalculado sempre
+// que os links mudam (init).
+const degreeById = new Map<string, number>();
+function recomputeDegrees() {
+  degreeById.clear();
+  for (const l of links) {
+    const s = typeof l.source === 'string' ? l.source : (l.source as SimNode).id;
+    const t = typeof l.target === 'string' ? l.target : (l.target as SimNode).id;
+    degreeById.set(s, (degreeById.get(s) ?? 0) + 1);
+    degreeById.set(t, (degreeById.get(t) ?? 0) + 1);
+  }
+}
+
+// A.36 — closures ÚNICAS de força, referenciadas TANTO no rebuild quanto no
+// case 'forces'. Antes o 'forces' reaplicava strength flat (-forces.repel) e
+// trocava silenciosamente o modelo físico (hub repelia 2,5x menos ao mexer em
+// qualquer slider). Extraídas pra manter o scaling por raio/grau consistente.
+const chargeStrength = (d: SimNode) => -forces.repel * ((d.r ?? 10) / 12);
+const linkStrength = (l: SimLink) => {
+  const s = typeof l.source === 'string' ? l.source : (l.source as SimNode).id;
+  const t = typeof l.target === 'string' ? l.target : (l.target as SimNode).id;
+  // 1 / min(grau) escala com o slider `link`: folha (grau 1) gruda no hub com
+  // strength cheio; ligação hub<->hub afrouxa proporcional ao grau — igual d3.
+  const minDeg = Math.min(degreeById.get(s) ?? 1, degreeById.get(t) ?? 1) || 1;
+  return forces.link / minDeg;
+};
 
 function rebuildSimulation(initialAlpha = 1) {
   if (sim) sim.stop();
@@ -78,19 +117,22 @@ function rebuildSimulation(initialAlpha = 1) {
 
   sim = forceSimulation<SimNode, SimLink>(nodes)
     // A.25 — manyBody com strength escalado pelo tamanho do nó (nós grandes
-    // empurram mais que pequenos), igual ao Obsidian. Usa distanceMax pra
-    // evitar repelir entre clusters distantes (perf + estabilidade).
+    // empurram mais que pequenos), igual ao Obsidian. A.36 — distanceMax CURTO
+    // (250): repulsão morre além de ~250px, então clusters distantes NÃO se
+    // empurram — as ilhas ficam separadas por espaço vazio (dentes-de-leão) em
+    // vez de colapsar num disco só. Também corta o O(n²) global (perf).
     .force(
       'charge',
       forceManyBody<SimNode>()
-        .strength((d) => -forces.repel * ((d.r ?? 10) / 12))
-        .distanceMax(800),
+        .strength(chargeStrength)
+        .distanceMax(250),
     )
+    // A.36 — link forte + curto + strength por grau (folha gruda no hub).
     .force(
       'link',
       forceLink<SimNode, SimLink>(links)
         .id((d) => (d as SimNode).id)
-        .strength(forces.link)
+        .strength(linkStrength)
         .distance(forces.distance),
     )
     .force('center', forceCenter<SimNode>(0, 0).strength(forces.center))
@@ -124,6 +166,7 @@ self.addEventListener('message', (e: MessageEvent) => {
       // A.25 — recebe r (raio) por nó pra collide + repel proporcionais
       nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y, r: n.r ?? 10 }));
       links = msg.links.map((l: any) => ({ source: l.source, target: l.target }));
+      recomputeDegrees(); // A.36 — grau por nó pro linkStrength escalar por grau
       if (msg.forces) forces = { ...forces, ...msg.forces };
       if (typeof msg.noOverlap === 'boolean') noOverlap = msg.noOverlap;
       pinned.clear();
@@ -136,8 +179,12 @@ self.addEventListener('message', (e: MessageEvent) => {
     case 'forces': {
       forces = { ...forces, ...msg.forces };
       if (sim) {
-        (sim.force('charge') as any)?.strength(-forces.repel);
-        (sim.force('link') as any)?.strength(forces.link).distance(forces.distance);
+        // A.36 — reaplica as MESMAS closures (charge scaled por raio, link
+        // scaled por grau) em vez de strength flat. Antes, mexer em qualquer
+        // slider trocava o modelo físico e o layout ajustado divergia do que o
+        // reload reproduzia. As closures leem `forces` (já atualizado acima).
+        (sim.force('charge') as any)?.strength(chargeStrength);
+        (sim.force('link') as any)?.strength(linkStrength).distance(forces.distance);
         (sim.force('center') as any)?.strength(forces.center);
         sim.alpha(msg.alpha ?? 0.3).restart();
       }
