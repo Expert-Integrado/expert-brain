@@ -81,12 +81,23 @@ let nodes: SimNode[] = [];
 let links: SimLink[] = [];
 let sim: Simulation<SimNode, SimLink> | null = null;
 let forces: Forces = { ...DEFAULTS };
-// Modo "não sobrepor": collide forte (strength 1 + 4 iterações + padding maior)
-// que resolve a sobreposição de verdade. Default off = collide suave (0.8/1 iter)
-// que só evita encavalamento grosseiro sem custar perf no caso comum.
+// A.38 — collide rebased no BASELINE DO OBSIDIAN. O engine do Obsidian roda o
+// collide SEMPRE ligado com raio FLAT 60 e strength 0.5 (evidência no asar:
+// `.radius(60).strength(.5)`, força `k` do array [_,N,q,R,k]).
+//
+// REGRESSÃO CORRIGIDA: o raio antigo (r + 4/6 ≈ 10-36px) fazia sentido na física
+// v9 (repel 450 capado + links de 40px, nós encavalados). Sob a física v10
+// (repel 1000 SEM cap + links de 250px) o espaçamento de equilíbrio é bem maior
+// que 36px — o collide nunca engajava em NENHUM modo e o toggle "não sobrepor"
+// ficou visualmente morto (marcar/desmarcar não mudava nada).
+//   OFF = Obsidian exato: raio 60 flat, strength 0.5, 1 iteração;
+//   ON  = modo forte nosso: raio 66 (60 + padding 6), strength 1, 4 iterações —
+//         constraint quase rígido que resolve o encavalamento de verdade.
+// Raio 60 já garante não-sobreposição visual entre quaisquer nós (r máx 30;
+// separação mínima 120 > 30+30), então o flat é seguro pra todos os tamanhos.
 let noOverlap = false;
-const collideRadius = (d: SimNode) => (d.r ?? 10) + (noOverlap ? 6 : 4);
-const collideStrength = () => (noOverlap ? 1 : 0.8);
+const collideRadius = (_d: SimNode) => (noOverlap ? 66 : 60);
+const collideStrength = () => (noOverlap ? 1 : 0.5);
 const collideIterations = () => (noOverlap ? 4 : 1);
 const pinned = new Map<string, { x: number; y: number }>();
 
@@ -196,8 +207,8 @@ function rebuildSimulation(initialAlpha = 1) {
     // temáticos num vault denso. DOMAIN_GRAVITY calibra (0 desliga).
     .force('domainX', forceX<SimNode>(domainTargetX).strength(DOMAIN_GRAVITY))
     .force('domainY', forceY<SimNode>(domainTargetY).strength(DOMAIN_GRAVITY))
-    // A.25 — collide com raio = size + padding. Garante que nó grande não fica em
-    // cima de pequeno. Intensidade/iterações sobem no modo "não sobrepor".
+    // A.38 — collide baseline Obsidian (raio flat 60 / strength 0.5, sempre on,
+    // igual ao asar). Raio/intensidade/iterações sobem no modo "não sobrepor".
     .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(collideStrength()).iterations(collideIterations()))
     .velocityDecay(0.4)                       // A.37 — Obsidian: vx*=0.6/tick (=1-0.4)
     .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 = Obsidian (~300 ticks pra esfriar)
@@ -257,8 +268,10 @@ self.addEventListener('message', (e: MessageEvent) => {
       break;
     }
     case 'collide': {
-      // Liga/desliga o modo "não sobrepor" ao vivo e reaquece pra re-resolver as
-      // posições sem encavalar (alpha 0.5 dá um empurrão suficiente).
+      // Liga/desliga o modo "não sobrepor" ao vivo: reaplica raio+strength+
+      // iterações (A.38: 66/1/4 ligado vs 60/0.5/1 Obsidian-baseline desligado)
+      // e REAQUECE (alpha 0.5) — sem o reheat a simulação já esfriou e o efeito
+      // só apareceria no próximo rebuild.
       noOverlap = !!msg.noOverlap;
       if (sim) {
         (sim.force('collide') as any)
