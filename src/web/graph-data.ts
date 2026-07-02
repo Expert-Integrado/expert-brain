@@ -40,7 +40,23 @@ export interface GraphPayload {
 
 // v6: similar edges agora vêm pré-computadas do D1 (não mais Vectorize ao vivo).
 // Bump invalida o cache antigo no deploy, forçando uma rebuild com a nova fonte.
-const CACHE_KEY = 'graph:v7'; // v7: guard de escala no computeLayout (fix Error 1102 em vault grande). Bump descarta o payload v6 antigo.
+const CACHE_KEY = 'graph:v8'; // v8: seed clusterizado por domínio + layout persistente (spec 20-frontend/22). Bump descarta o payload v7 antigo (posições espalhadas ao acaso).
+
+// Invalida o cache do grafo (KV). Exportado pra que qualquer mutação de edge —
+// endpoint web handleGraphLink E a tool MCP delete_link — use o MESMO caminho, sem
+// duplicar a const CACHE_KEY nem o delete. Best-effort a cargo do caller (falha de
+// KV não deve abortar uma mutação já commitada no D1). Ver spec 16.
+export async function invalidateGraphCache(env: Env): Promise<void> {
+  await env.GRAPH_CACHE.delete(CACHE_KEY);
+}
+
+// Posições persistidas SEPARADAS dos dados do grafo — sobrevivem a qualquer
+// invalidação de CACHE_KEY (toda escrita de nota/edge invalida os dados, mas
+// não deve redistribuir os ~1800 nós já posicionados). Mesmo namespace KV
+// (GRAPH_CACHE), chave própria. Reset manual: deletar esta chave no KV
+// re-semeia tudo do zero (não há endpoint de reset nesta spec).
+const LAYOUT_KEY = 'graph-layout:v1';
+type StoredLayout = Record<string, { x: number; y: number }>;
 
 async function computeSourceHash(env: Env): Promise<string> {
   // COUNT só de notas vivas: soft-delete (UPDATE deleted_at) não muda updated_at,
@@ -120,13 +136,42 @@ async function buildPayload(env: Env): Promise<GraphPayload> {
   for (const e of explicitEdges) { bump(e.from_id); bump(e.to_id); }
   for (const e of similarityEdges) { bump(e.source); bump(e.target); }
 
-  const layoutNodes: LayoutNode[] = notes.map((n) => ({ id: n.id }));
+  const layoutNodes: LayoutNode[] = notes.map((n) => ({ id: n.id, domain: firstDomain(n.domains) }));
   const layoutEdges: LayoutEdge[] = [
     ...explicitEdges.map((e) => ({ source: e.from_id, target: e.to_id })),
     ...similarityEdges.map((e) => ({ source: e.source, target: e.target })),
   ];
-  const laidOut = computeLayout(layoutNodes, layoutEdges);
+
+  // Layout persistente: lê posições gravadas do build anterior. KV ausente ou
+  // corrompida (formato inesperado) vira `undefined` — tratado como primeiro
+  // build (nunca lança), computeLayout semeia tudo do zero nesse caso.
+  let existingLayout: Map<string, { x: number; y: number }> | undefined;
+  try {
+    const stored = await env.GRAPH_CACHE.get(LAYOUT_KEY, 'json') as StoredLayout | null;
+    if (stored && typeof stored === 'object') {
+      existingLayout = new Map(Object.entries(stored));
+    }
+  } catch (err) {
+    console.error('graph-data: reading layout KV failed', err);
+    existingLayout = undefined;
+  }
+
+  const laidOut = computeLayout(layoutNodes, layoutEdges, existingLayout);
   const pos = new Map(laidOut.map((n) => [n.id, n]));
+
+  // Grava de volta só os nós VIVOS (aliveIds) — poda automática de nós
+  // deletados, a chave não cresce sem limite. Falha de escrita no KV não deve
+  // derrubar o payload do grafo (o usuário ainda vê o grafo, só perde a
+  // persistência deste rebuild específico).
+  try {
+    const toStore: StoredLayout = {};
+    for (const n of laidOut) {
+      if (aliveIds.has(n.id)) toStore[n.id] = { x: n.x, y: n.y };
+    }
+    await env.GRAPH_CACHE.put(LAYOUT_KEY, JSON.stringify(toStore));
+  } catch (err) {
+    console.error('graph-data: writing layout KV failed', err);
+  }
 
   const nodes: GraphNode[] = notes.map((n) => {
     const p = pos.get(n.id) ?? { x: 0, y: 0 };
@@ -297,8 +342,8 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
     `INSERT OR IGNORE INTO edges (id, from_id, to_id, relation_type, why, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).bind(id, source, target, 'analogous_to', why, Date.now()).run();
-  // Invalida cache do graph
-  await env.GRAPH_CACHE.delete(CACHE_KEY);
+  // Invalida cache do graph (mesmo helper usado pela tool delete_link).
+  await invalidateGraphCache(env);
   return new Response(JSON.stringify({ ok: true, id }), { headers: { 'content-type': 'application/json' } });
 }
 
