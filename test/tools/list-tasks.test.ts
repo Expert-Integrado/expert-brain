@@ -1,7 +1,8 @@
 import { env } from 'cloudflare:test';
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import { insertTask, replaceTags } from '../../src/db/queries.js';
+import * as queries from '../../src/db/queries.js';
 import { registerListTasks } from '../../src/mcp/tools/list-tasks.js';
 
 const E = env as any;
@@ -60,5 +61,56 @@ describe('list_tasks', () => {
     const p = JSON.parse(res.content[0].text);
     expect(p.tasks.map((t: any) => t.id)).toEqual(['pc']);
     expect(p.tasks[0].tags.sort()).toEqual(['maquina:pc-principal', 'projeto-x']);
+  });
+
+  it('status:[done] returns closed tasks WITHOUT include_closed', async () => {
+    await seedTask('o', 'open');
+    await seedTask('d', 'done');
+    await seedTask('c', 'canceled');
+    const res = await reg().list_tasks({ status: ['done'] });
+    const p = JSON.parse(res.content[0].text);
+    expect(p.tasks.map((t: any) => t.id)).toEqual(['d']);
+  });
+
+  it('tag filter is case-insensitive both ways', async () => {
+    // Tag gravada lowercase (normalização); filtro passa maiúscula.
+    await seedTask('a', 'open', { tags: ['Cliente-X'] });
+    const res = await reg().list_tasks({ tag: 'cliente-x' });
+    const p = JSON.parse(res.content[0].text);
+    expect(p.tasks.map((t: any) => t.id)).toEqual(['a']);
+    // e o inverso: tag gravada lowercase, filtro maiúsculo
+    const res2 = await reg().list_tasks({ tag: 'CLIENTE-X' });
+    const p2 = JSON.parse(res2.content[0].text);
+    expect(p2.tasks.map((t: any) => t.id)).toEqual(['a']);
+  });
+
+  it('query does full-text search over tasks (incl. closed) and no knowledge notes', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'q1', title: 'Enviar relatório mensal', body: 'corpo', tldr: 'x', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    await insertTask(E, { id: 'q2', title: 'Relatório trimestral', body: 'corpo', tldr: 'x', domains: '["operations"]', status: 'done', due_at: null, priority: null, created_at: now, updated_at: now });
+    await insertTask(E, { id: 'other', title: 'Ligar para fornecedor', body: 'corpo', tldr: 'x', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    // uma nota de conhecimento com a palavra — NÃO pode aparecer
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('k','Relatório de pesquisa','b','tl','["product"]','concept',1,1,null)`
+    ).run();
+    const res = await reg().list_tasks({ query: 'relatório' });
+    const p = JSON.parse(res.content[0].text);
+    const ids = p.tasks.map((t: any) => t.id).sort();
+    // abertas E fechadas casam; nota de conhecimento e 'other' não
+    expect(ids).toContain('q1');
+    expect(ids).toContain('q2');
+    expect(ids).not.toContain('other');
+    expect(ids).not.toContain('k');
+  });
+
+  it('without a tag filter, getTagsForNotes is called only for sliced items', async () => {
+    // Seed mais tasks que o limit; espia getTagsForNotes e confere que recebe só `limit` ids.
+    for (let i = 0; i < 6; i++) await seedTask(`t${i}`, 'open');
+    const spy = vi.spyOn(queries, 'getTagsForNotes');
+    await reg().list_tasks({ limit: 2 });
+    expect(spy).toHaveBeenCalledTimes(1);
+    const idsArg = spy.mock.calls[0][1] as string[];
+    expect(idsArg.length).toBe(2);
+    spy.mockRestore();
   });
 });

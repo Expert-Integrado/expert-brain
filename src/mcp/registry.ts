@@ -4,6 +4,7 @@ import { registerRecall } from './tools/recall.js';
 import { registerExpand } from './tools/expand.js';
 import { registerGetNote } from './tools/get-note.js';
 import { registerLink } from './tools/link.js';
+import { registerDeleteLink } from './tools/delete-link.js';
 import { registerReembed } from './tools/reembed.js';
 import { registerUpdateNote } from './tools/update-note.js';
 import { registerDeleteNote } from './tools/delete-note.js';
@@ -14,6 +15,7 @@ import { registerListTasksDueToday } from './tools/list-tasks-due-today.js';
 import { registerListTasks } from './tools/list-tasks.js';
 import { registerCompleteTask } from './tools/complete-task.js';
 import { registerUpdateTask } from './tools/update-task.js';
+import { registerGetTask } from './tools/get-task.js';
 import { registerAttachMedia } from './tools/attach-media.js';
 import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
@@ -28,6 +30,7 @@ export function registerAllTools(server: any, env: Env): void {
   registerExpand(server, env);
   registerGetNote(server, env);
   registerLink(server, env);
+  registerDeleteLink(server, env);
   registerStats(server, env);
   registerReembed(server, env);
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
@@ -36,6 +39,7 @@ export function registerAllTools(server: any, env: Env): void {
   registerListTasks(server, env);
   registerCompleteTask(server, env);
   registerUpdateTask(server, env);
+  registerGetTask(server, env);
   // Mídia das notas (R2 + dedup SHA-256).
   registerAttachMedia(server, env);
   registerGetNoteMedia(server, env);

@@ -82,6 +82,29 @@ describe('save_note', () => {
     expect(r.content[0].text).toContain('ghost');
   });
 
+  it('rejects an edge pointing to a task and does not save the note', async () => {
+    const { server, registered } = makeServer();
+    registerSaveNote(server, E);
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at,status,due_at,priority,completed_at)
+       VALUES ('taskx','Task','','tl','["operations"]','task',0,0,null,'open',null,null,null)`
+    ).run();
+    const r = await registered.save_note({
+      title: 'X', body: 'b',
+      tldr: 'tldr long enough here really',
+      domains: ['operations'],
+      kind: 'concept',
+      edges: [{ to_id: 'taskx', relation_type: 'analogous_to', why: 'this is a long enough why to pass validation' }],
+    });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('task');
+    // A nota NÃO foi salva (validação roda antes de qualquer write) — só a task existe.
+    const count = await E.DB.prepare(`SELECT count(*) c FROM notes WHERE kind IS NULL OR kind <> 'task'`).first();
+    expect(count.c).toBe(0);
+    const edges = await E.DB.prepare(`SELECT count(*) c FROM edges`).first();
+    expect(edges.c).toBe(0);
+  });
+
   it('rejects uppercase domain', async () => {
     const { server, registered } = makeServer();
     registerSaveNote(server, E);

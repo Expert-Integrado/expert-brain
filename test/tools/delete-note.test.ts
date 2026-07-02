@@ -80,6 +80,20 @@ describe('delete_note', () => {
     expect(E.VECTORIZE.deleteByIds).not.toHaveBeenCalled();
   });
 
+  it('rejects a task id and does NOT soft-delete it', async () => {
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at,status,due_at,priority,completed_at)
+       VALUES ('tk','Task','','tl','["operations"]','task',0,0,null,'open',null,null,null)`
+    ).run();
+    const r = await reg().delete_note({ id: 'tk', confirm: true });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('update_task');
+    expect(r.content[0].text).toContain('complete_task');
+    expect(E.VECTORIZE.deleteByIds).not.toHaveBeenCalled();
+    const row = await E.DB.prepare('SELECT deleted_at FROM notes WHERE id = ?').bind('tk').first();
+    expect(row.deleted_at).toBeNull();
+  });
+
   it('preserves D1 and returns specific error when Vectorize.deleteByIds fails', async () => {
     await seed('a');
     E.VECTORIZE.deleteByIds = vi.fn(async () => {

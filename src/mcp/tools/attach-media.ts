@@ -16,7 +16,9 @@ const DESCRIPTION = `Attaches a media file (image, video, document, audio) to an
 
 The blob is stored in R2 with SHA-256 dedup (the same file attached to many notes uses one blob). \`source\` is EITHER a base64 string (a raw base64 or a data: URL) OR an http(s) URL to download (fetched with a browser User-Agent to dodge WAFs). Max 50MB.
 
-Returns the media id and a signed URL (valid ~1h) to view it. Use get_note_media to list a note's media, delete_note_media to remove.`;
+Returns the media id and a signed URL (valid ~1h) to view it. Use get_note_media to list a note's media, delete_note_media to remove.
+
+Works for tasks (kind='task') too — attaching media to a task is a legitimate operation.`;
 
 interface AttachInput { note_id: string; source: string; kind?: typeof MEDIA_KINDS[number]; mime_type?: string; filename?: string; }
 

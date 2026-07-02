@@ -24,7 +24,7 @@ const inputSchema = {
 const DESCRIPTION = `Edits fields of an existing note. At least one field besides id must be provided.
 
 Editable fields: title, body, tldr, domains, kind, tags.
-NOT editable here: id, created_at, edges. To change edges, use link (add) — edges cannot be deleted via MCP yet.
+NOT editable here: id, created_at, edges. To change edges, use link (add) or delete_link (remove); to edit a why, delete_link then link again.
 
 FLOW: call recall() or get_note() first to confirm the id. Do not call update_note with an invented id.
 

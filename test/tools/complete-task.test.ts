@@ -44,4 +44,14 @@ describe('complete_task', () => {
     const res = await reg().complete_task({ id: 'ghost' });
     expect(res.isError).toBe(true);
   });
+
+  it('is idempotent: completing an already-done task is a no-op', async () => {
+    const first = JSON.parse((await reg().complete_task({ id: 't1', outcome: 'primeiro' })).content[0].text);
+    const firstCompleted = first.completed_at;
+    const second = JSON.parse((await reg().complete_task({ id: 't1', outcome: 'segundo' })).content[0].text);
+    expect(second.already_done).toBe(true);
+    expect(second.completed_at).toBe(firstCompleted);
+    const row = await E.DB.prepare(`SELECT body FROM notes WHERE id='t1'`).first();
+    expect((row.body.match(/\*\*Resultado:\*\*/g) || []).length).toBe(1);
+  });
 });

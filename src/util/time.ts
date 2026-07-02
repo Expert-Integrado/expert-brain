@@ -22,26 +22,32 @@ export function parseDueToMs(input: string): number | null {
     return Number.isNaN(ms) ? null : ms;
   }
 
-  // Normaliza "espaço" entre data e hora pra "T".
-  let s = raw.replace(' ', 'T');
+  // Normaliza o(s) espaço(s) entre data e hora pra um único "T". Antes usava
+  // raw.replace(' ', 'T'), que troca só o PRIMEIRO espaço — input com espaços
+  // extras ("2026-06-22  14:00") escapava do caminho BRT e caía no fallback UTC.
+  // A regex ^(\S+)\s+ consome TODO o run de espaço numa substituição só.
+  let s = raw.replace(/^(\S+)\s+/, '$1T');
 
-  // Só data (sem hora) → fim do dia em BRT.
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    s = `${s}T23:59:00`;
+  // Só data (sem hora) → fim do dia em BRT. Aceita mês/dia sem zero-pad.
+  const dateOnly = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (dateOnly) {
+    const [, y, mo, d] = dateOnly;
+    s = `${y}-${pad(+mo)}-${pad(+d)}T23:59:00`;
   }
 
-  // Garante segundos (HH:MM → HH:MM:00).
-  if (/T\d{2}:\d{2}$/.test(s)) {
-    s = `${s}:00`;
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) {
-    const ms = Date.parse(raw);
+  // Data + hora (com ou sem segundos, com ou sem zero-pad em qualquer componente).
+  const dt = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})T(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (dt) {
+    const [, y, mo, d, h, mi, se] = dt;
+    const norm = `${y}-${pad(+mo)}-${pad(+d)}T${pad(+h)}:${pad(+mi)}:${pad(se ? +se : 0)}`;
+    const ms = Date.parse(`${norm}${BRT_OFFSET}`);
     return Number.isNaN(ms) ? null : ms;
   }
 
-  const ms = Date.parse(`${s}${BRT_OFFSET}`);
-  return Number.isNaN(ms) ? null : ms;
+  // Fallback UTC REMOVIDO (spec 15 item 5): Date.parse(raw) cru tratava ISO sem
+  // timezone como UTC, gravando prazo 3h adiantado em silêncio. Melhor errar alto —
+  // o toolError do save_task/update_task já guia o formato correto.
+  return null;
 }
 
 // Componentes de um instante em BRT, sem depender de Intl (que pode não trazer a

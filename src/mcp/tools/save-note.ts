@@ -50,7 +50,7 @@ The kind field is REQUIRED and must be one of 7 values — pick the one that bes
 - 'principle' — a personal rule or axiom the user lives by
 - 'question'  — an open question worth revisiting (not yet answered)
 
-IMPORTANT: the why field of each edge is rejected if it has fewer than 20 characters, and edges pointing to non-existent ids are rejected. If you do not have the target note id, call recall() first. Domains that do not match the canonical slug format are rejected with an explanation.
+IMPORTANT: the why field of each edge is rejected if it has fewer than 20 characters, and edges pointing to non-existent ids are rejected. Edges pointing to a task (kind='task') are also rejected — tasks live outside the graph; the note is NOT saved, remove the edge and retry. If you do not have the target note id, call recall() first. Domains that do not match the canonical slug format are rejected with an explanation.
 
 INDEXING LATENCY: Cloudflare Vectorize is eventually consistent. After save_note returns successfully, the newly-saved note is immediately queryable via its id (get_note, expand) because D1 is strongly consistent, but the VECTOR may take up to ~1-2 minutes to become queryable via recall. If the user asks you to recall a concept right after saving it and recall returns empty or misses the fresh note, that is NOT a bug — explain the delay to the user and suggest trying again in a minute, or use get_note/expand on the id you just received if you need to reference the content immediately.`;
 
@@ -106,6 +106,12 @@ export function registerSaveNote(server: any, env: Env): void {
               `to discover the correct id. Do NOT retry with this id.`
             );
           }
+          if (target.kind === 'task') {
+            return toolError(
+              `Edge to '${e.to_id}' rejected: that id is a task, and tasks live outside the graph. ` +
+              `Use the task's tags to reference context instead. The note was NOT saved — remove this edge and retry.`
+            );
+          }
         }
       }
 
@@ -125,9 +131,10 @@ export function registerSaveNote(server: any, env: Env): void {
       });
       if (input.tags?.length) await insertTags(env, id, input.tags);
 
+      let edgesCreated = 0;
       if (input.edges) {
         for (const e of input.edges) {
-          await insertEdge(env, {
+          const inserted = await insertEdge(env, {
             id: newId(),
             from_id: id,
             to_id: e.to_id,
@@ -135,6 +142,7 @@ export function registerSaveNote(server: any, env: Env): void {
             why: e.why,
             created_at: now,
           });
+          if (inserted) edgesCreated++;
         }
       }
 
@@ -159,7 +167,7 @@ export function registerSaveNote(server: any, env: Env): void {
         id,
         url: noteUrl(env, id),
         saved: { title: input.title, domains: input.domains },
-        edges_created: input.edges?.length ?? 0,
+        edges_created: edgesCreated,
       });
     }) as any
   );

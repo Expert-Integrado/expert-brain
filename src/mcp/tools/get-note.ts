@@ -9,7 +9,9 @@ const DESCRIPTION = `Fetch the full content of a note by id (body + tags + edges
 
 FLOW: call recall() first to discover the id. Do not invent ids.
 
-IMPORTANT: the body can be long — cite the relevant passages in your reply, do not dump the entire content back to the user. If you are not sure which note to pull, prefer recall() + expand() before falling back to get_note.`;
+IMPORTANT: the body can be long — cite the relevant passages in your reply, do not dump the entire content back to the user. If you are not sure which note to pull, prefer recall() + expand() before falling back to get_note.
+
+Works for tasks (kind='task') too, but returns a note shape WITHOUT status/due/priority — use get_task to read a task's full state.`;
 
 export function registerGetNote(server: any, env: Env): void {
   server.registerTool(

@@ -117,6 +117,89 @@ describe('recall', () => {
     expect(ids).toContain('g');
   });
 
+  it('domains_filter never returns a task (kind=task leak fix)', async () => {
+    // Seed a task in cognitive-science (same domain as knowledge notes a/d).
+    // Task has domains, so the domain retrieval would pull it in; NON_TASK_FILTER
+    // must drop it in both the retrieval and the hydration.
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at,status,due_at,priority,completed_at)
+       VALUES ('task-leak','Do a thing','b','tl','["cognitive-science"]','task',0,0,null,'open',null,null,null)`
+    ).run();
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [] }));
+
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+    const r = await registered.recall({ query: 'x', domains_filter: ['cognitive-science'] });
+    const parsed = JSON.parse(r.content[0].text);
+    const ids = parsed.results.map((x: any) => x.id);
+    expect(ids).not.toContain('task-leak');
+    // The knowledge notes of the same domain ARE present (a, d).
+    expect(ids).toContain('a');
+    expect(ids).toContain('d');
+  });
+
+  it('domains_filter with a pool > 100 ids does not blow up (chunked hydration)', async () => {
+    // Seed 120 extra notes in a single domain. With LIMIT 200 on the domain
+    // retrieval the pool passes 100 ids — the single IN(...) would have hit the
+    // D1 bind cap; the chunked getNotesByIds keeps it safe.
+    const stmt = E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,null,?,?,null)`
+    );
+    const batch = [];
+    for (let i = 0; i < 120; i++) {
+      batch.push(stmt.bind(`big${i}`, `Big ${i}`, 'body', `tldr ${i}`, '["operations"]', i, i));
+    }
+    await E.DB.batch(batch);
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [] }));
+
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+    const r = await registered.recall({ query: 'anything', domains_filter: ['operations'], limit: 30 });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.results.length).toBeGreaterThan(0);
+  });
+
+  it('domains_filter paginates via offset with disjoint pages and no 3-per-domain cap', async () => {
+    // Seed 40 notes, all with operations as the PRIMARY domain. The old balancer
+    // would cap operations at 3; with a filter it must be relaxed and offset must
+    // page through all of them.
+    const stmt = E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,null,?,?,null)`
+    );
+    const batch = [];
+    for (let i = 0; i < 40; i++) {
+      // updated_at descending id order: newer i => higher updated_at
+      batch.push(stmt.bind(`p${String(i).padStart(2, '0')}`, `P ${i}`, 'body', `tldr ${i}`, '["operations"]', i, i));
+    }
+    await E.DB.batch(batch);
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [] }));
+
+    const registered: any = {};
+    const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };
+    registerRecall(server, E);
+
+    const page0 = JSON.parse((await registered.recall({ query: 'anything', domains_filter: ['operations'], limit: 5, offset: 0 })).content[0].text);
+    const page1 = JSON.parse((await registered.recall({ query: 'anything', domains_filter: ['operations'], limit: 5, offset: 5 })).content[0].text);
+    const ids0 = page0.results.map((x: any) => x.id);
+    const ids1 = page1.results.map((x: any) => x.id);
+    expect(ids0.length).toBe(5);
+    expect(ids1.length).toBe(5);
+    // pages disjoint
+    for (const id of ids0) expect(ids1).not.toContain(id);
+    // cap relaxed: iterate all pages and count total operations notes enumerated
+    const seen = new Set<string>();
+    for (let off = 0; off < 60; off += 10) {
+      const pg = JSON.parse((await registered.recall({ query: 'anything', domains_filter: ['operations'], limit: 10, offset: off })).content[0].text);
+      for (const x of pg.results) seen.add(x.id);
+      if (pg.results.length < 10) break;
+    }
+    // Well above the old ~3-per-primary-domain ceiling of 15.
+    expect(seen.size).toBeGreaterThan(15);
+  });
+
   it('response does not leak internal allDomains field', async () => {
     const registered: any = {};
     const server: any = { registerTool: (n: string, _m: any, h: any) => { registered[n] = h; } };

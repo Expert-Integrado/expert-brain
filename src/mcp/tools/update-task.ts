@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, replaceTags } from '../../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, replaceTags, getTagsByNote, getTaskById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 
@@ -10,13 +10,16 @@ const inputSchema = {
   title: z.string().min(1).max(200).optional().describe('New title. Also updates the task tldr (which mirrors the title).'),
   details: z.string().optional().describe('New body/details (markdown). REPLACES the existing body — to append context, pass the full new body.'),
   due: z.string().optional().describe(
-    'New due date/time in BRT. Accepts ISO ("2026-06-22T14:00"), "2026-06-22 14:00", or date-only "2026-06-22" (end of that day). Prefer this OVER due_at.'
+    'New due date/time in BRT. Accepts ISO ("2026-06-22T14:00"), "2026-06-22 14:00", or date-only "2026-06-22" (end of that day). Pass "none" (or "clear") to REMOVE the due date. Prefer this OVER due_at. Cannot be passed together with due_at.'
   ),
-  due_at: z.number().int().optional().describe('New due timestamp as unix epoch MILLISECONDS. Only use if you already have the exact epoch; otherwise pass `due`.'),
-  priority: z.number().int().min(1).max(4).optional().describe('New priority 1 (highest) to 4 (lowest).'),
+  due_at: z.number().int().optional().describe('New due timestamp as unix epoch MILLISECONDS. Only use if you already have the exact epoch; otherwise pass `due`. Cannot be passed together with due.'),
+  priority: z.union([z.number().int().min(1).max(4), z.null()]).optional().describe('New priority 1 (highest) to 4 (lowest). Pass null to REMOVE the priority.'),
   status: z.enum(TASK_STATUSES).optional().describe("New status. done/canceled stamp completed_at=now; reopening (open/in_progress) clears it. To finish a task with an outcome note, prefer complete_task."),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('New canonical English slugs (1-3).'),
-  tags: z.array(z.string()).optional().describe('New tags — REPLACES all existing tags. Pass [] to clear.'),
+  tags: z.array(z.string()).optional().describe('New tags — REPLACES all existing tags. Pass [] to clear. Reserved dedupe: tags are preserved automatically unless you pass a new dedupe: tag explicitly.'),
+  expected_updated_at: z.number().int().optional().describe(
+    'Optimistic concurrency (optional): pass the `updated_at` you last read (from list_tasks / get_task / a prior write). The edit is applied only if the task has NOT changed since; if it changed, the call fails with a conflict error so you can re-read and reapply. Omit for last-write-wins.'
+  ),
   allow_new_domain: z.boolean().optional(),
 };
 
@@ -27,11 +30,15 @@ Use this to reopen a task to attach context, reschedule, reprioritize, rename, c
 Behavior:
 - At least one editable field besides id must be provided.
 - \`details\` REPLACES the body (not append). \`tags\` REPLACES all tags ([] clears them).
+- Remove a due date with \`due: "none"\` (or "clear"); remove a priority with \`priority: null\`.
+- Pass either \`due\` (BRT string) or \`due_at\` (unix ms), never both — passing both errors.
 - Changing \`title\` also updates the tldr (a task's tldr mirrors its title).
 - status done/canceled stamps completed_at; reopening clears it. For finishing WITH an outcome note, prefer complete_task.
 - Tasks are NOT embedded — editing one never touches recall/the graph. Cheap edit.
+- Optimistic concurrency (optional): pass \`expected_updated_at\` (the updated_at you last read) to guard against concurrent writes — if the task changed since, the edit fails with a conflict error instead of silently overwriting. Omit for last-write-wins.
+- Reserved \`dedupe:\` tags are preserved automatically when you pass \`tags\` (so a dedupe key survives a retag), unless the new array explicitly includes a \`dedupe:\` tag.
 
-Returns the updated task fields (id, title, status, priority, due in BRT, url).`;
+Returns the updated task fields (id, title, status, priority, due in BRT, url, updated_at). Use the returned updated_at as the next expected_updated_at.`;
 
 interface UpdateTaskInput {
   id: string;
@@ -39,10 +46,11 @@ interface UpdateTaskInput {
   details?: string;
   due?: string;
   due_at?: number;
-  priority?: number;
+  priority?: number | null;
   status?: TaskStatus;
   domains?: string[];
   tags?: string[];
+  expected_updated_at?: number;
   allow_new_domain?: boolean;
 }
 
@@ -81,27 +89,60 @@ export function registerUpdateTask(server: any, env: Env): void {
         patch.domains = JSON.stringify(input.domains);
       }
 
+      // due + due_at simultâneos: erro em vez de deixar um vencer em silêncio (spec 15 item 6).
+      if (typeof input.due_at === 'number' && input.due !== undefined) {
+        return toolError('Pass either due (BRT string) or due_at (unix ms), not both.');
+      }
+
       if (typeof input.due_at === 'number') {
         patch.due_at = input.due_at;
       } else if (input.due !== undefined) {
-        const dueMs = parseDueToMs(input.due);
-        if (dueMs === null) {
-          return toolError(
-            `Could not parse due "${input.due}". Use BRT formats like "2026-06-22T14:00", "2026-06-22 14:00", or "2026-06-22" (date only). Or pass due_at as unix ms.`
-          );
+        // Sentinela pra LIMPAR o prazo (spec 15 item 4). 'none'/'clear' → due_at = null.
+        const sentinel = input.due.trim().toLowerCase();
+        if (sentinel === 'none' || sentinel === 'clear') {
+          patch.due_at = null;
+        } else {
+          const dueMs = parseDueToMs(input.due);
+          if (dueMs === null) {
+            return toolError(
+              `Could not parse due "${input.due}". Use BRT formats like "2026-06-22T14:00", "2026-06-22 14:00", or "2026-06-22" (date only). Pass "none" to remove the due date. Or pass due_at as unix ms.`
+            );
+          }
+          patch.due_at = dueMs;
         }
-        patch.due_at = dueMs;
       }
 
       const now = Date.now();
-      const task = await updateTask(env, input.id, patch, now);
-      if (!task) {
+      const result = await updateTask(env, input.id, patch, now, input.expected_updated_at);
+      if (result === 'not-found') {
         return toolError(
           `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`
         );
       }
+      if (result === 'conflict') {
+        // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
+        const current = await getTaskById(env, input.id);
+        const currentUpdated = current?.updated_at ?? null;
+        return toolError(
+          `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
+          `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
+        );
+      }
+      const task = result;
 
-      if (input.tags !== undefined) await replaceTags(env, input.id, input.tags);
+      if (input.tags !== undefined) {
+        // Preserva as tags reservadas dedupe: no replace — replaceTags apaga tudo,
+        // e a dedupe_key sumir silenciosamente reabriria a criação de duplicata.
+        // Exceção: se o novo array já traz uma tag dedupe:, é substituição explícita.
+        let finalTags = input.tags;
+        const bringsDedupe = input.tags.some((t) => t.startsWith('dedupe:'));
+        if (!bringsDedupe) {
+          const existing = await getTagsByNote(env, input.id);
+          const dedupeTags = existing.filter((t) => t.startsWith('dedupe:'));
+          if (dedupeTags.length > 0) finalTags = [...input.tags, ...dedupeTags];
+        }
+        await replaceTags(env, input.id, finalTags);
+      }
 
       return toolSuccess({
         id: task.id,

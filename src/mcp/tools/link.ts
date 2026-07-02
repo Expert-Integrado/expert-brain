@@ -17,7 +17,9 @@ Use ONLY when both notes already exist and you discover a new connection during 
 
 FLOW: call recall() to confirm the ids of both notes before calling link. Self-loops (from_id == to_id) are rejected.
 
-IMPORTANT: why minimum 20 characters, naming the shared MECHANISM, not just "related". Duplicate edges (same from_id, to_id, relation_type) are silently ignored.`;
+Both endpoints must be knowledge notes — edges to/from tasks (kind='task') are rejected; tasks live outside the graph (use the task's tags to reference context).
+
+IMPORTANT: why minimum 20 characters, naming the shared MECHANISM, not just "related". Duplicate edges (same from_id, to_id, relation_type) return duplicate:true and keep the original why (no new edge, no id in the response).`;
 
 interface LinkInput {
   from_id: string;
@@ -57,12 +59,27 @@ export function registerLink(server: any, env: Env): void {
       if (!to) {
         return toolError(`Note '${input.to_id}' not found. Call recall() to discover the correct id. Do NOT retry with this id.`);
       }
+      if (from.kind === 'task' || to.kind === 'task') {
+        return toolError(
+          `Edges cannot point to tasks — tasks live outside the graph. ` +
+          `Use the task's tags (update_task) to reference context instead.`
+        );
+      }
       const id = newId();
-      await insertEdge(env, {
+      const inserted = await insertEdge(env, {
         id, from_id: input.from_id, to_id: input.to_id,
         relation_type: input.relation_type, why: input.why,
         created_at: Date.now(),
       });
+      // Duplicata (INSERT OR IGNORE não inseriu): NÃO devolver id — o id gerado não
+      // existe no banco. Resposta honesta com duplicate:true; o why original fica.
+      if (!inserted) {
+        return toolSuccess({
+          duplicate: true,
+          from_id: input.from_id, to_id: input.to_id, relation_type: input.relation_type,
+          message: 'Edge already existed — original why kept. No new edge was created.',
+        });
+      }
       return toolSuccess({ id, from_id: input.from_id, to_id: input.to_id, relation_type: input.relation_type });
     }) as any
   );

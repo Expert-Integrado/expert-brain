@@ -45,16 +45,32 @@ describe('save_task', () => {
     expect(row.body).toBe('Boleto vence sexta');
   });
 
-  it('persists tags into the tags table', async () => {
-    const res = await reg().save_task({ title: 'Falar com PSP', tags: ['PSP', 'advogados'] });
+  it('persists tags into the tags table (normalized to lowercase)', async () => {
+    const res = await reg().save_task({ title: 'Falar com PSP', tags: ['PSP', 'Advogados'] });
     const p = JSON.parse(res.content[0].text);
     const rows = await E.DB.prepare(`SELECT tag FROM tags WHERE note_id = ? ORDER BY tag`).bind(p.id).all();
-    expect(rows.results.map((r: any) => r.tag)).toEqual(['PSP', 'advogados']);
+    // Tags são normalizadas pra lowercase na escrita (spec 15 item 7).
+    expect(rows.results.map((r: any) => r.tag)).toEqual(['advogados', 'psp']);
   });
 
   it('rejects an invalid due string', async () => {
     const res = await reg().save_task({ title: 'X', due: 'amanhã às tantas' });
     expect(res.isError).toBe(true);
+  });
+
+  it('rejects due AND due_at passed together', async () => {
+    const res = await reg().save_task({ title: 'X', due: '2026-06-22 14:00', due_at: 1_800_000_000_000 });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('not both');
+  });
+
+  it('dedupe_key returns the existing active task instead of duplicating', async () => {
+    const a = JSON.parse((await reg().save_task({ title: 'Enviar proposta', dedupe_key: 'card-77' })).content[0].text);
+    const b = JSON.parse((await reg().save_task({ title: 'Enviar proposta', dedupe_key: 'card-77' })).content[0].text);
+    expect(b.deduped).toBe(true);
+    expect(b.id).toBe(a.id);
+    const c = await E.DB.prepare(`SELECT count(*) c FROM notes WHERE kind='task'`).first();
+    expect(c.c).toBe(1);
   });
 
   it('does not write a vector (task stays out of recall)', async () => {

@@ -16,7 +16,9 @@ FLOW: call recall() first to discover the note_id. Do not call expand with an in
 Returns {neighbors: [{note, edge}]} where edge includes relation_type and why.
 To navigate deeper, call expand recursively on the returned ids — but think twice before going more than 2 hops, it is usually noise.
 
-IMPORTANT: if recall already surfaces the analogy you need, do not reflexively call expand. Use expand when you want to follow a specific reasoning line through the graph.`;
+IMPORTANT: if recall already surfaces the analogy you need, do not reflexively call expand. Use expand when you want to follow a specific reasoning line through the graph.
+
+Works for tasks (kind='task') too — but tasks have no edges (they live outside the graph), so expand on a task id returns an empty neighbor set.`;
 
 interface ExpandInput {
   note_id: string;

@@ -7,7 +7,7 @@ const inputSchema = {
   media_id: z.string().min(1).describe('The media id to remove (from get_note_media).'),
 };
 
-const DESCRIPTION = `Removes a media item from a note. Deletes the D1 record; the R2 blob is deleted only if this was the LAST reference to it (SHA-256 dedup — other notes sharing the same file keep working). Use the media id from get_note_media.`;
+const DESCRIPTION = `Removes a media item from a note. Deletes the D1 record; the R2 blob is deleted only if this was the LAST reference to it (SHA-256 dedup — other notes sharing the same file keep working). Use the media id from get_note_media. Works for a task's media (kind='task') too.`;
 
 interface Input { media_id: string; }
 

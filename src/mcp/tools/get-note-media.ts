@@ -7,7 +7,7 @@ const inputSchema = {
   note_id: z.string().min(1).describe('The note id whose media to list.'),
 };
 
-const DESCRIPTION = `Lists all media attached to a note. Returns each item's id, kind, mime_type, size, filename, and a signed URL (valid ~1h) to view it. Read-only.`;
+const DESCRIPTION = `Lists all media attached to a note. Returns each item's id, kind, mime_type, size, filename, and a signed URL (valid ~1h) to view it. Read-only. Works for tasks (kind='task') too.`;
 
 interface Input { note_id: string; }
 

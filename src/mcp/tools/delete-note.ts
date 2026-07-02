@@ -23,7 +23,9 @@ Use delete_note when:
 
 Do NOT use delete_note to "clean up" notes you judge low-quality on your own — that is a policy decision that belongs to the user. When in doubt, suggest update_note instead (refine, don't destroy).
 
-ORDER: removes the vector FIRST, then flags the D1 row deleted. If the vector delete fails, nothing is flagged so the note stays fully accessible. restore_note re-embeds the vector so recall works again after a restore.`;
+ORDER: removes the vector FIRST, then flags the D1 row deleted. If the vector delete fails, nothing is flagged so the note stays fully accessible. restore_note re-embeds the vector so recall works again after a restore.
+
+TASKS: this tool rejects kind='task'. A task has its own lifecycle (status/completed_at) — cancel it with update_task(id, status: 'canceled') or finish it with complete_task(id) instead of delete_note.`;
 
 interface DeleteNoteInput { id: string; confirm: true; }
 
@@ -45,6 +47,18 @@ export function registerDeleteNote(server: any, env: Env): void {
       if (!existing) {
         return toolError(
           `Note '${input.id}' not found. Nothing to delete. Call recall() or get_note() to confirm the id.`
+        );
+      }
+
+      // Tasks têm ciclo de vida próprio (status/completed_at) e não têm vetor — o
+      // fluxo do delete_note (Vectorize delete + soft-delete) não faz sentido pra
+      // elas, e um soft-delete silencioso sumiria a task do Kanban sem registrar
+      // desfecho. Redirecionar pro caminho certo. Ver spec 16.
+      if (existing.kind === 'task') {
+        return toolError(
+          `Note '${input.id}' is a task (kind='task'), not a knowledge note. ` +
+          `Do not delete_note a task: use update_task(id, status: 'canceled') to discard it, ` +
+          `or complete_task(id) to finish it — those preserve the task's lifecycle.`
         );
       }
 
