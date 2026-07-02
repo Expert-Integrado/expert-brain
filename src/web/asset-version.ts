@@ -2,11 +2,11 @@
 // Hash de conteúdo de cada bundle pra cache-busting estável (?v=).
 export const ASSET_HASHES: Record<string, string> = {
   "graph.bundle.js": "41880d92d969",
-  "notes.bundle.js": "44e75a045829",
+  "notes.bundle.js": "8cc8afd00b45",
   "local-graph.bundle.js": "f00f8b707a5f",
-  "note-media.bundle.js": "4f3fb3bad29d",
-  "shell.bundle.js": "89161156f02e",
-  "tasks.bundle.js": "073dad144ce9",
+  "note-media.bundle.js": "24c52523002f",
+  "shell.bundle.js": "42596dae57a3",
+  "tasks.bundle.js": "e1450f79eb4c",
   "sim-worker.bundle.js": "aba9c68a922b"
 };
 
