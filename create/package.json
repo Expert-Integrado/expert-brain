@@ -19,10 +19,10 @@
     "cloudflare",
     "expert-brain"
   ],
-  "homepage": "https://github.com/expertintegrado/expertbrain#readme",
+  "homepage": "https://github.com/Expert-Integrado/expert-brain#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/expertintegrado/expertbrain.git",
+    "url": "git+https://github.com/Expert-Integrado/expert-brain.git",
     "directory": "create"
   },
   "license": "MIT"

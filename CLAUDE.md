@@ -15,7 +15,7 @@ Faz nesta ordem, parando e reportando se algo falhar:
 1. **Pega o código novo.**
    - Se a pasta atual é o repo do Expert Brain (tem `.git` + este `CLAUDE.md`): `git pull`.
    - Se o usuário tem a pasta da instalação em outro lugar: `cd` nela e `git pull`.
-   - Se ele instalou via `npm create` (cópia sem git) ou não acha a pasta: clona fresco com `git clone https://github.com/expertintegrado/expertbrain.git expert-brain` e, se ele tiver a pasta antiga, copia o `wrangler.toml` dela pra pasta nova (esse arquivo tem os IDs dos recursos dele). Se não tiver o `wrangler.toml`, segue assim mesmo — o passo 3 redescobre os recursos pela conta.
+   - Se ele instalou via `npm create` (cópia sem git) ou não acha a pasta: clona fresco com `git clone https://github.com/Expert-Integrado/expert-brain.git expert-brain` e, se ele tiver a pasta antiga, copia o `wrangler.toml` dela pra pasta nova (esse arquivo tem os IDs dos recursos dele). Se não tiver o `wrangler.toml`, segue assim mesmo — o passo 3 redescobre os recursos pela conta.
 
 2. `npm install` (na pasta do projeto).
 

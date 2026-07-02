@@ -1,6 +1,6 @@
 # @expertintegrado/create-expert-brain
 
-Scaffolder oficial do [Expert Brain](https://github.com/expertintegrado/expertbrain) — um grafo de conhecimento pessoal pro Claude, rodando 100% no free tier da Cloudflare.
+Scaffolder oficial do [Expert Brain](https://github.com/Expert-Integrado/expert-brain) — um grafo de conhecimento pessoal pro Claude, rodando 100% no free tier da Cloudflare.
 
 ## Uso
 
@@ -26,7 +26,7 @@ Versionamento explícito: `npm create @expertintegrado/expert-brain@1.0.0 meu-va
 
 ## Documentação completa
 
-Veja o [README do projeto](https://github.com/expertintegrado/expertbrain#readme) — método, arquitetura, custo real (tokens do Claude), FAQ.
+Veja o [README do projeto](https://github.com/Expert-Integrado/expert-brain#readme) — método, arquitetura, custo real (tokens do Claude), FAQ.
 
 ## Licença
 

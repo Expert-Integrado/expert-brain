@@ -86,8 +86,8 @@ jobs:
           # Imagens (![]()) usam raw.githubusercontent.com. Links de markdown ([]()) usam github.com/blob.
           if [ -f "$TEMPLATE_DIR/README.md" ]; then
             # Usa # como delimitador do sed pra evitar colisao com o | da alternacao (docs|assets).
-            sed -i -E 's#!\[([^]]*)\]\((docs|assets)/#![\1](https://raw.githubusercontent.com/expertintegrado/expertbrain/master/\2/#g' "$TEMPLATE_DIR/README.md"
-            sed -i -E 's#([^!])\[([^]]*)\]\((docs|assets)/#\1[\2](https://github.com/expertintegrado/expertbrain/blob/master/\3/#g' "$TEMPLATE_DIR/README.md"
+            sed -i -E 's#!\[([^]]*)\]\((docs|assets)/#![\1](https://raw.githubusercontent.com/Expert-Integrado/expert-brain/master/\2/#g' "$TEMPLATE_DIR/README.md"
+            sed -i -E 's#([^!])\[([^]]*)\]\((docs|assets)/#\1[\2](https://github.com/Expert-Integrado/expert-brain/blob/master/\3/#g' "$TEMPLATE_DIR/README.md"
           fi
 
           echo "Conteudo do template:"

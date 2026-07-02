@@ -6,7 +6,7 @@ Esse arquivo é o runbook pra publicar uma nova versão do pacote `@expertintegr
 
 | Coisa | Onde |
 |---|---|
-| Repo (source of truth) | <https://github.com/expertintegrado/expertbrain> |
+| Repo (source of truth) | <https://github.com/Expert-Integrado/expert-brain> |
 | Pacote npm | <https://www.npmjs.com/package/@expertintegrado/create-expert-brain> |
 | Workflow que publica | [`.github/workflows/publish-create.yml`](.github/workflows/publish-create.yml) |
 | Trusted Publisher config | <https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access> |
@@ -57,7 +57,7 @@ Via CLI:
 gh release create v1.0.1 --title "v1.0.1 — <descricao curta>" --notes "<o que mudou>"
 ```
 
-Via UI: <https://github.com/expertintegrado/expertbrain/releases/new> → tag `v1.0.1` (com o `v` na frente) → Publish.
+Via UI: <https://github.com/Expert-Integrado/expert-brain/releases/new> → tag `v1.0.1` (com o `v` na frente) → Publish.
 
 O workflow [`publish-create.yml`](.github/workflows/publish-create.yml) dispara automaticamente no evento `release: published`, espelha o repo, bumpa a versão no `create/package.json` pra match da tag (strip do `v`), e publica no npm via OIDC.
 
@@ -81,7 +81,7 @@ Se o `npm view` ainda retornar a versão antiga depois de 2min, espera mais um p
 
 ## Modos de falha
 
-- **Workflow falha no step "Publish to npm" com 403**: o Trusted Publisher do npm tá desconfigurado. Conferir em <https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access> — deve listar o repo `expertintegrado/expertbrain` + workflow `publish-create.yml`. Se foi removido por engano: clica "Add trusted publisher", preenche Publisher=GitHub Actions, Org=`expertintegrado`, Repo=`expertbrain`, Workflow filename=`publish-create.yml`, Environment vazio.
+- **Workflow falha no step "Publish to npm" com 403**: o Trusted Publisher do npm tá desconfigurado. Conferir em <https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access> — deve listar o repo `Expert-Integrado/expert-brain` + workflow `publish-create.yml`. Se foi removido por engano: clica "Add trusted publisher", preenche Publisher=GitHub Actions, Org=`Expert-Integrado`, Repo=`expert-brain`, Workflow filename=`publish-create.yml`, Environment vazio.
 - **Workflow falha no step "Resolve version" com "Versao invalida"**: a tag não tá no formato `vX.Y.Z`. Apaga a release e cria de novo com a tag certa.
 - **Publish passa mas `npm view` retorna 404 por mais de 10min**: rara propagação prolongada. Se persistir após 30min, abre suporte do npm; provavelmente conta foi bloqueada.
 - **Renomeou o arquivo `publish-create.yml`**: o Trusted Publisher do npm tá amarrado nesse filename específico. Atualiza no painel de Access do npm o "Workflow filename" pro novo nome.

@@ -150,7 +150,7 @@ npm run setup     # detecta que já está instalado e entra em modo ATUALIZAÇÃ
 **Se você instalou via `npm create`** (cópia sem git) ou perdeu a pasta:
 
 ```bash
-git clone https://github.com/expertintegrado/expertbrain.git expert-brain
+git clone https://github.com/Expert-Integrado/expert-brain.git expert-brain
 cd expert-brain
 npm install
 npm run setup     # descobre seus recursos na conta e atualiza — não pede e-mail/senha de novo
