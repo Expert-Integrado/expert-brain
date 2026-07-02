@@ -491,12 +491,12 @@ async function renderGraphLikePage(
           <summary class="graph-section-summary">Forças<i class="graph-info-icon" title="Controlam o layout físico do grafo: o quanto os nós se atraem, se repelem e a distância das ligações. Mexa pra espalhar ou compactar o grafo.">i</i></summary>
           <label class="graph-slider-label">
             <span>Quão centralizado</span>
-            <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.04" aria-label="Força de centralização" />
+            <input type="range" id="force-center" min="0" max="1" step="0.01" value="0.1" aria-label="Força de centralização" />
             <small class="graph-slider-help">Puxa o grafo todo pro centro da tela</small>
           </label>
           <label class="graph-slider-label">
             <span>Quanto se repelem</span>
-            <input type="range" id="force-repel" min="0" max="20" step="0.1" value="9" aria-label="Força de repulsão" />
+            <input type="range" id="force-repel" min="0" max="20" step="0.1" value="10" aria-label="Força de repulsão" />
             <small class="graph-slider-help">Afasta as bolinhas umas das outras</small>
           </label>
           <label class="graph-slider-label">
@@ -506,7 +506,7 @@ async function renderGraphLikePage(
           </label>
           <label class="graph-slider-label">
             <span>Comprimento das ligações</span>
-            <input type="range" id="force-distance" min="30" max="500" step="5" value="40" aria-label="Distância do link" />
+            <input type="range" id="force-distance" min="30" max="500" step="5" value="250" aria-label="Distância do link" />
             <small class="graph-slider-help">Distância natural entre bolinhas conectadas</small>
           </label>
           <label class="graph-check-label">

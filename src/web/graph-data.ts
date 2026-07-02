@@ -40,7 +40,7 @@ export interface GraphPayload {
 
 // v6: similar edges agora vêm pré-computadas do D1 (não mais Vectorize ao vivo).
 // Bump invalida o cache antigo no deploy, forçando uma rebuild com a nova fonte.
-const CACHE_KEY = 'graph:v9'; // v9 (A.36): retune de física dente-de-leão (Obsidian). Bump descarta o payload v8, que carregava as posições da física antiga (bolha).
+const CACHE_KEY = 'graph:v10'; // v10 (A.37): física reversa-engenheirada 1:1 do Obsidian (forceX/Y center, manyBody SEM distanceMax cap, theta 0.9, velocityDecay 0.4) + gravidade fraca por domínio. Bump descarta o payload v9 (física castrada pelo cap de 250).
 
 // Invalida o cache do grafo (KV). Exportado pra que qualquer mutação de edge —
 // endpoint web handleGraphLink E a tool MCP delete_link — use o MESMO caminho, sem
@@ -58,7 +58,10 @@ export async function invalidateGraphCache(env: Env): Promise<void> {
 // v2 (A.36): bump força re-seed do zero — as posições em graph-layout:v1 foram
 // geradas pela física antiga (bolha) e estavam PINADAS aqui; sem o bump, o
 // layout novo nasceria com o dente-de-leão contaminado pelas posições velhas.
-const LAYOUT_KEY = 'graph-layout:v2';
+// v3 (A.37): re-seed pra física Obsidian-fiel (repel sem cap de distanceMax +
+// gravidade por domínio) — sem o bump o layout novo herdaria as posições da
+// física v2 (repel castrado por distanceMax=250) e o efeito não apareceria.
+const LAYOUT_KEY = 'graph-layout:v3';
 type StoredLayout = Record<string, { x: number; y: number }>;
 
 async function computeSourceHash(env: Env): Promise<string> {

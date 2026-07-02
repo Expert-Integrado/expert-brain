@@ -20,7 +20,8 @@ import {
   forceSimulation,
   forceManyBody,
   forceLink,
-  forceCenter,
+  forceX,
+  forceY,
   forceCollide,
   type Simulation,
   type SimulationNodeDatum,
@@ -34,29 +35,47 @@ interface SimNode extends SimulationNodeDatum {
   // A.25 — raio do nó (do server-side: max(8, min(3*sqrt(d+1), 30))).
   // Usado pra forceCollide proporcional + repel scaled by size.
   r: number;
+  // A.37 — domínio do nó, usado pela gravidade fraca por domínio (forceX/Y
+  // puxando cada nó pro centróide do seu cluster de domínio).
+  domain?: string;
 }
 interface SimLink extends SimulationLinkDatum<SimNode> {
   source: string | SimNode;
   target: string | SimNode;
 }
 interface Forces {
-  center: number;     // forceCenter strength (0..0.2 sutil)
+  center: number;     // A.37 — forceX(0)/forceY(0) strength = centerStrength (Obsidian default 0.1)
   repel: number;      // forceManyBody strength magnitude (200..2000)
   link: number;       // forceLink strength (0..2)
   distance: number;   // forceLink distance (30..400)
 }
 
-// A.36 — Paridade visual com o graph view do Obsidian (dentes-de-leão): folhas
-// orbitam grudadas nos hubs, ilhas afastadas por espaço vazio. A receita:
-//   center  MUITO fraco (0.02) → não puxa tudo pro miolo, deixa as ilhas se
-//           afastarem em vez de virar uma bola única;
-//   repel   MODERADO (450) com distanceMax curto (250) → empurra vizinhos pra
-//           não encavalar, mas NÃO repele entre clusters distantes (o que
-//           colapsaria as ilhas num disco só e custa O(n²));
-//   link    FORTE (1) e distância CURTA (40) → a folha gruda no hub; o strength
-//           por-link ainda é escalado por grau (ver chargeStrength/linkStrength
-//           abaixo) pra folha (grau 1) colar mais que hub<->hub.
-const DEFAULTS: Forces = { center: 0.02, repel: 450, link: 1, distance: 40 };
+// A.37 — Física reversa-engenheirada 1:1 do graph view do Obsidian (extraída do
+// obsidian.asar, engine WASM + fallback d3 idêntico). O modelo REAL do Obsidian:
+//   - center: forceX(0)+forceY(0) com strength = centerStrength (default 0.1);
+//   - repel:  forceManyBody strength = -repelStrength; SEM distanceMax (=Infinity!),
+//             distanceMin=30, theta=0.9. O default do Obsidian é BRUTAL: slider 10
+//             → repelStrength = 10³ = 1000 (mapping e*e*e). É esse repel forte +
+//             sem-cap que "explode" o grafo e dá o espaçamento característico;
+//   - link:   forceLink strength = linkStrength · (1/deg) (default 1), distance =
+//             linkDistance (default 250, NÃO 40 — as ligações do Obsidian são longas);
+//   - velocityDecay 0.4 (vx*=0.6/tick), alphaDecay 0.0228, alphaMin 0.001.
+//
+// Nossos DEFAULTS ficam alinhados ao Obsidian: center 0.1, repel 1000 (=slider 10³),
+// link 1, distance 250. O cap de distanceMax=250 do modelo antigo (v9) era o que
+// castrava o slider de repulsão — removido (ver rebuildSimulation).
+const DEFAULTS: Forces = { center: 0.1, repel: 1000, link: 1, distance: 250 };
+
+// ── A.37 — GRAVIDADE FRACA POR DOMÍNIO (adição nossa, fora do modelo Obsidian) ──
+// O vault do dono é DENSO (sem notas-folha soltas como vaults típicos), então o
+// dente-de-leão puro do Obsidian não separa os clusters temáticos. Puxamos cada
+// nó de leve pro CENTRÓIDE do seu domínio (calculado das posições iniciais), o que
+// agrupa por área sem precisar de UI nova. forceX/forceY com strength baixa.
+//
+// CALIBRAR AQUI: subir aproxima mais os nós do mesmo domínio (clusters mais
+// apertados/separados); baixar deixa a topologia dos links mandar. 0 = desliga.
+// Se conflitar com o modelo Obsidian (grafo "quadrado" demais), baixar pra 0.02.
+const DOMAIN_GRAVITY = 0.03;
 
 let nodes: SimNode[] = [];
 let links: SimLink[] = [];
@@ -86,19 +105,48 @@ function recomputeDegrees() {
   }
 }
 
-// A.36 — closures ÚNICAS de força, referenciadas TANTO no rebuild quanto no
+// A.36/A.37 — closures ÚNICAS de força, referenciadas TANTO no rebuild quanto no
 // case 'forces'. Antes o 'forces' reaplicava strength flat (-forces.repel) e
-// trocava silenciosamente o modelo físico (hub repelia 2,5x menos ao mexer em
-// qualquer slider). Extraídas pra manter o scaling por raio/grau consistente.
-const chargeStrength = (d: SimNode) => -forces.repel * ((d.r ?? 10) / 12);
+// trocava silenciosamente o modelo físico. Extraídas pra manter o scaling
+// consistente entre init e ajuste de slider.
+//
+// A.37 — O Obsidian usa strength BRUTA (-repelStrength) igual pra todo nó. Nós
+// mantemos um leve scaling por raio (nó maior/hub empurra um pouco mais) como
+// EXTRA que não conflita — mas centrado em 1.0 pra o default bater com o Obsidian:
+// nó de raio médio (~12) → fator ~1.0 → -forces.repel puro, igual ao Obsidian.
+const chargeStrength = (d: SimNode) => -forces.repel * ((d.r ?? 12) / 12);
 const linkStrength = (l: SimLink) => {
   const s = typeof l.source === 'string' ? l.source : (l.source as SimNode).id;
   const t = typeof l.target === 'string' ? l.target : (l.target as SimNode).id;
   // 1 / min(grau) escala com o slider `link`: folha (grau 1) gruda no hub com
-  // strength cheio; ligação hub<->hub afrouxa proporcional ao grau — igual d3.
+  // strength cheio; ligação hub<->hub afrouxa proporcional ao grau — igual d3
+  // (e igual ao E*J(...) do fallback d3 do Obsidian, onde J é o 1/deg default).
   const minDeg = Math.min(degreeById.get(s) ?? 1, degreeById.get(t) ?? 1) || 1;
   return forces.link / minDeg;
 };
+
+// A.37 — centróide por domínio, recalculado no init a partir das posições
+// iniciais (o layout pré-computado do servidor). A gravidade por domínio puxa
+// cada nó pra { x, y } do seu domínio. Constante DOMAIN_GRAVITY controla a força.
+const domainCentroid = new Map<string, { x: number; y: number }>();
+function recomputeDomainCentroids() {
+  domainCentroid.clear();
+  const acc = new Map<string, { x: number; y: number; n: number }>();
+  for (const nd of nodes) {
+    const dom = nd.domain || '_';
+    const a = acc.get(dom) ?? { x: 0, y: 0, n: 0 };
+    a.x += nd.x ?? 0;
+    a.y += nd.y ?? 0;
+    a.n += 1;
+    acc.set(dom, a);
+  }
+  for (const [dom, a] of acc) {
+    domainCentroid.set(dom, { x: a.x / a.n, y: a.y / a.n });
+  }
+}
+// Alvo X/Y da gravidade de domínio pra cada nó (fallback 0 = centro global).
+const domainTargetX = (d: SimNode) => domainCentroid.get(d.domain || '_')?.x ?? 0;
+const domainTargetY = (d: SimNode) => domainCentroid.get(d.domain || '_')?.y ?? 0;
 
 function rebuildSimulation(initialAlpha = 1) {
   if (sim) sim.stop();
@@ -116,18 +164,21 @@ function rebuildSimulation(initialAlpha = 1) {
   }
 
   sim = forceSimulation<SimNode, SimLink>(nodes)
-    // A.25 — manyBody com strength escalado pelo tamanho do nó (nós grandes
-    // empurram mais que pequenos), igual ao Obsidian. A.36 — distanceMax CURTO
-    // (250): repulsão morre além de ~250px, então clusters distantes NÃO se
-    // empurram — as ilhas ficam separadas por espaço vazio (dentes-de-leão) em
-    // vez de colapsar num disco só. Também corta o O(n²) global (perf).
+    // A.37 — manyBody FIEL ao Obsidian: SEM distanceMax cap (Obsidian usa h=1/0,
+    // i.e. Infinity — a repulsão age em TODO o grafo, é isso que dá o espaçamento
+    // amplo característico). theta=0.9 (Obsidian usa f=.81=theta², logo θ=√.81=0.9)
+    // mantém o Barnes-Hut barato o suficiente pra ~1800 nós. distanceMin=30 evita
+    // singularidade quando dois nós coincidem. O cap de 250 do modelo antigo (v9)
+    // era EXATAMENTE o que castrava o slider de repulsão — removido de propósito.
     .force(
       'charge',
       forceManyBody<SimNode>()
         .strength(chargeStrength)
-        .distanceMax(250),
+        .theta(0.9)
+        .distanceMin(30),
     )
-    // A.36 — link forte + curto + strength por grau (folha gruda no hub).
+    // A.37 — link com strength por grau (folha gruda no hub) e distância =
+    // linkDistance (default 250, igual Obsidian — ligações LONGAS, não curtas).
     .force(
       'link',
       forceLink<SimNode, SimLink>(links)
@@ -135,11 +186,22 @@ function rebuildSimulation(initialAlpha = 1) {
         .strength(linkStrength)
         .distance(forces.distance),
     )
-    .force('center', forceCenter<SimNode>(0, 0).strength(forces.center))
+    // A.37 — center FIEL ao Obsidian: forceX(0)+forceY(0) com strength =
+    // centerStrength (o Obsidian NÃO usa forceCenter; usa forceX/forceY separados,
+    // conforme o array [_,N,q,R,k] extraído do worker). Puxa cada nó pro (0,0).
+    .force('centerX', forceX<SimNode>(0).strength(forces.center))
+    .force('centerY', forceY<SimNode>(0).strength(forces.center))
+    // A.37 — GRAVIDADE POR DOMÍNIO (nossa, fora do Obsidian): forceX/forceY
+    // fracos puxando cada nó pro centróide do seu domínio. Agrupa os clusters
+    // temáticos num vault denso. DOMAIN_GRAVITY calibra (0 desliga).
+    .force('domainX', forceX<SimNode>(domainTargetX).strength(DOMAIN_GRAVITY))
+    .force('domainY', forceY<SimNode>(domainTargetY).strength(DOMAIN_GRAVITY))
     // A.25 — collide com raio = size + padding. Garante que nó grande não fica em
     // cima de pequeno. Intensidade/iterações sobem no modo "não sobrepor".
     .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(collideStrength()).iterations(collideIterations()))
-    .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 (~300 ticks pra esfriar)
+    .velocityDecay(0.4)                       // A.37 — Obsidian: vx*=0.6/tick (=1-0.4)
+    .alphaDecay(1 - Math.pow(0.001, 1 / 300)) // ~0.0228, default D3 = Obsidian (~300 ticks pra esfriar)
+    .alphaMin(0.001)                          // A.37 — Obsidian alphaMin .001 explícito
     .alpha(initialAlpha)
     .on('tick', emitTick)
     .on('end', () => {
@@ -163,10 +225,12 @@ self.addEventListener('message', (e: MessageEvent) => {
   const msg = e.data;
   switch (msg.type) {
     case 'init': {
-      // A.25 — recebe r (raio) por nó pra collide + repel proporcionais
-      nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y, r: n.r ?? 10 }));
+      // A.25 — recebe r (raio) por nó pra collide + repel proporcionais.
+      // A.37 — recebe domain por nó pra gravidade por domínio.
+      nodes = msg.nodes.map((n: any) => ({ id: n.id, x: n.x, y: n.y, r: n.r ?? 10, domain: n.domain }));
       links = msg.links.map((l: any) => ({ source: l.source, target: l.target }));
       recomputeDegrees(); // A.36 — grau por nó pro linkStrength escalar por grau
+      recomputeDomainCentroids(); // A.37 — centróide por domínio (posições iniciais)
       if (msg.forces) forces = { ...forces, ...msg.forces };
       if (typeof msg.noOverlap === 'boolean') noOverlap = msg.noOverlap;
       pinned.clear();
@@ -185,7 +249,9 @@ self.addEventListener('message', (e: MessageEvent) => {
         // reload reproduzia. As closures leem `forces` (já atualizado acima).
         (sim.force('charge') as any)?.strength(chargeStrength);
         (sim.force('link') as any)?.strength(linkStrength).distance(forces.distance);
-        (sim.force('center') as any)?.strength(forces.center);
+        // A.37 — center é forceX/forceY (não forceCenter). Reaplica strength nos dois.
+        (sim.force('centerX') as any)?.strength(forces.center);
+        (sim.force('centerY') as any)?.strength(forces.center);
         sim.alpha(msg.alpha ?? 0.3).restart();
       }
       break;

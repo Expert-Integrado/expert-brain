@@ -537,22 +537,24 @@ async function main() {
 
   // ────────────────────────────────────────────────────────────────────────
   // A.24 — Physics: D3-force em Web Worker dedicado
-  // A.36 — defaults RETUNADOS pra dente-de-leão do Obsidian (folhas grudadas nos
-  // hubs, ilhas separadas por espaço vazio). Ranges dos sliders continuam iguais
-  // (Obsidian-like), só os DEFAULTS mudaram — o slider default vira, via mapForces:
-  //   center: 0..1     default 0.04 → 0.02 efetivo  (puxão pro centro fraquíssimo)
-  //   repel:  0..20    default 9    → 450 efetivo    (repulsão moderada, distanceMax curto no worker)
-  //   link:   0..1     default 1    → 1 (scaled por grau no worker: folha gruda mais)
-  //   distance: 30..500 default 40  → 40 efetivo     (ligação curta = folha colada)
+  // A.37 — MAPEAMENTO DE SLIDER 1:1 COM O OBSIDIAN (reversa-engenheirado do
+  // obsidian.asar). Defaults e fórmulas abaixo são os do Obsidian, não aproximações:
+  //   center   slider 0..1    default 0.1 → efetivo = slider          (identity; strength forceX/Y)
+  //   repel    slider 0..20   default 10  → efetivo = slider³ = 1000   (Obsidian: e*e*e)
+  //   link     slider 0..1    default 1   → efetivo = slider           (worker escala por grau)
+  //   distance slider 30..500 default 250 → efetivo = slider           (identity)
+  //
+  // É o mapping e*e*e do repel + a AUSÊNCIA de distanceMax no worker (v9 capava em
+  // 250) que faz o slider de repulsão finalmente "pegar": slider 10→1000, 20→8000.
   // ────────────────────────────────────────────────────────────────────────
-  const FORCE_DEFAULTS = { center: 0.04, repel: 9, link: 1, distance: 40 };
+  const FORCE_DEFAULTS = { center: 0.1, repel: 10, link: 1, distance: 250 };
   function mapForces(o: { center: number; repel: number; link: number; distance: number }) {
     return {
-      // Slider Obsidian-like → parâmetros que o worker D3-force consome.
-      center: o.center * 0.5,         // 0.04 → 0.02 forceCenter strength (fraquíssimo → ilhas se afastam)
-      repel: o.repel * 50,            // 9 → 450 forceManyBody magnitude (moderada)
-      link: o.link,                   // direto (worker escala por grau)
-      distance: o.distance,           // direto (40 = curto, folha colada no hub)
+      // Slider Obsidian → parâmetros que o worker D3-force consome (fiel ao asar).
+      center: o.center,                     // identity → centerStrength (forceX/Y strength)
+      repel: o.repel * o.repel * o.repel,   // e*e*e (Obsidian): slider 10 → repelStrength 1000
+      link: o.link,                         // identity (worker escala por grau, = E*J do Obsidian)
+      distance: o.distance,                 // identity → linkDistance (default 250, ligações longas)
     };
   }
   let currentForces = { ...FORCE_DEFAULTS };
@@ -606,12 +608,14 @@ async function main() {
   }
   applySavedPrefs();
 
-  // Snapshot inicial pra Reset + raio pra collide proporcional
-  const initialPositions: Array<{ id: string; x: number; y: number; r: number }> = payload.nodes.map((n) => ({
+  // Snapshot inicial pra Reset + raio pra collide proporcional + domínio pra
+  // gravidade por domínio (A.37).
+  const initialPositions: Array<{ id: string; x: number; y: number; r: number; domain: string }> = payload.nodes.map((n) => ({
     id: n.id,
     x: n.x,
     y: n.y,
-    r: n.size,  // A.25 — passa raio pro worker
+    r: n.size,     // A.25 — passa raio pro worker
+    domain: n.domain, // A.37 — passa domínio pro worker (gravidade por domínio)
   }));
 
   // Versão estável injetada pelo server (data-sw-ver no #graph-canvas) — cacheia
