@@ -5,6 +5,7 @@ import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js'
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
+import { readPersonalizationPrompt } from '../db/meta.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -23,10 +24,7 @@ const PREFS_META_KEY = 'personalization_prompt';
 const PREFS_MAX_LEN = 8000;
 
 async function getPersonalizationPrompt(env: Env): Promise<string> {
-  const row = await env.DB.prepare(`SELECT value FROM meta WHERE key = ?`)
-    .bind(PREFS_META_KEY)
-    .first<{ value: string }>();
-  return row?.value ?? DEFAULT_PREFS_BLOCK;
+  return (await readPersonalizationPrompt(env)) ?? DEFAULT_PREFS_BLOCK;
 }
 
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
