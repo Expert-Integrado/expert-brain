@@ -84,6 +84,18 @@ export type SessionResult =
   | { ok: true; email: string }
   | { ok: false; response: Response };
 
+// Requests de dados (fetch de JSON dos bundles client, ou mutação em rota de
+// dados) não podem "passar" silenciosamente quando a sessão expira: o browser
+// segue o 302 pra /app/login e o fetch recebe `res.ok === true` com o HTML de
+// login no corpo. Pra esses casos devolvemos 401 JSON — o client sabe tratar.
+// Navegação de página (GET sem accept: application/json) continua com o 302
+// normal pro fluxo de login. Ver specs/20-frontend/21-csp-botoes-mortos-e-sessao-expirada.md.
+function isDataRequest(req: Request, url: URL): boolean {
+  if ((req.headers.get('accept') || '').includes('application/json')) return true;
+  if (req.method !== 'GET' && /\/(data|status|complete|link|prefs|media)(\/|$)/.test(url.pathname)) return true;
+  return false;
+}
+
 export async function requireSession(req: Request, env: Env): Promise<SessionResult> {
   if (!env.SESSION_SECRET) {
     return { ok: false, response: new Response('Session secret not configured', { status: 503 }) };
@@ -91,12 +103,16 @@ export async function requireSession(req: Request, env: Env): Promise<SessionRes
   const token = readCookie(req.headers.get('cookie'), 'mv_session');
   const url = new URL(req.url);
   const next = encodeURIComponent(url.pathname + url.search);
-  const redirect = new Response(null, {
-    status: 302,
-    headers: { location: `/app/login?next=${next}` },
-  });
-  if (!token) return { ok: false, response: redirect };
+  const dataRequest = isDataRequest(req, url);
+  const unauthorized = (): Response =>
+    dataRequest
+      ? new Response(JSON.stringify({ error: 'session expired' }), {
+          status: 401,
+          headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+        })
+      : new Response(null, { status: 302, headers: { location: `/app/login?next=${next}` } });
+  if (!token) return { ok: false, response: unauthorized() };
   const verified = await verifySession(token, env.SESSION_SECRET, Math.floor(Date.now() / 1000));
-  if (!verified) return { ok: false, response: redirect };
+  if (!verified) return { ok: false, response: unauthorized() };
   return { ok: true, email: verified.email };
 }

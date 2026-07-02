@@ -105,6 +105,10 @@ describe('/app/config', () => {
   });
 
   it('rejects prefs POST without session', async () => {
+    // /app/config/prefs é rota de dados (regex isDataRequest em session.ts inclui
+    // `prefs`): um POST sem sessão agora devolve 401 JSON em vez de 302, pra o
+    // fetch do client não "passar" silenciosamente na página de login.
+    // Ver specs/20-frontend/21-csp-botoes-mortos-e-sessao-expirada.md.
     const form = new URLSearchParams({ prompt: 'foo' });
     const res = await SELF.fetch('https://x.test/app/config/prefs', {
       method: 'POST',
@@ -112,8 +116,9 @@ describe('/app/config', () => {
       body: form.toString(),
       redirect: 'manual',
     });
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toMatch(/^\/app\/login/);
+    expect(res.status).toBe(401);
+    expect(res.headers.get('content-type') ?? '').toContain('application/json');
+    expect(await res.json()).toEqual({ error: 'session expired' });
   });
 });
 

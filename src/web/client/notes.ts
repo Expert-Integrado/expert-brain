@@ -5,6 +5,7 @@
 
 import Fuse from 'fuse.js';
 import { DOMAIN_COLORS, domainColor } from '../domain-colors.js';
+import { appFetch } from './http.js';
 
 interface NoteMeta {
   id: string;
@@ -41,7 +42,7 @@ async function main() {
 
   let notes: NoteMeta[] = [];
   try {
-    const res = await fetch('/app/graph/meta', { credentials: 'same-origin' });
+    const res = await appFetch('/app/graph/meta');
     if (!res.ok) throw new Error(`meta ${res.status}`);
     notes = (await res.json()) as NoteMeta[];
     for (const n of notes) n.updated_at = updatedMap.get(n.id) ?? 0;
@@ -81,7 +82,7 @@ async function main() {
   // metadados que o client tem em memória. Fallback pro Fuse local se falhar.
   async function runSearch(q: string): Promise<NoteMeta[]> {
     try {
-      const res = await fetch('/app/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+      const res = await appFetch('/app/search?q=' + encodeURIComponent(q));
       if (!res.ok) throw new Error('search ' + res.status);
       const ids = (await res.json()) as string[];
       return ids.map((id) => notesById.get(id)).filter(Boolean) as NoteMeta[];

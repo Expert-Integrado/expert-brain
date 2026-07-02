@@ -7,6 +7,7 @@
 // we piggyback the fetch rather than adding another endpoint.
 
 import Fuse from 'fuse.js';
+import { appFetch } from './http.js';
 
 interface NoteMeta { id: string; title: string; kind: string; tldr: string; domains: string[]; }
 
@@ -66,7 +67,7 @@ const fuseCommands = new Fuse(COMMANDS, {
 
 async function loadNotes() {
   try {
-    const res = await fetch('/app/graph/meta', { credentials: 'same-origin' });
+    const res = await appFetch('/app/graph/meta');
     if (!res.ok) return;
     notes = (await res.json()) as NoteMeta[];
     notesById = new Map(notes.map((n) => [n.id, n]));
@@ -232,7 +233,7 @@ function close() {
 // os ids nos metadados já carregados. Fallback pro Fuse local em caso de erro.
 async function searchNotes(q: string): Promise<NoteMeta[]> {
   try {
-    const res = await fetch('/app/search?q=' + encodeURIComponent(q), { credentials: 'same-origin' });
+    const res = await appFetch('/app/search?q=' + encodeURIComponent(q));
     if (!res.ok) throw new Error('search ' + res.status);
     const ids = (await res.json()) as string[];
     return ids.map((id) => notesById.get(id)).filter(Boolean).slice(0, 12) as NoteMeta[];

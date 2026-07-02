@@ -5,6 +5,8 @@
 // - Botão "concluir" → POST /app/tasks/complete.
 // Sem dependências externas (DnD nativo do HTML5).
 
+import { appFetch } from './http.js';
+
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
 interface TaskView {
@@ -43,7 +45,7 @@ function esc(s: string): string {
 
 async function load() {
   try {
-    const res = await fetch('/app/tasks/data', { credentials: 'same-origin' });
+    const res = await appFetch('/app/tasks/data');
     if (!res.ok) return;
     board = (await res.json()) as BoardData;
     render();
@@ -118,9 +120,8 @@ async function setStatus(id: string, status: Status) {
   // Otimista: muda local e re-renderiza; reconcilia no fim recarregando.
   if (!board) return;
   try {
-    const res = await fetch('/app/tasks/status', {
+    const res = await appFetch('/app/tasks/status', {
       method: 'POST',
-      credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id, status }),
     });
@@ -133,9 +134,8 @@ async function setStatus(id: string, status: Status) {
 
 async function complete(id: string) {
   try {
-    const res = await fetch('/app/tasks/complete', {
+    const res = await appFetch('/app/tasks/complete', {
       method: 'POST',
-      credentials: 'same-origin',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ id }),
     });

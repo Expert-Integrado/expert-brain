@@ -85,4 +85,47 @@ describe('requireSession', () => {
     const result = await requireSession(req, env);
     expect(result.ok).toBe(false);
   });
+
+  // Sessão expirada em request de dados não pode "passar" silenciosamente: o
+  // fetch do browser seguiria o 302 e receberia res.ok === true com HTML de
+  // login no corpo. Ver specs/20-frontend/21-csp-botoes-mortos-e-sessao-expirada.md.
+  it('returns 401 JSON when accept is application/json and there is no cookie', async () => {
+    const req = new Request('https://x.test/app/tasks/data', { headers: { accept: 'application/json' } });
+    const result = await requireSession(req, env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+      expect(result.response.headers.get('content-type')).toContain('application/json');
+      expect(await result.response.json()).toEqual({ error: 'session expired' });
+    }
+  });
+
+  it('returns 401 JSON for a non-GET request to a data route without accept header', async () => {
+    const req = new Request('https://x.test/app/tasks/complete', { method: 'POST' });
+    const result = await requireSession(req, env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+      expect(await result.response.json()).toEqual({ error: 'session expired' });
+    }
+  });
+
+  it('returns 401 JSON for a non-GET request to a media route without accept header', async () => {
+    const req = new Request('https://x.test/app/notes/abc123/media', { method: 'POST' });
+    const result = await requireSession(req, env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+    }
+  });
+
+  it('keeps the 302 redirect for a GET page navigation without accept: application/json', async () => {
+    const req = new Request('https://x.test/app/tasks', { headers: { accept: 'text/html' } });
+    const result = await requireSession(req, env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(302);
+      expect(result.response.headers.get('location')).toBe('/app/login?next=%2Fapp%2Ftasks');
+    }
+  });
 });

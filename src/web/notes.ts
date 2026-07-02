@@ -211,7 +211,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       ${note.kind ? `<span class="kind-badge">${esc(note.kind)}</span>` : ''}
       ${domainsToBadges(note.domains)}
       <span>Atualizada ${formatDate(note.updated_at)}</span>
-      <button id="btn-copy-link" onclick="(function(){navigator.clipboard.writeText(location.href).then(function(){var b=document.getElementById('btn-copy-link');b.textContent='Link copiado!';setTimeout(function(){b.textContent='Copiar link'},2000)});})()" style="margin-left:auto;background:none;border:1px solid #333;border-radius:6px;color:#888;cursor:pointer;font-size:12px;padding:4px 10px">Copiar link</button>
+      <button id="btn-copy-link" style="margin-left:auto;background:none;border:1px solid #333;border-radius:6px;color:#888;cursor:pointer;font-size:12px;padding:4px 10px">Copiar link</button>
     </div>
 
     ${relatedIds.length > 0 ? `
@@ -298,10 +298,12 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     domainsToBadges(task.domains),
   ].filter(Boolean).join('');
 
-  // Botão concluir reusa POST /app/tasks/complete (mesmo padrão inline-onclick do
-  // "Copiar link" da nota — CSP do app permite handler inline).
+  // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
+  // sem unsafe-inline/script-src-attr — ver src/web/render.ts:115) BLOQUEIA
+  // handler inline; o wiring vive em client/note-media.ts, que já é carregado
+  // nesta página, via data-attribute [data-task-complete].
   const completeBtn = canClose
-    ? `<button type="button" class="task-d-btn task-d-complete" onclick="(function(b){b.disabled=true;b.textContent='concluindo...';fetch('/app/tasks/complete',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({id:'${esc(task.id)}'})}).then(function(r){if(!r.ok)throw 0;location.href='/app/tasks'}).catch(function(){b.disabled=false;b.textContent='✓ concluir';alert('Falha ao concluir')})})(this)">✓ concluir</button>`
+    ? `<button type="button" class="task-d-btn task-d-complete" data-task-complete data-task-id="${esc(task.id)}">✓ concluir</button>`
     : '';
 
   const body = `

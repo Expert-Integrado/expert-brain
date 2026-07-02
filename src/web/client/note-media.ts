@@ -1,6 +1,11 @@
-// Client da seção de mídia na página da nota (/app/notes/:id).
-// Lista as mídias (grid de thumbs), upload por drag-drop / file input (multipart),
-// modal full-size com botão excluir. Sem dependências.
+// Client da seção de mídia na página da nota (/app/notes/:id) e da task
+// (/app/tasks/:id) — ambas carregam este bundle. Lista as mídias (grid de
+// thumbs), upload por drag-drop / file input (multipart), modal full-size com
+// botão excluir. Também cuida do wiring dos botões "Copiar link" (detalhe de
+// nota) e "✓ concluir" (detalhe de task): a CSP do app (script-src 'self',
+// ver src/web/render.ts) bloqueia onclick inline, então o handler mora aqui.
+
+import { appFetch } from './http.js';
 
 interface MediaView {
   id: string; kind: string; mime_type: string; size_bytes: number;
@@ -32,7 +37,7 @@ let current: MediaView[] = [];
 async function load() {
   if (!grid || !noteId) return;
   try {
-    const res = await fetch(`/app/notes/${encodeURIComponent(noteId)}/media`, { credentials: 'same-origin' });
+    const res = await appFetch(`/app/notes/${encodeURIComponent(noteId)}/media`);
     if (!res.ok) return;
     const data = await res.json();
     current = (data.media || []) as MediaView[];
@@ -68,7 +73,7 @@ function openModal(id: string) {
   modal.querySelector('.media-del')!.addEventListener('click', async () => {
     if (!confirm('Excluir esta mídia?')) return;
     try {
-      const res = await fetch(`/app/media/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'same-origin' });
+      const res = await appFetch(`/app/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('delete ' + res.status);
     } catch (err) { console.warn('media: delete failed', err); }
     close();
@@ -84,8 +89,8 @@ async function uploadFiles(files: FileList | File[]) {
     const fd = new FormData();
     fd.append('file', file);
     try {
-      const res = await fetch(`/app/notes/${encodeURIComponent(noteId)}/media`, {
-        method: 'POST', credentials: 'same-origin', body: fd,
+      const res = await appFetch(`/app/notes/${encodeURIComponent(noteId)}/media`, {
+        method: 'POST', body: fd,
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); console.warn('upload failed', res.status, e); alert(`Falha ao subir "${file.name}": ${(e as any).error || res.status}`); }
     } catch (err) { console.warn('media: upload error', err); }
@@ -103,6 +108,62 @@ if (dropzone) {
     dropzone.classList.remove('drag-over');
     const files = (e as DragEvent).dataTransfer?.files;
     if (files?.length) uploadFiles(files);
+  });
+}
+
+// Botão "Copiar link" (detalhe de nota). Reusa o mesmo fallback de
+// document.execCommand('copy') que configPageScript() usa pra contexts sem
+// navigator.clipboard (ver src/web/config.ts, copyText).
+async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* cai no fallback */ }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { /* ok fica false */ }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+const copyLinkBtn = document.getElementById('btn-copy-link');
+if (copyLinkBtn) {
+  copyLinkBtn.addEventListener('click', async () => {
+    const ok = await copyText(location.href);
+    const original = copyLinkBtn.textContent;
+    copyLinkBtn.textContent = ok ? 'Link copiado!' : 'Selecione + Ctrl+C';
+    setTimeout(() => { copyLinkBtn.textContent = original; }, 2000);
+  });
+}
+
+// Botão "✓ concluir" (detalhe de task). POSTa /app/tasks/complete e navega
+// pro board em sucesso; reabilita + alerta em falha.
+const completeBtn = document.querySelector<HTMLButtonElement>('[data-task-complete]');
+if (completeBtn) {
+  completeBtn.addEventListener('click', async () => {
+    const taskId = completeBtn.dataset.taskId;
+    if (!taskId) return;
+    completeBtn.disabled = true;
+    completeBtn.textContent = 'concluindo...';
+    try {
+      const res = await appFetch('/app/tasks/complete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: taskId }),
+      });
+      if (!res.ok) throw new Error('complete ' + res.status);
+      location.href = '/app/tasks';
+    } catch (err) {
+      console.warn('task complete failed', err);
+      completeBtn.disabled = false;
+      completeBtn.textContent = '✓ concluir';
+      alert('Falha ao concluir');
+    }
   });
 }
 

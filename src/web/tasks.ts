@@ -111,8 +111,12 @@ export async function handleTaskCompletePost(req: Request, env: Env): Promise<Re
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
   const id = (body.id || '').trim();
   if (!id) return json({ error: 'id required' }, 400);
-  const task = await completeTask(env, id, Date.now(), body.outcome);
-  if (!task) return json({ error: 'task not found' }, 404);
+  // completeTask agora devolve a task OU um sentinel de controle (spec 14):
+  // 'not-found' | 'conflict' | 'already-done'. O board não usa versionamento
+  // otimista (sem expected_updated_at), então 'conflict' não ocorre aqui;
+  // 'already-done' é um no-op idempotente que também terminou como done.
+  const result = await completeTask(env, id, Date.now(), body.outcome);
+  if (result === 'not-found') return json({ error: 'task not found' }, 404);
   return json({ ok: true, id, status: 'done' });
 }
 
