@@ -102,6 +102,48 @@ Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual s
 
 **GATE G4:** cada feature nova entra com testes; o share público (33) exige 2 semanas de rodagem na instância do dono antes de ir pra release de alunos.
 
+### Fase 5 — Console v2 (grupo `50-console-v2/`, pacote aprovado pelo dono em 04/07/2026)
+
+Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáveis, cards/detalhe estilo ClickUp, comentários (inclusive de convidado no link público), taxonomia configurável, cartela completa de contatos, página própria por contato com vínculos de 1º/2º nível e timeline de interações. As specs nasceram `ready` (aprovadas na criação). Pode iniciar após G1 (não depende de G2-G4); a onda C0 só precisa de G0 no contacts.
+
+**Regra transversal de numeração de migrations:** o número de migration citado em QUALQUER spec pendente é INDICATIVO (specs concorrem pelo mesmo trilho — ex.: `10-backend/21` e `50-console-v2/55` no contacts; `10-backend/17`/`30-features/31` citam números que o `0008_share_task` já ocupou no brain). O executor usa o próximo número livre do array `MIGRATIONS` no momento da execução e atualiza a spec no mesmo commit.
+
+**Roteamento de agente (economia + adequação):** coluna "Agente" abaixo — Opus pra schema/migrations/contratos MCP/superfície pública; Sonnet pra UI/SSR/client. Como invocar: abrir Claude Code no repo alvo com o modelo indicado e o prompt "Leia specs/README.md (spec-zero) e execute specs/50-console-v2/<arquivo> seguindo o protocolo". Uma spec por sessão.
+
+**Onda C0 — fundação de dados (contacts):**
+
+| Spec | Repo | Agente | Nota |
+|---|---|---|---|
+| `10-backend/21-contacts-prevencao-1102-similaridade-e-layout.md` | expert-contacts | Opus | DESBLOQUEADA (deps `20-frontend/22` e `40-ops/44` = done). Ao executar: o trilho de migrations descrito nela mudou — schema real vive em `src/db/migrate.ts` (a 44 portou o runMigrations); aplicar a regra transversal acima. Destrava os vínculos semânticos da 56. |
+
+**Onda C1 — tasks (expert-brain), em sequência (compartilham arquivos):**
+
+| Spec | Agente |
+|---|---|
+| `50-console-v2/51-tasks-kanban-colunas-customizaveis.md` | Opus |
+| `50-console-v2/53-tasks-comentarios.md` | Opus |
+| `50-console-v2/52-tasks-cards-clickup-e-share-ui.md` | Sonnet |
+| `50-console-v2/54-taxonomia-configuravel-areas-e-kinds.md` | Sonnet |
+
+(53 antes da 52 rende a contagem de comentários pronta pro card; a 54 é independente e pode rodar em paralelo NOUTRO working tree, se houver.)
+
+**Onda C2 — contatos:**
+
+| Spec | Repo | Agente |
+|---|---|---|
+| `50-console-v2/55-contacts-cartela-completa.md` | expert-contacts | Opus |
+| `50-console-v2/57-contacts-timeline-interacoes.md` | ambos | Sonnet |
+| `50-console-v2/56-contact-pagina-propria-e-conexoes.md` | ambos | Sonnet |
+
+**Onda C3 — privacidade ("banco privado" / dois acessos MCP):**
+
+| Spec | Agente | Nota |
+|---|---|---|
+| `10-backend/17-credenciais-escopos-pat-e-bearer.md` | Opus | Pré-requisito estrutural da 31. |
+| `30-features/31-selo-de-privacidade.md` | Opus | Nota `private` invisível pra credencial sem escopo em TODOS os read paths. NÃO rodar em paralelo com C1 no mesmo working tree (tocam read paths/web em comum). |
+
+**GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área; C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats (teste de vazamento por superfície). Deploy de produção e release de alunos SÓ com OK explícito do dono.
+
 ### Grafo de dependências formais
 
 ```text
@@ -113,6 +155,8 @@ Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual s
 45 ← 19, 44
 21 (backend contacts) ← 22 (frontend brain), 44
 19, 20, 22, 27 ← 42 (suíte de testes do contacts)
+52 ← 51 (suave: 53, só pela contagem de comentários)
+56 ← 55, 57 (suave: 21 — sem ela a página degrada pra só conexões explícitas)
 ```
 
 Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
@@ -135,6 +179,10 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G2 | — | — |
 | G3 | — | — |
 | G4 | — | — |
+| G5-C0 | — | — |
+| G5-C1 | — | — |
+| G5-C2 | — | — |
+| G5-C3 | — | — |
 
 Regras de manutenção:
 

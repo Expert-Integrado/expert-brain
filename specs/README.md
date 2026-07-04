@@ -123,6 +123,7 @@ specs/
   20-frontend/              ← dashboard web (src/web/)
   30-features/              ← features novas fim-a-fim
   40-ops/                   ← processo, CI, release, tooling
+  50-console-v2/            ← pacote Console v2: Kanban custom, comentários, taxonomia, contatos (Fase 5 do roadmap)
 ```
 
 Renumerar só quando a prioridade mudar de fato; buracos na numeração são aceitáveis e esperados.
@@ -179,6 +180,13 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `40-ops/44-contacts-migrations-tracking.md` | Contacts: migrations com tracking (portar runMigrations do Brain) e desarmar o footgun do migrations_dir | P1 | M | expert-contacts | `40-ops/42` |
 | `40-ops/45-contacts-category-seeds-e-4a-fonte.md` | Contacts: aplicar seeds de categoria completos com overwrite + 4ª fonte (categoria de chat por telefone) | P1 | M | expert-contacts | `10-backend/19`, `40-ops/44` |
 | `40-ops/46-reativacao-lembrete-telegram.md` | Reativação do lembrete diário de tasks no Telegram (gated) | P2 | S | ops | `30-features/32`, `40-ops/43` |
+| `50-console-v2/51-tasks-kanban-colunas-customizaveis.md` | Kanban: colunas/estágios customizáveis pela UI, persistidos no banco | P1 | L | expert-brain | nenhuma |
+| `50-console-v2/52-tasks-cards-clickup-e-share-ui.md` | Cards e detalhe de task estilo ClickUp + UI de compartilhamento | P1 | M | expert-brain | `50-console-v2/51` (suave: `53`) |
+| `50-console-v2/53-tasks-comentarios.md` | Comentários em tasks: console, MCP e convidado no link público | P1 | M | expert-brain | nenhuma |
+| `50-console-v2/54-taxonomia-configuravel-areas-e-kinds.md` | Taxonomia configurável: cor/label de áreas e kinds + criar área pela UI | P1 | M | expert-brain | nenhuma |
+| `50-console-v2/55-contacts-cartela-completa.md` | Contacts: canais múltiplos (e-mails, sociais, CRM, ManyChat) | P1 | L | expert-contacts | nenhuma (coordenação: `10-backend/19`) |
+| `50-console-v2/56-contact-pagina-propria-e-conexoes.md` | Contato com URL própria + vínculos 1º/2º nível | P1 | L | ambos | `50-console-v2/55`, `50-console-v2/57` (suave: `10-backend/21`) |
+| `50-console-v2/57-contacts-timeline-interacoes.md` | Contacts: timeline paginada de interações + registro manual no console | P1 | M | ambos | nenhuma |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo
