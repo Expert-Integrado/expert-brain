@@ -1,0 +1,100 @@
+import type { Env } from '../env.js';
+import { handleRoot, handleProvision, handleStatus, handleBackfillSimilar, isSetup } from './setup.js';
+import { verifyPassword } from './password.js';
+import { FONT_LINKS } from '../web/styles.js';
+import { assetVersion } from '../web/asset-version.js';
+import { esc } from '../util/html.js';
+import { handleApp } from '../web/handler.js';
+import { handleSharePage, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
+
+export const authHandler = {
+  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(req.url);
+
+    if (url.pathname.startsWith('/app')) {
+      const res = await handleApp(req, env);
+      if (res) return res;
+    }
+
+    // Rota PÚBLICA read-only de task compartilhada (SEM auth). Vive fora de /app, então
+    // entra ANTES do fallback 404 abaixo e nunca é interceptada pelo handleApp. Só GET;
+    // token fora do formato ou método errado → mesmo 404 genérico (não vaza existência).
+    if (url.pathname.startsWith('/s/')) {
+      const token = url.pathname.slice('/s/'.length);
+      if (req.method === 'GET' && SHARE_TOKEN_RE.test(token)) {
+        return handleSharePage(req, env, token);
+      }
+      return shareNotFound();
+    }
+
+    if (url.pathname === '/') return handleRoot(req, env);
+    if (url.pathname === '/status') return handleStatus(env);
+    if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(env);
+    if (url.pathname === '/setup/backfill-similar' && req.method === 'POST') return handleBackfillSimilar(req, env);
+
+    if (url.pathname === '/authorize') {
+      if (!isSetup(env)) return new Response('Vault não configurado', { status: 503 });
+      const provider = (env as any).OAUTH_PROVIDER;
+      if (req.method === 'POST') {
+        const form = await req.formData();
+        const email = String(form.get('email') ?? '');
+        const password = String(form.get('password') ?? '');
+        if (email !== env.OWNER_EMAIL) return renderLogin('Credenciais inválidas.', url.search);
+        const ok = await verifyPassword(password, env.OWNER_PASSWORD_HASH!);
+        if (!ok) return renderLogin('Credenciais inválidas.', url.search);
+        // parseAuthRequest expects the original GET request; reconstruct it from the query string
+        const authReq = await provider.parseAuthRequest(new Request(url.toString(), { method: 'GET' }));
+        const result = await provider.completeAuthorization({
+          request: authReq,
+          userId: email,
+          metadata: { email },
+          scope: authReq.scope?.length ? authReq.scope : ['mcp'],
+          props: { email, loggedInAt: Date.now() },
+        });
+        return Response.redirect(result.redirectTo, 302);
+      }
+      return renderLogin(null, url.search);
+    }
+
+    return new Response('Não encontrado', { status: 404 });
+  },
+};
+
+function renderLogin(error: string | null, qs: string): Response {
+  return new Response(
+    `<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Autorizar · Expert Brain</title>
+${FONT_LINKS}
+<link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}"></head>
+<body><div class="login-wrap">
+<h1>Expert Brain</h1>
+<p class="subtitle">Autorize o Claude a acessar seu vault.</p>
+${error ? `<p class="error">${esc(error)}</p>` : ''}
+<form method="post" action="/authorize${esc(qs)}">
+<label>E-mail<input type="email" name="email" required autofocus></label>
+<label>Senha<input type="password" name="password" required></label>
+<button type="submit">Autorizar</button>
+</form></div></body></html>`,
+    {
+      headers: {
+        'content-type': 'text/html; charset=utf-8',
+        // Same reasoning as web/render.ts htmlResponse: HTML must never be
+        // heuristically cached by the browser, or a stale page can linger post-deploy.
+        'cache-control': 'no-store',
+        'content-security-policy':
+          "default-src 'self'; " +
+          "script-src 'self'; " +
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src 'self' https://fonts.gstatic.com; " +
+          "img-src 'self' data:; " +
+          "connect-src 'self'; " +
+          "frame-ancestors 'none'",
+        'x-frame-options': 'DENY',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'strict-origin-when-cross-origin',
+        'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+      },
+    }
+  );
+}

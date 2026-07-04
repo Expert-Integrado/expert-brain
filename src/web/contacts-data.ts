@@ -1,0 +1,76 @@
+import type { Env } from '../env.js';
+import { requireSession } from './session.js';
+
+// Proxy server-side: o Brain puxa o grafo de contatos do Worker do Expert Contacts
+// via service binding (CONTACTS) + Bearer (CONTACTS_PROXY_TOKEN). O browser fala só
+// com o Brain (mesma origem) — a credencial nunca sai pro cliente, e o /app/contacts
+// renderiza o grafo de contatos DENTRO do shell do Brain.
+async function proxyToContacts(req: Request, env: Env, consolePath: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  // Preserva a query do cliente (?q=, ?focus=, ?depth=...) e força vault=contacts.
+  const inUrl = new URL(req.url);
+  const out = new URL(`https://contacts${consolePath}`);
+  inUrl.searchParams.forEach((v, k) => { if (k !== 'vault') out.searchParams.set(k, v); });
+  out.searchParams.set('vault', 'contacts');
+  // all=1: traz TODOS os contatos (inclui os ~6,5k isolados), não só os conectados.
+  // O modo "all" do adapter pula a similaridade, então é leve mesmo com milhares.
+  if (consolePath.endsWith('/data') && !inUrl.searchParams.has('focus') && !inUrl.searchParams.get('q')) {
+    out.searchParams.set('all', '1');
+  }
+
+  const res = await env.CONTACTS.fetch(new Request(out.toString(), {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: {
+      'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+export function handleContactsData(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/graph/data');
+}
+
+export function handleContactsMeta(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/graph/meta');
+}
+
+// Detalhe de um contato (?id=) — alimenta o painel contato-mode do grafo.
+export function handleContactsEntity(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/entity');
+}
+
+// Avatar/mídia do contato — streaming passthrough pro /media/<hash> do Expert
+// Console (rota pública lá; proxiar aqui mantém same-origin no browser). O hash
+// é validado (sha256 hex) pra rota não virar proxy arbitrário, e a resposta é
+// cacheável forte: o conteúdo é endereçado pelo próprio hash (imutável).
+export async function handleContactsMedia(req: Request, env: Env, hash: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS) return new Response('contacts binding not configured', { status: 503 });
+  if (!/^[0-9a-f]{64}$/i.test(hash)) return new Response('bad hash', { status: 400 });
+
+  const res = await env.CONTACTS.fetch(new Request(`https://contacts/media/${hash}`, { method: 'GET' }));
+  if (!res.ok) return new Response('not found', { status: res.status === 404 ? 404 : 502 });
+  return new Response(res.body, {
+    status: 200,
+    headers: {
+      'content-type': res.headers.get('content-type') || 'application/octet-stream',
+      'cache-control': 'private, max-age=604800, immutable',
+    },
+  });
+}

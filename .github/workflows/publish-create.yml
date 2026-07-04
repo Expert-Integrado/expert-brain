@@ -1,0 +1,111 @@
+name: Publish create-expert-brain to npm
+
+# Espelha o repo (src/, scripts/, wrangler.example.toml, package.json raiz, etc) pra
+# create/template/, bumpa a versao do pacote pra match da release tag, e publica
+# `@expertintegrado/create-expert-brain` no npm. Disparado quando uma release e
+# publicada no GitHub.
+#
+# Autenticacao: OIDC (Trusted Publishers do npm — configurado em
+# https://www.npmjs.com/package/@expertintegrado/create-expert-brain/access).
+# Nao usa NPM_TOKEN — o token foi removido depois que OIDC foi validado em v1.0.1.
+# A flag `--access public` no npm publish e' necessaria porque pacotes scoped sao
+# privados por default. `--provenance` ativa o badge "Verified" na pagina do pacote
+# (so funciona com OIDC).
+#
+# IMPORTANTE: o nome deste arquivo (publish-create.yml) e' parte da configuracao
+# do Trusted Publisher no npm. Se renomear, atualiza tambem em npmjs.com/package/
+# @expertintegrado/create-expert-brain/access — caso contrario o publish via
+# OIDC para de funcionar.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versao a publicar (ex: 1.0.0). Sem 'v' na frente."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write  # necessario pro OIDC do Trusted Publisher
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Tag esperado no formato vX.Y.Z — strip do "v"
+            RAW="${{ github.event.release.tag_name }}"
+            VERSION="${RAW#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Versao invalida: $VERSION (esperado semver tipo 1.2.3)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Publishing version: $VERSION"
+
+      - name: Mirror repo into create/template/
+        run: |
+          TEMPLATE_DIR="create/template"
+          rm -rf "$TEMPLATE_DIR"
+          mkdir -p "$TEMPLATE_DIR"
+
+          # NAO incluimos docs/ nem assets/ — gif/png pesam ~8MB e o tarball publicado
+          # ficaria gigante. As imagens do README sao reescritas pra apontar pro GitHub raw
+          # no proximo step, entao o README do template renderiza normalmente.
+          for item in src scripts wrangler.example.toml package.json package-lock.json tsconfig.json vitest.config.ts vitest.auth.config.ts CLAUDE.md README.md LICENSE; do
+            if [ -e "$item" ]; then
+              cp -R "$item" "$TEMPLATE_DIR/"
+            fi
+          done
+
+          # .gitignore vira _gitignore (npm publish ignora .gitignore por design — bin.mjs renomeia de volta no destino).
+          if [ -f .gitignore ]; then
+            cp .gitignore "$TEMPLATE_DIR/_gitignore"
+          fi
+
+          # Reescreve refs a docs/ e assets/ no README do template pra absolute URLs do GitHub.
+          # Imagens (![]()) usam raw.githubusercontent.com. Links de markdown ([]()) usam github.com/blob.
+          if [ -f "$TEMPLATE_DIR/README.md" ]; then
+            # Usa # como delimitador do sed pra evitar colisao com o | da alternacao (docs|assets).
+            sed -i -E 's#!\[([^]]*)\]\((docs|assets)/#![\1](https://raw.githubusercontent.com/Expert-Integrado/expert-brain/master/\2/#g' "$TEMPLATE_DIR/README.md"
+            sed -i -E 's#([^!])\[([^]]*)\]\((docs|assets)/#\1[\2](https://github.com/Expert-Integrado/expert-brain/blob/master/\3/#g' "$TEMPLATE_DIR/README.md"
+          fi
+
+          echo "Conteudo do template:"
+          ls -la "$TEMPLATE_DIR"
+          echo "Tamanho do template:"
+          du -sh "$TEMPLATE_DIR"
+
+      - name: Bump create/package.json version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('create/package.json', 'utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('create/package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          cat create/package.json
+
+      - name: Publish to npm
+        working-directory: create
+        run: npm publish --access public --provenance

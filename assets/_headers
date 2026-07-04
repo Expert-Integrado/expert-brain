@@ -1,0 +1,13 @@
+# Cloudflare Workers Assets — headers customizados.
+# Ícones do PWA nunca mudam (regerados só em rebuild) — cache imutável 1 ano.
+/icon-192.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/icon-512.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/icon-maskable-512.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/expert-integrado-logo.png
+  Cache-Control: public, max-age=31536000, immutable

@@ -1,0 +1,63 @@
+# Expert Brain — template de configuração Cloudflare.
+#
+# Copie este arquivo pra `wrangler.toml` e substitua os placeholders REPLACE_ME_*
+# pelos IDs reais da sua conta. Ou rode `npm run setup` que o script faz isso
+# automaticamente.
+#
+# - account_id: encontra em https://dash.cloudflare.com (canto inferior direito da sidebar)
+# - database_id: gerado por `wrangler d1 create expert-brain`
+# - id (OAUTH_KV): gerado por `wrangler kv namespace create OAUTH_KV`
+# - id (GRAPH_CACHE): gerado por `wrangler kv namespace create GRAPH_CACHE`
+
+name = "expert-brain"
+main = "src/index.ts"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "REPLACE_ME_ACCOUNT_ID"
+
+# Lembrete proativo de prazo: cron diário às 11:00 UTC = 08:00 BRT. O scheduled()
+# manda o digest das tasks vencendo hoje + atrasadas pro Telegram. Dormente até setar
+# os secrets TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID (`wrangler secret put ...`).
+[triggers]
+crons = ["0 11 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "expert-brain"
+database_id = "REPLACE_ME_D1_ID"
+migrations_dir = "src/db/migrations"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "expert-brain-embeddings"
+
+# Bucket R2 pra mídia das notas (imagens/vídeos/docs/áudio). Crie com
+# `wrangler r2 bucket create expert-brain-media`. Dedup por SHA-256 (key
+# sha256/<hash>.<ext>); servido por rota autenticada com signed token (não público).
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "expert-brain-media"
+
+[ai]
+binding = "AI"
+
+[durable_objects]
+bindings = [
+  { name = "MCP_OBJECT", class_name = "ExpertBrainMCP" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ExpertBrainMCP"]
+
+[assets]
+directory = "./assets"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "OAUTH_KV"
+id = "REPLACE_ME_OAUTH_KV_ID"
+
+[[kv_namespaces]]
+binding = "GRAPH_CACHE"
+id = "REPLACE_ME_GRAPH_CACHE_ID"

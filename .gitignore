@@ -1,0 +1,15 @@
+node_modules
+.wrangler
+.dev.vars
+wrangler.toml
+wrangler.local.toml
+dist
+coverage
+assets/using-expert-brain.zip
+.worktrees
+.claude/
+.superpowers/
+outputs/
+
+# Artefatos locais do Playwright MCP
+.playwright-mcp/
