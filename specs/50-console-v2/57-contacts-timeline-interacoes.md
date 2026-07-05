@@ -55,6 +55,8 @@ No contacts (`src/web/` — handler novo `events.ts` ou dentro do detail):
 - Editar/excluir evento (registro é append-only nesta fase; correção = novo evento `note`).
 - Timeline agregada global ("todas as interações de todos os contatos").
 - Notificações/lembretes derivados (ex.: follow-up) — vizinho da `40-ops/46`.
+- Observações no embedding/busca semântica — spec `50-console-v2/60` (usa o `recordEvent` extraído aqui).
+- Evento privado (flag + filtro no endpoint paginado) — spec `50-console-v2/61`.
 
 ## Critérios de aceite
 

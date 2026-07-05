@@ -56,6 +56,7 @@ No worker de contatos, aceitar `GET /app/entity/<id>` (path param) além do quer
 - Compartilhamento PÚBLICO de contato (dados pessoais de terceiros — decisão deliberada de NÃO ter `/s/` pra contatos).
 - 3º nível ou travessia arbitrária (cap fixo).
 - Edição de conexões pela página (criar/editar edge continua no grafo/MCP).
+- Privacidade (entidade privada fora do proxy, filtro no `/app/entity/neighbors`) — spec `50-console-v2/61`, que gateia os endpoints criados aqui.
 
 ## Critérios de aceite
 

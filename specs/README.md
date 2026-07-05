@@ -187,6 +187,10 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/55-contacts-cartela-completa.md` | Contacts: canais múltiplos (e-mails, sociais, CRM, ManyChat) | P1 | L | expert-contacts | nenhuma (coordenação: `10-backend/19`) |
 | `50-console-v2/56-contact-pagina-propria-e-conexoes.md` | Contato com URL própria + vínculos 1º/2º nível | P1 | L | ambos | `50-console-v2/55`, `50-console-v2/57` (suave: `10-backend/21`) |
 | `50-console-v2/57-contacts-timeline-interacoes.md` | Contacts: timeline paginada de interações + registro manual no console | P1 | M | ambos | nenhuma |
+| `50-console-v2/58-tasks-projetos-pastas.md` | Tasks: projetos (pastas) — agrupamento first-class com filtro no board e no MCP | P1 | L | expert-brain | `50-console-v2/51` (suave: `52`) |
+| `50-console-v2/59-tasks-privacidade.md` | Tasks privadas: gate de escopo nos read paths de task + bloqueio de share público | P1 | M | expert-brain | `10-backend/17`, `30-features/31` |
+| `50-console-v2/60-contacts-observacoes-semanticas.md` | Contacts: observações alimentam o embedding + busca textual em contexts | P1 | M | expert-contacts | `50-console-v2/57` |
+| `50-console-v2/61-contacts-privacidade.md` | Contacts: entidade/evento privados, fail-closed no proxy, escopo propagado pelo Brain | P1 | L | ambos | `10-backend/17` (rodar após a onda C2; coordena `60`) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo

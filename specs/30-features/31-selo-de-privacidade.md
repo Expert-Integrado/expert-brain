@@ -104,12 +104,14 @@ E parâmetro aditivo `includePrivate: boolean` (default `false` = fail-closed) n
 ### 6. Cross-check com specs vizinhas (registrar, não implementar)
 
 - Spec `30-features/33` (compartilhamento público): share token NUNCA pode expor nota `private` — adicionar critério de aceite lá apontando pra cá.
+- **Tasks**: a coluna `private` passa a existir nas tasks (mesma tabela `notes`), mas os read paths de TASK (`list_tasks`/`list_tasks_due_today`/`get_task`/share `/s/<token>`) NÃO são gateados aqui — spec `50-console-v2/59` (depende desta) fecha essas superfícies e bloqueia share de task privada.
 - `similar_edges` (`src/db/migrate.ts:117-125`) pode conter pares envolvendo nota privada — só é lida pelo grafo (superfície do dono, item 5), então não vaza via MCP. Se um dia `expand` passar a usar similar edges, o filtro do item 3 se aplica.
 
 ## Fora de escopo
 
 - Criptografia at-rest (D1 já cifra em repouso; o selo é controle de ACESSO, não cripto).
-- Extensão ao expert-contacts (spec futura, se houver demanda).
+- Extensão ao expert-contacts — spec `50-console-v2/61` (entidade/evento privados no contacts, escopo propagado pelo Brain).
+- Read paths de TASK — spec `50-console-v2/59` (ver cross-check acima).
 - Compartilhamento público / share token (spec `30-features/33` — só o cross-check acima).
 - Heurística automática de detecção de conteúdo sensível (retroativo é 100% curadoria manual).
 - Metadata `private` no Vectorize / filtro no lado do vetor (D1 é a fonte de verdade única).

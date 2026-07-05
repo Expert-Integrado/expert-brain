@@ -104,7 +104,7 @@ Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual s
 
 ### Fase 5 — Console v2 (grupo `50-console-v2/`, pacote aprovado pelo dono em 04/07/2026)
 
-Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáveis, cards/detalhe estilo ClickUp, comentários (inclusive de convidado no link público), taxonomia configurável, cartela completa de contatos, página própria por contato com vínculos de 1º/2º nível e timeline de interações. As specs nasceram `ready` (aprovadas na criação). Pode iniciar após G1 (não depende de G2-G4); a onda C0 só precisa de G0 no contacts.
+Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáveis, cards/detalhe estilo ClickUp, comentários (inclusive de convidado no link público), taxonomia configurável, cartela completa de contatos, página própria por contato com vínculos de 1º/2º nível e timeline de interações. Ampliado em 05/07/2026 com: projetos de task (pastas, spec `58`), privacidade de tasks (`59`), observações semânticas de contatos (`60`) e privacidade de contatos (`61`). As specs nasceram `ready` (aprovadas na criação). Pode iniciar após G1 (não depende de G2-G4); a onda C0 só precisa de G0 no contacts.
 
 **Regra transversal de numeração de migrations:** o número de migration citado em QUALQUER spec pendente é INDICATIVO (specs concorrem pelo mesmo trilho — ex.: `10-backend/21` e `50-console-v2/55` no contacts; `10-backend/17`/`30-features/31` citam números que o `0008_share_task` já ocupou no brain). O executor usa o próximo número livre do array `MIGRATIONS` no momento da execução e atualiza a spec no mesmo commit.
 
@@ -123,9 +123,10 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 | `50-console-v2/51-tasks-kanban-colunas-customizaveis.md` | Opus |
 | `50-console-v2/53-tasks-comentarios.md` | Opus |
 | `50-console-v2/52-tasks-cards-clickup-e-share-ui.md` | Sonnet |
+| `50-console-v2/58-tasks-projetos-pastas.md` | Opus |
 | `50-console-v2/54-taxonomia-configuravel-areas-e-kinds.md` | Sonnet |
 
-(53 antes da 52 rende a contagem de comentários pronta pro card; a 54 é independente e pode rodar em paralelo NOUTRO working tree, se houver.)
+(53 antes da 52 rende a contagem de comentários pronta pro card; a 58 vem depois da 52 porque adiciona o chip de projeto ao card desenhado lá; a 54 é independente e pode rodar em paralelo NOUTRO working tree, se houver.)
 
 **Onda C2 — contatos:**
 
@@ -134,15 +135,18 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 | `50-console-v2/55-contacts-cartela-completa.md` | expert-contacts | Opus |
 | `50-console-v2/57-contacts-timeline-interacoes.md` | ambos | Sonnet |
 | `50-console-v2/56-contact-pagina-propria-e-conexoes.md` | ambos | Sonnet |
+| `50-console-v2/60-contacts-observacoes-semanticas.md` | expert-contacts | Opus |
 
 **Onda C3 — privacidade ("banco privado" / dois acessos MCP):**
 
 | Spec | Agente | Nota |
 |---|---|---|
-| `10-backend/17-credenciais-escopos-pat-e-bearer.md` | Opus | Pré-requisito estrutural da 31. |
-| `30-features/31-selo-de-privacidade.md` | Opus | Nota `private` invisível pra credencial sem escopo em TODOS os read paths. NÃO rodar em paralelo com C1 no mesmo working tree (tocam read paths/web em comum). |
+| `10-backend/17-credenciais-escopos-pat-e-bearer.md` | Opus | Pré-requisito estrutural da 31, 59 e 61. |
+| `30-features/31-selo-de-privacidade.md` | Opus | Nota `private` invisível pra credencial sem escopo em TODOS os read paths de NOTA. NÃO rodar em paralelo com C1 no mesmo working tree (tocam read paths/web em comum). |
+| `50-console-v2/59-tasks-privacidade.md` | Opus | Fecha os read paths de TASK que a 31 não cobre + bloqueia share público de task privada. Depois da 31. |
+| `50-console-v2/61-contacts-privacidade.md` | Opus | Entidade/evento privados no contacts, fail-closed no proxy, escopo propagado pelo Brain. Depois da 17 E da onda C2 (gateia endpoints da 56/57); coordena com a 60 (embedding). |
 
-**GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área; C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats (teste de vazamento por superfície). Deploy de produção e release de alunos SÓ com OK explícito do dono.
+**GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área, criar projeto e filtrar o board por ele (incl. `list_tasks project:` via MCP); C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível, recall/busca encontrando contato por termo que só existe numa observação; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats NEM task privada em list_tasks/get_task NEM contato/evento privado nas tools de contatos (teste de vazamento por superfície nas três frentes) + share de task privada bloqueado/revogado. Deploy de produção e release de alunos SÓ com OK explícito do dono.
 
 ### Grafo de dependências formais
 
@@ -157,6 +161,10 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 19, 20, 22, 27 ← 42 (suíte de testes do contacts)
 52 ← 51 (suave: 53, só pela contagem de comentários)
 56 ← 55, 57 (suave: 21 — sem ela a página degrada pra só conexões explícitas)
+58 ← 51 (suave: 52 — chip de projeto entra no card desenhado lá)
+59 ← 17, 31
+60 ← 57
+61 ← 17 (ordem: após a onda C2 — gateia endpoints da 56/57; coordena 60)
 ```
 
 Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
