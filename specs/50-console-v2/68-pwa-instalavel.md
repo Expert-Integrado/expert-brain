@@ -1,69 +1,78 @@
-# PWA: console instalável no celular com atalho de captura
+# PWA: share target de captura + atalhos de app (o PWA base JÁ existe)
 
 > **Status:** ready · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
-> **Depende de:** `63` (a captura é o atalho que justifica o ícone) · suave: `65` (home como start_url)
-> **Agente sugerido:** Sonnet (assets + client) · **Esforço de execução:** padrão
+> **Depende de:** `63` (o share target aponta pro inbox) · suave: `65` (home como `start_url`)
+> **Agente sugerido:** Sonnet (assets + 1 rota) · **Esforço de execução:** padrão
 
 ## Contexto
 
-- O console é web responsivo servido pelo Worker (assets via binding `ASSETS`, `wrangler.toml:63`), mas não é instalável: sem `manifest.json`, sem service worker, sem ícones — no celular vive como aba perdida do navegador.
-- O dia a dia do segundo cérebro acontece no celular; a captura da `63` (quick-add + bots) resolve a ENTRADA, mas abrir o console pra triagem/consulta ainda custa achar a aba.
-- Sessão por cookie (`requireSession`) — o PWA herda o login do navegador; sem auth nativa nova.
+**O PWA base JÁ EXISTE E RODA** — esta spec NÃO cria PWA, só o completa:
+
+- `assets/manifest.webmanifest`: name/short_name, `start_url: /app/graph`, `display: standalone`, theme NEBULA, ícones 192/512 + maskable — completo e válido.
+- `assets/sw.js`: service worker com a estratégia certa (cache-first só em assets estáticos por extensão, network-first em HTML, nunca toca endpoints) — registrado pelo shell (`src/web/client/shell.ts`, bloco `serviceWorker.register('/sw.js')`).
+- Existe até página de instalação (`assets/instalar.html`).
+
+O que NÃO existe no manifest: `share_target` (compartilhar de outro app → console) e `shortcuts` (ações no long-press do ícone). E o `start_url` aponta pro grafo — quando a home da `65` existir, o app deve abrir nela.
 
 ## Problema / Motivação
 
-- Sem ícone na home screen, o console perde pra qualquer app nativo na disputa de atenção — o sistema "mais foda" precisa estar a 1 toque.
-- O share target do Android/iOS (compartilhar texto/link de qualquer app → console) é a captura de menor fricção possível e só existe pra PWA instalada.
+- O PWA instalado abre no grafo — bom pra consulta, inútil pra CAPTURA, que é o gesto mais frequente no celular.
+- Compartilhar um texto/link de qualquer app pro Brain (share sheet do Android) é a captura de menor fricção possível e está a um bloco de manifest de distância.
 
 ## Design proposto
 
-### 1. Manifest + ícones
+### 1. `share_target` no manifest
 
-- `manifest.webmanifest` servido pelo Worker: `name`/`short_name` da instância, `start_url: /app` (home da 65; fallback `/app/tasks`), `display: standalone`, `theme_color`/`background_color` do tema NEBULA, ícones 192/512 + maskable (gerar no build, sem serviço externo).
-- `<link rel="manifest">` + meta theme-color no shell (`src/web/layout.ts`).
+```json
+"share_target": {
+  "action": "/app/inbox",
+  "method": "GET",
+  "params": { "title": "title", "text": "text", "url": "url" }
+}
+```
 
-### 2. Service worker MÍNIMO (deliberadamente burro)
+- `/app/inbox` (da `63`): ao chegar com params de share, pré-preencher o quick-add com `title + text + url` concatenados e focar o botão salvar — compartilhou, 1 toque, capturado (`source: 'pwa-share'`). Sem sessão → login → redirect de volta com os params preservados (conferir que o fluxo de login atual preserva querystring; ajustar se não).
 
-- `sw.js`: cache-first SÓ pra assets estáticos versionados (o console já versiona via `asset-version.ts`); **network-only pra TODA rota `/app/*`** (dados sempre frescos — cache de HTML logado é fonte de bug e de vazamento pós-logout).
-- Offline: página estática "Sem conexão" (sem dados). NENHUMA fila offline de escrita nesta fase.
-- Registro do SW no shell; atualização por `skipWaiting` + reload prompt discreto.
+### 2. `shortcuts` no manifest
 
-### 3. Share target (a captura de 1 toque)
+- "Capturar" → `/app/inbox` · "Tarefas" → `/app/tasks` · "Hoje" → `/app` (só quando a `65` tiver rodado).
 
-- No manifest: `share_target` (method GET, params `title/text/url`) apontando pra `/app/inbox?share=...`.
-- `/app/inbox` (63): quando chegar com params de share, pré-preencher o quick-add com `title + text + url` concatenados e focar o botão salvar — compartilhou → 1 toque → capturado (`source: 'pwa-share'`).
-- Atalhos de app (`shortcuts` no manifest): "Capturar" → `/app/inbox`, "Tarefas" → `/app/tasks`.
+### 3. `start_url`
+
+- Quando a `65` existir: `start_url: /app` (home Hoje). Enquanto não existir: manter `/app/graph`. (Se esta spec rodar antes da 65, deixar um TODO comentado no manifest e um item no critério da 65.)
+
+### 4. Higiene
+
+- Confirmar que `sw.js` NÃO cacheia `/app/inbox` com params (a regra atual por extensão já garante — HTML é network-first; validar).
+- Bump de versão do SW se o cache de assets precisar invalidar pelo manifest novo.
 
 ## Fora de escopo
 
-- Push notifications (exigiria infra de subscription; o canal de notificação é o do `notify.ts`).
-- Offline de leitura/escrita com sync (complexidade alta, valor marginal com rede móvel onipresente).
-- App nativo/TWA na Play Store.
-- PWA do console standalone do contacts (só o Brain — é o console principal).
+- Push notifications, offline de escrita, TWA/loja.
+- Recriar manifest/SW/ícones (existem e estão certos).
+- PWA do console standalone do contacts.
 
 ## Critérios de aceite
 
-- [ ] Lighthouse PWA: instalável (manifest válido + SW + HTTPS); ícone e nome corretos na home screen (Android e iOS).
-- [ ] Instalado, abre em standalone na home (`/app`), logado (cookie herdado).
-- [ ] Compartilhar um texto de outro app pro console → quick-add pré-preenchido → salvar cria item no inbox com `source: 'pwa-share'`.
-- [ ] Rotas `/app/*` NUNCA servidas de cache (DevTools: network-only); assets estáticos vêm do cache na 2ª visita.
-- [ ] Logout + reabrir PWA → tela de login (nenhum dado logado em cache).
-- [ ] Deploy de versão nova → prompt de atualização aparece e o reload aplica.
+- [ ] Android: compartilhar texto de outro app lista "Expert Brain"; escolher → quick-add pré-preenchido → salvar cria item no inbox com `source: 'pwa-share'`.
+- [ ] Long-press no ícone mostra os shortcuts e eles abrem as rotas certas.
+- [ ] Share sem sessão: login → volta pro quick-add com o conteúdo preservado.
+- [ ] Manifest continua válido (Lighthouse instalável); nada do PWA atual regride (SW, ícones, standalone).
+- [ ] `start_url` conforme o estado da 65 (home se existir; senão grafo, com TODO).
 
 ## Validação
 
-- `npm run typecheck` + `npm test` (unit do que for testável; SW é validação manual).
-- Manual: instalar em 1 Android real (Chrome) e 1 iOS (Safari), rodar o roteiro dos critérios.
+- `npm run typecheck` + `npm test` (o que for testável); validação real em 1 Android (Chrome) — share target não funciona em desktop.
 - **Gate de deploy:** `wrangler deploy` só com OK explícito do dono.
 
 ## Arquivos afetados
 
-- `public/`/assets: `manifest.webmanifest`, `sw.js`, ícones (novos)
-- `src/web/layout.ts` (link manifest + registro do SW), `src/web/handler.ts` (servir manifest/sw com content-type certo)
-- `src/web/inbox.ts` (params de share no quick-add), `scripts/` (geração de ícones no build, se necessário)
+- `assets/manifest.webmanifest` (share_target, shortcuts, start_url)
+- `src/web/inbox.ts` (params de share no quick-add — coordenar com a 63), `src/web/login.ts`/handler (preservar querystring no redirect, se necessário)
+- `assets/sw.js` (bump de versão, se necessário)
 
 ## Riscos e reversão
 
-- **Risco**: SW cacheando além do planejado (classe clássica de bug). Mitigação: allowlist explícita de assets versionados; `/app/*` network-only por regra negativa testada manualmente.
-- **Risco**: iOS com suporte parcial a share_target. Aceito: atalho "Capturar" cobre o iOS; share target é ganho no Android.
-- **Reversão**: remover manifest/SW + servir `sw.js` "suicida" (unregister + caches.delete) por um ciclo — padrão de despublicação de SW.
+- **Risco**: iOS não suporta share_target. Aceito: shortcuts cobrem iOS; share é ganho Android.
+- **Risco**: SW antigo servir manifest cacheado. Mitigação: manifest casa na regra de assets — bump de versão do SW invalida.
+- **Reversão**: remover os blocos novos do manifest; PWA volta ao estado atual.

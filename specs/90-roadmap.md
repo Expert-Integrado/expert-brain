@@ -110,6 +110,12 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 
 **Roteamento de agente (economia + adequação):** coluna "Agente" abaixo — Opus pra schema/migrations/contratos MCP/superfície pública; Sonnet pra UI/SSR/client. Como invocar: abrir Claude Code no repo alvo com o modelo indicado e o prompt "Leia specs/README.md (spec-zero) e execute specs/50-console-v2/<arquivo> seguindo o protocolo". Uma spec por sessão.
 
+**Modo autônomo (sessão rodando sozinha — alternativa ao modo 1-spec-por-sessão):** abrir a sessão com Opus no repo `expert-brain` (branch `spec/console-v2`; no `expert-contacts` trabalhar na branch `feat/console-v2` a partir de `master`) e colar:
+
+> Leia specs/README.md (spec-zero) e specs/90-roadmap.md (Fases 5 e 6). Execute EM SEQUÊNCIA os itens DESMARCADOS do checklist "Sequência canônica de execução", um por vez: implemente a spec, rode typecheck+testes até verdes, commit+push na branch de trabalho, marque o checkbox e o status da spec no MESMO commit. Nas specs marcadas ultrathink, pense com esforço máximo. PROIBIDO: `wrangler deploy`, release, mexer em produção — nos gates de fim de onda (G5-*/G6-*), PARE e peça OK ao dono antes de continuar. Se uma spec falhar validação após 2 tentativas de correção, PARE e reporte o estado. Ao esgotar o contexto, finalize a spec atual, faça commit e encerre com resumo — a próxima sessão retoma pelo checklist.
+
+Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do checklist é otimização de custo do modo manual).
+
 **Onda C0 — fundação de dados (contacts):**
 
 | Spec | Repo | Agente | Nota |
@@ -193,8 +199,8 @@ Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, con
 | Spec | Repo | Agente | Esforço | Nota |
 |---|---|---|---|---|
 | `50-console-v2/65-home-hoje-e-journal.md` | ambos | Sonnet | padrão | Home consome 63/64; journal usa endpoint novo no contacts. |
-| `50-console-v2/66-busca-unificada-cmdk.md` | expert-brain | Sonnet | padrão | Sem dependência dura; ações integram 63/58/56 quando existirem. |
-| `50-console-v2/68-pwa-instalavel.md` | expert-brain | Sonnet | padrão | Share target aponta pro inbox (63). |
+| `50-console-v2/66-busca-unificada-cmdk.md` | expert-brain | Sonnet | padrão | A paleta Ctrl+K JÁ existe (`src/web/client/shell.ts`) — a spec é EXTENSÃO (tasks+contatos+ações). |
+| `50-console-v2/68-pwa-instalavel.md` | expert-brain | Sonnet | padrão | O PWA base JÁ existe (manifest/SW/ícones) — a spec adiciona share target + shortcuts. Depois da 63. |
 
 **Onda C6 — resiliência:**
 

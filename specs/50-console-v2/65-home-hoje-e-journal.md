@@ -33,7 +33,7 @@ SSR + client bundle leve (padrão das páginas existentes), 4 cards em grid resp
 3. **Do seu cérebro** — payload do digest da `64` (cache da `meta`), com as ações de 1 clique definidas lá. Card omitido sem cache.
 4. **Últimas interações** — 5 mais recentes do endpoint novo (nome + kind + quando), link "journal completo".
 
-A raiz `/app` (hoje redireciona ou 404 — verificar `src/web/handler.ts` e ajustar) passa a renderizar a home; os links do shell (`layout.ts`) ganham "Início".
+A raiz `/app` (hoje redireciona — `src/web/handler.ts:21` já trata `/app`/`/app/`) passa a renderizar a home; os links do shell (`layout.ts`) ganham "Início". Ao rodar, atualizar também o `start_url` do `assets/manifest.webmanifest` pra `/app` (ver spec `68`).
 
 ### 3. Journal `/app/journal` (feed cronológico unificado)
 

@@ -195,9 +195,9 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/63-captura-inbox-triagem.md` | Captura sem fricção: tool capture + inbox de triagem no console | P1 | M | expert-brain | nenhuma |
 | `50-console-v2/64-resurfacing-digest.md` | Resurfacing: digest diário que devolve perguntas abertas, notas frias e contatos esfriando | P1 | M | expert-brain | suaves: `63`, `57` |
 | `50-console-v2/65-home-hoje-e-journal.md` | Home "Hoje" + journal cronológico cross-módulo | P1 | M | ambos | `63`, `64` (coordena `61`) |
-| `50-console-v2/66-busca-unificada-cmdk.md` | Paleta Ctrl+K: busca unificada notas+tasks+contatos com ações rápidas | P1 | M | expert-brain | nenhuma dura |
+| `50-console-v2/66-busca-unificada-cmdk.md` | Estender a paleta Ctrl+K existente: tasks e contatos nos resultados + ações rápidas | P1 | M | expert-brain | nenhuma dura |
 | `50-console-v2/67-backup-export.md` | Backup: snapshot semanal D1→R2 + export manual + runbook de restore | P1 | M | ambos | nenhuma (adiantável) |
-| `50-console-v2/68-pwa-instalavel.md` | PWA: console instalável com share target de captura | P2 | S | expert-brain | `63` (suave: `65`) |
+| `50-console-v2/68-pwa-instalavel.md` | PWA (base já existe): share target de captura + shortcuts no manifest | P2 | S | expert-brain | `63` (suave: `65`) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo
