@@ -1,6 +1,8 @@
 # Backup e portabilidade: snapshot automático do D1 pro R2 + export manual do dono
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + expert-contacts, mesmo padrão nos dois)
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + expert-contacts, mesmo padrão nos dois)
+>
+> **Estado 05/07/2026 — IMPLEMENTADA nos dois repos, aguardando validação do dono:** brain em `feat/67-backup` (4 commits, topo `21ec142`, 357 testes verdes) e contacts em `feat/67-backup` (4 commits, topo `ac9923d`, 125 testes verdes). Falta: (1) validação manual `wrangler dev` (backup agora + inspecionar ZIP); (2) **adicionar `"0 5 * * 1"` ao `wrangler.toml` LOCAL do brain** (arquivo gitignored — o agente só pôde atualizar o `wrangler.example.toml`); (3) merge das branches; (4) deploy com OK do dono; (5) conferir 1º snapshot real contra `stats`. Desvios aceitos registrados nos relatórios: dispatch extraído pra `src/scheduled.ts` (brain), resultado em KV `backup:last` no contacts (repo não tem tabela meta), export ZIP bufferizado sem gravar no R2.
 > **Depende de:** nenhuma (independente de todas as ondas; pode rodar a QUALQUER momento — quanto antes melhor)
 > **Agente sugerido:** Opus (dados + cron + runbook de restore) · **Esforço de execução:** ultrathink
 

@@ -176,7 +176,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [ ] 18. `50-console-v2/65` — home Hoje + journal (ambos, Sonnet, padrão) — C5
 - [ ] 19. `50-console-v2/66` — paleta Ctrl+K (brain, Sonnet, padrão)
 - [ ] 20. `50-console-v2/68` — PWA instalável (brain, Sonnet, padrão) — fecha C5: registrar G6-C5
-- [ ] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6: registrar G6-C6. SEM dependências: pode ser ADIANTADA pra qualquer ponto da sequência (recomendado: cedo).
+- [ ] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6: registrar G6-C6. **IMPLEMENTADA em 05/07/2026** (branches `feat/67-backup` nos dois repos: brain `21ec142` 357 testes, contacts `ac9923d` 125 testes) — falta validação manual do dono + cron no wrangler.toml local do brain + merge + deploy (detalhes no topo da spec). NÃO reimplementar.
 
 Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A ordem é a canônica; desvio só se a dependência formal permitir (grafo abaixo) e sem compartilhar arquivos com spec em andamento.
 
