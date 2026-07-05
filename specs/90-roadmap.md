@@ -210,6 +210,15 @@ Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, con
 
 **GATE G6 (por onda):** typecheck + testes verdes + validação manual do dono — C4: capturar pelo bot e triar pela UI; mencionar contato numa nota e ver a nota na página do contato + evento na timeline + task nascida da nota com origem; digest diário chegando com as 4 seções. C5: home responde "o que tem pra hoje" em 1 tela; Ctrl+K acha nota/task/contato e cria task; PWA instalada capturando por share. C6: export baixado + restore validado num banco limpo (contagens = manifest). Deploy SÓ com OK explícito do dono.
 
+**Backlog C7 — padrões a absorver do benchmark `codebase-memory-mcp` (github.com/DeusData/codebase-memory-mcp, mapeado 05/07/2026; SEM spec ainda — specar após a Fase 6):**
+
+1. **Benchmark de recall publicável** — protocolo do paper deles (arXiv 2603.27277) adaptado: bateria de perguntas reais respondidas COM e SEM o Brain, medindo qualidade da resposta, tokens e tool calls. Vira prova de produto pros alunos. Precisa de: desenho da bateria + harness de medição (recon: nenhum).
+2. **Instalador auto-configurável multi-agente** — o `npm create @expertintegrado/expert-brain` detectar os agentes instalados (Claude Code, Cursor, Gemini CLI, ...) e configurar MCP + instruções em cada um, no padrão do install deles. Precisa de: recon no pacote npm create atual.
+3. **Tool de travessia estruturada do grafo** — hoje só recall/expand; uma tool de query por relação ("decisões ligadas a X via `causes`", caminhos entre 2 notas) cobriria as perguntas que embedding não responde. Precisa de: desenho do contrato (não expor query language crua).
+4. **Detecção de comunidades no curar-brain** — clustering (Louvain ou grau simples) sobre os edges pra sugerir hubs/domínios emergentes no relatório semanal de curadoria. Vive na skill/cron de curadoria, não no Worker.
+
+(Seção Security & Trust no README do produto e 1-liner de install assinado: itens de docs/release do pacote npm, fora desta árvore de specs.)
+
 ### Grafo de dependências formais
 
 ```text
