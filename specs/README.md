@@ -198,6 +198,7 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/66-busca-unificada-cmdk.md` | Estender a paleta Ctrl+K existente: tasks e contatos nos resultados + ações rápidas | P1 | M | expert-brain | nenhuma dura |
 | `50-console-v2/67-backup-export.md` | Backup: snapshot semanal D1→R2 + export manual + runbook de restore | P1 | M | ambos | nenhuma (adiantável) |
 | `50-console-v2/68-pwa-instalavel.md` | PWA (base já existe): share target de captura + shortcuts no manifest | P2 | S | expert-brain | `63` (suave: `65`) |
+| `50-console-v2/69-backup-offsite.md` | Backup off-site: rotina externa copia snapshots pra fora da Cloudflare (Drive + servidor) | P1 | M | ops | `50-console-v2/67` (deployada; dono no loop) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo

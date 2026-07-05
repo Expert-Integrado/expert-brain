@@ -176,7 +176,8 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [ ] 18. `50-console-v2/65` — home Hoje + journal (ambos, Sonnet, padrão) — C5
 - [ ] 19. `50-console-v2/66` — paleta Ctrl+K (brain, Sonnet, padrão)
 - [ ] 20. `50-console-v2/68` — PWA instalável (brain, Sonnet, padrão) — fecha C5: registrar G6-C5
-- [ ] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6: registrar G6-C6. **IMPLEMENTADA em 05/07/2026** (branches `feat/67-backup` nos dois repos: brain `21ec142` 357 testes, contacts `ac9923d` 125 testes) — falta validação manual do dono + cron no wrangler.toml local do brain + merge + deploy (detalhes no topo da spec). NÃO reimplementar.
+- [ ] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6. **IMPLEMENTADA em 05/07/2026** (branches `feat/67-backup` nos dois repos: brain `21ec142` 357 testes, contacts `ac9923d` 125 testes) — falta validação manual do dono + cron no wrangler.toml local do brain + merge + deploy (detalhes no topo da spec). NÃO reimplementar.
+- [ ] 22. `50-console-v2/69` — backup off-site (ops, Opus, padrão) — C6: cópia dos snapshots pra fora da Cloudflare (Google Drive + servidor externo). Depois da 67 em produção; exige o dono no loop. Fecha C6: registrar G6-C6.
 
 Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A ordem é a canônica; desvio só se a dependência formal permitir (grafo abaixo) e sem compartilhar arquivos com spec em andamento.
 
@@ -206,9 +207,10 @@ Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, con
 
 | Spec | Repo | Agente | Esforço | Nota |
 |---|---|---|---|---|
-| `50-console-v2/67-backup-export.md` | ambos | Opus | ultrathink | SEM dependências — recomendado ADIANTAR (é a rede de segurança de todo o resto). |
+| `50-console-v2/67-backup-export.md` | ambos | Opus | ultrathink | SEM dependências — recomendado ADIANTAR (é a rede de segurança de todo o resto). IMPLEMENTADA 05/07 (ver nota no checklist). |
+| `50-console-v2/69-backup-offsite.md` | ops (servidor externo) | Opus | padrão | Copia os snapshots pra FORA da Cloudflare (rclone → disco externo + Google Drive). Exige o dono no loop (token R2 + OAuth do Drive). Depois da 67 deployada. |
 
-**GATE G6 (por onda):** typecheck + testes verdes + validação manual do dono — C4: capturar pelo bot e triar pela UI; mencionar contato numa nota e ver a nota na página do contato + evento na timeline + task nascida da nota com origem; digest diário chegando com as 4 seções. C5: home responde "o que tem pra hoje" em 1 tela; Ctrl+K acha nota/task/contato e cria task; PWA instalada capturando por share. C6: export baixado + restore validado num banco limpo (contagens = manifest). Deploy SÓ com OK explícito do dono.
+**GATE G6 (por onda):** typecheck + testes verdes + validação manual do dono — C4: capturar pelo bot e triar pela UI; mencionar contato numa nota e ver a nota na página do contato + evento na timeline + task nascida da nota com origem; digest diário chegando com as 4 seções. C5: home responde "o que tem pra hoje" em 1 tela; Ctrl+K acha nota/task/contato e cria task; PWA instalada capturando por share. C6: export baixado + restore validado num banco limpo (contagens = manifest) + off-site: simulação de desastre com a Cloudflare "indisponível" — restaurar só a partir da cópia no Google Drive/servidor externo. Deploy SÓ com OK explícito do dono.
 
 **Backlog C7 — padrões a absorver do benchmark `codebase-memory-mcp` (github.com/DeusData/codebase-memory-mcp, mapeado 05/07/2026; SEM spec ainda — specar após a Fase 6):**
 
