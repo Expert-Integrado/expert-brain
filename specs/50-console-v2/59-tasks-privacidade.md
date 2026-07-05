@@ -31,7 +31,7 @@ A coluna `notes.private` (da 31) já cobre tasks. Esta spec é 100% gate de leit
 Mesmo padrão da 31 (parâmetro aditivo, default fail-closed):
 
 - `listActiveTasks`, `listRecentClosedTasks`, `ftsSearchTasks`, `listTasksDueBefore` e `getTaskById` ganham `includePrivate = false` → quando `false`, `AND private = 0`.
-- `list_tasks`, `list_tasks_due_today`, `get_task` computam `canSeePrivate` (auth propagado pelo registry da 17) e injetam nas queries. `get_task` de task privada pra caller sem escopo = mesmo erro de task inexistente.
+- `list_tasks`, `list_tasks_due_today`, `get_task` computam `canSeePrivate` (auth propagado pelo registry — a 17 propaga às tools de escrita, a 31 estende às de LEITURA; esta spec reusa esse repasse) e injetam nas queries. `get_task` de task privada pra caller sem escopo = mesmo erro de task inexistente.
 - Call sites do DONO passam `true`: board web com `requireSession` (`src/web/tasks.ts`), cron de lembrete (`listTasksDueBefore` — o digest vai pro próprio dono; decisão espelhada na 31, que trata `GRAPH_EXPORT_TOKEN`/graph como superfície do dono; o bearer `TASK_REMINDER_TOKEN` idem).
 
 ### 3. Share público: privado NUNCA tem link

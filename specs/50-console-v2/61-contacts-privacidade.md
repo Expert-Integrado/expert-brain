@@ -1,7 +1,7 @@
 # Contacts: privacidade — entidade e evento privados, fail-closed no proxy e escopo propagado pelo Brain
 
 > **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (expert-contacts + expert-brain)
-> **Depende de:** `10-backend/17` (escopos de credencial no Brain). Rodar DEPOIS da onda C2 (`55`/`56`/`57` criam os endpoints que esta spec gateia) e junto/depois da `60` (o filtro de embedding referencia a coluna criada aqui).
+> **Depende de:** `10-backend/17` (AuthContext propagado) **e** `30-features/31` (helper `hasScope`, formato CSV de scopes e o escopo `private` com checkbox na UI de PAT — tudo nasce lá). Rodar DEPOIS da onda C2 (`55`/`56`/`57` criam os endpoints que esta spec gateia) e junto/depois da `60` (o filtro de embedding referencia a coluna criada aqui).
 > **Agente sugerido:** Opus (superfície de segurança cross-repo)
 
 ## Contexto
@@ -63,6 +63,7 @@ Helper único `callerSeesPrivate(req, env): boolean` (sessão OU owner token OU 
 
 - **Entidade privada PERMANECE no Vectorize** (o recall do dono precisa achá-la); a proteção é na hidratação D1 dos read paths (item 4) — mesmo padrão da 31 no Brain ("o vetor só devolve ids; o D1 é a fonte de verdade").
 - **Event privado NUNCA entra no texto de embedding**: o helper de observações da `60` ganha `AND private = 0` incondicional (observação privada é invisível até pra busca semântica do dono — trade-off aceito e documentado: confidencialidade > recall).
+- **Marcar event como privado DISPARA `reembedEntity`** (via `ctx.waitUntil`, mesmo padrão do gatilho da `60`): sem isso, o texto da observação continua dentro do vetor antigo e a entidade seguiria "achável" por termo privado (vazamento por inferência). O mesmo vale pro caminho inverso (despublicar via UI). Marcar a ENTIDADE privada não reembeda (o filtro é na hidratação D1).
 
 ### 6. Escrita da flag
 

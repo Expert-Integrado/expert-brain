@@ -146,6 +146,25 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 | `50-console-v2/59-tasks-privacidade.md` | Opus | Fecha os read paths de TASK que a 31 não cobre + bloqueia share público de task privada. Depois da 31. |
 | `50-console-v2/61-contacts-privacidade.md` | Opus | Entidade/evento privados no contacts, fail-closed no proxy, escopo propagado pelo Brain. Depois da 17 E da onda C2 (gateia endpoints da 56/57); coordena com a 60 (embedding). |
 
+**Sequência canônica de execução (checklist — 14 sessões, 1 spec por sessão):**
+
+- [ ] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus) — C0
+- [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus) — C1
+- [ ] 3. `50-console-v2/53` — comentários (brain, Opus)
+- [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet)
+- [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus)
+- [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet) — fecha C1: registrar G5-C1
+- [ ] 7. `50-console-v2/55` — cartela completa (contacts, Opus) — C2
+- [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet)
+- [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet)
+- [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus) — fecha C2: registrar G5-C2
+- [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus) — C3
+- [ ] 12. `30-features/31` — selo de privacidade em notas (brain, Opus)
+- [ ] 13. `50-console-v2/59` — tasks privadas (brain, Opus)
+- [ ] 14. `50-console-v2/61` — contacts privados (ambos, Opus) — fecha C3: registrar G5-C3
+
+Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A ordem é a canônica; desvio só se a dependência formal permitir (grafo abaixo) e sem compartilhar arquivos com spec em andamento.
+
 **GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área, criar projeto e filtrar o board por ele (incl. `list_tasks project:` via MCP); C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível, recall/busca encontrando contato por termo que só existe numa observação; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats NEM task privada em list_tasks/get_task NEM contato/evento privado nas tools de contatos (teste de vazamento por superfície nas três frentes) + share de task privada bloqueado/revogado. Deploy de produção e release de alunos SÓ com OK explícito do dono.
 
 ### Grafo de dependências formais
