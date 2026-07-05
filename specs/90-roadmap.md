@@ -216,6 +216,7 @@ Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, con
 2. **Instalador auto-configurável multi-agente** — o `npm create @expertintegrado/expert-brain` detectar os agentes instalados (Claude Code, Cursor, Gemini CLI, ...) e configurar MCP + instruções em cada um, no padrão do install deles. Precisa de: recon no pacote npm create atual.
 3. **Tool de travessia estruturada do grafo** — hoje só recall/expand; uma tool de query por relação ("decisões ligadas a X via `causes`", caminhos entre 2 notas) cobriria as perguntas que embedding não responde. Precisa de: desenho do contrato (não expor query language crua).
 4. **Detecção de comunidades no curar-brain** — clustering (Louvain ou grau simples) sobre os edges pra sugerir hubs/domínios emergentes no relatório semanal de curadoria. Vive na skill/cron de curadoria, não no Worker.
+5. **Upgrade visual do grafo 3D** — referência: `graph-ui/` do codebase-memory-mcp (React three-fiber + drei + `postprocessing`). O que absorver SEM trazer React: (a) passe de pós-processamento com bloom/glow nos nós (lib `postprocessing` funciona com three puro); (b) nós como instanced mesh (`NodeCloud` deles) pra performance; (c) separação tooltip leve vs painel de detalhe; (d) labels com LOD (só nós próximos/focados). Aplicar em `src/web/client/graph3d.ts` do Brain. O dono avaliou o deles como visualmente superior ao nosso (05/07/2026).
 
 (Seção Security & Trust no README do produto e 1-liner de install assinado: itens de docs/release do pacote npm, fora desta árvore de specs.)
 
