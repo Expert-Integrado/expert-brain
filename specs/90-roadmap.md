@@ -146,26 +146,63 @@ Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáve
 | `50-console-v2/59-tasks-privacidade.md` | Opus | Fecha os read paths de TASK que a 31 não cobre + bloqueia share público de task privada. Depois da 31. |
 | `50-console-v2/61-contacts-privacidade.md` | Opus | Entidade/evento privados no contacts, fail-closed no proxy, escopo propagado pelo Brain. Depois da 17 E da onda C2 (gateia endpoints da 56/57); coordena com a 60 (embedding). |
 
-**Sequência canônica de execução (checklist — 14 sessões, 1 spec por sessão):**
+**Sequência canônica de execução (checklist — 21 sessões, 1 spec por sessão):**
 
-- [ ] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus) — C0
-- [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus) — C1
-- [ ] 3. `50-console-v2/53` — comentários (brain, Opus)
-- [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet)
-- [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus)
-- [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet) — fecha C1: registrar G5-C1
-- [ ] 7. `50-console-v2/55` — cartela completa (contacts, Opus) — C2
-- [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet)
-- [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet)
-- [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus) — fecha C2: registrar G5-C2
-- [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus) — C3
-- [ ] 12. `30-features/31` — selo de privacidade em notas (brain, Opus)
-- [ ] 13. `50-console-v2/59` — tasks privadas (brain, Opus)
-- [ ] 14. `50-console-v2/61` — contacts privados (ambos, Opus) — fecha C3: registrar G5-C3
+Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
+
+- [ ] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0
+- [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
+- [ ] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
+- [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão)
+- [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão)
+- [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1
+- [ ] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
+- [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)
+- [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão)
+- [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2
+- [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus, ultrathink) — C3
+- [ ] 12. `30-features/31` — selo de privacidade em notas (brain, Opus, ultrathink)
+- [ ] 13. `50-console-v2/59` — tasks privadas (brain, Opus, ultrathink)
+- [ ] 14. `50-console-v2/61` — contacts privados (ambos, Opus, ultrathink) — fecha C3: registrar G5-C3
+- [ ] 15. `50-console-v2/63` — captura + inbox (brain, Opus, padrão) — C4
+- [ ] 16. `50-console-v2/62` — menções/tecido conectivo (ambos, Opus, ultrathink)
+- [ ] 17. `50-console-v2/64` — resurfacing/digest (brain, Opus, padrão) — fecha C4: registrar G6-C4
+- [ ] 18. `50-console-v2/65` — home Hoje + journal (ambos, Sonnet, padrão) — C5
+- [ ] 19. `50-console-v2/66` — paleta Ctrl+K (brain, Sonnet, padrão)
+- [ ] 20. `50-console-v2/68` — PWA instalável (brain, Sonnet, padrão) — fecha C5: registrar G6-C5
+- [ ] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6: registrar G6-C6. SEM dependências: pode ser ADIANTADA pra qualquer ponto da sequência (recomendado: cedo).
 
 Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A ordem é a canônica; desvio só se a dependência formal permitir (grafo abaixo) e sem compartilhar arquivos com spec em andamento.
 
 **GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área, criar projeto e filtrar o board por ele (incl. `list_tasks project:` via MCP); C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível, recall/busca encontrando contato por termo que só existe numa observação; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats NEM task privada em list_tasks/get_task NEM contato/evento privado nas tools de contatos (teste de vazamento por superfície nas três frentes) + share de task privada bloqueado/revogado. Deploy de produção e release de alunos SÓ com OK explícito do dono.
+
+### Fase 6 — Console v3: tecido conectivo, captura, resurfacing, interface unificada e resiliência (aprovado pelo dono em 05/07/2026)
+
+Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, contato e memória, tudo integrado". A Fase 5 deixa cada módulo forte por dentro; a Fase 6 constrói o que liga os módulos e o que faz o sistema trabalhar sem ser perguntado. Mapa completo dos gaps na nota `xn8lpwuuq9kj` do vault. Specs nasceram `ready`.
+
+**Onda C4 — o cérebro integrado (após C2 e C3):**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/63-captura-inbox-triagem.md` | expert-brain | Opus | padrão | Independente — pode adiantar pra depois de C1. |
+| `50-console-v2/62-mencoes-tecido-conectivo.md` | ambos | Opus | ultrathink | O item mais crítico da fase (pedido explícito do dono). Após 56/57 (endpoints) e 61 (privacidade). |
+| `50-console-v2/64-resurfacing-digest.md` | expert-brain | Opus | padrão | Estende o cron/notify existente; consome inbox (63) e last_contacted (57). |
+
+**Onda C5 — interface unificada:**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/65-home-hoje-e-journal.md` | ambos | Sonnet | padrão | Home consome 63/64; journal usa endpoint novo no contacts. |
+| `50-console-v2/66-busca-unificada-cmdk.md` | expert-brain | Sonnet | padrão | Sem dependência dura; ações integram 63/58/56 quando existirem. |
+| `50-console-v2/68-pwa-instalavel.md` | expert-brain | Sonnet | padrão | Share target aponta pro inbox (63). |
+
+**Onda C6 — resiliência:**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/67-backup-export.md` | ambos | Opus | ultrathink | SEM dependências — recomendado ADIANTAR (é a rede de segurança de todo o resto). |
+
+**GATE G6 (por onda):** typecheck + testes verdes + validação manual do dono — C4: capturar pelo bot e triar pela UI; mencionar contato numa nota e ver a nota na página do contato + evento na timeline + task nascida da nota com origem; digest diário chegando com as 4 seções. C5: home responde "o que tem pra hoje" em 1 tela; Ctrl+K acha nota/task/contato e cria task; PWA instalada capturando por share. C6: export baixado + restore validado num banco limpo (contagens = manifest). Deploy SÓ com OK explícito do dono.
 
 ### Grafo de dependências formais
 
@@ -183,7 +220,12 @@ Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A o
 58 ← 51 (suave: 52 — chip de projeto entra no card desenhado lá)
 59 ← 17, 31
 60 ← 57
-61 ← 17 (ordem: após a onda C2 — gateia endpoints da 56/57; coordena 60)
+61 ← 17, 31 (ordem: após a onda C2 — gateia endpoints da 56/57; coordena 60)
+62 ← 56, 57 (coordena: 61 — label de contato privado nas menções)
+64 ← 63 (suave), 57 (suave — last_contacted)
+65 ← 63, 64 (coordena: 61 — filtro de privado no journal)
+68 ← 63 (suave: 65 — start_url na home)
+66, 67 ← sem dependência dura
 ```
 
 Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
@@ -210,6 +252,9 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G5-C1 | — | — |
 | G5-C2 | — | — |
 | G5-C3 | — | — |
+| G6-C4 | — | — |
+| G6-C5 | — | — |
+| G6-C6 | — | — |
 
 Regras de manutenção:
 

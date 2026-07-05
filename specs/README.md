@@ -123,7 +123,7 @@ specs/
   20-frontend/              ← dashboard web (src/web/)
   30-features/              ← features novas fim-a-fim
   40-ops/                   ← processo, CI, release, tooling
-  50-console-v2/            ← pacote Console v2: Kanban custom, comentários, taxonomia, contatos (Fase 5 do roadmap)
+  50-console-v2/            ← pacote Console v2+v3: Kanban, comentários, taxonomia, contatos, menções, inbox, digest, home, backup (Fases 5 e 6 do roadmap)
 ```
 
 Renumerar só quando a prioridade mudar de fato; buracos na numeração são aceitáveis e esperados.
@@ -190,7 +190,14 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/58-tasks-projetos-pastas.md` | Tasks: projetos (pastas) — agrupamento first-class com filtro no board e no MCP | P1 | L | expert-brain | `50-console-v2/51` (suave: `52`) |
 | `50-console-v2/59-tasks-privacidade.md` | Tasks privadas: gate de escopo nos read paths de task + bloqueio de share público | P1 | M | expert-brain | `10-backend/17`, `30-features/31` |
 | `50-console-v2/60-contacts-observacoes-semanticas.md` | Contacts: observações alimentam o embedding + busca textual em contexts | P1 | M | expert-contacts | `50-console-v2/57` |
-| `50-console-v2/61-contacts-privacidade.md` | Contacts: entidade/evento privados, fail-closed no proxy, escopo propagado pelo Brain | P1 | L | ambos | `10-backend/17` (rodar após a onda C2; coordena `60`) |
+| `50-console-v2/61-contacts-privacidade.md` | Contacts: entidade/evento privados, fail-closed no proxy, escopo propagado pelo Brain | P1 | L | ambos | `10-backend/17`, `30-features/31` (rodar após a onda C2; coordena `60`) |
+| `50-console-v2/62-mencoes-tecido-conectivo.md` | Menções: vínculo first-class nota↔task↔contato + task nascida de nota | P1 | L | ambos | `50-console-v2/56`, `50-console-v2/57` (coordena `61`) |
+| `50-console-v2/63-captura-inbox-triagem.md` | Captura sem fricção: tool capture + inbox de triagem no console | P1 | M | expert-brain | nenhuma |
+| `50-console-v2/64-resurfacing-digest.md` | Resurfacing: digest diário que devolve perguntas abertas, notas frias e contatos esfriando | P1 | M | expert-brain | suaves: `63`, `57` |
+| `50-console-v2/65-home-hoje-e-journal.md` | Home "Hoje" + journal cronológico cross-módulo | P1 | M | ambos | `63`, `64` (coordena `61`) |
+| `50-console-v2/66-busca-unificada-cmdk.md` | Paleta Ctrl+K: busca unificada notas+tasks+contatos com ações rápidas | P1 | M | expert-brain | nenhuma dura |
+| `50-console-v2/67-backup-export.md` | Backup: snapshot semanal D1→R2 + export manual + runbook de restore | P1 | M | ambos | nenhuma (adiantável) |
+| `50-console-v2/68-pwa-instalavel.md` | PWA: console instalável com share target de captura | P2 | S | expert-brain | `63` (suave: `65`) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo
