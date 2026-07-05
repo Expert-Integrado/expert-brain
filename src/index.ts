@@ -2,7 +2,7 @@ import OAuthProvider from '@cloudflare/workers-oauth-provider';
 import { ExpertBrainMCP } from './mcp/agent.js';
 import { authHandler } from './auth/handler.js';
 import { validateApiKey } from './auth/api-keys.js';
-import { runDueReminder } from './notify.js';
+import { runScheduled } from './scheduled.js';
 import type { Env } from './env.js';
 
 export { ExpertBrainMCP };
@@ -40,14 +40,11 @@ export default {
     return (oauthProvider as any).fetch(req, env, ctx);
   },
 
-  // Cron diário (ver [triggers] no wrangler.toml: 0 11 * * * = 08:00 BRT). Push do
-  // lembrete de prazo: digest das tasks vencendo hoje + atrasadas pro Telegram.
-  // No-op seguro se os secrets do Telegram não estiverem setados.
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(
-      runDueReminder(env, Date.now())
-        .then((r) => console.log('due-reminder', JSON.stringify(r)))
-        .catch((e) => console.error('due-reminder failed', e))
-    );
+  // Crons (ver [triggers] no wrangler.toml): "0 11 * * *" = digest diário de tasks
+  // pro Telegram (08:00 BRT, no-op seguro sem os secrets) e "0 5 * * 1" = snapshot
+  // semanal de backup D1→R2 (segunda 02:00 BRT, spec 67). O dispatch por
+  // controller.cron vive em src/scheduled.ts — testável sem o OAuth provider.
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    runScheduled(controller.cron, env, ctx);
   },
 };
