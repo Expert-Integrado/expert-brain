@@ -4,6 +4,7 @@ import { FONT_LINKS } from './styles.js';
 import { readCookie } from './session.js';
 import { assetVersion } from './asset-version.js';
 import { countPendingInbox } from '../db/queries.js';
+import { releaseBannerHtml } from './releases-data.js';
 
 // Lê a preferência de menu recolhido do cookie (gravado client-side pelo shell
 // bundle). Server-side render evita o "flash" de menu abrindo/fechando ao trocar
@@ -73,7 +74,13 @@ export async function renderShell(opts: {
   sidebarCollapsed?: boolean;
 }): Promise<string> {
   const collapsed = opts.sidebarCollapsed === true;
-  const pending = await inboxPendingCount(opts.env);
+  const [pending, releaseBanner] = await Promise.all([
+    inboxPendingCount(opts.env),
+    // Banner "Novidades" (spec 71): aparece em toda página logada até o dono
+    // visitar /app/novidades após uma release nova. A própria página não mostra
+    // o banner (já está nela).
+    opts.title === 'Novidades' ? Promise.resolve('') : releaseBannerHtml(opts.env),
+  ]);
   const sidebarBadge = pending > 0
     ? `<span class="nav-badge" aria-label="${pending} na triagem">${pending}</span>`
     : '';
@@ -113,7 +120,7 @@ ${opts.extraHead ?? ''}
       <form method="post" action="/app/logout"><button type="submit" class="sidebar-logout" title="Sair">${SIDEBAR_ICONS.logout}<span class="nav-label">Sair</span></button></form>
     </div>
   </aside>
-  <main class="main">${opts.body}</main>
+  <main class="main">${releaseBanner}${opts.body}</main>
 </div>
 <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
   <a class="bottom-nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" aria-label="Início">

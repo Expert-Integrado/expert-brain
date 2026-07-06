@@ -17,6 +17,7 @@ import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompl
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
 import { handleContactsSso } from './contacts-sso.js';
+import { handleReleasesPage } from './releases.js';
 import { NEBULA_CSS } from './styles.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
@@ -230,6 +231,8 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/api-keys/create' && req.method === 'POST') return handleApiKeyCreate(req, env);
   if (path === '/app/api-keys/revoke' && req.method === 'POST') return handleApiKeyRevoke(req, env);
 
+  // Novidades / release notes (spec 50-console-v2/71): visitar marca como vista.
+  if (path === '/app/novidades' && req.method === 'GET') return handleReleasesPage(req, env);
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/prefs' && req.method === 'POST') return handleConfigPrefsPost(req, env);
   // "Instruções do dono" (spec 50-console-v2/70): bloco livre anexado ao handshake
