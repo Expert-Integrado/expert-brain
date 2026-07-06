@@ -1,6 +1,6 @@
 # Tasks privadas: gate de escopo nos read paths de task + bloqueio de share público
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `10-backend/17` (escopos de credencial) e `30-features/31` (coluna `private` + helper `hasScope` + convenção de filtro)
 > **Agente sugerido:** Opus (superfície de segurança)
 
@@ -62,14 +62,14 @@ Mesmo padrão da 31 (parâmetro aditivo, default fail-closed):
 
 ## Critérios de aceite
 
-- [ ] PAT **sem** escopo `private` (incluindo `full`): `list_tasks` (com e sem `query`/`status`/`tag`), `list_tasks_due_today` e `get_task` não retornam nem contam task privada; `get_task` de privada = erro de inexistente.
-- [ ] PAT **com** escopo `private` e sessão do dono: veem tudo; board mostra badge; cron de lembrete inclui privadas.
-- [ ] `share_task`/`createShare` numa task privada → erro claro; nada persiste.
-- [ ] Marcar task privada (tool ou UI) com share vivo → `share_token`/`share_expires_at` limpos na mesma escrita; `GET /s/<token>` antigo responde 404.
-- [ ] `GET /s/<token>` tem `AND private = 0` no lookup (teste com estado forjado no banco).
-- [ ] `save_task private:true` grava; `update_task private:false` → erro orientando UI; toggle web funciona nos dois sentidos e exige sessão (PAT/bearer → 401/redirect).
-- [ ] (Condicional, se `53` implementada) POST público de comentário em task que virou privada → 404.
-- [ ] Suíte de vazamento por superfície de task (um teste por read path) passa; `npm run typecheck` e `npm test` verdes.
+- [x] PAT **sem** escopo `private` (incluindo `full`): `list_tasks` (com e sem `query`/`status`/`tag`), `list_tasks_due_today` e `get_task` não retornam nem contam task privada; `get_task` de privada = erro de inexistente.
+- [x] PAT **com** escopo `private` e sessão do dono: veem tudo; board mostra badge; cron de lembrete inclui privadas.
+- [x] `share_task`/`createShare` numa task privada → erro claro; nada persiste.
+- [x] Marcar task privada (tool ou UI) com share vivo → `share_token`/`share_expires_at` limpos na mesma escrita; `GET /s/<token>` antigo responde 404.
+- [x] `GET /s/<token>` tem `AND private = 0` no lookup (teste com estado forjado no banco).
+- [x] `save_task private:true` grava; `update_task private:false` → erro orientando UI; toggle web funciona nos dois sentidos e exige sessão (PAT/bearer → 401/redirect).
+- [x] (Condicional, se `53` implementada) POST público de comentário em task que virou privada → 404.
+- [x] Suíte de vazamento por superfície de task (um teste por read path) passa; `npm run typecheck` e `npm test` verdes.
 
 ## Validação
 
