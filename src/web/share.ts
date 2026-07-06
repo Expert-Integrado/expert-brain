@@ -83,6 +83,7 @@ export interface CreateShareOk {
 export type CreateShareResult =
   | CreateShareOk
   | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'private' }
   | { ok: false; reason: 'already-shared'; expires_at: number; expires_brt: string };
 
 // Cria (ou renova) o share de uma task. Valida kind='task' + não-deletada.
@@ -98,8 +99,11 @@ export async function createShare(
   opts: { expiresDays?: number; renew?: boolean },
   now: number
 ): Promise<CreateShareResult> {
-  const task = await getTaskById(env, taskId);
+  // includePrivate=true: enxerga a task pra poder BLOQUEAR a privada com erro claro
+  // (spec 59) em vez de devolver "not found". Task privada NUNCA tem link público.
+  const task = await getTaskById(env, taskId, true);
   if (!task) return { ok: false, reason: 'not-found' };
+  if (task.private === 1) return { ok: false, reason: 'private' };
 
   const alreadyLive =
     task.share_token != null &&
@@ -181,10 +185,13 @@ export async function resolveShare(env: Env, token: string, now: number): Promis
   if (!SHARE_TOKEN_RE.test(token)) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
+    // `AND private = 0` (spec 59): defesa em profundidade — mesmo que um estado proibido
+    // (privada + token) surja (escrita manual no banco), a rota pública responde 404.
+    // setTaskPrivate já revoga o token ao marcar privada, então normalmente nem chega aqui.
     `SELECT id, title, body, tldr, domains, kind, status, due_at, priority, completed_at,
             created_at, updated_at, share_token, share_expires_at
      FROM notes
-     WHERE share_token = ? AND kind = 'task' AND deleted_at IS NULL`
+     WHERE share_token = ? AND kind = 'task' AND deleted_at IS NULL AND private = 0`
   ).bind(tokenHash).first<TaskRow>();
   if (!row) return null;
   if (row.share_expires_at == null || row.share_expires_at <= now) return null;

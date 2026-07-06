@@ -20,6 +20,7 @@ import {
   getTaskById,
   listKanbanColumns,
   moveTaskToColumn,
+  setTaskPrivate,
   getColumnById,
   createKanbanColumn,
   updateKanbanColumn,
@@ -85,6 +86,7 @@ interface TaskView {
   shared: boolean; // link público ATIVO (não-expirado) — pro ícone 🔗 do card (spec 52)
   share_expires_brt: string | null; // "DD/MM" — tooltip do ícone quando shared=true
   project_id: string | null; // pasta/projeto (spec 58); null = "Sem projeto". Chip resolvido via board.projects
+  private: boolean; // selo de privacidade (spec 59): badge 🔒 no card + detalhe
 }
 
 // Tags reservadas (`dedupe:*`) são um detalhe interno de dedupe do save_task —
@@ -117,6 +119,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []):
     shared,
     share_expires_brt: shared ? formatBrtShort(t.share_expires_at!) : null,
     project_id: t.project_id,
+    private: t.private === 1,
   };
 }
 
@@ -155,8 +158,10 @@ interface BoardPayload {
 async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
   const [activeCols, active, closed, allProjects] = await Promise.all([
     listKanbanColumns(env, false),
-    listActiveTasks(env),
-    listRecentClosedTasks(env, 100),
+    // includePrivate=true (spec 59): o board é superfície do dono (sessão OU bearer de
+    // tasks) — mostra task privada com badge 🔒. O gate por escopo é dos read paths MCP.
+    listActiveTasks(env, true),
+    listRecentClosedTasks(env, 100, true),
     listTaskProjects(env, true),
   ]);
   const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
@@ -225,7 +230,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
 
   if (scope === 'due') {
     const horizon = Math.min(Math.max(Number(url.searchParams.get('horizon_hours')) || 24, 1), 168);
-    const rows = await listTasksDueBefore(env, now + horizon * 3600_000);
+    // includePrivate=true (spec 59): superfície do dono (sessão OU bearer de tasks).
+    const rows = await listTasksDueBefore(env, now + horizon * 3600_000, true);
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
@@ -615,6 +621,10 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
   const result = await createShare(env, id, { expiresDays, renew }, Date.now());
   if (!result.ok) {
     if (result.reason === 'not-found') return json({ error: 'not found' }, 404);
+    // Selo de privacidade (spec 59): task privada não pode ter link público.
+    if (result.reason === 'private') {
+      return json({ error: 'private', message: 'Task privada não pode ter link público. Torne-a pública primeiro.' }, 409);
+    }
     // already-shared (sem renew): não é erro — devolve a expiração atual.
     return json({
       ok: true,
@@ -629,6 +639,44 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
     expires_at: result.expires_at,
     expires_brt: result.expires_brt,
   }, 201);
+}
+
+// ─────────────────── Selo de privacidade de task (spec 59) ───────────────────
+// POST /app/tasks/private — { id, private: boolean }. É a ÚNICA superfície que DESMARCA
+// (torna pública). SÓ sessão de browser (requireSession, sem Bearer/PAT — PAT/bearer
+// caem em 401 antes daqui). Marcar privada revoga QUALQUER link público na mesma escrita
+// (setTaskPrivate). Aceita JSON { private } OU form-encoded (private=1|0), espelhando o
+// toggle de nota (handleNotePrivatePost) — o form do detalhe é CSP-safe.
+export async function handleTaskPrivatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const ct = req.headers.get('content-type') || '';
+  const wantsJson = ct.includes('application/json');
+  let id: string;
+  let makePrivate: boolean;
+  if (wantsJson) {
+    let body: { id?: unknown; private?: unknown };
+    try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+    id = typeof body.id === 'string' ? body.id.trim() : '';
+    if (typeof body.private !== 'boolean') return json({ error: 'private must be a boolean' }, 400);
+    makePrivate = body.private;
+  } else {
+    const form = await req.formData();
+    id = String(form.get('id') ?? '').trim();
+    makePrivate = String(form.get('private') ?? '') === '1';
+  }
+  if (!id) return wantsJson ? json({ error: 'id required' }, 400) : htmlResponse('id obrigatório', 400);
+
+  const r = await setTaskPrivate(env, id, makePrivate ? 1 : 0, Date.now(), `oauth:${session.email}`);
+  if (!r.ok) {
+    return wantsJson
+      ? json({ error: 'task not found' }, 404)
+      : new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+  }
+  return wantsJson
+    ? json({ ok: true, id, private: makePrivate, share_revoked: r.shareRevoked })
+    : new Response(null, { status: 302, headers: { location: `/app/tasks/${encodeURIComponent(id)}` } });
 }
 
 // POST /app/tasks/unshare — { id }. Revoga o link (limpa o token). Idempotente.
@@ -952,10 +1000,13 @@ function cardProjectChip(v: TaskView, projectsById: Map<string, BoardProject>): 
   return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
 }
 
+// Badge 🔒 do card/detalhe (spec 59) — mesma classe global .private-badge das notas.
+const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
+
 function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''} draggable="true">
-    <div class="task-card-head">${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
+    <div class="task-card-head">${v.private ? PRIVATE_TASK_BADGE : ''}${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
     <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
     <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
     <div class="task-card-actions">

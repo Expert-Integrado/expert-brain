@@ -581,7 +581,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
-  const task = await getTaskById(env, id);
+  // includePrivate=true (spec 59): o detalhe é a sessão do dono — vê task privada.
+  const task = await getTaskById(env, id, true);
   if (!task) {
     return htmlResponse(
       renderShell({
@@ -626,7 +627,11 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       </form>
     </section>`;
 
-  const shareStatus = await getShareStatus(env, task.id, Date.now());
+  // Selo de privacidade (spec 59): task privada NUNCA tem link público. Em vez do painel
+  // de compartilhamento, mostra um aviso — o link só volta a existir se a task for tornada
+  // pública (toggle abaixo). Isso também evita o botão "Compartilhar" que erraria (409).
+  const isPrivate = task.private === 1;
+  const shareStatus = isPrivate ? null : await getShareStatus(env, task.id, Date.now());
   const shared = shareStatus?.shared ?? false;
   const shareExpiresBrt = shareStatus?.expires_brt ?? '';
   const shareExpired = shareStatus?.expired ?? false;
@@ -635,7 +640,13 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
         ? `Havia um link público, mas <strong>expirou</strong> em ${esc(shareExpiresBrt)}. Gere um novo abaixo.`
         : `Esta task tem um link público ativo, válido até <strong>${esc(shareExpiresBrt)}</strong>. O link só aparece no momento em que é gerado (o banco guarda só o hash). Gere de novo pra revê-lo (isso troca o link), ou revogue.`)
     : `Esta task não está compartilhada. Gere um link público read-only pra enviar a alguém sem conta.`;
-  const shareSection = `
+  const shareSection = isPrivate
+    ? `
+    <section class="task-share" data-task-id="${esc(task.id)}" data-shared="0" data-private="1">
+      <h2>Compartilhamento público</h2>
+      <p class="task-share-state" data-share-state>Task <strong>privada</strong>: não pode ter link público. Torne-a pública (acima) pra compartilhar.</p>
+    </section>`
+    : `
     <section class="task-share" data-task-id="${esc(task.id)}" data-shared="${shared ? '1' : '0'}">
       <h2>Compartilhamento público</h2>
       <p class="task-share-state" data-share-state>${shareStateHtml}</p>
@@ -652,6 +663,21 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
         <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
       </div>
       <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
+    </section>`;
+
+  // Toggle privada/pública (spec 59): form plano (CSP-safe), sessão do dono. Marcar
+  // privada revoga o link público na mesma escrita (server). Mesma UX do toggle de nota.
+  const privateSection = `
+    <section class="task-private" data-task-private>
+      <h2>Privacidade</h2>
+      <p class="task-private-state">${isPrivate
+        ? 'Esta task é <strong>privada</strong>: invisível pra credenciais sem escopo <code>private</code> e sem link público.'
+        : 'Esta task é <strong>pública</strong>: qualquer credencial válida a vê.'}</p>
+      <form method="post" action="/app/tasks/private" class="task-private-form">
+        <input type="hidden" name="id" value="${esc(task.id)}" />
+        <input type="hidden" name="private" value="${isPrivate ? '0' : '1'}" />
+        <button type="submit" class="task-d-btn" data-task-private-toggle>${isPrivate ? 'Tornar pública' : 'Tornar privada'}</button>
+      </form>
     </section>`;
 
   // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
@@ -731,6 +757,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     <div class="task-d-banner">
       <a href="/app/tasks" class="task-d-back">← Tasks</a>
       <span class="task-d-tag">Task</span>
+      ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
       <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="task-d-btn">Abrir no board</a></div>
     </div>
 
@@ -793,6 +820,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>
 
           ${datesHtml}
+
+          ${privateSection}
 
           ${shareSection}
         </aside>

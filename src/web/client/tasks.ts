@@ -34,6 +34,7 @@ interface TaskView {
   shared: boolean;
   share_expires_brt: string | null;
   project_id: string | null;
+  private: boolean; // selo de privacidade (spec 59): badge 🔒 no card
 }
 
 interface BoardColumn {
@@ -139,10 +140,13 @@ function projectChip(t: TaskView): string {
   return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
 }
 
+// Badge 🔒 do card (spec 59) — mesma classe global .private-badge das notas/SSR.
+const PRIVATE_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
+
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}"${t.project_id ? ` data-project="${esc(t.project_id)}"` : ''} data-updated-at="${t.updated_at}" draggable="true">
-    <div class="task-card-head">${projectChip(t)}${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
+    <div class="task-card-head">${t.private ? PRIVATE_BADGE : ''}${projectChip(t)}${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
