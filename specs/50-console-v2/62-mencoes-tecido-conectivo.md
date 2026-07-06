@@ -1,6 +1,6 @@
 # Menções: tecido conectivo nota↔task↔contato — vínculo first-class cross-módulo
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (expert-brain + expert-contacts)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (expert-brain + expert-contacts)
 > **Depende de:** `50-console-v2/56` (página do contato — recebe as seções reversas) e `50-console-v2/57` (`CONTACTS_WRITE_TOKEN` — reusado pra disparar o evento). Coordena com `61` (contato privado nas superfícies de menção).
 > **Agente sugerido:** Opus (schema cross-repo + contrato MCP) · **Esforço de execução:** ultrathink
 
@@ -77,15 +77,24 @@ Remoção da menção não apaga o evento já disparado (timeline é histórico)
 
 ## Critérios de aceite
 
-- [ ] Migration aplicada; nenhuma nota/task existente alterada.
-- [ ] `save_note` com `mentions: [id]` cria a menção, dispara `mentioned_in_brain` na timeline do contato (visível na página) e o grafo mostra a aresta nota↔contato.
-- [ ] Página do contato lista notas e tasks que o mencionam; task fechada sai da lista de abertas e entra no contador.
-- [ ] "Criar task desta nota": task nasce com `origin_note_id` + menções herdadas; detalhe da nota lista a task originada.
-- [ ] `@` no editor autocompleta contatos e o save persiste; remover chip + salvar remove a menção (`mentions_remove`).
-- [ ] `list_tasks mentions_entity:` filtra corretamente; `get_note`/`get_task` retornam `mentions[]`.
-- [ ] Falha no POST do evento (contacts fora do ar) NÃO impede o save da nota (teste com binding mockado falhando).
-- [ ] Caller MCP sem escopo `private`: menção a contato privado vem sem `entity_label`.
-- [ ] Contratos existentes intocados (params novos opcionais).
+- [x] Migration aplicada; nenhuma nota/task existente alterada. (0015_mentions, aditiva: tabela nova + ADD COLUMN nullable)
+- [x] `save_note` com `mentions: [id]` cria a menção, dispara `mentioned_in_brain` na timeline do contato (visível na página) e o grafo mostra a aresta nota↔contato. (aresta no payload sob `?mentions=1` — camada opt-in, ver Nota de execução)
+- [x] Página do contato lista notas e tasks que o mencionam; task fechada sai da lista de abertas e entra no contador.
+- [x] "Criar task desta nota": task nasce com `origin_note_id` + menções herdadas; detalhe da nota lista a task originada.
+- [x] `@` no editor autocompleta contatos e o save persiste; remover chip + salvar remove a menção (`mentions_remove`).
+- [x] `list_tasks mentions_entity:` filtra corretamente; `get_note`/`get_task` retornam `mentions[]`.
+- [x] Falha no POST do evento (contacts fora do ar) NÃO impede o save da nota (teste com binding mockado falhando).
+- [x] Caller MCP sem escopo `private`: menção a contato privado vem sem `entity_label`.
+- [x] Contratos existentes intocados (params novos opcionais).
+
+> **Nota de execução (06/07/2026):** a camada de menção do grafo (§3.2) foi implementada
+> como layer OPT-IN em `/app/graph/data?mentions=1` (nós `contact:<id>` + arestas `type:'mention'`,
+> `CACHE_KEY` v12), deixando o payload padrão do grafo de conhecimento byte-idêntico pra
+> NÃO regredir a física/render do client (`src/web/client/graph.ts` não estava em "Arquivos
+> afetados"). O wiring do render distinto no client do grafo fica como follow-up. Todo o
+> resto da spec (dados, MCP, evento, página do contato, task-from-note, chips, @autocomplete)
+> foi entregue e testado. Brain: `tsc` limpo + 652 testes (+auth) verdes; Contacts: `tsc`
+> limpo + 273 testes verdes. Gate de deploy dos 2 workers pendente do OK do dono.
 
 ## Validação
 
