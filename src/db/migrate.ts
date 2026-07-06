@@ -278,6 +278,21 @@ const MIGRATION_0012_STMTS: string[] = [
   `ALTER TABLE notes ADD COLUMN updated_by TEXT`,
 ];
 
+// 0013 — SELO DE PRIVACIDADE (spec 30-features/31). ADD COLUMN é seguro (não recria
+// a tabela notes, que cascatearia edges/tags via FK). DEFAULT 0 = TODAS as notas
+// existentes continuam PÚBLICAS: zero mudança de comportamento até o dono marcar uma
+// nota. O índice é PARCIAL (WHERE private = 1): custo zero pras notas públicas (a
+// maioria), rápido pra contar/localizar as privadas. NOTA: o trigger notes_au reinsere
+// a linha no FTS em qualquer UPDATE — a nota privada CONTINUA no notes_fts (igual ao
+// soft-delete). O gate é 100% nos read paths (recall/get_note/expand/stats/FTS filtram
+// `private = 0` pra credencial sem escopo). O número 0009 citado na spec era indicativo
+// — o trilho já ia até 0012_api_key_scopes, então usou-se o próximo livre: 0013 (ver
+// regra transversal em specs/90-roadmap.md). Tudo aditivo. Ver spec 30-features/31.
+const MIGRATION_0013_STMTS: string[] = [
+  `ALTER TABLE notes ADD COLUMN private INTEGER NOT NULL DEFAULT 0`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_private ON notes(private) WHERE private = 1`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -291,6 +306,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0010_task_comments', stmts: MIGRATION_0010_STMTS },
   { id: '0011_task_projects', stmts: MIGRATION_0011_STMTS },
   { id: '0012_api_key_scopes', stmts: MIGRATION_0012_STMTS },
+  { id: '0013_private_notes', stmts: MIGRATION_0013_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {
