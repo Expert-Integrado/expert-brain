@@ -15,7 +15,9 @@ export async function handleNoteSearch(req: Request, env: Env): Promise<Response
   const q = (url.searchParams.get('q') || '').trim();
   if (!q) return jsonResponse([]);
 
-  const rows = await ftsSearch(env, q, 80, /* prefix */ true);
+  // includePrivate=true: é a sessão de cookie do dono (requireSession acima) — ela vê
+  // notas privadas normalmente, com o badge no client. Selo de privacidade (spec 31).
+  const rows = await ftsSearch(env, q, 80, /* prefix */ true, /* includePrivate */ true);
   return jsonResponse(rows.map((r) => r.id));
 }
 

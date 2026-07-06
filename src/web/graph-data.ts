@@ -12,7 +12,7 @@ import { NON_TASK_FILTER } from '../db/queries.js';
 // compartilhado authorizeBearer — a cópia local authorizeGraphExport foi removida
 // (spec 17), eliminando a duplicação e o early-return por tamanho de token.
 
-interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; }
+interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; private: boolean; }
 interface ExplicitGraphEdge { id: string; source: string; target: string; type: 'explicit'; why: string; relation_type: string; }
 interface SimilarGraphEdge { id: string; source: string; target: string; type: 'similar'; score: number; }
 type GraphEdge = ExplicitGraphEdge | SimilarGraphEdge;
@@ -34,7 +34,11 @@ export interface GraphPayload {
 // similar edges MUDA o conteúdo do payload (menos edges), mas não o shape; a
 // invalidação vem de graça pelo sourceHash no sufixo (edges/scores diferentes →
 // hash diferente → chave nova).
-const CACHE_KEY = 'graph:v10';
+// v11 (spec 31): GraphNode ganhou o campo `private` (badge/anel visual da nota
+// privada) — bump invalida o payload cacheado sem o campo. O grafo é superfície do
+// dono (sessão ou GRAPH_EXPORT_TOKEN, bearer do console pessoal), então serve TODAS
+// as notas, privadas incluídas; o campo só sinaliza pro client renderizar o selo.
+const CACHE_KEY = 'graph:v11';
 
 // Orçamento de payload do /app/graph/data. Gate anti-regressão (spec 26): o teste
 // sintético N=5k falha se o JSON servido estourar este teto. Bem abaixo do limite
@@ -123,7 +127,9 @@ async function buildPayload(env: Env, knownSourceHash?: string): Promise<GraphPa
   // do mesmo Worker e cada uma roda em sua própria conexão.
   const [notesRes, edgesRes] = await Promise.all([
     // Tasks (kind='task') ficam fora do grafo de conhecimento — são to-dos, não ideias.
-    env.DB.prepare(`SELECT id, title, domains FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
+    // `private` (spec 31) vem junto pro client renderizar o selo — o grafo é superfície
+    // do dono, então NÃO filtra privadas, só as marca.
+    env.DB.prepare(`SELECT id, title, domains, private FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).all<Pick<NoteRow, 'id' | 'title' | 'domains' | 'private'>>(),
     env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>(),
   ]);
   const notes = notesRes.results ?? [];
@@ -218,6 +224,7 @@ async function buildPayload(env: Env, knownSourceHash?: string): Promise<GraphPa
       size: Math.max(6, Math.min(3 * Math.sqrt((degree.get(n.id) ?? 0) + 1), 30)),
       x: p.x,
       y: p.y,
+      private: (n.private ?? 0) === 1,
     };
   });
 
@@ -344,6 +351,7 @@ export interface NoteMetaRow {
   tldr: string;
   domains: string[];
   updated_at: number; // ms — aditivo (spec 23): client de notas ordena por ele sem depender do DOM SSR paginado.
+  private: boolean;   // selo de privacidade (spec 31): client renderiza o badge 🔒 na lista/grafo.
 }
 
 // Lightweight metadata for the graph slide panel and client-side fuzzy search.
@@ -405,9 +413,9 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
   }
 
   const rows = await env.DB.prepare(
-    `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains, updated_at
+    `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains, updated_at, private
      FROM notes WHERE deleted_at IS NULL AND ${NON_TASK_FILTER}`
-  ).all<{ id: string; title: string; tldr: string; kind: string; domains: string; updated_at: number }>();
+  ).all<{ id: string; title: string; tldr: string; kind: string; domains: string; updated_at: number; private: number }>();
   const results = rows.results ?? [];
 
   const meta: NoteMetaRow[] = results.map((n) => ({
@@ -417,6 +425,7 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
     tldr: n.tldr || '',
     domains: parseDomains(n.domains),
     updated_at: n.updated_at ?? 0,
+    private: (n.private ?? 0) === 1,
   }));
 
   return Response.json(meta, { headers });

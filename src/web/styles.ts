@@ -1548,6 +1548,21 @@ select.panel-form-input { cursor: pointer; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+/* Selo de privacidade (spec 31): badge 🔒 no card de nota e no detalhe. Amarelo
+   discreto — sinaliza confidencialidade sem gritar. */
+.private-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* Compact rows */
 .note-row {

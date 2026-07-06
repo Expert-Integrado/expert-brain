@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors } from './contacts-data.js';
 import { handleContactPage } from './contact-page.js';
@@ -48,6 +48,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // path exato /update não colide com o regex de id (que não tem barra interna
   // depois de notes/, mas 'update' casaria como id num GET — aqui é POST).
   if (path === '/app/notes/update' && req.method === 'POST') return handleNoteUpdatePost(req, env);
+
+  // Toggle do selo de privacidade (spec 31): ÚNICA superfície que desmarca. Sessão de
+  // browser só (o handler exige requireSession). Vem ANTES do noteMatch (GET) — path
+  // com sufixo /private não colide com o regex de id de 1 segmento.
+  const notePrivateMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/private$/);
+  if (notePrivateMatch && req.method === 'POST') return handleNotePrivatePost(req, env, notePrivateMatch[1]);
 
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);

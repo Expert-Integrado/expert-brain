@@ -12,6 +12,7 @@ import {
   getEdgesFrom,
   getEdgesTo,
   updateNote,
+  setNotePrivate,
   listTaskComments,
   listKanbanColumns,
   resolveTaskColumn,
@@ -44,6 +45,7 @@ interface NoteListItem {
   kind: string | null;
   tldr: string;
   updated_at: number;
+  private: number; // selo de privacidade (spec 31): 1 = badge 🔒 no card
 }
 
 // updated_at / created_at are stored as milliseconds (Date.now()) — not seconds.
@@ -88,7 +90,9 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
 
   const [rows, totalRow, taxonomy] = await Promise.all([
     env.DB.prepare(
-      `SELECT id, title, domains, kind, tldr, updated_at FROM notes
+      // Sessão do dono (requireSession) — a lista mostra TODAS as notas, privadas
+      // incluídas, com o badge 🔒 (spec 31). Nenhum filtro de private aqui.
+      `SELECT id, title, domains, kind, tldr, updated_at, private FROM notes
        WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')
        ORDER BY updated_at DESC
        LIMIT ? OFFSET ?`
@@ -110,9 +114,10 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   const ssrItems = page
     .map((n) => {
       const kindMeta = n.kind ? resolveKindMeta(n.kind, taxonomy) : null;
+      const privBadge = n.private ? '<span class="private-badge" title="Nota privada">🔒 privada</span>' : '';
       return `
-      <a class="note-card" href="/app/notes/${esc(n.id)}" data-note-id="${esc(n.id)}" data-updated-at="${n.updated_at}">
-        <div class="note-card-head">${kindMeta ? `<span class="kind-badge" style="--chip:${esc(kindMeta.color)}">${esc(kindMeta.label)}</span>` : ''}<span class="note-card-date">${formatDate(n.updated_at)}</span></div>
+      <a class="note-card" href="/app/notes/${esc(n.id)}" data-note-id="${esc(n.id)}" data-updated-at="${n.updated_at}"${n.private ? ' data-private="1"' : ''}>
+        <div class="note-card-head">${kindMeta ? `<span class="kind-badge" style="--chip:${esc(kindMeta.color)}">${esc(kindMeta.label)}</span>` : ''}${privBadge}<span class="note-card-date">${formatDate(n.updated_at)}</span></div>
         <div class="title">${esc(n.title)}</div>
         ${n.tldr ? `<div class="note-card-tldr">${esc(n.tldr)}</div>` : ''}
         <div class="meta">${domainsToBadges(n.domains, taxonomy)}</div>
@@ -193,7 +198,8 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
-  const note = await getNoteById(env, id);
+  // Sessão do dono (requireSession) vê notas privadas normalmente (spec 31).
+  const note = await getNoteById(env, id, false, /* includePrivate */ true);
   if (!note) {
     return htmlResponse(
       renderShell({
@@ -206,6 +212,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       404
     );
   }
+  const isPrivate = (note.private ?? 0) === 1;
 
   // Task não é nota: ela tem superfície própria (/app/tasks/<id>). Redireciona pra
   // URL canônica de task — assim qualquer link antigo (card do board, noteUrl do MCP,
@@ -225,8 +232,8 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   }
 
   const [outbound, inbound, taxonomy] = await Promise.all([
-    getEdgesFrom(env, id),
-    getEdgesTo(env, id),
+    getEdgesFrom(env, id, /* includePrivate */ true),
+    getEdgesTo(env, id, /* includePrivate */ true),
     getTaxonomyConfig(env),
   ]);
 
@@ -291,6 +298,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
       <div class="note-edit-titlerow">
         <input type="text" class="note-edit-title" data-field="title" value="${esc(note.title)}" maxlength="200" placeholder="Título da nota" aria-label="Título da nota" />
+        ${isPrivate ? '<span class="private-badge" title="Nota privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
         <button type="button" class="note-edit-save" data-save="title">Salvar</button>
       </div>
 
@@ -305,6 +313,10 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
         </div>
         <span class="note-edit-updated">Atualizada ${formatDate(note.updated_at)}</span>
         <button id="btn-copy-link" class="note-edit-copy" type="button">Copiar link</button>
+        <form method="post" action="/app/notes/${esc(note.id)}/private" class="note-private-form">
+          <input type="hidden" name="private" value="${isPrivate ? '0' : '1'}" />
+          <button type="submit" class="note-edit-copy note-private-toggle" data-private-toggle>${isPrivate ? 'Tornar pública' : 'Tornar privada'}</button>
+        </form>
       </div>
 
       <div class="note-edit-ctl note-edit-ctl-tldr">
@@ -467,7 +479,8 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     return json({ error: 'patch must include at least one of: title, body, tldr, domains, kind' }, 400);
   }
 
-  const existing = await getNoteById(env, id);
+  // Sessão do dono edita notas privadas normalmente (spec 31).
+  const existing = await getNoteById(env, id, false, /* includePrivate */ true);
   if (!existing) return json({ error: 'note not found' }, 404);
   // Task se edita SÓ por /app/tasks/update (mesma regra de update_note MCP). 404 pra
   // não vazar que o id existe como task neste editor de nota.
@@ -486,7 +499,7 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
   if (result === 'conflict') {
     // Relê pra devolver o updated_at atual — a UI mostra "editada em outro lugar,
     // recarregue" sem sobrescrever. Mesmo espírito do 409 de /app/tasks/update.
-    const current = await getNoteById(env, id);
+    const current = await getNoteById(env, id, false, /* includePrivate */ true);
     return json({
       error: 'conflict',
       message: 'Esta nota foi editada em outro lugar. Recarregue antes de salvar.',
@@ -513,6 +526,44 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     updated_at: now,
     reembedded,
   });
+}
+
+// POST /app/notes/{id}/private — toggle do SELO DE PRIVACIDADE (spec 31). É a ÚNICA
+// superfície que DESMARCA uma nota (torna pública). SÓ sessão de browser
+// (requireSession — sem Bearer/PAT): é curadoria humana logada; PAT/bearer caem em
+// 401/redirect antes de chegar aqui. Aceita form-encoded (a UI da nota usa um <form>
+// simples, CSP-safe, e recebe 302 de volta pra nota) OU JSON { private: boolean }
+// (recebe JSON). Task NÃO se marca aqui (404 — privacidade de task é a spec 59).
+export async function handleNotePrivatePost(req: Request, env: Env, id: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const ct = req.headers.get('content-type') || '';
+  const wantsJson = ct.includes('application/json');
+  let makePrivate: boolean;
+  if (wantsJson) {
+    let reqBody: { private?: unknown };
+    try { reqBody = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+    if (typeof reqBody.private !== 'boolean') return json({ error: 'private must be a boolean' }, 400);
+    makePrivate = reqBody.private;
+  } else {
+    const form = await req.formData();
+    makePrivate = String(form.get('private') ?? '') === '1';
+  }
+
+  const existing = await getNoteById(env, id, false, /* includePrivate */ true);
+  const notFound = (): Response => wantsJson
+    ? json({ error: 'note not found' }, 404)
+    : new Response(null, { status: 302, headers: { location: '/app/notes' } });
+  if (!existing) return notFound();
+  // Task tem superfície própria (spec 59) — 404 pra não vazar que o id existe como task.
+  if (existing.kind === 'task') return notFound();
+
+  await setNotePrivate(env, id, makePrivate ? 1 : 0, Date.now(), `oauth:${session.email}`);
+
+  return wantsJson
+    ? json({ ok: true, id, private: makePrivate })
+    : new Response(null, { status: 302, headers: { location: `/app/notes/${id}` } });
 }
 
 const TASK_STATUS_LABELS: Record<string, string> = {
@@ -995,6 +1046,12 @@ const NOTE_EDIT_CSS = `
   transition:border-color 140ms var(--ease), color 140ms var(--ease);
 }
 .note-edit-copy:hover { border-color:var(--border-strong); color:var(--text); }
+
+/* Selo de privacidade (spec 31): toggle no detalhe. O form é plano (sem JS) pra ser
+   CSP-safe — a ÚNICA superfície que desmarca uma nota. O badge .private-badge é global
+   (styles.ts) pra valer também na lista. */
+.note-private-form { display:inline; margin:0; align-self:center; }
+.note-private-toggle { cursor:pointer; }
 
 .note-edit-ctl-tldr { position:relative; }
 .note-edit-tldr {

@@ -34,12 +34,15 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
   if (!name) return htmlResponse('Nome obrigatório', 400);
-  // Escopo (spec 17): valor inválido/ausente cai em 'full' (comportamento histórico).
+  // Escopo BASE (spec 17): valor inválido/ausente cai em 'full' (histórico).
   const scopeRaw = String(form.get('scope') ?? '');
-  const scope: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
+  const base: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
+  // Escopo aditivo 'private' (spec 31): checkbox → CSV 'full,private' | 'read,private'.
+  const wantsPrivate = String(form.get('private_scope') ?? '') === '1';
+  const scopes = wantsPrivate ? `${base},private` : base;
   let plainKey: string;
   try {
-    const created = await createApiKey(env, session.email, name, scope);
+    const created = await createApiKey(env, session.email, name, scopes);
     plainKey = created.plainKey;
   } catch (err) {
     if (err instanceof ApiKeyLimitError) {

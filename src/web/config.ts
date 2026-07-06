@@ -399,8 +399,9 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
              <input type="hidden" name="id" value="${esc(k.id)}">
              <button type="submit" class="btn-danger">Revogar</button>
            </form>`;
-      // Escopo (spec 17): full = CRUD completo; read = somente leitura.
-      const scopeLabel = k.scopes === 'read' ? 'read' : 'full';
+      // Escopo (spec 17 + 31): CSV — base full/read + escopo aditivo 'private'.
+      // Mostra o CSV integral (ex.: 'full,private') pra o dono ver o alcance real.
+      const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
       return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
         <td><strong>${esc(k.name)}</strong></td>
         <td><code>${esc(k.prefix)}…</code></td>
@@ -527,6 +528,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
                 <option value="full">Leitura e escrita — CRUD completo do vault</option>
                 <option value="read">Somente leitura — recall, get, stats, list</option>
               </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
+              <input type="checkbox" name="private_scope" value="1">
+              <span>Acesso a notas privadas <span style="color:var(--text-dim)">— sem isto, a chave NÃO vê notas marcadas como privadas (spec 31)</span></span>
             </label>
             <button type="submit" class="btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
