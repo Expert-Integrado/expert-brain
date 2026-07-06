@@ -79,7 +79,7 @@ describe('GET /app/export', () => {
 
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
-    expect(manifest.schema_version).toBe('0014_inbox');
+    expect(manifest.schema_version).toBe('0015_mentions');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {
