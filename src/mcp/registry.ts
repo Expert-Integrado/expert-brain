@@ -28,6 +28,7 @@ import { registerAttachMedia } from './tools/attach-media.js';
 import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
 import { registerContactsTools } from './tools/contacts.js';
+import { registerDigest } from './tools/digest.js';
 
 // Gate de escopo (spec 17): num PAT com scopes='read', envolve o server num Proxy
 // que só deixa passar `registerTool` de tools com `annotations.readOnlyHint === true`.
@@ -94,6 +95,9 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   registerCapture(reg, env);
   registerListInbox(reg, env);
   registerResolveInbox(reg, env);
+  // Resurfacing digest (spec 50-console-v2/64): mesma razão de list_inbox — conteúdo
+  // pessoal, readOnlyHint:false de propósito pra ser suprimido no escopo `read`.
+  registerDigest(reg, env, auth);
   // Mídia das notas (R2 + dedup SHA-256). Binding opcional: instalação sem R2
   // habilitado (conta free sem billing) sobe sem as tools de mídia — o setup
   // remove o [[r2_buckets]] do wrangler.toml nesse caso.

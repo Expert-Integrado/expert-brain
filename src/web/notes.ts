@@ -36,6 +36,7 @@ import { renderCommentThread } from './comments-render.js';
 import { visibleTags } from './tasks.js';
 import { resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
+import { readCachedResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from '../digest/resurface.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -56,6 +57,32 @@ interface NoteListItem {
 // updated_at / created_at are stored as milliseconds (Date.now()) — not seconds.
 function formatDate(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
+}
+
+// Card "Do seu cérebro" (specs/50-console-v2/64-resurfacing-digest.md §2): fallback
+// enquanto a home (spec 65) não existe — lê o CACHE (meta.resurface_digest, TTL 20h)
+// gravado pelo cron diário, nunca recomputa aqui (a query de grau em edges é cara
+// demais pro request path da lista de notas). Some sozinho quando o digest ainda
+// não rodou ou está vazio.
+function renderDigestCard(d: ResurfaceDigest): string {
+  const items: string[] = [];
+  for (const q of d.open_questions) {
+    items.push(`<li>❓ <a href="${esc(q.url)}">${esc(q.title)}</a> — sem resposta há ${q.age_days}d</li>`);
+  }
+  for (const n of d.stale_central_notes) {
+    items.push(`<li>🔗 <a href="${esc(n.url)}">${esc(n.title)}</a> — ${n.degree} conexões, ${n.age_days}d sem mexer</li>`);
+  }
+  for (const c of d.cooling_contacts) {
+    items.push(`<li>🧊 <a href="${esc(c.url)}">${esc(c.name)}</a> — sem contato há ${c.days_since}d</li>`);
+  }
+  if (d.inbox_pending_over_7d) {
+    items.push(`<li>📥 <a href="${esc(d.inbox_url)}">Inbox</a> — ${d.inbox_pending_over_7d} item(ns) parado(s) há mais de 7 dias</li>`);
+  }
+  return `
+    <div class="callout-info" id="resurface-digest-card">
+      <strong>Do seu cérebro</strong>
+      <ul style="margin:8px 0 0; padding-left:18px; line-height:1.6;">${items.join('')}</ul>
+    </div>`;
 }
 
 // The `domains` column is a JSON-encoded string array (e.g. `["infra","ml"]`).
@@ -136,6 +163,19 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   const hasMore = all.length > NOTES_PAGE_SIZE;
   const total = totalRow?.c ?? page.length;
 
+  // Card "Do seu cérebro" (spec 64) só na 1ª página — LEITURA do cache (nunca
+  // recomputa aqui, ver renderDigestCard). Cosmético: qualquer falha some o card
+  // sem derrubar a lista de notas.
+  let digestCardHtml = '';
+  if (offset === 0) {
+    try {
+      const digest = await readCachedResurfaceDigest(env);
+      if (digest && !isDigestEmpty(digest)) digestCardHtml = renderDigestCard(digest);
+    } catch (e) {
+      console.error('resurface digest card: falha ao ler cache (card omitido)', e);
+    }
+  }
+
   // SSR list — client bundle replaces this once /app/graph/meta loads, but
   // leaving it in place keeps the no-JS fallback useful and gives the browser
   // something to paint immediately.
@@ -167,6 +207,8 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
       <h1>Notas</h1>
       <span class="count" id="notes-count">${total} ${total === 1 ? 'nota' : 'notas'}</span>
     </div>
+
+    ${digestCardHtml}
 
     <div class="notes-toolbar">
       <div class="notes-search-row">
