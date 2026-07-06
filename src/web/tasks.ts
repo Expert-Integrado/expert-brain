@@ -31,12 +31,15 @@ import {
   addTaskComment,
   deleteTaskComment,
   countTaskCommentsBatch,
+  getTagsForNotes,
+  getTagsByNote,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
+import { tagChipsHtml, shareIconHtml } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -69,10 +72,21 @@ interface TaskView {
   completed_at: number | null;
   updated_at: number; // base do versionamento otimista na edição inline (spec 36)
   comment_count: number; // contagem da thread de comentários (spec 53)
+  tags: string[]; // sem tags reservadas dedupe:* — nunca aparecem na UI (spec 52)
+  shared: boolean; // link público ATIVO (não-expirado) — pro ícone 🔗 do card (spec 52)
+  share_expires_brt: string | null; // "DD/MM" — tooltip do ícone quando shared=true
 }
 
-function toView(t: TaskRow, now: number, commentCount = 0): TaskView {
+// Tags reservadas (`dedupe:*`) são um detalhe interno de dedupe do save_task —
+// nunca devem aparecer em UI nenhuma (card, sidebar do detalhe). Compartilhado
+// pelos dois pontos que expõem tags de task ao dono (board + detalhe).
+export function visibleTags(tags: string[]): string[] {
+  return tags.filter((t) => !t.startsWith('dedupe:'));
+}
+
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []): TaskView {
   const due = t.due_at ?? null;
+  const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
     id: t.id,
     title: t.title,
@@ -89,6 +103,9 @@ function toView(t: TaskRow, now: number, commentCount = 0): TaskView {
     completed_at: t.completed_at,
     updated_at: t.updated_at,
     comment_count: commentCount,
+    tags,
+    shared,
+    share_expires_brt: shared ? formatBrtShort(t.share_expires_at!) : null,
   };
 }
 
@@ -120,11 +137,15 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
   const defaultByCat = new Map<string, KanbanColumn>();
   for (const c of activeCols) if (!defaultByCat.has(c.category)) defaultByCat.set(c.category, c);
 
-  // Contagem de comentários em lote (spec 53): 1 query (chunked) pro board inteiro,
-  // nunca N+1. Cobre tasks ativas + fechadas recentes que serão renderizadas.
-  const commentCounts = await countTaskCommentsBatch(
-    env, [...active, ...closed].map((t) => t.id)
-  );
+  // Contagem de comentários + tags em lote (spec 53/52): 1 query (chunked) cada
+  // pro board inteiro, nunca N+1. Cobre tasks ativas + fechadas recentes que serão
+  // renderizadas. Tags reservadas dedupe:* são filtradas AQUI — nunca chegam ao
+  // TaskView (defesa única, board e nenhum outro read path de card as vaza).
+  const allIds = [...active, ...closed].map((t) => t.id);
+  const [commentCounts, tagsById] = await Promise.all([
+    countTaskCommentsBatch(env, allIds),
+    getTagsForNotes(env, allIds),
+  ]);
 
   const buckets = new Map<string, TaskView[]>();
   for (const c of activeCols) buckets.set(c.id, []);
@@ -135,7 +156,8 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
     const assigned = t.column_id ? activeById.get(t.column_id) : undefined;
     if (assigned && assigned.category === status) colId = assigned.id;
     else colId = defaultByCat.get(status)?.id ?? null;
-    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0));
+    const tags = visibleTags(tagsById.get(t.id) ?? []);
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -193,7 +215,10 @@ export async function handleTaskMovePost(req: Request, env: Env): Promise<Respon
   const result = await moveTaskToColumn(env, id, columnId, Date.now());
   if (result === 'column-not-found') return json({ error: 'column not found' }, 404);
   if (result === 'not-found') return json({ error: 'task not found' }, 404);
-  return json({ ok: true, id, column_id: columnId, status: result.status });
+  // updated_at aditivo (spec 52): o detalhe da task usa o select de coluna como
+  // substituto do antigo select de status — precisa da base fresca de versionamento
+  // otimista pra continuar salvando título/corpo/tags sem 409 auto-infligido.
+  return json({ ok: true, id, column_id: columnId, status: result.status, updated_at: result.updated_at });
 }
 
 // POST /app/tasks/status — { id, status }
@@ -254,6 +279,7 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
       priority?: unknown;
       status?: unknown;
       domains?: unknown;
+      tags?: unknown;
     };
     expected_updated_at?: unknown;
   };
@@ -343,9 +369,19 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     }
   }
 
+  // tags — REPLACE de todas as tags (mesma semântica de update_task MCP); []
+  // limpa as não-reservadas. Reservadas dedupe:* são preservadas automaticamente
+  // por replaceTaskTagsPreservingDedupe dentro de updateTask.
+  if (p.tags !== undefined) {
+    if (!Array.isArray(p.tags) || p.tags.some((t) => typeof t !== 'string')) {
+      return json({ error: 'tags must be an array of strings' }, 400);
+    }
+    patch.tags = p.tags as string[];
+  }
+
   // Precisa de ao menos um campo editável.
   if (Object.keys(patch).length === 0) {
-    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains' }, 400);
+    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains, tags' }, 400);
   }
 
   const result = await updateTask(env, id, patch, Date.now(), expectedUpdatedAt);
@@ -362,6 +398,10 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
   }
 
   const task = result;
+  // tags só entra na resposta quando o patch mexeu nelas (evita 1 query extra nos
+  // outros patches, muito mais frequentes) — devolve já sem as reservadas dedupe:*,
+  // pro chip editor da sidebar (spec 52) atualizar sem precisar de reload.
+  const tagsOut = patch.tags !== undefined ? visibleTags(await getTagsByNote(env, task.id)) : undefined;
   return json({
     ok: true,
     id: task.id,
@@ -371,6 +411,7 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     due_at: task.due_at,
     due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
     updated_at: task.updated_at,
+    ...(tagsOut !== undefined ? { tags: tagsOut } : {}),
   });
 }
 
@@ -378,7 +419,10 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
 // do /update: mesmo authTask (Bearer OU sessão) + validações 1:1 com a tool MCP
 // save_task (title 1-200, priority 1-4 ou null, due via parseDueToMs). Reusa
 // insertTask + newId; domains default ['operations']. Sem embedding (task não vira
-// vetor). Body: { title, body?, priority?, due?, domains? }.
+// vetor). Body: { title, body?, priority?, due?, domains?, column_id? }.
+//   - `column_id` (spec 52, criação inline no rodapé da coluna do board): opcional,
+//     deve ser uma coluna ATIVA existente. Quando presente, a task nasce JÁ na
+//     coluna (e status = categoria dela) em vez do default 'open'/col_aberto.
 export async function handleTaskCreatePost(req: Request, env: Env): Promise<Response> {
   const denied = await authTask(req, env);
   if (denied) return denied;
@@ -389,6 +433,7 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     priority?: unknown;
     due?: unknown;
     domains?: unknown;
+    column_id?: unknown;
   };
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
 
@@ -440,6 +485,22 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     if (domainError) return json({ error: domainError }, 400);
   }
 
+  // column_id — opcional (spec 52). Deve resolver pra uma coluna ATIVA; a categoria
+  // dela vira o status inicial da task (default sem column_id: 'open', igual antes).
+  let status: TaskStatus = 'open';
+  let columnId: string | null = null;
+  if (body.column_id !== undefined && body.column_id !== null) {
+    if (typeof body.column_id !== 'string' || !body.column_id.trim()) {
+      return json({ error: 'column_id must be a non-empty string' }, 400);
+    }
+    const col = await getColumnById(env, body.column_id.trim());
+    if (!col || col.archived_at !== null) {
+      return json({ error: 'column not found (or archived)' }, 404);
+    }
+    columnId = col.id;
+    status = col.category;
+  }
+
   const now = Date.now();
   const id = newId();
   await insertTask(env, {
@@ -448,23 +509,25 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     body: details || title,
     tldr: title.slice(0, 280),
     domains: JSON.stringify(domains),
-    status: 'open',
+    status,
     due_at: dueMs,
     priority,
     completed_at: null,
     created_at: now,
     updated_at: now,
+    column_id: columnId,
   });
 
   return json({
     ok: true,
     id,
     title,
-    status: 'open',
+    status,
     priority,
     due_at: dueMs,
     due_brt: dueMs !== null ? formatBrtDateTime(dueMs) : null,
     updated_at: now,
+    column_id: columnId,
   }, 201);
 }
 
@@ -739,8 +802,9 @@ function dueBadge(v: TaskView): string {
 function renderCardSSR(v: TaskView): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}" draggable="true">
-    <div class="task-card-head">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}</div>
+    <div class="task-card-head">${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
     <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
+    <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
     <div class="task-card-actions">
       ${canClose ? `<button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button>` : ''}
       <a class="task-btn task-open" href="/app/tasks/${esc(v.id)}">abrir</a>
@@ -896,11 +960,21 @@ export const TASKS_CSS = `
 .task-col-label { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); text-transform: uppercase; }
 /* Bolinha na cor da coluna (neutra quando sem cor definida) */
 .task-col-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex: none; }
+.task-col-head-right { display: flex; align-items: center; gap: 6px; }
 .task-col-count {
   font-size: 11px; font-weight: 600; color: var(--text-dim); background: var(--surface-raised);
   border-radius: 999px; padding: 2px 9px; min-width: 24px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
+/* Colapsar coluna (spec 52): estado persiste em localStorage (kanban_collapsed) */
+.task-col-collapse-btn {
+  background: none; border: none; color: var(--text-faint); font-size: 11px; line-height: 1;
+  cursor: pointer; padding: 3px 5px; border-radius: 5px; transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.task-col-collapse-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.task-col.collapsed { padding-bottom: 12px; }
+.task-col.collapsed .task-col-body,
+.task-col.collapsed .task-col-inline-create { display: none; }
 .task-col-body {
   display: flex; flex-direction: column; gap: 10px; min-height: 72px;
   border-radius: var(--radius-sm); padding: 2px;
@@ -918,6 +992,17 @@ export const TASKS_CSS = `
 }
 .task-col-body.drag-over .task-col-empty { border-color: var(--border-strong); color: var(--text-dim); }
 
+/* "+ Nova tarefa" inline no rodapé da coluna (spec 52) — cria já na coluna certa */
+.task-col-inline-create { margin-top: 8px; padding: 0 2px; }
+.task-col-inline-input {
+  width: 100%; box-sizing: border-box; background: transparent; border: 1px dashed var(--border);
+  color: var(--text); border-radius: var(--radius-sm); padding: 7px 10px; font-family: inherit;
+  font-size: 12.5px; transition: border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.task-col-inline-input::placeholder { color: var(--text-faint); }
+.task-col-inline-input:focus { outline: none; border-style: solid; border-color: var(--accent-lav); background: var(--bg-accent); }
+.task-col-inline-input:disabled { opacity: 0.5; }
+
 .task-card {
   background: var(--bg-accent); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 12px 13px; cursor: grab;
@@ -929,10 +1014,17 @@ export const TASKS_CSS = `
 .task-card.dragging { opacity: 0.35; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.7); border-color: var(--accent-lav); cursor: grabbing; }
 .task-card[data-status="done"], .task-card[data-status="canceled"] { opacity: 0.62; }
 .task-card[data-status="done"] .task-card-title { text-decoration: line-through; color: var(--text-dim); }
-.task-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
+/* Linha meta superior: prioridade + tags + ícone de link (spec 52) */
+.task-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
 .task-card-head:empty { display: none; }
-.task-card-title { display: block; color: var(--text); font-size: 14px; line-height: 1.4; font-weight: 500; }
+.task-card-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--text); font-size: 14px; line-height: 1.4; font-weight: 500;
+}
 .task-card-title:hover { color: var(--accent-lav); }
+/* Linha meta inferior: prazo + contador de comentários (spec 52) */
+.task-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; min-height: 4px; }
+.task-card-meta:empty { display: none; }
 .task-card-actions { display: flex; gap: 12px; margin-top: 10px; }
 .task-btn {
   background: none; border: none; color: var(--text-faint); font-size: 12px;
@@ -946,6 +1038,15 @@ export const TASKS_CSS = `
 /* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
 .task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
 .task-comments-n { font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Tags no card (spec 52): até 3 chips + "+N", cor neutra — nunca dedupe:* */
+.task-tag-chip {
+  display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 500;
+  color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 7px;
+}
+.task-tag-more { color: var(--text-faint); }
+/* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
+.task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
 
 /* Bandeirinha de prioridade estilo ClickUp: flag colorida + rótulo, fundo tênue */
 .task-prio {

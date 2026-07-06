@@ -10,6 +10,7 @@ import { appFetch } from './http.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
+import { tagChipsHtml, shareIconHtml } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -29,6 +30,9 @@ interface TaskView {
   completed_at: number | null;
   updated_at: number;
   comment_count: number;
+  tags: string[];
+  shared: boolean;
+  share_expires_brt: string | null;
 }
 
 interface BoardColumn {
@@ -116,10 +120,11 @@ function prioOptions(p: number | null): string {
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}" data-updated-at="${t.updated_at}" draggable="true">
-    <div class="task-card-head">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}
+    <div class="task-card-head">${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
+    <div class="task-card-meta">${dueBadge(t)}${commentBadge(t.comment_count)}</div>
     <div class="task-card-edit" data-editpanel hidden>
       <label class="task-card-edit-ctl">Prioridade
         <select class="task-card-prio" data-qe-prio>${prioOptions(t.priority)}</select>
@@ -171,18 +176,47 @@ function columnTasks(col: BoardColumn, now: number): TaskView[] {
   return col.tasks;
 }
 
+// Colapsar coluna (spec 52): estado por coluna em localStorage, sobrevive a reload.
+// Mapa { [column_id]: true } — ausente/false = expandida (default).
+const COLLAPSE_KEY = 'kanban_collapsed';
+
+function loadCollapsed(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COLLAPSE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveCollapsed(map: Record<string, boolean>): void {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(map)); } catch { /* privado/quota: ignora */ }
+}
+
 function render() {
   const root = document.getElementById('task-board');
   if (!root || !board) return;
   const now = board.now;
+  const collapsed = loadCollapsed();
 
   root.innerHTML = board.columns.map((col) => {
     const items = columnTasks(col, now);
     const c = safeColor(col.color);
-    return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
-      <header class="task-col-head"><span class="task-col-label">${colSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${items.length}</span></header>
+    const isCollapsed = collapsed[col.id] === true;
+    return `<section class="task-col${isCollapsed ? ' collapsed' : ''}" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
+      <header class="task-col-head">
+        <span class="task-col-label">${colSwatch(col.color)}${esc(col.label)}</span>
+        <div class="task-col-head-right">
+          <span class="task-col-count" data-count="${esc(col.id)}">${items.length}</span>
+          <button class="task-col-collapse-btn" data-collapse-toggle="${esc(col.id)}" type="button"
+            aria-label="${isCollapsed ? 'Expandir coluna' : 'Recolher coluna'}" title="${isCollapsed ? 'Expandir' : 'Recolher'}">${isCollapsed ? '▸' : '▾'}</button>
+        </div>
+      </header>
       <div class="task-col-body" data-dropzone="${esc(col.id)}">
         ${items.map(cardHTML).join('') || '<div class="task-col-empty">—</div>'}
+      </div>
+      <div class="task-col-inline-create">
+        <input type="text" class="task-col-inline-input" data-inline-input="${esc(col.id)}" placeholder="+ Nova tarefa" maxlength="200" autocomplete="off" aria-label="Nova tarefa nesta coluna" />
       </div>
     </section>`;
   }).join('');
@@ -195,6 +229,59 @@ function render() {
 
   wireCards();
   wireDropzones();
+  wireCollapseToggles();
+  wireInlineCreate();
+}
+
+// Toggle de colapso por coluna — persiste e re-renderiza (board já está em memória,
+// sem round-trip). Ver loadCollapsed/saveCollapsed acima.
+function wireCollapseToggles() {
+  document.querySelectorAll<HTMLButtonElement>('[data-collapse-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.collapseToggle;
+      if (!id) return;
+      const map = loadCollapsed();
+      if (map[id]) delete map[id]; else map[id] = true;
+      saveCollapsed(map);
+      render();
+    });
+  });
+}
+
+// "+ Nova tarefa" inline no rodapé de cada coluna (spec 52): Enter cria já na
+// coluna certa (POST /app/tasks/create com column_id); Esc limpa o campo.
+function wireInlineCreate() {
+  document.querySelectorAll<HTMLInputElement>('[data-inline-input]').forEach((input) => {
+    input.addEventListener('keydown', async (e) => {
+      if (e.key === 'Escape') {
+        input.value = '';
+        input.blur();
+        return;
+      }
+      if (e.key !== 'Enter') return;
+      const title = input.value.trim();
+      if (!title) return;
+      const columnId = input.dataset.inlineInput || '';
+      input.disabled = true;
+      try {
+        const res = await appFetch('/app/tasks/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, column_id: columnId }),
+        });
+        if (res.ok) {
+          input.value = '';
+          await load();
+          return; // load() já re-renderiza (novo input não fica desabilitado)
+        }
+        console.warn('tasks: inline create failed', res.status);
+      } catch (err) {
+        console.warn('tasks: inline create failed', err);
+      }
+      input.disabled = false;
+      input.focus();
+    });
+  });
 }
 
 // Move um card pra uma coluna (drag & drop). O servidor deriva status + completed_at
