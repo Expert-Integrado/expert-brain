@@ -731,14 +731,20 @@ export async function moveTaskToColumn(env: Env, id: string, columnId: string, n
   return after ?? 'not-found';
 }
 
-// Realoca em massa as tasks de uma coluna pra outra (usado ao arquivar uma coluna
-// com tasks). Só mexe em column_id — status não muda (destino é da MESMA categoria,
-// validado no caller). Retorna quantas linhas mudaram.
+// Realoca em massa as tasks (vivas) de uma coluna pra outra (usado ao arquivar uma
+// coluna com tasks). Só mexe em column_id — status não muda (destino é da MESMA
+// categoria, validado no caller). Retorna quantas tasks foram movidas. NÃO usa
+// res.meta.changes: os triggers de FTS em `notes` (notes_au) inflam o `changes` de
+// um UPDATE em notes (escritas nas shadow tables do FTS5 contam junto), então o
+// count vem de um count(*) antes do UPDATE (imune aos triggers).
 export async function reassignColumn(env: Env, fromId: string, toId: string): Promise<number> {
-  const res = await env.DB.prepare(
-    `UPDATE notes SET column_id = ? WHERE kind = 'task' AND column_id = ?`
-  ).bind(toId, fromId).run();
-  return res.meta?.changes ?? 0;
+  const n = await countTasksInColumn(env, fromId);
+  if (n > 0) {
+    await env.DB.prepare(
+      `UPDATE notes SET column_id = ? WHERE kind = 'task' AND deleted_at IS NULL AND column_id = ?`
+    ).bind(toId, fromId).run();
+  }
+  return n;
 }
 
 // Conta tasks (não deletadas) alocadas numa coluna — pra decidir se o arquivamento
