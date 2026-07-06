@@ -320,6 +320,36 @@ const MIGRATION_0014_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_inbox_pending ON inbox_items (created_at) WHERE triaged_at IS NULL`,
 ];
 
+// 0015 — MENÇÕES (tecido conectivo nota↔task↔contato, spec 50-console-v2/62). Vínculo
+// FIRST-CLASS entre uma nota/task do Brain e uma entidade do vault de contatos
+// (expert-contacts, D1 SEPARADO — por isso `entity_id` NÃO tem FK cross-DB). NÃO é
+// edge do grafo (edges de/para task são rejeitadas por design; menção é outra relação,
+// outra tabela). `note_id` referencia `notes(id)` (nota OU task — mesma tabela) com
+// ON DELETE CASCADE: apagar a nota HARD limpa as menções (o soft-delete não cascateia,
+// mas os read paths de menção já filtram nota viva). `entity_label` é CACHE de exibição
+// (o nome canônico continua no contacts; refresh no render quando divergir é aceitável —
+// não sincronizamos ativamente). UNIQUE(note_id, entity_id) garante 1 menção por par →
+// dedupe → 1 evento `mentioned_in_brain` na timeline do contato por par. A coluna
+// `origin_note_id` (só TASKS usam) registra a nota que ORIGINOU a task ("Criar task desta
+// nota") pra auditar "por que essa task existe". ADD COLUMN é seguro (não recria `notes`,
+// que cascatearia edges/tags via FK): nasce NULL pra TODAS as linhas existentes. O número
+// 0012 citado na spec era indicativo — o trilho já ia até 0014_inbox, então usou-se o
+// próximo livre: 0015 (regra transversal em specs/90-roadmap.md). Tudo aditivo.
+const MIGRATION_0015_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS mentions (
+    id           TEXT PRIMARY KEY,
+    note_id      TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    entity_id    TEXT NOT NULL,
+    entity_label TEXT,
+    created_at   INTEGER NOT NULL,
+    UNIQUE (note_id, entity_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mentions_entity ON mentions (entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_mentions_note ON mentions (note_id)`,
+  `ALTER TABLE notes ADD COLUMN origin_note_id TEXT REFERENCES notes(id)`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_origin ON notes (origin_note_id) WHERE kind = 'task'`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -335,6 +365,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0012_api_key_scopes', stmts: MIGRATION_0012_STMTS },
   { id: '0013_private_notes', stmts: MIGRATION_0013_STMTS },
   { id: '0014_inbox', stmts: MIGRATION_0014_STMTS },
+  { id: '0015_mentions', stmts: MIGRATION_0015_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

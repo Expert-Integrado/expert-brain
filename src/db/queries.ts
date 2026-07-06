@@ -69,6 +69,7 @@ export interface NoteRow {
   created_at: number; updated_at: number;
   deleted_at?: number | null; // soft-delete: null = viva, timestamp = na lixeira
   private?: number; // selo de privacidade (spec 31): 0 = pública (default), 1 = privada
+  origin_note_id?: string | null; // menções (spec 62): nota que originou a task ("Criar task desta nota")
 }
 
 export interface EdgeRow {
@@ -493,6 +494,9 @@ export interface TaskRow {
   // (default), 1 = privada. Gate dos read paths de task via includePrivate (spec 59).
   // Opcional no tipo porque resolveShare (share.ts) faz um SELECT parcial sem a coluna.
   private?: number;
+  // Nota que originou a task (migration 0015, spec 62). NULL = task avulsa. Só tasks
+  // usam; preenchido por "Criar task desta nota" pra auditar a origem da task.
+  origin_note_id?: string | null;
   created_at: number; updated_at: number;
   // Compartilhamento público read-only (migration 0008). share_token guarda o HASH
   // sha256 do token (nunca o plaintext); NULL = task não compartilhada. Opcionais no
@@ -517,9 +521,12 @@ export interface InsertTaskInput {
   // Selo de privacidade (spec 59): 1 = nasce privada. Omitir/0 = pública (default). O
   // save_task expõe isso como flag opcional; a UI/tool marcam via setTaskPrivate depois.
   private?: 0 | 1;
+  // Nota que originou a task (spec 62). Omitir/null → task avulsa. Só preenchido pelo
+  // fluxo "Criar task desta nota" (task-from-note); herda as menções da nota de origem.
+  origin_note_id?: string | null;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_at, updated_at, share_token, share_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
@@ -558,10 +565,11 @@ export async function insertTask(env: Env, t: InsertTaskInput, actor?: string | 
   }
   // `actor` (spec 17): autoria da escrita — mesma semântica de insertNote (tasks
   // moram na tabela notes). Ausente → NULL. `private` (spec 59): default 0 (pública).
+  // `origin_note_id` (spec 62): nota que originou a task (só o fluxo task-from-note preenche).
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,private,created_by,updated_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.private ?? 0, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,private,origin_note_id,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.private ?? 0, t.origin_note_id ?? null, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -1323,4 +1331,164 @@ export async function countPendingInbox(env: Env): Promise<number> {
     `SELECT count(*) AS c FROM inbox_items WHERE triaged_at IS NULL`
   ).first<{ c: number }>();
   return r?.c ?? 0;
+}
+
+// ─────────────────────────── MENÇÕES (spec 62) ───────────────────────────
+// Tecido conectivo nota↔task↔contato. `mentions` (migration 0015) liga uma nota/task
+// (notes.id) a uma entidade do vault de contatos (entity_id, sem FK cross-DB). Tabela
+// PRÓPRIA — menção NÃO é edge do grafo (edges de/para task são rejeitadas por design).
+// `entity_label` é CACHE de exibição (nome canônico vive no contacts; refresh no render).
+// UNIQUE(note_id, entity_id) → dedupe → 1 evento por par. Os efeitos colaterais
+// (evento na timeline do contato, aresta de menção no grafo) ficam nas superfícies que
+// CRIAM a menção (src/mcp/mentions.ts) — aqui só a persistência + leitura.
+
+export interface MentionRow {
+  id: string;
+  note_id: string;
+  entity_id: string;
+  entity_label: string | null;
+  created_at: number;
+}
+
+// Cria a menção (note_id, entity_id). Retorna true se NOVA, false se já existia (o par
+// é dedupe pela UNIQUE). Quando já existe, REFRESCA o entity_label cacheado (o nome pode
+// ter mudado no contacts). O caller dispara o evento `mentioned_in_brain` só quando NOVA
+// (1 evento por par). `mentions` não tem triggers (só `notes` tem), então res.meta.changes
+// é confiável aqui (não inflado por shadow tables de FTS).
+export async function upsertMention(
+  env: Env,
+  m: { id: string; noteId: string; entityId: string; entityLabel: string | null; now: number }
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `INSERT OR IGNORE INTO mentions (id, note_id, entity_id, entity_label, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).bind(m.id, m.noteId, m.entityId, m.entityLabel, m.now).run();
+  const created = (res.meta?.changes ?? 0) > 0;
+  if (!created && m.entityLabel !== null) {
+    // Já existia: só atualiza o cache do label se veio um valor novo (não apaga um
+    // label bom com null quando a re-checagem do nome falhou).
+    await env.DB.prepare(
+      `UPDATE mentions SET entity_label = ? WHERE note_id = ? AND entity_id = ?`
+    ).bind(m.entityLabel, m.noteId, m.entityId).run();
+  }
+  return created;
+}
+
+// Remove a menção (note_id, entity_id). Retorna true se removeu. Remoção NÃO apaga o
+// evento já disparado na timeline do contato (timeline é histórico — spec 62 §3).
+export async function removeMention(env: Env, noteId: string, entityId: string): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `DELETE FROM mentions WHERE note_id = ? AND entity_id = ?`
+  ).bind(noteId, entityId).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Menções de UMA nota/task (chips no detalhe + retorno do get_note/get_task). Ordem
+// estável por created_at.
+export async function listMentionsForNote(env: Env, noteId: string): Promise<MentionRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT id, note_id, entity_id, entity_label, created_at
+     FROM mentions WHERE note_id = ? ORDER BY created_at ASC, id ASC`
+  ).bind(noteId).all<MentionRow>();
+  return r.results ?? [];
+}
+
+// Ids de nota/task que mencionam UMA entidade (base do filtro list_tasks mentions_entity
+// e do render das seções reversas). Só os ids — o caller cruza com o conjunto de tasks
+// já gateado por privacidade/status.
+export async function listNoteIdsMentioning(env: Env, entityId: string): Promise<Set<string>> {
+  const r = await env.DB.prepare(
+    `SELECT note_id FROM mentions WHERE entity_id = ?`
+  ).bind(entityId).all<{ note_id: string }>();
+  return new Set((r.results ?? []).map((x) => x.note_id));
+}
+
+// Linha reduzida das superfícies reversas (página do contato) — nota OU task.
+export interface MentioningNoteRow {
+  id: string;
+  title: string;
+  kind: string | null;
+  status: string | null;
+  due_at: number | null;
+  priority: number | null;
+  private: number;
+  created_at: number;
+  updated_at: number;
+}
+
+// Notas/tasks que mencionam UMA entidade (spec 62 §4 — seções reversas da página do
+// contato + auditoria). `mode`:
+//   'knowledge' → só notas de conhecimento (kind IS NULL OR kind <> 'task')
+//   'task'      → só tasks (kind = 'task'), opcionalmente filtradas por `statuses`
+// includePrivate default false (fail-closed) esconde nota/task privada — a página do
+// contato é sessão do dono e passa true; superfícies sem escopo passam false.
+export async function listNotesMentioning(
+  env: Env,
+  entityId: string,
+  opts: { mode: 'knowledge' | 'task'; statuses?: TaskStatus[]; includePrivate?: boolean; limit?: number } = { mode: 'knowledge' }
+): Promise<MentioningNoteRow[]> {
+  const conds = ['m.entity_id = ?', 'n.deleted_at IS NULL'];
+  const binds: unknown[] = [entityId];
+  conds.push(opts.mode === 'task' ? `n.kind = 'task'` : NON_TASK_FILTER.replace(/kind/g, 'n.kind'));
+  if (opts.mode === 'task' && opts.statuses && opts.statuses.length > 0) {
+    conds.push(`n.status IN (${opts.statuses.map(() => '?').join(',')})`);
+    binds.push(...opts.statuses);
+  }
+  if (!opts.includePrivate) conds.push(`n.${PUBLIC_ONLY_FILTER}`);
+  const limit = opts.limit ?? 100;
+  const r = await env.DB.prepare(
+    `SELECT n.id, n.title, n.kind, n.status, n.due_at, n.priority, n.private, n.created_at, n.updated_at
+     FROM mentions m JOIN notes n ON n.id = m.note_id
+     WHERE ${conds.join(' AND ')}
+     ORDER BY n.updated_at DESC, n.id ASC
+     LIMIT ?`
+  ).bind(...binds, limit).all<MentioningNoteRow>();
+  return r.results ?? [];
+}
+
+// Conta notas/tasks que mencionam a entidade (contador de tasks FECHADAS na página do
+// contato — spec 62 §4). Mesmos filtros de listNotesMentioning.
+export async function countNotesMentioning(
+  env: Env,
+  entityId: string,
+  opts: { mode: 'knowledge' | 'task'; statuses?: TaskStatus[]; includePrivate?: boolean } = { mode: 'knowledge' }
+): Promise<number> {
+  const conds = ['m.entity_id = ?', 'n.deleted_at IS NULL'];
+  const binds: unknown[] = [entityId];
+  conds.push(opts.mode === 'task' ? `n.kind = 'task'` : NON_TASK_FILTER.replace(/kind/g, 'n.kind'));
+  if (opts.mode === 'task' && opts.statuses && opts.statuses.length > 0) {
+    conds.push(`n.status IN (${opts.statuses.map(() => '?').join(',')})`);
+    binds.push(...opts.statuses);
+  }
+  if (!opts.includePrivate) conds.push(`n.${PUBLIC_ONLY_FILTER}`);
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM mentions m JOIN notes n ON n.id = m.note_id WHERE ${conds.join(' AND ')}`
+  ).bind(...binds).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+// Tasks nascidas de UMA nota (spec 62 §4 — seção "Tasks originadas desta nota" no
+// detalhe da nota). includePrivate default false esconde task privada.
+export async function listTasksFromOrigin(
+  env: Env, noteId: string, includePrivate = false
+): Promise<TaskRow[]> {
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const r = await env.DB.prepare(
+    `SELECT ${TASK_COLS} FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL AND origin_note_id = ?${priv}
+     ORDER BY created_at DESC, id ASC`
+  ).bind(noteId).all<TaskRow>();
+  return r.results ?? [];
+}
+
+// Pares (note_id, entity_id, entity_label) de menções cujo note é uma nota/task VIVA —
+// alimenta a camada de arestas nota↔contato do grafo (spec 62 §3.2). Filtro de nota
+// viva + não-privada opcional é do caller (o grafo é superfície do dono).
+export async function listAllMentions(env: Env): Promise<MentionRow[]> {
+  const r = await env.DB.prepare(
+    `SELECT m.id, m.note_id, m.entity_id, m.entity_label, m.created_at
+     FROM mentions m JOIN notes n ON n.id = m.note_id
+     WHERE n.deleted_at IS NULL`
+  ).all<MentionRow>();
+  return r.results ?? [];
 }
