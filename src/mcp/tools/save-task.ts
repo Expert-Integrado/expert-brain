@@ -5,6 +5,7 @@ import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js'
 import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskByTag, findSimilarActiveTasksByTitle } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
+import { resolveProjectForWrite } from './project-ref.js';
 
 const inputSchema = {
   title: z.string().min(1).max(200).describe('What needs to be done — short, action-first. Becomes the task card title.'),
@@ -17,6 +18,9 @@ const inputSchema = {
   status: z.enum(TASK_STATUSES).optional().describe("Initial status. Default 'open'."),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe("Canonical English slugs (1-3). Default ['operations']."),
   tags: z.array(z.string()).optional().describe('Optional tags (e.g. contact/company names mentioned).'),
+  project: z.string().min(1).max(40).optional().describe(
+    "Optional PROJECT (folder) — a single-valued grouping axis, distinct from tags (which are multi/transversal). Accepts a project id (proj_...) or a label (case-insensitive). A label with no match AUTO-CREATES the project; REUSE existing labels (the response echoes the resolved project). Archived projects are not assignable. To create the task WITHOUT a project, omit this."
+  ),
   dedupe_key: z.string().min(1).max(120).optional().describe(
     'Optional stable idempotency key. Pass a value derived from the source (e.g. an email id, a card id) when the SAME task could be created twice across sessions or on a network retry. If an ACTIVE task with this key already exists, no duplicate is created — the existing task is returned with deduped:true.'
   ),
@@ -30,6 +34,7 @@ A task is stored as a note with kind='task' plus status/due/priority — it live
 Behavior:
 - No edges, no recall sweep, no Feynman tldr required — a task is just an action with optional due/priority.
 - Default status is 'open', default domain is ['operations'].
+- Optional \`project\` (folder): a single-valued grouping (id or label). A new label auto-creates the project; REUSE existing labels. Distinct from tags (multi/transversal). The response echoes the resolved project.
 - Pass the due date in BRT via \`due\` (e.g. "2026-06-22 14:00"). Date-only means "by end of that day".
 - Tasks do NOT get embedded — they never show up in recall(), the graph, or the notes list. Manage them on the /app/tasks board or via list_tasks_due_today / complete_task.
 
@@ -48,6 +53,7 @@ interface SaveTaskInput {
   status?: TaskStatus;
   domains?: string[];
   tags?: string[];
+  project?: string;
   dedupe_key?: string;
   allow_new_domain?: boolean;
 }
@@ -142,6 +148,19 @@ export function registerSaveTask(server: any, env: Env): void {
         }
       }
 
+      // Projeto (spec 58): resolve o ref (id/label) num project_id, auto-criando o
+      // projeto se o label for novo. Roda DEPOIS do dedupe (uma criação deduplicada
+      // não deve auto-criar projeto) e ANTES do insert (erro de projeto = não cria a
+      // task). project omitido → sem projeto.
+      let projectId: string | null = null;
+      let resolvedProject: { id: string; label: string } | null = null;
+      if (input.project !== undefined) {
+        const pr = await resolveProjectForWrite(env, input.project, now);
+        if (!pr.ok) return toolError(pr.error);
+        projectId = pr.projectId;
+        resolvedProject = pr.project ? { id: pr.project.id, label: pr.project.label } : null;
+      }
+
       const id = newId();
       // Task nascendo fechada (done/canceled) stampa completed_at — preserva o
       // invariante "fechada ⇒ completed_at preenchido". Ver spec 14 item 4 (opção A).
@@ -157,6 +176,7 @@ export function registerSaveTask(server: any, env: Env): void {
         due_at: dueMs,
         priority: input.priority ?? null,
         completed_at: closing ? now : null,
+        project_id: projectId,
         created_at: now,
         updated_at: now,
       });
@@ -174,6 +194,7 @@ export function registerSaveTask(server: any, env: Env): void {
         priority: input.priority ?? null,
         due_at: dueMs,
         due_brt: dueMs !== null ? formatBrtDateTime(dueMs) : null,
+        project: resolvedProject,
         updated_at: now,
       };
       if (possibleDuplicates.length > 0) {

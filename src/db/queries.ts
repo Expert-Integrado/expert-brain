@@ -381,6 +381,9 @@ export interface TaskRow {
   // Estágio visual do Kanban (migration 0009). NULL = nunca alocado (render cai no
   // default da categoria do status). Ver resolveTaskColumn / SEED_COLUMN_BY_CATEGORY.
   column_id: string | null;
+  // Projeto/pasta (migration 0011). NULL = "Sem projeto" (default). Single-valorado —
+  // ortogonal a domains e tags. Ver TaskProject / spec 58.
+  project_id: string | null;
   created_at: number; updated_at: number;
   // Compartilhamento público read-only (migration 0008). share_token guarda o HASH
   // sha256 do token (nunca o plaintext); NULL = task não compartilhada. Opcionais no
@@ -400,9 +403,11 @@ export interface InsertTaskInput {
   // Estágio visual (migration 0009). Omitir/null → insertTask resolve a coluna
   // default da categoria do status. Ver spec 51.
   column_id?: string | null;
+  // Projeto/pasta (migration 0011). Omitir/null → task nasce sem projeto. Ver spec 58.
+  project_id?: string | null;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, created_at, updated_at, share_token, share_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
@@ -435,9 +440,9 @@ export async function insertTask(env: Env, t: InsertTaskInput): Promise<void> {
     columnId = col?.id ?? null;
   }
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,created_at,updated_at)
-     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?)`
-  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.created_at, t.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.created_at, t.updated_at).run();
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -613,6 +618,10 @@ export interface TaskPatch {
   // Substitui TODAS as tags ([] limpa as não-reservadas). Reservadas dedupe:*
   // são preservadas automaticamente por replaceTaskTagsPreservingDedupe — ver ali.
   tags?: string[];
+  // Projeto/pasta (spec 58). id de projeto pra vincular, ou null pra DESvincular
+  // ("Sem projeto"). Omitir mantém. A resolução de label→id/auto-create acontece
+  // ANTES (nas tools/endpoints); aqui só grava o id (ou null) já resolvido.
+  project_id?: string | null;
 }
 
 // Edita campos de uma task existente. Faz UPDATE só das colunas presentes no patch
@@ -639,6 +648,7 @@ export async function updateTask(
   if (patch.body !== undefined) { sets.push('body = ?'); binds.push(patch.body); }
   if (patch.due_at !== undefined) { sets.push('due_at = ?'); binds.push(patch.due_at); }
   if (patch.priority !== undefined) { sets.push('priority = ?'); binds.push(patch.priority); }
+  if (patch.project_id !== undefined) { sets.push('project_id = ?'); binds.push(patch.project_id); }
   if (patch.domains !== undefined) { sets.push('domains = ?'); binds.push(patch.domains); }
   if (patch.status !== undefined) {
     const closing = patch.status === 'done' || patch.status === 'canceled';
@@ -950,4 +960,141 @@ export async function countTaskCommentsBatch(
 export async function deleteTaskComment(env: Env, id: string): Promise<boolean> {
   const res = await env.DB.prepare(`DELETE FROM task_comments WHERE id = ?`).bind(id).run();
   return (res.meta?.changes ?? 0) > 0;
+}
+
+// ─────────────────────────── TASK PROJECTS ───────────────────────────
+// Projetos/pastas de task (migration 0011). Eixo de agrupamento single-valorado,
+// ORTOGONAL a domains e tags. Tabela PRÓPRIA — projeto não é nota, não embeda, não
+// entra no grafo/recall. Ver spec 58.
+export const TASK_PROJECT_CAP = 64;
+
+export interface TaskProject {
+  id: string;
+  label: string;
+  color: string | null;      // hex #rrggbb; null = neutro do tema
+  position: number;
+  archived_at: number | null; // arquivado some dos selects/filtros default (histórico consultável)
+  created_at: number;
+}
+
+// Lista projetos. Por padrão só ATIVOS (archived_at IS NULL), ordenados por position.
+// includeArchived=true traz também os arquivados (usado pela UI de config e pela
+// resolução de filtro do board, que lista histórico).
+export async function listTaskProjects(env: Env, includeArchived = false): Promise<TaskProject[]> {
+  const sql = includeArchived
+    ? `SELECT id, label, color, position, archived_at, created_at FROM task_projects ORDER BY position ASC`
+    : `SELECT id, label, color, position, archived_at, created_at FROM task_projects WHERE archived_at IS NULL ORDER BY position ASC`;
+  const r = await env.DB.prepare(sql).all<TaskProject>();
+  return r.results ?? [];
+}
+
+export async function getProjectById(env: Env, id: string): Promise<TaskProject | null> {
+  return env.DB.prepare(
+    `SELECT id, label, color, position, archived_at, created_at FROM task_projects WHERE id = ?`
+  ).bind(id).first<TaskProject>();
+}
+
+// Resolve um projeto por id EXATO ou por label (case-insensitive Unicode, trim). O
+// match é feito em JS sobre o conjunto de projetos (cap 64 → carregar tudo é barato) —
+// SQLite lower() só cobre ASCII, e labels podem ter acento ("Pessoal", "Educação").
+// activesOnly=true restringe aos ativos (usado pela escrita: só vincula a projeto
+// ativo); false varre ativos + arquivados (usado pelo filtro do board — histórico).
+export async function getProjectByIdOrLabel(
+  env: Env, ref: string, activesOnly: boolean
+): Promise<TaskProject | null> {
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+  const all = await listTaskProjects(env, true);
+  const pool = activesOnly ? all.filter((p) => p.archived_at === null) : all;
+  const byId = pool.find((p) => p.id === trimmed);
+  if (byId) return byId;
+  const wanted = trimmed.toLowerCase();
+  return pool.find((p) => p.label.trim().toLowerCase() === wanted) ?? null;
+}
+
+// Conta TODOS os projetos (ativos + arquivados) — base do cap de 64 (criar via UI e
+// auto-create do MCP).
+export async function countTaskProjects(env: Env): Promise<number> {
+  const r = await env.DB.prepare(`SELECT count(*) AS c FROM task_projects`).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+// Cria um projeto novo. position = max+1 (entra no fim). archived_at nasce null.
+// O caller já validou o cap (countTaskProjects < TASK_PROJECT_CAP) e gerou o id
+// ('proj_' + rand8). Retorna o projeto criado.
+export async function createTaskProject(
+  env: Env, input: { id: string; label: string; color: string | null }, now: number
+): Promise<TaskProject> {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(position), 0) AS m FROM task_projects`
+  ).first<{ m: number }>();
+  const position = (row?.m ?? 0) + 1;
+  await env.DB.prepare(
+    `INSERT INTO task_projects (id, label, color, position, archived_at, created_at)
+     VALUES (?, ?, ?, ?, NULL, ?)`
+  ).bind(input.id, input.label, input.color, position, now).run();
+  return { id: input.id, label: input.label, color: input.color, position, archived_at: null, created_at: now };
+}
+
+// Edita label/color de um projeto. Retorna false se o id não existe.
+export async function updateTaskProject(
+  env: Env, id: string, patch: { label?: string; color?: string | null }
+): Promise<boolean> {
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  if (patch.label !== undefined) { sets.push('label = ?'); binds.push(patch.label); }
+  if (patch.color !== undefined) { sets.push('color = ?'); binds.push(patch.color); }
+  if (sets.length === 0) return false;
+  binds.push(id);
+  const res = await env.DB.prepare(
+    `UPDATE task_projects SET ${sets.join(', ')} WHERE id = ?`
+  ).bind(...binds).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Reordena trocando a position com a vizinha na direção dada (↑/↓), no conjunto de
+// projetos ATIVOS ordenado por position. Retorna false se não há vizinha (já é a
+// primeira/última) ou o id não é um projeto ativo.
+export async function reorderTaskProject(env: Env, id: string, direction: 'up' | 'down'): Promise<boolean> {
+  const list = await listTaskProjects(env, false); // ativos, ordenados por position
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx === -1) return false;
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= list.length) return false;
+  const a = list[idx];
+  const b = list[swapIdx];
+  const upd = env.DB.prepare(`UPDATE task_projects SET position = ? WHERE id = ?`);
+  await env.DB.batch([upd.bind(b.position, a.id), upd.bind(a.position, b.id)]);
+  return true;
+}
+
+// Arquiva/desarquiva um projeto. Só mexe em archived_at — as tasks NÃO são realocadas
+// (project_id fica; o chip renderiza esmaecido). Retorna false se o id não existe.
+export async function setProjectArchived(env: Env, id: string, archivedAt: number | null): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE task_projects SET archived_at = ? WHERE id = ?`
+  ).bind(archivedAt, id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Conta tasks (vivas) de UM projeto — pra a UI de config mostrar o tamanho de cada
+// pasta e pra decidir realocação (não há: arquivar mantém as tasks).
+export async function countTasksByProject(env: Env, projectId: string): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM notes WHERE kind = 'task' AND deleted_at IS NULL AND project_id = ?`
+  ).bind(projectId).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+// Contagem de tasks por project_id numa query só (GROUP BY) — pra a UI de config
+// mostrar o tamanho de cada pasta sem N+1.
+export async function taskCountsByProject(env: Env): Promise<Map<string, number>> {
+  const r = await env.DB.prepare(
+    `SELECT project_id, count(*) AS c FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL AND project_id IS NOT NULL
+     GROUP BY project_id`
+  ).all<{ project_id: string; c: number }>();
+  const m = new Map<string, number>();
+  for (const row of r.results ?? []) m.set(row.project_id, row.c);
+  return m;
 }

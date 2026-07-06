@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments } from '../../db/queries.js';
+import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -12,7 +12,7 @@ const DESCRIPTION = `Reads a single TASK by id, with its full task state.
 
 get_note returns a NOTE shape (title/body/tldr/domains) WITHOUT status/due/priority — it does NOT serve tasks. Use get_task to read a task's status, due date, priority, completed_at, tags and body in one call.
 
-Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, comments, comment_count, created_at, updated_at, url }. \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_name, body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
+Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_name, body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
 
 interface GetTaskInput { id: string; }
 
@@ -41,6 +41,9 @@ export function registerGetTask(server: any, env: Env): void {
       const commentCount = await countTaskComments(env, input.id);
       const offset = commentCount > 50 ? commentCount - 50 : 0;
       const comments = await listTaskComments(env, input.id, 50, offset);
+      // Projeto/pasta (spec 58): resolve {id,label} da task (mesmo arquivado — o
+      // get_task não esconde a pasta; o chip é que esmaece na UI).
+      const proj = t.project_id ? await getProjectById(env, t.project_id) : null;
       const now = Date.now();
       return toolSuccess({
         id: t.id,
@@ -57,6 +60,7 @@ export function registerGetTask(server: any, env: Env): void {
         domains: JSON.parse(t.domains),
         tags,
         column: col ? { id: col.id, label: col.label } : null,
+        project: proj ? { id: proj.id, label: proj.label } : null,
         comment_count: commentCount,
         comments: comments.map((c) => ({
           id: c.id,

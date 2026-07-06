@@ -239,6 +239,31 @@ const MIGRATION_0010_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments (task_id, created_at)`,
 ];
 
+// 0011 — TASK PROJECTS (pastas). Eixo de agrupamento de tasks estilo pasta/lista do
+// ClickUp, ORTOGONAL a domains (área de conhecimento) e a tags (rótulo transversal
+// multi). Projeto é SINGLE-valorado: `notes.project_id` NULL = "Sem projeto" (estado
+// default, válido pra sempre). Tabela PRÓPRIA (não é nota) — projeto não embeda, não
+// entra no grafo/recall. ADD COLUMN project_id é seguro (não recria a tabela notes,
+// que cascatearia edges/tags): nasce NULL pra TODAS as notas/tasks existentes (nenhuma
+// linha é tocada). Índice PARCIAL (WHERE kind='task') não indexa as notas de
+// conhecimento. archived_at: projeto arquivado some dos selects/filtros default, mas o
+// project_id das tasks FICA (chip esmaecido) — arquivar não realoca nada. Cap de 64
+// projetos é validado em código (criar via UI e auto-create do MCP). Sem seeds:
+// nenhum projeto nasce criado. created_at/archived_at em unix ms. Ver spec
+// 50-console-v2/58.
+const MIGRATION_0011_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS task_projects (
+    id          TEXT PRIMARY KEY,
+    label       TEXT NOT NULL,
+    color       TEXT,
+    position    INTEGER NOT NULL,
+    archived_at INTEGER,
+    created_at  INTEGER NOT NULL
+  )`,
+  `ALTER TABLE notes ADD COLUMN project_id TEXT REFERENCES task_projects(id)`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_project ON notes (project_id) WHERE kind = 'task'`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -250,6 +275,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0008_share_task', stmts: MIGRATION_0008_STMTS },
   { id: '0009_kanban_columns', stmts: MIGRATION_0009_STMTS },
   { id: '0010_task_comments', stmts: MIGRATION_0010_STMTS },
+  { id: '0011_task_projects', stmts: MIGRATION_0011_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

@@ -1,6 +1,6 @@
 # Tasks: projetos (pastas) — agrupamento first-class com filtro no board e no MCP
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** `50-console-v2/51` (render dinâmico do board) · suave: `50-console-v2/52` (anatomia do card — o chip de projeto entra no card desenhado lá)
 > **Agente sugerido:** Opus (schema + contrato MCP)
 

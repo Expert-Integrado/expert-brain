@@ -11,6 +11,7 @@ function task(partial: Partial<TaskRow> & { id: string; title: string }): TaskRo
     status: partial.status ?? 'open', due_at: partial.due_at ?? null,
     priority: partial.priority ?? null, completed_at: null,
     column_id: partial.column_id ?? null,
+    project_id: partial.project_id ?? null,
     created_at: NOW, updated_at: NOW,
   };
 }

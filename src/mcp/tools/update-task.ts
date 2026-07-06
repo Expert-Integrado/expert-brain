@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, getTaskById } from '../../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, getTaskById, getProjectById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
+import { resolveProjectForWrite } from './project-ref.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id to edit (from save_task / list_tasks_due_today / the /app/tasks board).'),
@@ -17,6 +18,9 @@ const inputSchema = {
   status: z.enum(TASK_STATUSES).optional().describe("New status. done/canceled stamp completed_at=now; reopening (open/in_progress) clears it. To finish a task with an outcome note, prefer complete_task."),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('New canonical English slugs (1-3).'),
   tags: z.array(z.string()).optional().describe('New tags — REPLACES all existing tags. Pass [] to clear. Reserved dedupe: tags are preserved automatically unless you pass a new dedupe: tag explicitly.'),
+  project: z.string().max(40).optional().describe(
+    "Move the task to a PROJECT (folder). Accepts a project id (proj_...) or label (case-insensitive); a new label AUTO-CREATES the project. Pass an EMPTY string \"\" to remove the task from its project. Archived projects are not assignable. Distinct from tags (multi/transversal)."
+  ),
   expected_updated_at: z.number().int().optional().describe(
     'Optimistic concurrency (optional): pass the `updated_at` you last read (from list_tasks / get_task / a prior write). The edit is applied only if the task has NOT changed since; if it changed, the call fails with a conflict error so you can re-read and reapply. Omit for last-write-wins.'
   ),
@@ -30,6 +34,7 @@ Use this to reopen a task to attach context, reschedule, reprioritize, rename, c
 Behavior:
 - At least one editable field besides id must be provided.
 - \`details\` REPLACES the body (not append). \`tags\` REPLACES all tags ([] clears them).
+- Move to a project with \`project\` (id or label; a new label auto-creates it); remove from its project with \`project: ""\`. Projects are single-valued, distinct from tags.
 - Remove a due date with \`due: "none"\` (or "clear"); remove a priority with \`priority: null\`.
 - Pass either \`due\` (BRT string) or \`due_at\` (unix ms), never both — passing both errors.
 - Changing \`title\` also updates the tldr (a task's tldr mirrors its title).
@@ -50,6 +55,7 @@ interface UpdateTaskInput {
   status?: TaskStatus;
   domains?: string[];
   tags?: string[];
+  project?: string;
   expected_updated_at?: number;
   allow_new_domain?: boolean;
 }
@@ -72,9 +78,10 @@ export function registerUpdateTask(server: any, env: Env): void {
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
-        input.domains !== undefined || input.tags !== undefined;
+        input.domains !== undefined || input.tags !== undefined ||
+        input.project !== undefined;
       if (!hasEdit) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags.');
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project.');
       }
 
       const patch: TaskPatch = {};
@@ -85,6 +92,16 @@ export function registerUpdateTask(server: any, env: Env): void {
       // updateTask aplica a preservação da tag reservada dedupe: (replaceTaskTagsPreservingDedupe) —
       // mesma lógica compartilhada com /app/tasks/update (spec 52).
       if (input.tags !== undefined) patch.tags = input.tags;
+
+      // Projeto (spec 58): resolve id/label (auto-create em label novo); "" desvincula.
+      // Resolvido ANTES do updateTask pra um erro de projeto (arquivado/cap) não gravar
+      // nada. O now é usado tanto no auto-create do projeto quanto no updateTask.
+      const now = Date.now();
+      if (input.project !== undefined) {
+        const pr = await resolveProjectForWrite(env, input.project, now);
+        if (!pr.ok) return toolError(pr.error);
+        patch.project_id = pr.projectId;
+      }
 
       if (input.domains !== undefined) {
         const domainError = validateDomains(input.domains, { allowNewDomain: input.allow_new_domain ?? false });
@@ -115,7 +132,6 @@ export function registerUpdateTask(server: any, env: Env): void {
         }
       }
 
-      const now = Date.now();
       const result = await updateTask(env, input.id, patch, now, input.expected_updated_at);
       if (result === 'not-found') {
         return toolError(
@@ -132,6 +148,7 @@ export function registerUpdateTask(server: any, env: Env): void {
         );
       }
       const task = result;
+      const proj = task.project_id ? await getProjectById(env, task.project_id) : null;
 
       return toolSuccess({
         id: task.id,
@@ -141,6 +158,7 @@ export function registerUpdateTask(server: any, env: Env): void {
         priority: task.priority,
         due_at: task.due_at,
         due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
+        project: proj ? { id: proj.id, label: proj.label } : null,
         updated_at: task.updated_at,
       });
     }) as any
