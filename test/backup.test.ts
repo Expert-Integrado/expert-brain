@@ -23,8 +23,9 @@ const TRICKY_BODY = "linha 1 com 'aspas'\nlinha 2: função, ação; -- não é 
 
 async function wipeData(): Promise<void> {
   // filho → pai por causa das FKs (o CASCADE de notes também limparia, mas a
-  // ordem explícita documenta a dependência).
-  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'notes', 'api_keys', 'meta']) {
+  // ordem explícita documenta a dependência). kanban_columns vem DEPOIS de notes
+  // (notes.column_id referencia kanban_columns) — spec 51.
+  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'notes', 'api_keys', 'meta', 'kanban_columns']) {
     await E.DB.exec(`DELETE FROM ${t}`);
   }
 }
@@ -69,6 +70,12 @@ async function seedFixture(): Promise<void> {
     'bkp-k1', 'owner@example.com', 'chave-teste', 'eb_pat_abc', 'hash-fixo-de-teste', 6000
   );
   await run(`INSERT INTO meta (key, value) VALUES ('personalization_prompt', 'oi, sou o dono da instância')`);
+  // Colunas do Kanban (spec 51): wipeData limpou; re-semeia os 4 seeds canônicos
+  // pra a suíte ser hermética (storage é compartilhado entre arquivos no singleWorker).
+  await run(`INSERT INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_aberto', 'A fazer', NULL, 1, 'open', NULL)`);
+  await run(`INSERT INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_progresso', 'Em progresso', NULL, 2, 'in_progress', NULL)`);
+  await run(`INSERT INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_concluido', 'Concluído', NULL, 3, 'done', NULL)`);
+  await run(`INSERT INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_cancelado', 'Cancelado', NULL, 4, 'canceled', 1)`);
 }
 
 const FIXTURE_COUNTS: Record<string, number> = {
@@ -79,7 +86,8 @@ const FIXTURE_COUNTS: Record<string, number> = {
   note_media: 1,
   api_keys: 1,
   meta: 1,
-  _migrations: 8,
+  kanban_columns: 4,
+  _migrations: 9,
 };
 
 beforeAll(async () => {
@@ -111,7 +119,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0008_share_task');
+    expect(manifest.schema_version).toBe('0009_kanban_columns');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

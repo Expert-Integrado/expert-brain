@@ -4,11 +4,12 @@
 // round-trip (test/backup.test.ts, que roda dentro do workerd) — uma única
 // implementação da lógica de restore, validada em CI.
 
-// Ordem de import que respeita as FKs do schema: notes antes de tudo que
+// Ordem de import que respeita as FKs do schema: kanban_columns antes de notes
+// (notes.column_id referencia kanban_columns.id), e notes antes de tudo que
 // referencia notes (tags/edges/similar_edges/note_media). Tabelas desconhecidas
 // (migrations futuras) vão pro final, em ordem alfabética — se referenciarem
 // notes, já estarão depois dela.
-const TABLE_ORDER = ['_migrations', 'meta', 'api_keys', 'notes', 'tags', 'edges', 'similar_edges', 'note_media'];
+const TABLE_ORDER = ['_migrations', 'meta', 'api_keys', 'kanban_columns', 'notes', 'tags', 'edges', 'similar_edges', 'note_media'];
 
 export function sortTablesForRestore(names) {
   return [...names].sort((a, b) => {
