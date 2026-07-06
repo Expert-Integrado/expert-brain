@@ -167,7 +167,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
 - [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)
 - [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão)
-- [x] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2
+- [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2 (**parcial**: tree do contacts tem write-path/embedding editados sem commit; retomar por herança, não refazer)
 - [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus, ultrathink) — C3
 - [ ] 12. `30-features/31` — selo de privacidade em notas (brain, Opus, ultrathink)
 - [ ] 13. `50-console-v2/59` — tasks privadas (brain, Opus, ultrathink)
