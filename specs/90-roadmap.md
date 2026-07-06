@@ -154,7 +154,7 @@ Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do ch
 
 **Sequência canônica de execução (checklist — 22 sessões, 1 spec por sessão):**
 
-> **LOCK DE EXECUÇÃO (atualizado 06/07/2026):** ondas C0-C4 (itens 1-17 — specs `21`, `51`, `53`, `52`, `58`, `54`, `55`, `57`, `56`, `60`, `17`, `31`, `59`, `61`, `63`, `62`, `64`) foram executadas com sucesso em 05-06/07/2026 via workflows, commits em `feat/console-v2` dos dois repos. Item 17 (`64-resurfacing-digest`) fecha a onda C4 no código; GATE G6-C4 aguarda validação manual + deploy do dono. Item 18 (`65-home-hoje-e-journal`) FALHOU/não rodou numa rodada anterior; reexecutado com sucesso em 06/07/2026 (ver detalhe na linha do item). Item 19 (`66`) e item 20 (`68`) executados com sucesso em 06/07/2026. Lock reduzido: continua valendo SÓ para os itens ainda `[ ]` (21-22, specs `67`,`69`) — **NÃO inicie executor pra esses itens sem checar primeiro se outra sessão já está rodando**. Lock expira se a branch ficar 24h sem commits novos.
+> **ENCERRAMENTO (06/07/2026):** Ondas C0-C5 (itens 1-20) executadas em 05-06/07/2026 via workflows de agentes; lock ENCERRADO. Pendentes do dono: gates G5/G6 (validação manual), item 21 (spec 67: cron no wrangler.toml local + merge feat/67-backup + deploy) e item 22 (spec 69: exige o dono no loop).
 
 Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
 
@@ -273,7 +273,7 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G5-C2 | — | — |
 | G5-C3 | pendente (dono) | Código pronto (specs `17`/`31`/`59`/`61`, itens 11-14): `expert-brain` `feat/console-v2` `f289ba4` (lado brain da 61) + `expert-contacts` `feat/console-v2` `631ded9` (lado contacts da 61: migration `0007_privacy`, `callerSeesPrivate` fail-closed, filtro em todos os read paths GET, embedding sem privados, flag one-way + toggle UI). `tsc --noEmit` limpo nos dois; `vitest` brain 612 + auth (67 arquivos), contacts 269 (22 arquivos). FALTA (dono): validação manual via `wrangler dev` (marcar 1 contato + 1 observação de teste, conferir proxy sem header via curl e console logado, desmarcar pela UI) + deploy dos DOIS workers na ORDEM contacts→brain (worker antigo ignora o header, então brain novo + contacts antigo não vaza, só não filtra) — tudo SÓ com OK explícito. |
 | G6-C4 | — | — |
-| G6-C5 | — | — |
+| G6-C5 | pendente (dono) | Código pronto (specs `65`, `66`, `68`, itens 18-20): `expert-brain`/`expert-contacts` `feat/console-v2` — tsc + suíte verdes nos dois repos (ver detalhe por spec no checklist acima). FALTA (dono): validação manual (home/journal, paleta Ctrl+K, PWA share target + shortcuts num Android real + Lighthouse) + deploy — tudo SÓ com OK explícito. |
 | G6-C6 | — | — |
 
 Regras de manutenção:
