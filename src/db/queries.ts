@@ -1550,3 +1550,90 @@ export async function listAllMentions(env: Env): Promise<MentionRow[]> {
   ).all<MentionRow>();
   return r.results ?? [];
 }
+
+// ─────────────────────────── JOURNAL (spec 50-console-v2/65) ───────────────────────────
+// Fontes LOCAIS do feed cronológico /app/journal: notas (criação/atualização) e tasks
+// (criação/conclusão). Cada função é um STREAM independente, ordenado por seu próprio
+// timestamp DESC + id DESC (desempate determinístico) — o merge com a 3ª fonte (eventos
+// de contato, via proxy HTTP) acontece em memória (src/web/journal.ts). Cursor composto
+// (ts, id): busca estritamente ANTES do cursor — nunca reprocessa nem pula item mesmo
+// com timestamps empatados (mitigação do risco descrito na spec).
+
+export interface JournalCursor { ts: number; id: string; }
+
+export interface JournalNoteActivityRow {
+  id: string; title: string; kind: string | null; private: number; ts: number;
+}
+
+// Notas CRIADAS (ts = created_at). Toda nota de conhecimento (não-task) entra aqui 1x.
+export async function listNoteCreatedActivity(
+  env: Env, opts: { before?: JournalCursor; limit: number; includePrivate?: boolean }
+): Promise<JournalNoteActivityRow[]> {
+  const priv = opts.includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const cursor = opts.before ? ` AND (created_at < ? OR (created_at = ? AND id < ?))` : '';
+  const binds: unknown[] = opts.before ? [opts.before.ts, opts.before.ts, opts.before.id] : [];
+  binds.push(opts.limit);
+  const r = await env.DB.prepare(
+    `SELECT id, title, kind, private, created_at AS ts FROM notes
+     WHERE deleted_at IS NULL AND ${NON_TASK_FILTER}${priv}${cursor}
+     ORDER BY created_at DESC, id DESC LIMIT ?`
+  ).bind(...binds).all<JournalNoteActivityRow>();
+  return r.results ?? [];
+}
+
+// Notas ATUALIZADAS num dia BRT DIFERENTE do dia de criação (ts = updated_at) — dedupe:
+// uma edição no MESMO dia da criação NÃO gera uma 2ª entrada (spec 65 §3). O deslocamento
+// de -10800s (3h) replica brtParts() (util/time.ts) em SQL puro pra achar o dia BRT.
+export async function listNoteUpdatedActivity(
+  env: Env, opts: { before?: JournalCursor; limit: number; includePrivate?: boolean }
+): Promise<JournalNoteActivityRow[]> {
+  const priv = opts.includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const cursor = opts.before ? ` AND (updated_at < ? OR (updated_at = ? AND id < ?))` : '';
+  const binds: unknown[] = opts.before ? [opts.before.ts, opts.before.ts, opts.before.id] : [];
+  binds.push(opts.limit);
+  const r = await env.DB.prepare(
+    `SELECT id, title, kind, private, updated_at AS ts FROM notes
+     WHERE deleted_at IS NULL AND ${NON_TASK_FILTER}${priv}
+       AND updated_at > created_at
+       AND date((updated_at/1000)-10800,'unixepoch') <> date((created_at/1000)-10800,'unixepoch')
+       ${cursor}
+     ORDER BY updated_at DESC, id DESC LIMIT ?`
+  ).bind(...binds).all<JournalNoteActivityRow>();
+  return r.results ?? [];
+}
+
+export interface JournalTaskActivityRow {
+  id: string; title: string; status: string | null; private: number; ts: number;
+}
+
+// Tasks CRIADAS (ts = created_at) — todas, independente do status atual.
+export async function listTaskCreatedActivity(
+  env: Env, opts: { before?: JournalCursor; limit: number; includePrivate?: boolean }
+): Promise<JournalTaskActivityRow[]> {
+  const priv = opts.includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const cursor = opts.before ? ` AND (created_at < ? OR (created_at = ? AND id < ?))` : '';
+  const binds: unknown[] = opts.before ? [opts.before.ts, opts.before.ts, opts.before.id] : [];
+  binds.push(opts.limit);
+  const r = await env.DB.prepare(
+    `SELECT id, title, status, private, created_at AS ts FROM notes
+     WHERE deleted_at IS NULL AND kind = 'task'${priv}${cursor}
+     ORDER BY created_at DESC, id DESC LIMIT ?`
+  ).bind(...binds).all<JournalTaskActivityRow>();
+  return r.results ?? [];
+}
+
+// Tasks CONCLUÍDAS/CANCELADAS (ts = completed_at).
+export async function listTaskCompletedActivity(
+  env: Env, opts: { before?: JournalCursor; limit: number; includePrivate?: boolean }
+): Promise<JournalTaskActivityRow[]> {
+  const priv = opts.includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const cursor = opts.before ? ` AND (completed_at < ? OR (completed_at = ? AND id < ?))` : '';
+  const binds: unknown[] = opts.before ? [opts.before.ts, opts.before.ts, opts.before.id] : [];
+  binds.push(opts.limit);
+  const r = await env.DB.prepare(
+    `SELECT id, title, status, private, completed_at AS ts FROM notes
+     WHERE deleted_at IS NULL AND kind = 'task' AND completed_at IS NOT NULL${priv}${cursor}
+     ORDER BY completed_at DESC, id DESC LIMIT ?`
+  ).bind(...binds).all<JournalTaskActivityRow>();
+  return r.results ?? [];
+}
