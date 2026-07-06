@@ -61,6 +61,37 @@ export function handleContactsEntityEvents(req: Request, env: Env): Promise<Resp
   return proxyToContacts(req, env, '/app/entity/events');
 }
 
+// Vizinhança de 1º/2º nível (?id=) — spec 50-console-v2/56 §2. Mesmo proxy
+// read-only que o detalhe/timeline — o contacts aceita GET /app/entity/neighbors
+// nessa MESMA allowlist (handler.ts do contacts). SQL puro do lado de lá, zero
+// Vectorize em runtime.
+export function handleContactsEntityNeighbors(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/entity/neighbors');
+}
+
+// Busca DIRETA do detalhe de um contato (sem passar por Request/sessão) — usada
+// no SSR de /app/contacts/<id> (spec 50-console-v2/56 §3) pra decidir 404 ANTES
+// de renderizar o shell. O client hidrata de novo via GET /app/contacts/entity
+// (pequena duplicação de fetch aceita em troca de manter o proxy request-based
+// acima intocado pros demais consumidores — painel do grafo, etc.).
+export async function fetchContactEntityServerSide(
+  env: Env,
+  id: string,
+): Promise<{ status: number; body: any }> {
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return { status: 503, body: { ok: false, error: 'contacts binding/token not configured' } };
+  }
+  const out = new URL('https://contacts/app/entity');
+  out.searchParams.set('vault', 'contacts');
+  out.searchParams.set('id', id);
+  const res = await env.CONTACTS.fetch(new Request(out.toString(), {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+  const body = await res.json().catch(() => null);
+  return { status: res.status, body };
+}
+
 // POST /app/contacts/entity/event — registra interação pela página do Brain
 // (sessão do Brain). Repassa pro contacts via service binding com Bearer
 // CONTACTS_WRITE_TOKEN — token de ESCRITA escopado, NUNCA o CONTACTS_PROXY_TOKEN

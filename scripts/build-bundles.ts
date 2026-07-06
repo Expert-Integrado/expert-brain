@@ -28,6 +28,9 @@ const bundles: Array<{ entry: string; out: string }> = [
   { entry: 'src/web/client/tasks.ts', out: 'assets/tasks.bundle.js' },
   // Editor inline no detalhe de task (/app/tasks/:id): título/corpo/status/prio/prazo
   { entry: 'src/web/client/task-edit.ts', out: 'assets/task-edit.bundle.js' },
+  // Página própria do contato (/app/contacts/:id): cartela + vínculos 1º/2º nível
+  // + timeline (spec 50-console-v2/56)
+  { entry: 'src/web/client/contact-page.ts', out: 'assets/contact-page.bundle.js' },
   // A.24 — Web Worker dedicado pra D3-force simulation
   { entry: 'src/web/client/sim-worker.ts', out: 'assets/sim-worker.bundle.js' },
 ];

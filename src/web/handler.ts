@@ -2,7 +2,8 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors } from './contacts-data.js';
+import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
@@ -101,11 +102,20 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // lado do contacts) — cada handler valida a própria sessão do Brain.
   if (path === '/app/contacts/entity/events' && req.method === 'GET') return handleContactsEntityEvents(req, env);
   if (path === '/app/contacts/entity/event' && req.method === 'POST') return handleContactsEntityEventCreate(req, env);
+  // Vizinhança de 1º/2º nível (spec 50-console-v2/56 §2) — mesmo proxy read-only.
+  if (path === '/app/contacts/entity/neighbors' && req.method === 'GET') return handleContactsEntityNeighbors(req, env);
   const contactsMediaMatch = path.match(/^\/app\/contacts\/media\/([0-9a-f]{64})$/i);
   if (contactsMediaMatch && req.method === 'GET') {
     return handleContactsMedia(req, env, contactsMediaMatch[1]);
   }
   if (path === '/app/contacts-sso' && req.method === 'GET') return handleContactsSso(req, env);
+
+  // Página própria do contato (spec 50-console-v2/56 §3) — regex checado por
+  // ÚLTIMO dentre as rotas /app/contacts/* pra não engolir os paths exatos acima
+  // (data/meta/entity/entity+subpaths). Bundles (.js, tem ponto) e /app/contacts/
+  // media/<hash> (2 segmentos) também não casam este regex de 1 segmento só.
+  const contactIdMatch = path.match(/^\/app\/contacts\/([A-Za-z0-9_-]+)$/);
+  if (contactIdMatch && req.method === 'GET') return handleContactPage(req, env, contactIdMatch[1]);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   // Legado: o 3D virou um MODO dentro de /app/graph (mesmo painel/URL, só o palco
@@ -163,6 +173,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   }
   if (path === '/app/tasks/edit.bundle.js' && req.method === 'GET') {
     return serveBundle('/task-edit.bundle.js');
+  }
+  if (path === '/app/contacts/contact-page.bundle.js' && req.method === 'GET') {
+    return serveBundle('/contact-page.bundle.js');
   }
 
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);

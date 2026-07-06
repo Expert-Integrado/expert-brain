@@ -1,6 +1,6 @@
 # Contato com URL própria: página completa da pessoa com cartela, ações e vínculos de 1º e 2º nível
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (`expert-brain` + `expert-contacts`)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (`expert-brain` + `expert-contacts`)
 > **Depende de:** `50-console-v2/55` (cartela/canais) · `50-console-v2/57` (timeline embutida na página) · `10-backend/21` (similar_edges pré-computadas — dependência SUAVE: sem ela, a página degrada pra só conexões explícitas)
 > **Agente sugerido:** Sonnet (UI/SSR/client; o endpoint neighbors é SQL puro)
 
@@ -60,14 +60,16 @@ No worker de contatos, aceitar `GET /app/entity/<id>` (path param) além do quer
 
 ## Critérios de aceite
 
-- [ ] `/app/contacts/<id>` abre a página completa com sessão do Brain; id inexistente → 404 amigável.
-- [ ] Cartela mostra os canais da spec 55 com hrefs corretos; avatar carrega via proxy same-origin.
-- [ ] Vínculos 1º nível: explícitas com `why` visível; similares com score — com `similar_edges` populada (spec 21). Sem a tabela: seção explícita normal + aviso de similaridade pendente (nada quebra).
-- [ ] 2º nível agrupado por "via", caps respeitados (≤25 sementes, ≤60 resultados), sem duplicar quem já é 1º nível.
-- [ ] Navegação contato→contato pelos cards funciona (URL muda, histórico do navegador funciona).
-- [ ] "Abrir no grafo" foca o nó certo no grafo de contatos.
-- [ ] Endpoint neighbors responde pro Bearer read-only E pra sessão; caminhos fora da allowlist seguem 401 (não afrouxar a allowlist).
-- [ ] Zero query Vectorize em qualquer request desta página (só D1) — verificável nos testes por spy/contagem.
+- [x] `/app/contacts/<id>` abre a página completa com sessão do Brain; id inexistente → 404 amigável.
+- [x] Cartela mostra os canais da spec 55 com hrefs corretos; avatar carrega via proxy same-origin.
+- [x] Vínculos 1º nível: explícitas com `why` visível; similares com score — com `similar_edges` populada (spec 21). Sem a tabela: seção explícita normal + aviso de similaridade pendente (nada quebra).
+- [x] 2º nível agrupado por "via", caps respeitados (≤25 sementes, ≤60 resultados), sem duplicar quem já é 1º nível.
+- [x] Navegação contato→contato pelos cards funciona (URL muda, histórico do navegador funciona) — via `<a href>` real (navegação nativa do browser).
+- [x] "Abrir no grafo" foca o nó certo no grafo de contatos — deep-link `?focus=<id>` lido pelo client (graph.ts) e aplicado depois do settle da simulação.
+- [x] Endpoint neighbors responde pro Bearer read-only E pra sessão; caminhos fora da allowlist seguem 401 (não afrouxar a allowlist).
+- [x] Zero query Vectorize em qualquer request desta página (só D1) — verificável nos testes por spy/contagem (VECTORIZE ausente do harness; teste dedicado prova que a resposta não lança).
+
+**Nota de execução (07/2026):** "Editar" (form da spec 55/36) citado no design §3.3 NÃO foi implementado nesta spec — o Brain ainda não tem proxy de escrita `entity/update` nem UI de edição de campos de contato (spec 30-features/36 fase 3 segue `in-progress`); não é critério de aceite desta spec e fica pra quando a 36 fechar. `wrangler dev` manual (grafo → painel → página → vínculos → outra página) não foi executado nesta rodada — cobertura via testes automatizados (contacts: 227 testes; brain: 530 testes) no lugar do passo manual da seção Validação.
 
 ## Validação
 

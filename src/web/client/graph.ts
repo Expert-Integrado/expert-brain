@@ -243,6 +243,10 @@ async function main() {
   // Declarado cedo (antes do afterRender) pra evitar TDZ — usado por P2 (pular
   // camadas 2D durante o reveal) e pelo recentro da câmera no settle.
   let cameraSettled = false;
+  // Deep-link ?focus=<id> (spec 50-console-v2/56, "Abrir no grafo" na página do
+  // contato): foca o nó DEPOIS do settle inicial da simulação — se disparado
+  // antes, o applyCoreBBox()+animatedReset() do settle desfaz o enquadramento.
+  let pendingFocusId: string | null = new URLSearchParams(window.location.search).get('focus') || null;
   const state = {
     hoveredNode: null as string | null,
     hoveredNeighbors: null as Set<string> | null,
@@ -766,6 +770,14 @@ async function main() {
       void renderer.getCamera().animatedReset({ duration: 400 });
       // Redesenha as camadas 2D (semânticas/sugeridas) agora que assentou — P2.
       renderer.refresh();
+      // Deep-link ?focus=<id>: DEPOIS do reset padrão acima, senão o
+      // applyCoreBBox sempre desfaz o foco. Um frame de folga garante que o
+      // Sigma já computou displayData pro nó antes do focusNode centralizar.
+      if (pendingFocusId && graph.hasNode(pendingFocusId)) {
+        const idToFocus = pendingFocusId;
+        pendingFocusId = null;
+        requestAnimationFrame(() => focusNode(idToFocus));
+      }
     }
   });
 
@@ -1068,6 +1080,7 @@ async function main() {
       <div class="panel-meta"><span class="panel-degree">${neighbors.size} ${neighbors.size === 1 ? 'conexão' : 'conexões'}</span></div>
       <h2 class="panel-title">${esc(title)}</h2>
       <div class="panel-chips">${chip}</div>
+      <a class="panel-open" href="/app/contacts/${encodeURIComponent(nodeId)}">Abrir contato completo →</a>
       <div class="panel-contact-body"><p class="panel-tldr">Carregando detalhes...</p></div>
     `;
     panel.classList.add('open');
