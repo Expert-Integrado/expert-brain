@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { getTaskById, getTagsByNote } from '../../db/queries.js';
+import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -32,6 +32,9 @@ export function registerGetTask(server: any, env: Env): void {
         );
       }
       const tags = await getTagsByNote(env, input.id);
+      // Coluna do Kanban (aditivo — spec 51): resolve o estágio visual da task.
+      const columns = await listKanbanColumns(env, true);
+      const col = resolveTaskColumn(t, columns);
       const now = Date.now();
       return toolSuccess({
         id: t.id,
@@ -47,6 +50,7 @@ export function registerGetTask(server: any, env: Env): void {
         completed_brt: t.completed_at !== null ? formatBrtDateTime(t.completed_at) : null,
         domains: JSON.parse(t.domains),
         tags,
+        column: col ? { id: col.id, label: col.label } : null,
         created_at: t.created_at,
         updated_at: t.updated_at,
       });

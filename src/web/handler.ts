@@ -9,7 +9,7 @@ import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './con
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskSharePost, handleTaskUnsharePost } from './tasks.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { NEBULA_CSS } from './styles.js';
@@ -56,6 +56,13 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/data' && req.method === 'GET') return handleTasksData(req, env);
   if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
   if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
+  // Kanban colunas customizáveis (spec 51): mover card entre colunas (JSON, board)
+  // e gestão de colunas via UI de config (form + redirect, sessão de browser).
+  if (path === '/app/tasks/move' && req.method === 'POST') return handleTaskMovePost(req, env);
+  if (path === '/app/tasks/columns/create' && req.method === 'POST') return handleColumnCreatePost(req, env);
+  if (path === '/app/tasks/columns/update' && req.method === 'POST') return handleColumnUpdatePost(req, env);
+  if (path === '/app/tasks/columns/reorder' && req.method === 'POST') return handleColumnReorderPost(req, env);
+  if (path === '/app/tasks/columns/archive' && req.method === 'POST') return handleColumnArchivePost(req, env);
   // Edição inline de task pela UI (spec 36): patch de title/body/due/priority/status.
   if (path === '/app/tasks/update' && req.method === 'POST') return handleTaskUpdatePost(req, env);
   // Criação de task pela UI (spec 36 fase 2): title obrigatório + body/priority/due opcionais.

@@ -9,6 +9,7 @@ import {
   type TaskStatus,
   type TaskRow,
   type TaskPatch,
+  type KanbanColumn,
   listActiveTasks,
   listRecentClosedTasks,
   listTasksDueBefore,
@@ -17,6 +18,16 @@ import {
   updateTask,
   insertTask,
   getTaskById,
+  listKanbanColumns,
+  moveTaskToColumn,
+  getColumnById,
+  createKanbanColumn,
+  updateKanbanColumn,
+  reorderKanbanColumn,
+  setColumnArchived,
+  reassignColumn,
+  countTasksInColumn,
+  countActiveColumnsInCategory,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
@@ -75,6 +86,66 @@ function toView(t: TaskRow, now: number): TaskView {
   };
 }
 
+// Uma coluna do board já com as tasks resolvidas (spec 51). Substitui o objeto
+// fixo { open, in_progress, done } — as colunas agora vêm do banco.
+interface BoardColumn {
+  id: string;
+  label: string;
+  color: string | null;
+  position: number;
+  category: TaskStatus;
+  tasks: TaskView[];
+}
+
+// Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
+// recentes. Cada task é alocada na coluna do seu column_id (quando ativa e coerente
+// com o status) ou, como fallback, na coluna default (menor position) da categoria
+// do status — assim uma task com column_id NULL/órfão nunca some do board. Tasks
+// cuja categoria não tem NENHUMA coluna ativa (ex.: canceladas com col_cancelado
+// arquivado) simplesmente não renderizam, mantendo o comportamento histórico do board.
+async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
+  const [activeCols, active, closed] = await Promise.all([
+    listKanbanColumns(env, false),
+    listActiveTasks(env),
+    listRecentClosedTasks(env, 100),
+  ]);
+  const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
+  // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
+  const defaultByCat = new Map<string, KanbanColumn>();
+  for (const c of activeCols) if (!defaultByCat.has(c.category)) defaultByCat.set(c.category, c);
+
+  const buckets = new Map<string, TaskView[]>();
+  for (const c of activeCols) buckets.set(c.id, []);
+
+  const place = (t: TaskRow) => {
+    const status = t.status ?? 'open';
+    let colId: string | null = null;
+    const assigned = t.column_id ? activeById.get(t.column_id) : undefined;
+    if (assigned && assigned.category === status) colId = assigned.id;
+    else colId = defaultByCat.get(status)?.id ?? null;
+    if (colId) buckets.get(colId)?.push(toView(t, now));
+  };
+  for (const t of active) place(t);
+  for (const t of closed) place(t);
+
+  return activeCols.map((c) => ({
+    id: c.id,
+    label: c.label,
+    color: c.color,
+    position: c.position,
+    category: c.category as TaskStatus,
+    tasks: buckets.get(c.id) ?? [],
+  }));
+}
+
+// Total de tasks abertas (categorias open + in_progress) no board — pro contador do
+// header, sempre sem filtro de vencimento.
+function countOpenOnBoard(columns: BoardColumn[]): number {
+  return columns
+    .filter((c) => c.category === 'open' || c.category === 'in_progress')
+    .reduce((n, c) => n + c.tasks.length, 0);
+}
+
 // GET /app/tasks/data — board (default) ou due-soon (?scope=due&horizon_hours=N).
 export async function handleTasksData(req: Request, env: Env): Promise<Response> {
   const denied = await authTask(req, env);
@@ -90,16 +161,27 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const [active, closed] = await Promise.all([
-    listActiveTasks(env),
-    listRecentClosedTasks(env, 100),
-  ]);
-  const columns = {
-    open: active.filter((t) => t.status === 'open').map((t) => toView(t, now)),
-    in_progress: active.filter((t) => t.status === 'in_progress').map((t) => toView(t, now)),
-    done: closed.map((t) => toView(t, now)),
-  };
+  const columns = await buildBoard(env, now);
   return json({ now, columns });
+}
+
+// POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
+// (drag & drop). moveTaskToColumn resolve a coluna, seta column_id + status =
+// category + completed_at coerente. Aceita Bearer OU sessão (igual /status). Substitui
+// /status como o caminho primário do board (o /status segue aceito p/ compat).
+export async function handleTaskMovePost(req: Request, env: Env): Promise<Response> {
+  const denied = await authTask(req, env);
+  if (denied) return denied;
+  let body: { id?: string; column_id?: string };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const id = (body.id || '').trim();
+  const columnId = (body.column_id || '').trim();
+  if (!id) return json({ error: 'id required' }, 400);
+  if (!columnId) return json({ error: 'column_id required' }, 400);
+  const result = await moveTaskToColumn(env, id, columnId, Date.now());
+  if (result === 'column-not-found') return json({ error: 'column not found' }, 404);
+  if (result === 'not-found') return json({ error: 'task not found' }, 404);
+  return json({ ok: true, id, column_id: columnId, status: result.status });
 }
 
 // POST /app/tasks/status — { id, status }
@@ -437,13 +519,145 @@ export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Res
   return json({ ok: true, revoked });
 }
 
+// ─────────────── Gestão de colunas do Kanban (spec 51) ───────────────
+// Endpoints da seção "Quadro de tarefas" em /app/config. Form-encoded + redirect
+// (mesmo padrão de /app/config/prefs e /app/api-keys/*), sessão de browser
+// obrigatória (sem Bearer — é gestão de UI, não automação).
+
+const BOARD_REDIRECT = '/app/config?saved=board#board';
+const boardRedirect = (): Response =>
+  new Response(null, { status: 302, headers: { location: BOARD_REDIRECT } });
+
+// Normaliza a cor: '' → null (neutro); #rrggbb → lowercase; qualquer outra coisa →
+// 'invalid' (o caller devolve 400).
+function parseColumnColor(raw: string): string | null | 'invalid' {
+  const c = raw.trim();
+  if (c === '') return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c.toLowerCase();
+  return 'invalid';
+}
+
+// POST /app/tasks/columns/create — form { label, color?, category }.
+export async function handleColumnCreatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const label = String(form.get('label') ?? '').trim();
+  if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+
+  const category = String(form.get('category') ?? '').trim() as TaskStatus;
+  if (!TASK_STATUSES.includes(category)) {
+    return htmlResponse(`Categoria inválida (use uma de: ${TASK_STATUSES.join(', ')})`, 400);
+  }
+
+  const color = parseColumnColor(String(form.get('color') ?? ''));
+  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+
+  await createKanbanColumn(env, { id: `col_${newId().slice(0, 8)}`, label, color, category });
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/update — form { id, label?, color? }. Categoria é travada.
+export async function handleColumnUpdatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+
+  const patch: { label?: string; color?: string | null } = {};
+  if (form.has('label')) {
+    const label = String(form.get('label') ?? '').trim();
+    if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+    patch.label = label;
+  }
+  if (form.has('color')) {
+    const color = parseColumnColor(String(form.get('color') ?? ''));
+    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    patch.color = color;
+  }
+
+  const ok = await updateKanbanColumn(env, id, patch);
+  if (!ok) return htmlResponse('Coluna não encontrada', 404);
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/reorder — form { id, direction: up|down }. Sem vizinha =
+// no-op (redireciona mesmo assim, não é erro).
+export async function handleColumnReorderPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  const direction = String(form.get('direction') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+
+  await reorderKanbanColumn(env, id, direction);
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/archive — form { id, archived: 1|0, to? }.
+//   - archived=0 → desarquiva (só limpa archived_at).
+//   - archived=1 → arquiva. Se a coluna tem tasks, exige `to` (coluna ATIVA da MESMA
+//     categoria, != id) e realoca as tasks antes de arquivar. Seeds col_aberto/
+//     col_concluido não podem ser arquivados se forem a última coluna ativa da categoria.
+export async function handleColumnArchivePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+
+  const col = await getColumnById(env, id);
+  if (!col) return htmlResponse('Coluna não encontrada', 404);
+
+  const archived = String(form.get('archived') ?? '1').trim() !== '0';
+
+  if (!archived) {
+    await setColumnArchived(env, id, null);
+    return boardRedirect();
+  }
+
+  // Já arquivada → no-op.
+  if (col.archived_at !== null) return boardRedirect();
+
+  // Guard: não deixar uma categoria essencial sem coluna ativa.
+  if ((id === 'col_aberto' || id === 'col_concluido')) {
+    const activeInCat = await countActiveColumnsInCategory(env, col.category);
+    if (activeInCat <= 1) {
+      return htmlResponse('Não é possível arquivar a última coluna ativa dessa categoria', 400);
+    }
+  }
+
+  // Coluna com tasks precisa de destino da MESMA categoria (ativa, != id).
+  const taskCount = await countTasksInColumn(env, id);
+  if (taskCount > 0) {
+    const to = String(form.get('to') ?? '').trim();
+    if (!to) return htmlResponse('Escolha uma coluna destino pras tasks antes de arquivar', 400);
+    if (to === id) return htmlResponse('A coluna destino não pode ser a própria coluna arquivada', 400);
+    const dest = await getColumnById(env, to);
+    if (!dest || dest.archived_at !== null || dest.category !== col.category) {
+      return htmlResponse('Coluna destino inválida (deve ser ativa e da mesma categoria)', 400);
+    }
+    await reassignColumn(env, id, to);
+  }
+
+  await setColumnArchived(env, id, Date.now());
+  return boardRedirect();
+}
+
 // ───────────────────────── SSR page ─────────────────────────
 
-const COLS: Array<{ key: TaskStatus; label: string }> = [
-  { key: 'open', label: 'A fazer' },
-  { key: 'in_progress', label: 'Em progresso' },
-  { key: 'done', label: 'Concluído' },
-];
+// Cor de coluna só é aceita como hex #rrggbb (validada na escrita); qualquer outra
+// coisa vira neutro. Defesa dupla no render (o valor vai pra um atributo style).
+function safeColumnColor(color: string | null): string | null {
+  return color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
 
 // Bandeirinha de prioridade estilo ClickUp (flag colorida + rótulo). Compartilha
 // PRIORITIES/flagSvg com o client (util/priority.ts) — server e client renderizam
@@ -472,11 +686,17 @@ function renderCardSSR(v: TaskView): string {
   </div>`;
 }
 
-function renderColumnSSR(label: string, key: TaskStatus, items: TaskView[]): string {
-  return `<section class="task-col" data-col="${key}">
-    <header class="task-col-head"><span class="task-col-label">${esc(label)}</span><span class="task-col-count" data-count="${key}">${items.length}</span></header>
-    <div class="task-col-body" data-dropzone="${key}">
-      ${items.map(renderCardSSR).join('') || '<div class="task-col-empty">—</div>'}
+function columnSwatch(color: string | null): string {
+  const c = safeColumnColor(color);
+  return `<span class="task-col-dot"${c ? ` style="background:${esc(c)}"` : ''}></span>`;
+}
+
+function renderColumnSSR(col: BoardColumn): string {
+  const c = safeColumnColor(col.color);
+  return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
+    <header class="task-col-head"><span class="task-col-label">${columnSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${col.tasks.length}</span></header>
+    <div class="task-col-body" data-dropzone="${esc(col.id)}">
+      ${col.tasks.map(renderCardSSR).join('') || '<div class="task-col-empty">—</div>'}
     </div>
   </section>`;
 }
@@ -486,17 +706,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const now = Date.now();
-  const [active, closed] = await Promise.all([
-    listActiveTasks(env),
-    listRecentClosedTasks(env, 100),
-  ]);
-  const cols: Record<TaskStatus, TaskView[]> = {
-    open: active.filter((t) => t.status === 'open').map((t) => toView(t, now)),
-    in_progress: active.filter((t) => t.status === 'in_progress').map((t) => toView(t, now)),
-    done: closed.map((t) => toView(t, now)),
-    canceled: [],
-  };
-  const totalOpen = cols.open.length + cols.in_progress.length;
+  const columns = await buildBoard(env, now);
+  const totalOpen = countOpenOnBoard(columns);
 
   // Options de prioridade do form de criação (bandeirinha + rótulo estilo ClickUp).
   const createPrioOptions = [
@@ -521,7 +732,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     </div>
 
     <div class="task-board" id="task-board">
-      ${COLS.map((c) => renderColumnSSR(c.label, c.key, cols[c.key])).join('')}
+      ${columns.map(renderColumnSSR).join('')}
     </div>
 
     <div class="task-modal" id="task-create-modal" hidden aria-hidden="true">
@@ -610,14 +821,19 @@ export const TASKS_CSS = `
 .task-filter:hover { color: var(--text); border-color: var(--border-strong); }
 .task-filter.active { color: var(--accent-lav); border-color: var(--border-strong); background: rgba(167,139,250,0.1); }
 
-.task-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+/* Board: colunas customizáveis (N variável) — grid horizontal com scroll quando
+   passa da largura, cada coluna com largura mínima confortável (spec 51). */
+.task-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 16px; align-items: start; overflow-x: auto; padding-bottom: 4px; }
 .task-col {
   background: var(--surface); border: 1px solid var(--border);
+  border-top: 3px solid var(--col-accent, var(--border));
   border-radius: var(--radius); padding: 14px; min-height: 140px;
   transition: border-color 160ms var(--ease);
 }
 .task-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding: 0 2px; }
-.task-col-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); text-transform: uppercase; }
+.task-col-label { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); text-transform: uppercase; }
+/* Bolinha na cor da coluna (neutra quando sem cor definida) */
+.task-col-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex: none; }
 .task-col-count {
   font-size: 11px; font-weight: 600; color: var(--text-dim); background: var(--surface-raised);
   border-radius: 999px; padding: 2px 9px; min-width: 24px; text-align: center;
@@ -759,7 +975,7 @@ body.task-dragging .task-col-body { min-height: 90px; }
 @keyframes taskSlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 760px) {
-  .task-board { grid-template-columns: 1fr; }
+  .task-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
 }

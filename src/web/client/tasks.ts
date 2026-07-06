@@ -1,7 +1,8 @@
 // Client da página /app/tasks — Kanban interativo.
-// - Busca /app/tasks/data e renderiza as 3 colunas (substitui o SSR).
-// - Filtros (todas/hoje/semana/atrasadas) aplicam-se às colunas abertas.
-// - Drag-drop entre colunas → POST /app/tasks/status.
+// - Busca /app/tasks/data e renderiza as colunas CUSTOMIZÁVEIS vindas do banco
+//   (fonte única = kanban_columns; não há mais array fixo aqui nem no SSR — spec 51).
+// - Filtros (todas/hoje/semana/atrasadas) aplicam-se às colunas open/in_progress.
+// - Drag-drop entre colunas → POST /app/tasks/move { id, column_id }.
 // - Botão "concluir" → POST /app/tasks/complete.
 // Sem dependências externas (DnD nativo do HTML5).
 
@@ -28,18 +29,21 @@ interface TaskView {
   updated_at: number;
 }
 
+interface BoardColumn {
+  id: string;
+  label: string;
+  color: string | null;
+  position: number;
+  category: Status;
+  tasks: TaskView[];
+}
+
 interface BoardData {
   now: number;
-  columns: { open: TaskView[]; in_progress: TaskView[]; done: TaskView[] };
+  columns: BoardColumn[];
 }
 
 type Filter = 'all' | 'today' | 'week' | 'overdue';
-
-const COLS: Array<{ key: Exclude<Status, 'canceled'>; label: string }> = [
-  { key: 'open', label: 'A fazer' },
-  { key: 'in_progress', label: 'Em progresso' },
-  { key: 'done', label: 'Concluído' },
-];
 
 let board: BoardData | null = null;
 let filter: Filter = 'all';
@@ -146,29 +150,44 @@ function composeDue(date: string, time: string): string | null {
   return t ? `${d}T${t}` : d;
 }
 
+// Cor de coluna só vale como hex #rrggbb; qualquer outra coisa vira neutro.
+function safeColor(color: string | null): string | null {
+  return color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
+
+function colSwatch(color: string | null): string {
+  const c = safeColor(color);
+  return `<span class="task-col-dot"${c ? ` style="background:${esc(c)}"` : ''}></span>`;
+}
+
+// Filtro de vencimento só se aplica a colunas de categoria open/in_progress; done/
+// canceled mostram sempre o histórico recente, sem filtro.
+function columnTasks(col: BoardColumn, now: number): TaskView[] {
+  if (col.category === 'open' || col.category === 'in_progress') {
+    return col.tasks.filter((t) => passesFilter(t, now));
+  }
+  return col.tasks;
+}
+
 function render() {
   const root = document.getElementById('task-board');
   if (!root || !board) return;
   const now = board.now;
 
-  const colData: Record<string, TaskView[]> = {
-    open: board.columns.open.filter((t) => passesFilter(t, now)),
-    in_progress: board.columns.in_progress.filter((t) => passesFilter(t, now)),
-    // a coluna concluído sempre mostra o histórico recente, sem filtro de vencimento
-    done: board.columns.done,
-  };
-
-  root.innerHTML = COLS.map((c) => {
-    const items = colData[c.key];
-    return `<section class="task-col" data-col="${c.key}">
-      <header class="task-col-head"><span class="task-col-label">${esc(c.label)}</span><span class="task-col-count" data-count="${c.key}">${items.length}</span></header>
-      <div class="task-col-body" data-dropzone="${c.key}">
+  root.innerHTML = board.columns.map((col) => {
+    const items = columnTasks(col, now);
+    const c = safeColor(col.color);
+    return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
+      <header class="task-col-head"><span class="task-col-label">${colSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${items.length}</span></header>
+      <div class="task-col-body" data-dropzone="${esc(col.id)}">
         ${items.map(cardHTML).join('') || '<div class="task-col-empty">—</div>'}
       </div>
     </section>`;
   }).join('');
 
-  const totalOpen = board.columns.open.length + board.columns.in_progress.length;
+  const totalOpen = board.columns
+    .filter((c) => c.category === 'open' || c.category === 'in_progress')
+    .reduce((n, c) => n + c.tasks.length, 0);
   const countEl = document.getElementById('tasks-count');
   if (countEl) countEl.textContent = `${totalOpen} aberta${totalOpen === 1 ? '' : 's'}`;
 
@@ -176,18 +195,19 @@ function render() {
   wireDropzones();
 }
 
-async function setStatus(id: string, status: Status) {
-  // Otimista: muda local e re-renderiza; reconcilia no fim recarregando.
-  if (!board) return;
+// Move um card pra uma coluna (drag & drop). O servidor deriva status + completed_at
+// da categoria da coluna — o client só informa o column_id destino. Reconcilia
+// recarregando o board no fim.
+async function move(id: string, columnId: string) {
   try {
-    const res = await appFetch('/app/tasks/status', {
+    const res = await appFetch('/app/tasks/move', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, column_id: columnId }),
     });
-    if (!res.ok) throw new Error('status ' + res.status);
+    if (!res.ok) throw new Error('move ' + res.status);
   } catch (err) {
-    console.warn('tasks: setStatus failed', err);
+    console.warn('tasks: move failed', err);
   }
   await load();
 }
@@ -332,11 +352,11 @@ function wireDropzones() {
       e.preventDefault();
       zone.classList.remove('drag-over');
       const id = (e as DragEvent).dataTransfer?.getData('text/plain');
-      const target = zone.dataset.dropzone as Status | undefined;
-      if (!id || !target) return;
-      // soltar na coluna concluído usa o endpoint complete (grava completed_at).
-      if (target === 'done') complete(id);
-      else setStatus(id, target);
+      const columnId = zone.dataset.dropzone;
+      if (!id || !columnId) return;
+      // O servidor deriva status + completed_at da categoria da coluna destino —
+      // inclusive done (grava completed_at). Um único caminho pra todas as colunas.
+      move(id, columnId);
     });
   });
 }

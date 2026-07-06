@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, type TaskRow } from '../../db/queries.js';
+import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, type TaskRow } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -76,19 +76,26 @@ export function registerListTasks(server: any, env: Env): void {
         tasks = tasks.slice(0, limit);
       }
 
-      const items = tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        priority: t.priority,
-        due_at: t.due_at,
-        due_brt: t.due_at !== null ? formatBrtDateTime(t.due_at) : null,
-        when: t.due_at !== null ? relativeDue(t.due_at, now) : null,
-        overdue: t.due_at !== null && t.due_at < now && t.status !== 'done' && t.status !== 'canceled',
-        tags: tagsById.get(t.id) ?? [],
-        updated_at: t.updated_at,
-        url: noteUrl(env, t.id),
-      }));
+      // Colunas do Kanban carregadas UMA vez (aditivo — spec 51): resolve o estágio
+      // visual de cada task em memória, sem N queries.
+      const columns = await listKanbanColumns(env, true);
+      const items = tasks.map((t) => {
+        const col = resolveTaskColumn(t, columns);
+        return {
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          priority: t.priority,
+          due_at: t.due_at,
+          due_brt: t.due_at !== null ? formatBrtDateTime(t.due_at) : null,
+          when: t.due_at !== null ? relativeDue(t.due_at, now) : null,
+          overdue: t.due_at !== null && t.due_at < now && t.status !== 'done' && t.status !== 'canceled',
+          tags: tagsById.get(t.id) ?? [],
+          column: col ? { id: col.id, label: col.label } : null,
+          updated_at: t.updated_at,
+          url: noteUrl(env, t.id),
+        };
+      });
 
       return toolSuccess({ count: items.length, tasks: items });
     }) as any

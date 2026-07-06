@@ -9,6 +9,7 @@ import { readPersonalizationPrompt } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
 import { formatBrtDateTime } from '../util/time.js';
+import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn } from '../db/queries.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -34,6 +35,107 @@ function formatBytes(n: number): string {
   if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${n} B`;
+}
+
+// ─────────────── Seção "Quadro de tarefas" (Kanban — spec 51) ───────────────
+// Rótulos pt-BR das 4 categorias canônicas (imutáveis) usados no select/badge.
+const CATEGORY_LABELS: Record<TaskStatus, string> = {
+  open: 'A fazer',
+  in_progress: 'Em progresso',
+  done: 'Concluído',
+  canceled: 'Cancelado',
+};
+
+const categoryOptions = (selected?: TaskStatus): string =>
+  TASK_STATUSES.map(
+    (c) => `<option value="${c}"${c === selected ? ' selected' : ''}>${esc(CATEGORY_LABELS[c])}</option>`
+  ).join('');
+
+function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: KanbanColumn[]): string {
+  const archived = col.archived_at !== null;
+  const colorVal = col.color ?? '';
+  // Destino pras tasks ao arquivar uma coluna ATIVA que tem tasks (mesma categoria).
+  const destOptions = activeSameCat
+    .filter((c) => c.id !== col.id)
+    .map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`)
+    .join('');
+  const archiveCell = archived
+    ? `<form method="post" action="/app/tasks/columns/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(col.id)}">
+         <input type="hidden" name="archived" value="0">
+         <button type="submit">Desarquivar</button>
+       </form>`
+    : `<form method="post" action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
+         <input type="hidden" name="id" value="${esc(col.id)}">
+         <input type="hidden" name="archived" value="1">
+         ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
+         <button type="submit" class="btn-danger">Arquivar</button>
+       </form>`;
+  return `<tr${archived ? ' style="opacity:0.55"' : ''}>
+    <td>
+      <form method="post" action="/app/tasks/columns/update" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="id" value="${esc(col.id)}">
+        <input type="text" name="label" value="${esc(col.label)}" maxlength="40" class="input-text" style="width:150px">
+        <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
+        <button type="submit">Salvar</button>
+      </form>
+    </td>
+    <td><span class="badge-pill">${esc(CATEGORY_LABELS[col.category])}</span></td>
+    <td>
+      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="up">
+        <button type="submit" aria-label="Subir">↑</button>
+      </form>
+      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="down">
+        <button type="submit" aria-label="Descer">↓</button>
+      </form>
+    </td>
+    <td>${count}</td>
+    <td>${archiveCell}</td>
+  </tr>`;
+}
+
+function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>, savedBoard: boolean): string {
+  const activeByCat = new Map<TaskStatus, KanbanColumn[]>();
+  for (const c of columns) {
+    if (c.archived_at === null) {
+      const arr = activeByCat.get(c.category) ?? [];
+      arr.push(c);
+      activeByCat.set(c.category, arr);
+    }
+  }
+  const rows = columns
+    .map((c) => renderColumnRow(c, counts.get(c.id) ?? 0, activeByCat.get(c.category) ?? []))
+    .join('');
+  return `
+    <details class="disclosure-advanced conn-section" id="board"${savedBoard ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">4. Quadro de tarefas</span>
+        <span class="adv-sub">Colunas/estágios do Kanban — crie, renomeie, recolora, reordene e arquive</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>As colunas do board <a href="/app/tasks">/app/tasks</a> vêm daqui. Cada coluna pertence a uma das 4 categorias fixas (<em>${TASK_STATUSES.map((c) => esc(CATEGORY_LABELS[c])).join(', ')}</em>), que definem o estado real da task — a categoria é travada após a criação. Arrastar um card pra uma coluna aplica a categoria dela.</p>
+          <table class="keys-table">
+            <thead><tr>
+              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tasks</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="adv-section">
+          <h3>Nova coluna</h3>
+          <form method="post" action="/app/tasks/columns/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" name="label" required maxlength="40" placeholder="Nome da coluna" class="input-text" style="width:170px">
+            <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
+            <select name="category" required>${categoryOptions('open')}</select>
+            <button type="submit" class="btn-primary">Criar coluna</button>
+          </form>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">A coluna <strong>Cancelado</strong> nasce arquivada — desarquive-a aqui pra ver tasks canceladas no board.</p>
+        </div>
+      </div>
+    </details>`;
 }
 
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
@@ -77,6 +179,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
   // "Sistemas web" (que contém o prompt) já expandida.
   const savedPrefs = url.searchParams.get('saved') === 'prefs';
+  // Idem pra gestão de colunas do Kanban (?saved=board reabre a seção "Quadro de tarefas").
+  const savedBoard = url.searchParams.get('saved') === 'board';
+
+  // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
+  const [kanbanColumns, kanbanCounts] = await Promise.all([
+    listKanbanColumns(env, true),
+    taskCountsByColumn(env),
+  ]);
+  const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
   const stats = await getVaultStatus(env);
@@ -246,6 +357,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         </div>
       </div>
     </details>
+
+    ${boardSection}
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;
