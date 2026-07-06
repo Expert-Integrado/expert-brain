@@ -10,7 +10,7 @@ import { appFetch } from './http.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -33,6 +33,7 @@ interface TaskView {
   tags: string[];
   shared: boolean;
   share_expires_brt: string | null;
+  project_id: string | null;
 }
 
 interface BoardColumn {
@@ -44,15 +45,28 @@ interface BoardColumn {
   tasks: TaskView[];
 }
 
+interface BoardProject {
+  id: string;
+  label: string;
+  color: string | null;
+  archived: boolean;
+}
+
 interface BoardData {
   now: number;
   columns: BoardColumn[];
+  projects: BoardProject[];
 }
 
 type Filter = 'all' | 'today' | 'week' | 'overdue';
 
 let board: BoardData | null = null;
 let filter: Filter = 'all';
+// Filtro de projeto (spec 58): 'all' | 'none' | '<project_id>'. Persiste em
+// localStorage + query param (?project=). Aplica em TODAS as colunas.
+let projectFilter = 'all';
+// Mapa project_id → BoardProject, reconstruído a cada load (pro chip do card).
+let projectsById = new Map<string, BoardProject>();
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -64,6 +78,7 @@ async function load() {
     const res = await appFetch('/app/tasks/data');
     if (!res.ok) return;
     board = (await res.json()) as BoardData;
+    projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
     render();
   } catch (err) {
     console.warn('tasks: load failed', err);
@@ -117,10 +132,17 @@ function prioOptions(p: number | null): string {
   return opts.join('');
 }
 
+// Chip de projeto do card (spec 58): resolve o project_id no BoardProject do payload.
+function projectChip(t: TaskView): string {
+  if (!t.project_id) return '';
+  const p = projectsById.get(t.project_id);
+  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+}
+
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
-  return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}" data-updated-at="${t.updated_at}" draggable="true">
-    <div class="task-card-head">${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
+  return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}"${t.project_id ? ` data-project="${esc(t.project_id)}"` : ''} data-updated-at="${t.updated_at}" draggable="true">
+    <div class="task-card-head">${projectChip(t)}${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
@@ -167,13 +189,23 @@ function colSwatch(color: string | null): string {
   return `<span class="task-col-dot"${c ? ` style="background:${esc(c)}"` : ''}></span>`;
 }
 
+// Filtro de projeto (spec 58): aplica em TODAS as colunas (open/done/canceled).
+// 'all' = tudo; 'none' = só sem projeto; '<id>' = só aquele projeto.
+function passesProject(t: TaskView): boolean {
+  if (projectFilter === 'all') return true;
+  if (projectFilter === 'none') return !t.project_id;
+  return t.project_id === projectFilter;
+}
+
 // Filtro de vencimento só se aplica a colunas de categoria open/in_progress; done/
-// canceled mostram sempre o histórico recente, sem filtro.
+// canceled mostram sempre o histórico recente, sem filtro. O filtro de projeto
+// aplica por cima em todas as colunas.
 function columnTasks(col: BoardColumn, now: number): TaskView[] {
+  let items = col.tasks.filter(passesProject);
   if (col.category === 'open' || col.category === 'in_progress') {
-    return col.tasks.filter((t) => passesFilter(t, now));
+    items = items.filter((t) => passesFilter(t, now));
   }
-  return col.tasks;
+  return items;
 }
 
 // Colapsar coluna (spec 52): estado por coluna em localStorage, sobrevive a reload.
@@ -529,7 +561,47 @@ function wireFilters() {
   });
 }
 
+// ── Filtro de projeto (spec 58): query param ?project= tem prioridade, senão
+// localStorage. Persiste nos dois a cada mudança (sobrevive a reload + link
+// compartilhável). O select é montado no SSR com todos os projetos.
+const PROJECT_FILTER_KEY = 'kanban_project_filter';
+
+function initialProjectFilter(): string {
+  const q = new URLSearchParams(location.search).get('project');
+  if (q) return q;
+  try {
+    const stored = localStorage.getItem(PROJECT_FILTER_KEY);
+    if (stored) return stored;
+  } catch { /* privado/quota: ignora */ }
+  return 'all';
+}
+
+function persistProjectFilter(v: string) {
+  try { localStorage.setItem(PROJECT_FILTER_KEY, v); } catch { /* ignora */ }
+  const url = new URL(location.href);
+  if (v === 'all') url.searchParams.delete('project');
+  else url.searchParams.set('project', v);
+  history.replaceState(null, '', url.toString());
+}
+
+function wireProjectFilter() {
+  const sel = document.getElementById('task-project-filter') as HTMLSelectElement | null;
+  if (!sel) return;
+  let want = initialProjectFilter();
+  // Se o valor salvo não existe mais como opção (projeto removido do select), cai em 'all'.
+  if (!Array.from(sel.options).some((o) => o.value === want)) want = 'all';
+  projectFilter = want;
+  sel.value = want;
+  persistProjectFilter(want); // normaliza o query param já no load
+  sel.addEventListener('change', () => {
+    projectFilter = sel.value || 'all';
+    persistProjectFilter(projectFilter);
+    render();
+  });
+}
+
 wireFilters();
+wireProjectFilter();
 wireCreateModal();
 load();
 

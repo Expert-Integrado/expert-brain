@@ -23,6 +23,21 @@ export function tagChipsHtml(tags: string[]): string {
   return chips + more;
 }
 
+// Chip de PROJETO no card (spec 58): bolinha na cor do projeto + label. Projeto
+// arquivado renderiza esmaecido (classe .archived). null → string vazia (task sem
+// projeto não polui o card). Cor só entra no style se for hex #rrggbb válido.
+export function projectChipHtml(
+  project: { label: string; color: string | null; archived?: boolean } | null
+): string {
+  if (!project) return '';
+  const dot = project.color && /^#[0-9a-fA-F]{6}$/.test(project.color)
+    ? ` style="background:${project.color}"`
+    : '';
+  const cls = project.archived ? 'task-project-chip archived' : 'task-project-chip';
+  const label = escBadge(project.label);
+  return `<span class="${cls}" title="Projeto: ${label}"><span class="task-project-dot"${dot}></span>${label}</span>`;
+}
+
 const LINK_ICON =
   '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="flex-shrink:0;vertical-align:-1px">' +
   '<path d="M6.5 9.5 9.5 6.5M6.8 4.2 8 3a2.5 2.5 0 0 1 3.5 3.5L10 8M9.2 11.8 8 13a2.5 2.5 0 0 1-3.5-3.5L6 8" ' +

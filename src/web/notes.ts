@@ -16,6 +16,7 @@ import {
   listKanbanColumns,
   resolveTaskColumn,
   getTagsByNote,
+  listTaskProjects,
   TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
@@ -607,6 +608,22 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     : '';
   const columnSelectHtml = `<select class="task-edit-select" data-field="column" aria-label="Coluna">${archivedCurrentOption}${columnGroups}</select>`;
 
+  // Projeto/pasta (spec 58): select na sidebar — projetos ATIVOS + "Sem projeto".
+  // Persiste via POST /app/tasks/update (patch.project_id). Se a task está num projeto
+  // ARQUIVADO, mostra como opção selecionada desabilitada (não mente o estado; o dono
+  // escolhe um ativo ou "Sem projeto" pra sair). O auto-create por label é caminho do
+  // MCP — aqui só se escolhe entre projetos existentes.
+  const allProjects = await listTaskProjects(env, true);
+  const activeProjects = allProjects.filter((p) => p.archived_at === null);
+  const currentProject = task.project_id ? allProjects.find((p) => p.id === task.project_id) ?? null : null;
+  const currentArchived = currentProject !== null && currentProject.archived_at !== null;
+  const projectOptions = [
+    `<option value=""${task.project_id === null ? ' selected' : ''}>Sem projeto</option>`,
+    ...(currentArchived ? [`<option value="${esc(currentProject!.id)}" selected disabled>${esc(currentProject!.label)} (arquivado)</option>`] : []),
+    ...activeProjects.map((p) => `<option value="${esc(p.id)}"${task.project_id === p.id ? ' selected' : ''}>${esc(p.label)}</option>`),
+  ].join('');
+  const projectSelectHtml = `<select class="task-edit-select" data-field="project" aria-label="Projeto">${projectOptions}</select>`;
+
   // Tags (spec 52): editor de chips na sidebar, autosave via /app/tasks/update
   // (patch.tags). Reservadas dedupe:* NUNCA aparecem aqui (visibleTags filtra) —
   // o servidor as preserva automaticamente mesmo sem o dono vê-las.
@@ -670,6 +687,10 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           <div class="task-sidebar-field">
             <span class="task-sidebar-lbl">Coluna</span>
             ${columnSelectHtml}
+          </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Projeto</span>
+            ${projectSelectHtml}
           </div>
           <div class="task-sidebar-field">
             <span class="task-sidebar-lbl">Prioridade</span>

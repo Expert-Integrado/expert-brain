@@ -9,7 +9,7 @@ import { readPersonalizationPrompt } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
 import { formatBrtDateTime } from '../util/time.js';
-import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn } from '../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject } from '../db/queries.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -138,6 +138,81 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
     </details>`;
 }
 
+// ─────────────── Seção "Projetos" (pastas de task — spec 58) ───────────────
+function renderProjectRow(proj: TaskProject, count: number): string {
+  const archived = proj.archived_at !== null;
+  const colorVal = proj.color ?? '';
+  const archiveCell = archived
+    ? `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(proj.id)}">
+         <input type="hidden" name="archived" value="0">
+         <button type="submit">Desarquivar</button>
+       </form>`
+    : `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(proj.id)}">
+         <input type="hidden" name="archived" value="1">
+         <button type="submit" class="btn-danger">Arquivar</button>
+       </form>`;
+  return `<tr${archived ? ' style="opacity:0.55"' : ''}>
+    <td>
+      <form method="post" action="/app/tasks/projects/update" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="id" value="${esc(proj.id)}">
+        <input type="text" name="label" value="${esc(proj.label)}" maxlength="40" class="input-text" style="width:170px">
+        <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
+        <button type="submit">Salvar</button>
+      </form>
+    </td>
+    <td>
+      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="up">
+        <button type="submit" aria-label="Subir">↑</button>
+      </form>
+      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="down">
+        <button type="submit" aria-label="Descer">↓</button>
+      </form>
+    </td>
+    <td>${count}</td>
+    <td>${archiveCell}</td>
+  </tr>`;
+}
+
+function renderProjectsSection(projects: TaskProject[], counts: Map<string, number>, savedProjects: boolean): string {
+  const total = projects.length;
+  const rows = projects.length
+    ? projects.map((p) => renderProjectRow(p, counts.get(p.id) ?? 0)).join('')
+    : `<tr><td colspan="4" style="color:var(--text-dim)">Nenhum projeto ainda. Crie um abaixo, ou deixe a task sem projeto (o padrão).</td></tr>`;
+  const atCap = total >= TASK_PROJECT_CAP;
+  return `
+    <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">5. Projetos</span>
+        <span class="adv-sub">Pastas de tarefas — agrupe tasks por projeto, com cor e ciclo de vida (arquivar)</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Projeto é uma <strong>pasta</strong> de tarefas: single-valorado (cada task pertence a 0 ou 1 projeto), com cor e filtro próprio no board <a href="/app/tasks">/app/tasks</a>. Diferente de <em>tag</em> (rótulo transversal, multi). Arquivar um projeto <strong>não mexe nas tasks</strong> — elas continuam no board (chip esmaecido), o projeto só some dos seletores. ${total}/${TASK_PROJECT_CAP} projetos.</p>
+          <table class="keys-table">
+            <thead><tr>
+              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tasks</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="adv-section">
+          <h3>Novo projeto</h3>
+          ${atCap
+            ? `<p style="color:var(--text-dim)">Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.</p>`
+            : `<form method="post" action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" name="label" required maxlength="40" placeholder="Nome do projeto" class="input-text" style="width:200px">
+            <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
+            <button type="submit" class="btn-primary">Criar projeto</button>
+          </form>`}
+        </div>
+      </div>
+    </details>`;
+}
+
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -181,6 +256,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedPrefs = url.searchParams.get('saved') === 'prefs';
   // Idem pra gestão de colunas do Kanban (?saved=board reabre a seção "Quadro de tarefas").
   const savedBoard = url.searchParams.get('saved') === 'board';
+  // Idem pra gestão de projetos (?saved=projects reabre a seção "Projetos").
+  const savedProjects = url.searchParams.get('saved') === 'projects';
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const [kanbanColumns, kanbanCounts] = await Promise.all([
@@ -188,6 +265,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     taskCountsByColumn(env),
   ]);
   const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
+
+  // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58).
+  const [taskProjects, projectCounts] = await Promise.all([
+    listTaskProjects(env, true),
+    taskCountsByProject(env),
+  ]);
+  const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
   const stats = await getVaultStatus(env);
@@ -359,6 +443,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     </details>
 
     ${boardSection}
+
+    ${projectsSection}
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;

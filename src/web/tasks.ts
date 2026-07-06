@@ -33,13 +33,22 @@ import {
   countTaskCommentsBatch,
   getTagsForNotes,
   getTagsByNote,
+  type TaskProject,
+  listTaskProjects,
+  getProjectById,
+  createTaskProject,
+  updateTaskProject,
+  reorderTaskProject,
+  setProjectArchived,
+  countTaskProjects,
+  TASK_PROJECT_CAP,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -75,6 +84,7 @@ interface TaskView {
   tags: string[]; // sem tags reservadas dedupe:* — nunca aparecem na UI (spec 52)
   shared: boolean; // link público ATIVO (não-expirado) — pro ícone 🔗 do card (spec 52)
   share_expires_brt: string | null; // "DD/MM" — tooltip do ícone quando shared=true
+  project_id: string | null; // pasta/projeto (spec 58); null = "Sem projeto". Chip resolvido via board.projects
 }
 
 // Tags reservadas (`dedupe:*`) são um detalhe interno de dedupe do save_task —
@@ -106,6 +116,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []):
     tags,
     shared,
     share_expires_brt: shared ? formatBrtShort(t.share_expires_at!) : null,
+    project_id: t.project_id,
   };
 }
 
@@ -120,17 +131,33 @@ interface BoardColumn {
   tasks: TaskView[];
 }
 
+// Projeto no payload do board (spec 58): usado pelo select de filtro no header e
+// pra resolver o chip de cada card (por project_id). Inclui arquivados (archived=true)
+// pra o subgrupo "Arquivados" do filtro e o chip esmaecido.
+interface BoardProject {
+  id: string;
+  label: string;
+  color: string | null;
+  archived: boolean;
+}
+
+interface BoardPayload {
+  columns: BoardColumn[];
+  projects: BoardProject[];
+}
+
 // Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
 // recentes. Cada task é alocada na coluna do seu column_id (quando ativa e coerente
 // com o status) ou, como fallback, na coluna default (menor position) da categoria
 // do status — assim uma task com column_id NULL/órfão nunca some do board. Tasks
 // cuja categoria não tem NENHUMA coluna ativa (ex.: canceladas com col_cancelado
 // arquivado) simplesmente não renderizam, mantendo o comportamento histórico do board.
-async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
-  const [activeCols, active, closed] = await Promise.all([
+async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
+  const [activeCols, active, closed, allProjects] = await Promise.all([
     listKanbanColumns(env, false),
     listActiveTasks(env),
     listRecentClosedTasks(env, 100),
+    listTaskProjects(env, true),
   ]);
   const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
   // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
@@ -162,7 +189,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
   for (const t of active) place(t);
   for (const t of closed) place(t);
 
-  return activeCols.map((c) => ({
+  const columns = activeCols.map((c) => ({
     id: c.id,
     label: c.label,
     color: c.color,
@@ -170,6 +197,13 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
     category: c.category as TaskStatus,
     tasks: buckets.get(c.id) ?? [],
   }));
+  const projects: BoardProject[] = allProjects.map((p) => ({
+    id: p.id,
+    label: p.label,
+    color: p.color,
+    archived: p.archived_at !== null,
+  }));
+  return { columns, projects };
 }
 
 // Total de tasks abertas (categorias open + in_progress) no board — pro contador do
@@ -195,8 +229,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const columns = await buildBoard(env, now);
-  return json({ now, columns });
+  const { columns, projects } = await buildBoard(env, now);
+  return json({ now, columns, projects });
 }
 
 // POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
@@ -280,6 +314,7 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
       status?: unknown;
       domains?: unknown;
       tags?: unknown;
+      project_id?: unknown;
     };
     expected_updated_at?: unknown;
   };
@@ -379,9 +414,27 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     patch.tags = p.tags as string[];
   }
 
+  // project_id — id de projeto ATIVO pra vincular, ou null/'' pra DESvincular (spec 58).
+  // O select do detalhe só oferece projetos ativos + "Sem projeto"; aqui aceitamos só
+  // id (não label — o auto-create por label é caminho do MCP, não da UI). Projeto
+  // inexistente/arquivado → 400.
+  if (p.project_id !== undefined) {
+    if (p.project_id === null || p.project_id === '') {
+      patch.project_id = null;
+    } else if (typeof p.project_id === 'string') {
+      const proj = await getProjectById(env, p.project_id.trim());
+      if (!proj || proj.archived_at !== null) {
+        return json({ error: 'project not found (or archived)' }, 404);
+      }
+      patch.project_id = proj.id;
+    } else {
+      return json({ error: 'project_id must be a project id string or null' }, 400);
+    }
+  }
+
   // Precisa de ao menos um campo editável.
   if (Object.keys(patch).length === 0) {
-    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains, tags' }, 400);
+    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains, tags, project_id' }, 400);
   }
 
   const result = await updateTask(env, id, patch, Date.now(), expectedUpdatedAt);
@@ -776,6 +829,98 @@ export async function handleColumnArchivePost(req: Request, env: Env): Promise<R
   return boardRedirect();
 }
 
+// ─────────────── Gestão de projetos/pastas (spec 58) ───────────────
+// Seção "Projetos" em /app/config. Form-encoded + redirect (mesmo padrão das colunas
+// do Kanban), sessão de browser obrigatória (sem Bearer — gestão de UI). Arquivar um
+// projeto NÃO realoca tasks (só some dos selects; o chip esmaece). NÃO há excluir —
+// só arquivar (evita órfãos). Cap de 64 aplicado no create.
+
+const PROJECTS_REDIRECT = '/app/config?saved=projects#projects';
+const projectsRedirect = (): Response =>
+  new Response(null, { status: 302, headers: { location: PROJECTS_REDIRECT } });
+
+// POST /app/tasks/projects/create — form { label, color? }.
+export async function handleProjectCreatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const label = String(form.get('label') ?? '').trim();
+  if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+
+  const color = parseColumnColor(String(form.get('color') ?? ''));
+  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+
+  // Cap 64 (ativos + arquivados) — mesma regra do auto-create do MCP.
+  const count = await countTaskProjects(env);
+  if (count >= TASK_PROJECT_CAP) {
+    return htmlResponse(`Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.`, 400);
+  }
+
+  await createTaskProject(env, { id: `proj_${newId().slice(0, 8)}`, label, color }, Date.now());
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/update — form { id, label?, color? }.
+export async function handleProjectUpdatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+
+  const patch: { label?: string; color?: string | null } = {};
+  if (form.has('label')) {
+    const label = String(form.get('label') ?? '').trim();
+    if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+    patch.label = label;
+  }
+  if (form.has('color')) {
+    const color = parseColumnColor(String(form.get('color') ?? ''));
+    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    patch.color = color;
+  }
+
+  const ok = await updateTaskProject(env, id, patch);
+  if (!ok) return htmlResponse('Projeto não encontrado', 404);
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/reorder — form { id, direction: up|down }. Sem vizinha =
+// no-op (redireciona mesmo assim).
+export async function handleProjectReorderPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  const direction = String(form.get('direction') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+
+  await reorderTaskProject(env, id, direction);
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/archive — form { id, archived: 1|0 }. Arquivar NÃO
+// realoca tasks (project_id fica; chip esmaece). Idempotente.
+export async function handleProjectArchivePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+
+  const proj = await getProjectById(env, id);
+  if (!proj) return htmlResponse('Projeto não encontrado', 404);
+
+  const archived = String(form.get('archived') ?? '1').trim() !== '0';
+  await setProjectArchived(env, id, archived ? Date.now() : null);
+  return projectsRedirect();
+}
+
 // ───────────────────────── SSR page ─────────────────────────
 
 // Cor de coluna só é aceita como hex #rrggbb (validada na escrita); qualquer outra
@@ -799,10 +944,18 @@ function dueBadge(v: TaskView): string {
   return `<span class="${cls}">${esc(v.due_brt)}${v.when ? ` · ${esc(v.when)}` : ''}</span>`;
 }
 
-function renderCardSSR(v: TaskView): string {
+// Chip de projeto do card (spec 58): resolve o project_id da task no BoardProject
+// (do payload) pra pegar label/cor/arquivado. project_id órfão/ausente → sem chip.
+function cardProjectChip(v: TaskView, projectsById: Map<string, BoardProject>): string {
+  if (!v.project_id) return '';
+  const p = projectsById.get(v.project_id);
+  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+}
+
+function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
-  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}" draggable="true">
-    <div class="task-card-head">${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
+  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''} draggable="true">
+    <div class="task-card-head">${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
     <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
     <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
     <div class="task-card-actions">
@@ -817,14 +970,36 @@ function columnSwatch(color: string | null): string {
   return `<span class="task-col-dot"${c ? ` style="background:${esc(c)}"` : ''}></span>`;
 }
 
-function renderColumnSSR(col: BoardColumn): string {
+function renderColumnSSR(col: BoardColumn, projectsById: Map<string, BoardProject>): string {
   const c = safeColumnColor(col.color);
   return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
     <header class="task-col-head"><span class="task-col-label">${columnSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${col.tasks.length}</span></header>
     <div class="task-col-body" data-dropzone="${esc(col.id)}">
-      ${col.tasks.map(renderCardSSR).join('') || '<div class="task-col-empty">—</div>'}
+      ${col.tasks.map((t) => renderCardSSR(t, projectsById)).join('') || '<div class="task-col-empty">—</div>'}
     </div>
   </section>`;
+}
+
+// Select de filtro por projeto no header do board (spec 58). "Todos os projetos"
+// (default) | "Sem projeto" | cada ativo (com bolinha de cor) | subgrupo
+// "Arquivados". O estado real (query param + localStorage) é aplicado no client;
+// o SSR só monta o select com todos os projetos. `selected` marca a opção inicial
+// (vinda do ?project=… pra o primeiro paint bater com o client).
+function renderProjectFilter(projects: BoardProject[], selected: string): string {
+  const actives = projects.filter((p) => !p.archived);
+  const archived = projects.filter((p) => p.archived);
+  const opt = (value: string, label: string) =>
+    `<option value="${esc(value)}"${selected === value ? ' selected' : ''}>${esc(label)}</option>`;
+  const activeOpts = actives.map((p) => opt(p.id, p.label)).join('');
+  const archivedOpts = archived.length
+    ? `<optgroup label="Arquivados">${archived.map((p) => opt(p.id, p.label)).join('')}</optgroup>`
+    : '';
+  return `<select class="task-project-filter" id="task-project-filter" aria-label="Filtrar por projeto">
+    ${opt('all', 'Todos os projetos')}
+    ${opt('none', 'Sem projeto')}
+    ${activeOpts}
+    ${archivedOpts}
+  </select>`;
 }
 
 export async function handleTasksPage(req: Request, env: Env): Promise<Response> {
@@ -832,8 +1007,14 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const now = Date.now();
-  const columns = await buildBoard(env, now);
+  const { columns, projects } = await buildBoard(env, now);
   const totalOpen = countOpenOnBoard(columns);
+  const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
+
+  // Filtro inicial vindo do ?project= (id|none|all) — o client reconcilia com
+  // localStorage, mas o SSR já marca a opção pra o primeiro paint bater.
+  const url = new URL(req.url);
+  const initialProject = url.searchParams.get('project') || 'all';
 
   // Options de prioridade do form de criação (bandeirinha + rótulo estilo ClickUp).
   const createPrioOptions = [
@@ -855,10 +1036,12 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="today" type="button">Vencem hoje</button>
       <button class="task-filter" data-filter="week" type="button">Esta semana</button>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
+      <span class="task-toolbar-spacer"></span>
+      ${renderProjectFilter(projects, initialProject)}
     </div>
 
     <div class="task-board" id="task-board">
-      ${columns.map(renderColumnSSR).join('')}
+      ${columns.map((c) => renderColumnSSR(c, projectsById)).join('')}
     </div>
 
     <div class="task-modal" id="task-create-modal" hidden aria-hidden="true">
@@ -1047,6 +1230,24 @@ export const TASKS_CSS = `
 .task-tag-more { color: var(--text-faint); }
 /* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
 .task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
+
+/* Chip de projeto/pasta no card (spec 58): bolinha de cor + label. Arquivado esmaece. */
+.task-project-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600;
+  color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-project-chip.archived { opacity: 0.5; }
+.task-project-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex: none; }
+
+/* Filtro de projeto no header do board (spec 58) */
+.task-toolbar-spacer { flex: 1 1 auto; }
+.task-project-filter {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: border-color 160ms var(--ease);
+}
+.task-project-filter:focus { outline: none; border-color: var(--accent-lav); }
 
 /* Bandeirinha de prioridade estilo ClickUp: flag colorida + rótulo, fundo tênue */
 .task-prio {

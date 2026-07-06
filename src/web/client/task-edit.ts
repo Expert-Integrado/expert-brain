@@ -25,6 +25,7 @@ if (root) {
   const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-field="body"]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
   const columnSel = root.querySelector<HTMLSelectElement>('[data-field="column"]');
+  const projectSel = root.querySelector<HTMLSelectElement>('[data-field="project"]');
   const prioSel = root.querySelector<HTMLSelectElement>('[data-field="priority"]');
   const dueDateInput = root.querySelector<HTMLInputElement>('[data-field="due-date"]');
   const dueTimeInput = root.querySelector<HTMLInputElement>('[data-field="due-time"]');
@@ -162,6 +163,13 @@ if (root) {
     } catch {
       setStatus('Falha de conexão ao salvar', 'err');
     }
+  });
+
+  // ── Autosave: projeto/pasta (spec 58) — enfileirado (rajada) via /app/tasks/update.
+  // "" = Sem projeto → project_id null; senão o id do projeto. Só ids de projetos
+  // ativos aparecem no select; o servidor valida (arquivado/inexistente → erro).
+  projectSel?.addEventListener('change', () => {
+    queue.enqueue({ project_id: projectSel.value === '' ? null : projectSel.value });
   });
 
   // ── Autosave: prioridade / prazo (enfileirado — rajada) ──

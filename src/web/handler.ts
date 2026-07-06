@@ -9,7 +9,7 @@ import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './con
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost } from './tasks.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { NEBULA_CSS } from './styles.js';
@@ -63,6 +63,11 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/columns/update' && req.method === 'POST') return handleColumnUpdatePost(req, env);
   if (path === '/app/tasks/columns/reorder' && req.method === 'POST') return handleColumnReorderPost(req, env);
   if (path === '/app/tasks/columns/archive' && req.method === 'POST') return handleColumnArchivePost(req, env);
+  // Projetos/pastas de task (spec 58): gestão via UI de config (form + redirect, sessão).
+  if (path === '/app/tasks/projects/create' && req.method === 'POST') return handleProjectCreatePost(req, env);
+  if (path === '/app/tasks/projects/update' && req.method === 'POST') return handleProjectUpdatePost(req, env);
+  if (path === '/app/tasks/projects/reorder' && req.method === 'POST') return handleProjectReorderPost(req, env);
+  if (path === '/app/tasks/projects/archive' && req.method === 'POST') return handleProjectArchivePost(req, env);
   // Edição inline de task pela UI (spec 36): patch de title/body/due/priority/status.
   if (path === '/app/tasks/update' && req.method === 'POST') return handleTaskUpdatePost(req, env);
   // Criação de task pela UI (spec 36 fase 2): title obrigatório + body/priority/due opcionais.
