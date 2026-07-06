@@ -1,6 +1,6 @@
 # Cards e detalhe de task estilo ClickUp + UI de compartilhamento
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `50-console-v2/51-tasks-kanban-colunas-customizaveis.md` (colunas/cores no board). Acoplamento SUAVE com `50-console-v2/53` (se o payload trouxer contagem de comentários, o card exibe; sem 53, oculta — a ordem entre 52 e 53 é indiferente).
 > **Agente sugerido:** Sonnet (UI/SSR/client)
 
@@ -69,13 +69,13 @@ Espelhar a hierarquia do ClickUp: flag de prioridade pequena e à esquerda; tít
 
 ## Critérios de aceite
 
-- [ ] Card mostra tags (máx 3 + "+N"), bandeirinha, prazo, e ícone de link quando compartilhada; tags reservadas `dedupe:*` NUNCA aparecem.
-- [ ] Criação inline no rodapé da coluna cria a task na coluna certa sem abrir modal; Enter confirma, Esc cancela.
-- [ ] Colapsar coluna persiste em localStorage e sobrevive a reload.
-- [ ] Detalhe em duas colunas: corpo + sidebar com status/coluna, prioridade, prazo, tags editáveis e datas BRT.
-- [ ] Fluxo de share 100% pela UI: criar (com validade), copiar, renovar, revogar — conferindo contra `share_task`/`unshare_task` via MCP que o estado é o mesmo (idempotência preservada).
-- [ ] Link público exibido UMA única vez após criar/renovar, com botão copiar funcional.
-- [ ] Zero mudança de schema e zero mudança de contrato MCP nesta spec.
+- [x] Card mostra tags (máx 3 + "+N"), bandeirinha, prazo, e ícone de link quando compartilhada; tags reservadas `dedupe:*` NUNCA aparecem.
+- [x] Criação inline no rodapé da coluna cria a task na coluna certa sem abrir modal; Enter confirma, Esc cancela.
+- [x] Colapsar coluna persiste em localStorage e sobrevive a reload.
+- [x] Detalhe em duas colunas: corpo + sidebar com status/coluna, prioridade, prazo, tags editáveis e datas BRT.
+- [x] Fluxo de share 100% pela UI: criar (com validade), copiar, renovar, revogar — conferindo contra `share_task`/`unshare_task` via MCP que o estado é o mesmo (idempotência preservada). Confirmado por construção: `/app/tasks/share`/`unshare` (UI) e as tools MCP `share_task`/`unshare_task` chamam o mesmo módulo `src/web/share.ts` (`createShare`/`revokeShare`), coberto por `test/share.test.ts` (já existente, spec 33).
+- [x] Link público exibido UMA única vez após criar/renovar, com botão copiar funcional.
+- [x] Zero mudança de schema e zero mudança de contrato MCP nesta spec.
 
 ## Validação
 
