@@ -94,5 +94,6 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   }
   // Contatos (leitura, todas readOnlyHint:true) — o MCP do Brain lê o vault de
   // Contacts via service binding. Passam pelo guarda read sem serem suprimidas.
-  registerContactsTools(reg, env);
+  // Recebem `auth` pra propagar o escopo `private` do caller downstream (spec 61).
+  registerContactsTools(reg, env, auth);
 }

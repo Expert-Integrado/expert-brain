@@ -26,9 +26,13 @@ async function proxyToContacts(req: Request, env: Env, consolePath: string): Pro
     out.searchParams.set('all', '1');
   }
 
+  // Privacidade (spec 50-console-v2/61): estas rotas são protegidas por requireSession
+  // (= o dono logado no console do Brain), então propaga o escopo `private` downstream
+  // via header X-Include-Private — o dono vê o grafo/detalhe/timeline COMPLETO, com
+  // marcação visual de privado. O contacts só honra o header com o proxy token válido.
   const res = await env.CONTACTS.fetch(new Request(out.toString(), {
     method: 'GET',
-    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}`, 'x-include-private': '1' },
   }));
 
   const body = await res.text();
@@ -84,9 +88,12 @@ export async function fetchContactEntityServerSide(
   const out = new URL('https://contacts/app/entity');
   out.searchParams.set('vault', 'contacts');
   out.searchParams.set('id', id);
+  // SSR de /app/contacts/<id>: quem chega aqui é o dono logado (handleContactPage já
+  // rodou requireSession) — propaga o escopo `private` pra checar existência de contato
+  // privado sem 404 falso (spec 61).
   const res = await env.CONTACTS.fetch(new Request(out.toString(), {
     method: 'GET',
-    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}`, 'x-include-private': '1' },
   }));
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
