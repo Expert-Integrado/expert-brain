@@ -13,6 +13,7 @@ import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api
 import { handleNoteSearch } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
+import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { NEBULA_CSS } from './styles.js';
 
@@ -98,6 +99,15 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // então o regex (sem '.') não casa com ele.
   const taskMatch = path.match(/^\/app\/tasks\/([A-Za-z0-9_-]+)$/);
   if (taskMatch && req.method === 'GET') return handleTaskDetail(req, env, taskMatch[1]);
+
+  // Inbox de captura + triagem (spec 50-console-v2/63). Página + quick-add + 3 ações
+  // (virar nota / virar task / descartar), todas por <form> nativo (sessão + redirect,
+  // padrão CSRF dos demais POSTs). Paths exatos — sem regex, sem conflito.
+  if (path === '/app/inbox' && req.method === 'GET') return handleInboxPage(req, env);
+  if (path === '/app/inbox/add' && req.method === 'POST') return handleInboxAddPost(req, env);
+  if (path === '/app/inbox/resolve' && req.method === 'POST') return handleInboxResolvePost(req, env);
+  if (path === '/app/inbox/to-note' && req.method === 'POST') return handleInboxToNotePost(req, env);
+  if (path === '/app/inbox/to-task' && req.method === 'POST') return handleInboxToTaskPost(req, env);
 
   // Contatos embutido NO Brain: mesma sidebar/URL, painel direito = grafo de contatos
   // (dados puxados do Worker do Contacts via binding). /app/contacts-sso fica como

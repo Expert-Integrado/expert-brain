@@ -559,7 +559,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Configurações', active: 'config', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: 'Configurações', active: 'config', email: session.email, env, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

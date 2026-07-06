@@ -190,7 +190,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Notas', active: 'notes', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: 'Notas', active: 'notes', email: session.email, env, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 
@@ -202,10 +202,11 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   const note = await getNoteById(env, id, false, /* includePrivate */ true);
   if (!note) {
     return htmlResponse(
-      renderShell({
+      await renderShell({
         title: 'Não encontrada',
         active: 'notes',
         email: session.email,
+        env,
         body: '<h1>Nota não encontrada</h1><p><a href="/app/notes">← Voltar pras notas</a></p>',
         sidebarCollapsed: sidebarCollapsedFromReq(req),
       }),
@@ -373,7 +374,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    renderShell({ title: note.title, active: 'notes', email: session.email, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: note.title, active: 'notes', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 
@@ -585,10 +586,11 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const task = await getTaskById(env, id, true);
   if (!task) {
     return htmlResponse(
-      renderShell({
+      await renderShell({
         title: 'Não encontrada',
         active: 'tasks',
         email: session.email,
+        env,
         body: '<h1>Task não encontrada</h1><p><a href="/app/tasks">← Voltar pras tasks</a></p>',
         sidebarCollapsed: sidebarCollapsedFromReq(req),
       }),
@@ -842,7 +844,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    renderShell({ title: task.title, active: 'tasks', email: session.email, body, extraHead: `<style>${NOTE_MEDIA_CSS}${TASK_DETAIL_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: task.title, active: 'tasks', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${TASK_DETAIL_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

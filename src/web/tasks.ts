@@ -1141,10 +1141,11 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   `;
 
   return htmlResponse(
-    renderShell({
+    await renderShell({
       title: 'Tarefas',
       active: 'tasks',
       email: session.email,
+      env,
       body,
       extraHead: `<style>${TASKS_CSS}</style>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),

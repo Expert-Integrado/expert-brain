@@ -21,10 +21,11 @@ export async function handleContactPage(req: Request, env: Env, id: string): Pro
 
   if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) {
     return htmlResponse(
-      renderShell({
+      await renderShell({
         title: 'Contato não encontrado',
         active: 'contacts',
         email: session.email,
+        env,
         body: notFoundBody,
         sidebarCollapsed: sidebarCollapsedFromReq(req),
       }),
@@ -35,10 +36,11 @@ export async function handleContactPage(req: Request, env: Env, id: string): Pro
   const check = await fetchContactEntityServerSide(env, id);
   if (check.status === 404 || (check.body && check.body.ok === false && check.body.error === 'entity_not_found')) {
     return htmlResponse(
-      renderShell({
+      await renderShell({
         title: 'Contato não encontrado',
         active: 'contacts',
         email: session.email,
+        env,
         body: notFoundBody,
         sidebarCollapsed: sidebarCollapsedFromReq(req),
       }),
@@ -79,10 +81,11 @@ export async function handleContactPage(req: Request, env: Env, id: string): Pro
   `;
 
   return htmlResponse(
-    renderShell({
+    await renderShell({
       title: 'Contato',
       active: 'contacts',
       email: session.email,
+      env,
       body,
       extraHead: `<script src="/app/contacts/contact-page.bundle.js?v=${assetVersion('contact-page.bundle.js')}" defer></script>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),
