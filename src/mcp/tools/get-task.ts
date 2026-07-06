@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
@@ -16,7 +16,10 @@ Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at
 
 interface GetTaskInput { id: string; }
 
-export function registerGetTask(server: any, env: Env): void {
+export function registerGetTask(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 59): sem escopo `private`, task privada = mesmo "not found"
+  // de inexistente (não vaza que existe).
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'get_task',
     {
@@ -25,7 +28,7 @@ export function registerGetTask(server: any, env: Env): void {
       annotations: { title: 'Get a task', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: GetTaskInput) => {
-      const t = await getTaskById(env, input.id);
+      const t = await getTaskById(env, input.id, seePrivate);
       if (!t) {
         return toolError(
           `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`
@@ -61,6 +64,7 @@ export function registerGetTask(server: any, env: Env): void {
         tags,
         column: col ? { id: col.id, label: col.label } : null,
         project: proj ? { id: proj.id, label: proj.label } : null,
+        private: t.private === 1,
         comment_count: commentCount,
         comments: comments.map((c) => ({
           id: c.id,

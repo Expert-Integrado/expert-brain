@@ -272,6 +272,35 @@ export async function setNotePrivate(
   return (res.meta?.changes ?? 0) > 0;
 }
 
+// Marca/desmarca `private` numa TASK viva (spec 59). MARCAR privada (priv=1) revoga
+// QUALQUER share na MESMA escrita (limpa share_token/share_expires_at) — fail-closed:
+// nunca existe o estado (privada + token vivo). Retorna { ok, shareRevoked }: ok=false
+// se o id não é uma task viva; shareRevoked=true quando marcou privada E havia token.
+// Avança updated_at (+ autoria). NÃO re-embeda (task não tem vetor). O caller decide a
+// visibilidade por escopo ANTES (a UI é sessão do dono; a tool checa canSeePrivate).
+export async function setTaskPrivate(
+  env: Env, id: string, priv: 0 | 1, now: number, actor?: string | null
+): Promise<{ ok: boolean; shareRevoked: boolean }> {
+  const row = await env.DB.prepare(
+    `SELECT share_token FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(id).first<{ share_token: string | null }>();
+  if (!row) return { ok: false, shareRevoked: false };
+  const hadShare = row.share_token != null;
+  if (priv === 1) {
+    await env.DB.prepare(
+      `UPDATE notes SET private = 1, share_token = NULL, share_expires_at = NULL,
+              updated_at = ?, updated_by = COALESCE(?, updated_by)
+       WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+    ).bind(now, actor ?? null, id).run();
+    return { ok: true, shareRevoked: hadShare };
+  }
+  await env.DB.prepare(
+    `UPDATE notes SET private = 0, updated_at = ?, updated_by = COALESCE(?, updated_by)
+     WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(now, actor ?? null, id).run();
+  return { ok: true, shareRevoked: false };
+}
+
 export async function replaceTags(env: Env, noteId: string, tags: string[]): Promise<void> {
   await env.DB.prepare(`DELETE FROM tags WHERE note_id = ?`).bind(noteId).run();
   const norm = normalizeTags(tags);
@@ -460,6 +489,10 @@ export interface TaskRow {
   // Projeto/pasta (migration 0011). NULL = "Sem projeto" (default). Single-valorado —
   // ortogonal a domains e tags. Ver TaskProject / spec 58.
   project_id: string | null;
+  // Selo de privacidade (migration 0013, coluna compartilhada com notas). 0 = pública
+  // (default), 1 = privada. Gate dos read paths de task via includePrivate (spec 59).
+  // Opcional no tipo porque resolveShare (share.ts) faz um SELECT parcial sem a coluna.
+  private?: number;
   created_at: number; updated_at: number;
   // Compartilhamento público read-only (migration 0008). share_token guarda o HASH
   // sha256 do token (nunca o plaintext); NULL = task não compartilhada. Opcionais no
@@ -481,24 +514,32 @@ export interface InsertTaskInput {
   column_id?: string | null;
   // Projeto/pasta (migration 0011). Omitir/null → task nasce sem projeto. Ver spec 58.
   project_id?: string | null;
+  // Selo de privacidade (spec 59): 1 = nasce privada. Omitir/0 = pública (default). O
+  // save_task expõe isso como flag opcional; a UI/tool marcam via setTaskPrivate depois.
+  private?: 0 | 1;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, created_at, updated_at, share_token, share_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
 // aqui só se ABRE o caminho de leitura. Zero migration. Usa prefix=true (busca
 // exploratória p/ dedupe por fragmento de título). Devolve TaskRow completo — o
 // list_tasks precisa de status/due/priority pra montar o card. Ver spec 15 item 1.
-export async function ftsSearchTasks(env: Env, query: string, limit: number): Promise<TaskRow[]> {
+export async function ftsSearchTasks(
+  env: Env, query: string, limit: number, includePrivate = false
+): Promise<TaskRow[]> {
   const safe = sanitizeFtsQuery(query, true);
   if (!safe) return [];
   const cols = TASK_COLS.split(', ').map((c) => `n.${c}`).join(', ');
+  // Selo de privacidade (spec 59): default false appenda `AND n.private = 0` — o caminho
+  // FTS de task (usado por list_tasks?query) não pode vazar task privada pra caller sem escopo.
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT ${cols}
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
-     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL AND n.kind = 'task'
+     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL AND n.kind = 'task'${priv}
      ORDER BY rank
      LIMIT ?`
   ).bind(safe, limit).all<TaskRow>();
@@ -516,11 +557,11 @@ export async function insertTask(env: Env, t: InsertTaskInput, actor?: string | 
     columnId = col?.id ?? null;
   }
   // `actor` (spec 17): autoria da escrita — mesma semântica de insertNote (tasks
-  // moram na tabela notes). Ausente → NULL.
+  // moram na tabela notes). Ausente → NULL. `private` (spec 59): default 0 (pública).
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,created_by,updated_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?)`
-  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,private,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.private ?? 0, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -566,22 +607,30 @@ export async function findSimilarActiveTasksByTitle(
   return r.results ?? [];
 }
 
-export async function getTaskById(env: Env, id: string): Promise<TaskRow | null> {
+// Selo de privacidade (spec 59): includePrivate default false appenda `AND private = 0`,
+// então uma credencial sem escopo `private` recebe null numa task privada (indistinguível
+// de inexistente — get_task devolve o MESMO erro de "not found"). A sessão do dono, o
+// bearer de tasks e os read-backs internos de escrita (complete/update/move) passam true.
+export async function getTaskById(env: Env, id: string, includePrivate = false): Promise<TaskRow | null> {
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   return env.DB.prepare(
-    `SELECT ${TASK_COLS} FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+    `SELECT ${TASK_COLS} FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL${priv}`
   ).bind(id).first<TaskRow>();
 }
 
 // Tasks ativas (open + in_progress), ordenadas por vencimento (sem due primeiro? não:
 // NULLs por último), depois prioridade (1 = mais alta). Usado pela coluna esquerda do
 // Kanban e como base das outras visões.
-export async function listActiveTasks(env: Env): Promise<TaskRow[]> {
+export async function listActiveTasks(env: Env, includePrivate = false): Promise<TaskRow[]> {
+  // Selo de privacidade (spec 59): default false esconde task privada; board web e
+  // bearer de tasks (superfícies do dono) passam true.
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     // LIMIT 500 defensivo = teto do `limit` da tool list_tasks; evita puxar milhares
     // de tasks abertas num vault que cresceu (o slice da tool já corta, mas o SQL não
     // deve materializar tudo). Ver spec 15 item 8.
     `SELECT ${TASK_COLS} FROM notes
-     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('open','in_progress')
+     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('open','in_progress')${priv}
      ORDER BY (due_at IS NULL) ASC, due_at ASC, COALESCE(priority, 9) ASC, created_at ASC
      LIMIT 500`
   ).all<TaskRow>();
@@ -590,10 +639,12 @@ export async function listActiveTasks(env: Env): Promise<TaskRow[]> {
 
 // Tasks finalizadas (done/canceled) mais recentes — limitadas pra a coluna direita
 // do Kanban não crescer pra sempre conforme o histórico acumula.
-export async function listRecentClosedTasks(env: Env, limit = 100): Promise<TaskRow[]> {
+export async function listRecentClosedTasks(env: Env, limit = 100, includePrivate = false): Promise<TaskRow[]> {
+  // Selo de privacidade (spec 59): default false esconde task privada fechada.
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT ${TASK_COLS} FROM notes
-     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('done','canceled')
+     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('done','canceled')${priv}
      ORDER BY COALESCE(completed_at, updated_at) DESC
      LIMIT ?`
   ).bind(limit).all<TaskRow>();
@@ -603,12 +654,16 @@ export async function listRecentClosedTasks(env: Env, limit = 100): Promise<Task
 // Tasks que vencem até `beforeMs` (inclui as já vencidas, pois due_at < now < beforeMs).
 // Só conta tasks com due_at definido e ainda abertas. Ordenadas por vencimento +
 // prioridade. Base do list_tasks_due_today e do lembrete da VPS.
-export async function listTasksDueBefore(env: Env, beforeMs: number): Promise<TaskRow[]> {
+export async function listTasksDueBefore(env: Env, beforeMs: number, includePrivate = false): Promise<TaskRow[]> {
+  // Selo de privacidade (spec 59): default false esconde task privada. O digest do dono
+  // (cron/bearer) e a visão "due" do board passam true; o list_tasks_due_today MCP passa
+  // canSeePrivate do PAT.
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT ${TASK_COLS} FROM notes
      WHERE kind = 'task' AND deleted_at IS NULL
        AND status IN ('open','in_progress')
-       AND due_at IS NOT NULL AND due_at <= ?
+       AND due_at IS NOT NULL AND due_at <= ?${priv}
      ORDER BY due_at ASC, COALESCE(priority, 9) ASC`
   ).bind(beforeMs).all<TaskRow>();
   return r.results ?? [];
@@ -645,7 +700,9 @@ export type UpdateResult = TaskRow | 'not-found' | 'conflict';
 export async function completeTask(
   env: Env, id: string, now: number, outcome?: string, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<CompleteResult> {
-  const before = await getTaskById(env, id);
+  // includePrivate=true: concluir é operação de escrita do dono — precisa enxergar
+  // task privada (o gate de leitura da spec 59 é nos read paths, não no write).
+  const before = await getTaskById(env, id, true);
   if (!before) return 'not-found';
   // Idempotência: já concluída → no-op (não re-appenda o body, não avança timestamps).
   if (before.status === 'done') return 'already-done';
@@ -675,13 +732,13 @@ export async function completeTask(
 
   if ((res.meta?.changes ?? 0) === 0) {
     // Alguém venceu a corrida ou a versão não bateu. Reler pra decidir o sentinel.
-    const after = await getTaskById(env, id);
+    const after = await getTaskById(env, id, true);
     if (!after) return 'not-found';
     if (after.status === 'done') return 'already-done';
     return 'conflict';
   }
 
-  const after = await getTaskById(env, id);
+  const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
 }
 
@@ -715,7 +772,10 @@ export interface TaskPatch {
 export async function updateTask(
   env: Env, id: string, patch: TaskPatch, now: number, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<UpdateResult> {
-  const task = await getTaskById(env, id);
+  // includePrivate=true: editar é operação de escrita — enxerga task privada (o gate
+  // da spec 59 é de leitura). A visibilidade por escopo, quando aplicável, é decidida
+  // na tool/endpoint antes de chamar aqui.
+  const task = await getTaskById(env, id, true);
   if (!task) return 'not-found';
 
   const sets: string[] = [];
@@ -767,7 +827,7 @@ export async function updateTask(
     await replaceTaskTagsPreservingDedupe(env, id, patch.tags);
   }
 
-  const after = await getTaskById(env, id);
+  const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
 }
 
@@ -844,7 +904,7 @@ export async function moveTaskToColumn(env: Env, id: string, columnId: string, n
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
   ).bind(...(closing ? [columnId, col.category, now, now, id] : [columnId, col.category, now, id])).run();
   if ((res.meta?.changes ?? 0) === 0) return 'not-found';
-  const after = await getTaskById(env, id);
+  const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
 }
 

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, type TaskRow, type TaskProject } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
@@ -21,7 +21,10 @@ Use this to (a) see everything on the plate, (b) find or check if a task already
 
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; limit?: number; }
 
-export function registerListTasks(server: any, env: Env): void {
+export function registerListTasks(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 59): sem escopo `private`, task privada some de TODAS as
+  // superfícies deste tool (base ativa/fechada e o caminho FTS de ?query).
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'list_tasks',
     {
@@ -42,7 +45,7 @@ export function registerListTasks(server: any, env: Env): void {
       if (input.query) {
         // Busca textual sobre TASKS (título+corpo), cobre TODOS os status — dedup
         // precisa enxergar fechadas. Filtros de status/tag aplicam por cima.
-        tasks = await ftsSearchTasks(env, input.query, limit);
+        tasks = await ftsSearchTasks(env, input.query, limit, seePrivate);
       } else {
         // base set: ativas (open+in_progress) + fechadas recentes quando pedidas.
         // Fechadas entram se include_closed OU se o status pedido inclui done/canceled
@@ -50,9 +53,9 @@ export function registerListTasks(server: any, env: Env): void {
         const wantsClosed =
           input.include_closed === true ||
           (input.status?.some((s) => s === 'done' || s === 'canceled') ?? false);
-        tasks = await listActiveTasks(env);
+        tasks = await listActiveTasks(env, seePrivate);
         if (wantsClosed) {
-          tasks = tasks.concat(await listRecentClosedTasks(env, limit));
+          tasks = tasks.concat(await listRecentClosedTasks(env, limit, seePrivate));
         }
       }
 

@@ -49,7 +49,9 @@ export async function sendTelegram(env: Env, text: string): Promise<{ sent: bool
 // digest e envia. Chamado pelo scheduled() do Worker. Idempotente por cadência
 // (uma vez por dia), então rodar de novo não duplica nada além do esperado.
 export async function runDueReminder(env: Env, now: number): Promise<{ sent: boolean; count: number; reason?: string }> {
-  const tasks = await listTasksDueBefore(env, now + 24 * 3600_000);
+  // includePrivate=true (spec 59): o digest vai pro próprio dono (Telegram dele) — inclui
+  // tasks privadas. É superfície do dono, não credencial de terceiro.
+  const tasks = await listTasksDueBefore(env, now + 24 * 3600_000, true);
   const digest = buildDueDigest(tasks, now, env.WORKER_URL);
   if (!digest) return { sent: false, count: 0, reason: 'nada vencendo' };
   const r = await sendTelegram(env, digest);

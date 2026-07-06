@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { listTasksDueBefore } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
@@ -16,7 +16,9 @@ Each task includes: id, title, due (BRT), a human "when" string (e.g. "vence em 
 
 interface ListInput { horizon_hours?: number; }
 
-export function registerListTasksDueToday(server: any, env: Env): void {
+export function registerListTasksDueToday(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 59): sem escopo `private`, task privada não entra no digest.
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'list_tasks_due_today',
     {
@@ -32,7 +34,7 @@ export function registerListTasksDueToday(server: any, env: Env): void {
     safeToolHandler(async (input: ListInput) => {
       const now = Date.now();
       const horizon = (input.horizon_hours ?? 24) * 60 * 60 * 1000;
-      const tasks = await listTasksDueBefore(env, now + horizon);
+      const tasks = await listTasksDueBefore(env, now + horizon, seePrivate);
 
       const items = tasks.map((t) => ({
         id: t.id,

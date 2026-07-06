@@ -72,11 +72,13 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   registerReembed(reg, env);
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
   registerSaveTask(reg, env, auth);
-  registerListTasksDueToday(reg, env);
-  registerListTasks(reg, env);
+  // Read paths de task (spec 59): recebem `auth` pra computar canSeePrivate — task
+  // privada some pra credencial sem escopo `private`, igual às notas (spec 31).
+  registerListTasksDueToday(reg, env, auth);
+  registerListTasks(reg, env, auth);
   registerCompleteTask(reg, env, auth);
   registerUpdateTask(reg, env, auth);
-  registerGetTask(reg, env);
+  registerGetTask(reg, env, auth);
   // Comentários em task (thread): agente anota progresso sem sobrescrever o body.
   registerCommentTask(reg, env);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.

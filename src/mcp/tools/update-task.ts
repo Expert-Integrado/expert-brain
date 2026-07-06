@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, getTaskById, getProjectById } from '../../db/queries.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTask, getTaskById, getProjectById, setTaskPrivate } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
@@ -23,6 +23,9 @@ const inputSchema = {
   ),
   expected_updated_at: z.number().int().optional().describe(
     'Optimistic concurrency (optional): pass the `updated_at` you last read (from list_tasks / get_task / a prior write). The edit is applied only if the task has NOT changed since; if it changed, the call fails with a conflict error so you can re-read and reapply. Omit for last-write-wins.'
+  ),
+  private: z.boolean().optional().describe(
+    'Set true to MARK the task private (invisible via list_tasks / list_tasks_due_today / get_task to any credential without the `private` scope; also revokes any public /s/<token> link in the same write). Passing false is REJECTED — un-marking is only possible in the logged-in owner UI. One-way from tools.'
   ),
   allow_new_domain: z.boolean().optional(),
 };
@@ -57,6 +60,7 @@ interface UpdateTaskInput {
   tags?: string[];
   project?: string;
   expected_updated_at?: number;
+  private?: boolean;
   allow_new_domain?: boolean;
 }
 
@@ -74,14 +78,28 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       },
     },
     safeToolHandler(async (input: UpdateTaskInput) => {
-      const hasEdit =
+      const notFoundMsg = () =>
+        `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`;
+
+      // Selo de privacidade (spec 59): desmarcar (private:false) é PROIBIDO via tool —
+      // só a UI logada do dono torna pública, pra um agente comprometido não
+      // des-privatizar em massa. Marcar (true) é ok e revoga share vivo (setTaskPrivate).
+      if (input.private === false) {
+        return toolError(
+          `Cannot set a task back to public via update_task. Un-marking is only possible in the ` +
+          `logged-in owner UI at /app/tasks/${input.id}. update_task can only MARK a task private (private: true).`
+        );
+      }
+      const wantsPrivate = input.private === true;
+
+      const hasFieldEdit =
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
         input.domains !== undefined || input.tags !== undefined ||
         input.project !== undefined;
-      if (!hasEdit) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project.');
+      if (!hasFieldEdit && !wantsPrivate) {
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, private (true only).');
       }
 
       const patch: TaskPatch = {};
@@ -132,25 +150,44 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         }
       }
 
-      const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
-      if (result === 'not-found') {
-        return toolError(
-          `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`
-        );
+      // Se só há private:true (sem edição de campo), valida existência/visibilidade aqui
+      // (espelha mark_private de nota): caller sem escopo não enxerga task privada →
+      // "not found", e nunca marca uma task que não pode ver. Task pública é visível → ok.
+      if (!hasFieldEdit && wantsPrivate) {
+        const visible = await getTaskById(env, input.id, canSeePrivate(auth));
+        if (!visible) return toolError(notFoundMsg());
       }
-      if (result === 'conflict') {
-        // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
-        const current = await getTaskById(env, input.id);
-        const currentUpdated = current?.updated_at ?? null;
-        return toolError(
-          `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
-          `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
-        );
+
+      let task: TaskRow | undefined;
+      if (hasFieldEdit) {
+        const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
+        if (result === 'not-found') return toolError(notFoundMsg());
+        if (result === 'conflict') {
+          // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
+          const current = await getTaskById(env, input.id, true);
+          const currentUpdated = current?.updated_at ?? null;
+          return toolError(
+            `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
+            `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
+          );
+        }
+        task = result;
       }
-      const task = result;
+
+      // Marcar privada (spec 59): one-way via MCP, revoga share vivo na mesma escrita.
+      // Roda DEPOIS do patch de campos (se houve) — o retorno reflete o estado final.
+      let shareRevoked = false;
+      if (wantsPrivate) {
+        const r = await setTaskPrivate(env, input.id, 1, now, writeActor(auth));
+        if (!r.ok) return toolError(notFoundMsg());
+        shareRevoked = r.shareRevoked;
+        task = (await getTaskById(env, input.id, true)) ?? task;
+      }
+
+      if (!task) return toolError(notFoundMsg());
       const proj = task.project_id ? await getProjectById(env, task.project_id) : null;
 
-      return toolSuccess({
+      const out: Record<string, unknown> = {
         id: task.id,
         url: noteUrl(env, task.id),
         title: task.title,
@@ -159,8 +196,14 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         due_at: task.due_at,
         due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
         project: proj ? { id: proj.id, label: proj.label } : null,
+        private: task.private === 1,
         updated_at: task.updated_at,
-      });
+      };
+      if (shareRevoked) {
+        out.share_revoked = true;
+        out.share_revoked_note = 'A task ficou privada — o link público que existia foi revogado.';
+      }
+      return toolSuccess(out);
     }) as any
   );
 }

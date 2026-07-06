@@ -24,6 +24,9 @@ const inputSchema = {
   dedupe_key: z.string().min(1).max(120).optional().describe(
     'Optional stable idempotency key. Pass a value derived from the source (e.g. an email id, a card id) when the SAME task could be created twice across sessions or on a network retry. If an ACTIVE task with this key already exists, no duplicate is created — the existing task is returned with deduped:true.'
   ),
+  private: z.boolean().optional().describe(
+    'Set true to create the task PRIVATE: invisible via list_tasks / list_tasks_due_today / get_task to any credential without the `private` scope (including a `full` PAT), and it can NEVER have a public /s/<token> link. Un-marking is only possible in the logged-in owner UI. Default false (public).'
+  ),
   allow_new_domain: z.boolean().optional(),
 };
 
@@ -55,6 +58,7 @@ interface SaveTaskInput {
   tags?: string[];
   project?: string;
   dedupe_key?: string;
+  private?: boolean;
   allow_new_domain?: boolean;
 }
 
@@ -177,6 +181,8 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         priority: input.priority ?? null,
         completed_at: closing ? now : null,
         project_id: projectId,
+        // Selo de privacidade (spec 59): nasce privada quando pedido.
+        private: input.private ? 1 : 0,
         created_at: now,
         updated_at: now,
       }, writeActor(auth));
@@ -195,6 +201,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         due_at: dueMs,
         due_brt: dueMs !== null ? formatBrtDateTime(dueMs) : null,
         project: resolvedProject,
+        private: input.private === true,
         updated_at: now,
       };
       if (possibleDuplicates.length > 0) {
