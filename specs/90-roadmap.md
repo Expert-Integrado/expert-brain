@@ -154,7 +154,7 @@ Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do ch
 
 **Sequência canônica de execução (checklist — 22 sessões, 1 spec por sessão):**
 
-> **LOCK DE EXECUÇÃO (atualizado 06/07/2026):** ondas C0-C3 (itens 1-12 — specs `21`, `51`, `53`, `52`, `58`, `54`, `55`, `57`, `56`, `60`, `17`, `31`) + item 13 (`59-tasks-privadas`) foram executadas com sucesso em 05-06/07/2026, commits em `feat/console-v2` dos dois repos. Lock reduzido: continua valendo SÓ para os itens ainda `[ ]` (14-22, specs `61`,`63`,`62`,`64`,`65`,`66`,`68`,`67`,`69`) — **NÃO inicie executor pra esses itens sem checar primeiro se outra sessão já está rodando**. Lock expira se a branch ficar 24h sem commits novos.
+> **LOCK DE EXECUÇÃO (atualizado 06/07/2026):** ondas C0-C3 (itens 1-12 — specs `21`, `51`, `53`, `52`, `58`, `54`, `55`, `57`, `56`, `60`, `17`, `31`) + item 13 (`59-tasks-privadas`) foram executadas com sucesso em 05-06/07/2026, commits em `feat/console-v2` dos dois repos. Item 14 (`61-contacts-privadas`) FALHOU nesta rodada e continua `[ ]`/`ready`, sem commit. Lock reduzido: continua valendo SÓ para os itens ainda `[ ]` (14-22, specs `61`,`63`,`62`,`64`,`65`,`66`,`68`,`67`,`69`) — **NÃO inicie executor pra esses itens sem checar primeiro se outra sessão já está rodando**. Lock expira se a branch ficar 24h sem commits novos.
 
 Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
 
