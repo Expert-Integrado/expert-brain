@@ -1,6 +1,6 @@
 # Contacts: portar as defesas do incidente 1102 (similar_edges pré-computadas, guard de escala, connections sem full-scan)
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-contacts
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-contacts
 > **Depende de:** `20-frontend/22-grafo-seed-clusterizado-e-layout-persistente.md` (implementação de referência do seed clusterizado no Brain) · `40-ops/44-contacts-migrations-tracking.md` (trilho de migrations do contacts)
 
 ## Contexto
