@@ -1,6 +1,6 @@
 # Taxonomia configurável: cor e nome de exibição das áreas (domains) e tipos (kinds), com criação de área pela UI
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 > **Agente sugerido:** Sonnet (config + consumo visual; zero migração de dados)
 
@@ -72,13 +72,13 @@ Renomear label NÃO renomeia slug (zero UPDATE em notas — é só exibição). 
 
 ## Critérios de aceite
 
-- [ ] Mudar a cor de uma área na config reflete em: nós do grafo, legenda, badge na lista de notas e chip de filtro — após reload, sem deploy.
-- [ ] Mudar o label exibe o nome novo em todas essas superfícies; o slug segue visível no detalhe (mono) e o MCP segue aceitando/retornando o slug.
-- [ ] Criar "Nova área" pela UI: aparece imediatamente em legenda/filtros/selects com 0 notas; salvar nota via MCP com o slug novo a associa normalmente.
-- [ ] Kind com label/cor customizados reflete nos badges do console; `save_note` com kind fora dos 7 continua rejeitado.
-- [ ] Restaurar padrão volta 100% ao comportamento atual (paleta compilada).
-- [ ] Config inválida (cor malformada, slug com maiúscula/acento, label vazio) é rejeitada no POST com mensagem clara; nada é persistido parcialmente.
-- [ ] Zero mudança em `notes` (nenhum UPDATE de dados) — verificável por checksum/count antes e depois nos testes.
+- [x] Mudar a cor de uma área na config reflete em: nós do grafo, legenda, badge na lista de notas e chip de filtro — após reload, sem deploy.
+- [x] Mudar o label exibe o nome novo em todas essas superfícies; o slug segue visível no detalhe (mono) e o MCP segue aceitando/retornando o slug.
+- [x] Criar "Nova área" pela UI: aparece imediatamente em legenda/filtros/selects com 0 notas; salvar nota via MCP com o slug novo a associa normalmente.
+- [x] Kind com label/cor customizados reflete nos badges do console; `save_note` com kind fora dos 7 continua rejeitado.
+- [x] Restaurar padrão volta 100% ao comportamento atual (paleta compilada).
+- [x] Config inválida (cor malformada, slug com maiúscula/acento, label vazio) é rejeitada no POST com mensagem clara; nada é persistido parcialmente.
+- [x] Zero mudança em `notes` (nenhum UPDATE de dados) — verificável por checksum/count antes e depois nos testes.
 
 ## Validação
 

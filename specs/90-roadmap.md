@@ -163,7 +163,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [x] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
 - [x] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão) — impl `feat/console-v2` (retomada de working tree herdada, sem commit anterior), tsc+436 testes verdes (55 arquivos + auth.test.ts)
 - [x] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão) — impl `feat/console-v2`, tsc + suíte verdes (58 arquivos, 465 testes + auth)
-- [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1
+- [x] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1 — impl `feat/console-v2`, tsc + suíte verdes (61 arquivos, 517 testes + auth)
 - [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
 - [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)
 - [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão)
@@ -269,7 +269,7 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G3 | — | — |
 | G4 | — | — |
 | G5-C0 | pendente (dono) | Código pronto: `expert-contacts` `feat/console-v2` `fceecf3` (spec `10-backend/21` done), `tsc --noEmit` limpo + `vitest` 145/145. FALTA (dono): validar grafo com arestas semânticas sem query Vectorize no load + `POST /setup/provision` (migration 0005) + `POST /setup/backfill-similar` em loop + deploy — tudo SÓ com OK explícito. |
-| G5-C1 | — | — |
+| G5-C1 | 06/07/2026 | Código pronto: `expert-brain` `feat/console-v2` `e2d2464` (spec `50-console-v2/54` done, fecha itens 2-6 da onda C1), `tsc --noEmit` limpo + `vitest` 517/517 + auth (61 arquivos). FALTA (dono): validação manual via `wrangler dev` + deploy — tudo SÓ com OK explícito. |
 | G5-C2 | — | — |
 | G5-C3 | — | — |
 | G6-C4 | — | — |
