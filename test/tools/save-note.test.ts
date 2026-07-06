@@ -4,6 +4,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { registerSaveNote } from '../../src/mcp/tools/save-note.js';
 
 const E = env as any;
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
 
 function fakeAI() {
   return { run: vi.fn(async () => ({ data: [Array(1024).fill(0.1)] })) };
@@ -34,7 +35,7 @@ describe('save_note', () => {
 
   it('saves a note and embeds the tldr', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     const r = await registered.save_note({
       title: 'Red Queen',
       body: 'bod',
@@ -52,7 +53,7 @@ describe('save_note', () => {
 
   it('rejects edge why shorter than 20 chars', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     await E.DB.prepare(
       `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('target','t','b','tl','["seed-domain"]',null,0,0,null)`
     ).run();
@@ -70,7 +71,7 @@ describe('save_note', () => {
 
   it('rejects edge pointing to missing note', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     const r = await registered.save_note({
       title: 'X', body: 'b',
       tldr: 'tldr long enough here really',
@@ -84,7 +85,7 @@ describe('save_note', () => {
 
   it('rejects an edge pointing to a task and does not save the note', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     await E.DB.prepare(
       `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at,status,due_at,priority,completed_at)
        VALUES ('taskx','Task','','tl','["operations"]','task',0,0,null,'open',null,null,null)`
@@ -107,7 +108,7 @@ describe('save_note', () => {
 
   it('rejects uppercase domain', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     const r = await registered.save_note({
       title: 'X', body: 'b',
       tldr: 'tldr long enough here really',
@@ -120,7 +121,7 @@ describe('save_note', () => {
 
   it('rejects accented domain', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     const r = await registered.save_note({
       title: 'X', body: 'b',
       tldr: 'tldr long enough here really',
@@ -133,7 +134,7 @@ describe('save_note', () => {
 
   it('does not write to D1 when domain validation fails', async () => {
     const { server, registered } = makeServer();
-    registerSaveNote(server, E);
+    registerSaveNote(server, E, AUTH);
     await registered.save_note({
       title: 'X', body: 'b',
       tldr: 'tldr long enough here really',

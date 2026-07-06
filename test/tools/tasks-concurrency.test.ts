@@ -9,9 +9,10 @@ const E = env as any;
 
 // Gate de concorrência/idempotência/dedupe das tasks (spec 14). Registra as 3
 // tools num server fake (padrão da suíte) e chama os handlers direto.
-function reg(register: (s: any, e: any) => void, name: string) {
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
+function reg(register: (s: any, e: any, a: any) => void, name: string) {
   const r: any = {};
-  register({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  register({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
   return r[name];
 }
 

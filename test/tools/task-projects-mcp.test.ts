@@ -14,9 +14,10 @@ import {
 
 const E = env as any;
 
-function reg(register: (s: any, e: any) => void): any {
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
+function reg(register: (s: any, e: any, a?: any) => void): any {
   const r: any = {};
-  register({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  register({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
   return r;
 }
 const save = () => reg(registerSaveTask).save_task;

@@ -4,6 +4,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { registerRestoreNote } from '../../src/mcp/tools/restore-note.js';
 
 const E = env as any;
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
 
 describe('restore_note', () => {
   beforeEach(async () => {
@@ -20,7 +21,7 @@ describe('restore_note', () => {
 
   function reg() {
     const r: any = {};
-    registerRestoreNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+    registerRestoreNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
     return r;
   }
 

@@ -4,10 +4,11 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { registerSaveTask } from '../../src/mcp/tools/save-task.js';
 
 const E = env as any;
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
 
 function reg() {
   const r: any = {};
-  registerSaveTask({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  registerSaveTask({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
   return r;
 }
 
