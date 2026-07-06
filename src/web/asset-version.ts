@@ -8,8 +8,8 @@ export const ASSET_HASHES: Record<string, string> = {
   "note-media.bundle.js": "24c52523002f",
   "note-edit.bundle.js": "99e74995e864",
   "shell.bundle.js": "1f37422a38bc",
-  "tasks.bundle.js": "091e714adffe",
-  "task-edit.bundle.js": "6fe771a569b0",
+  "tasks.bundle.js": "2a3a21409fc9",
+  "task-edit.bundle.js": "1bcb8af05909",
   "sim-worker.bundle.js": "3f1569f3df57",
   "styles.css": "5a749bafab70",
   "config.bundle.js": "f433d50caa9f"
