@@ -243,6 +243,22 @@ export async function replaceTags(env: Env, noteId: string, tags: string[]): Pro
   }
 }
 
+// Substitui as tags de uma TASK preservando as reservadas `dedupe:*` — replaceTags
+// apaga tudo, e a dedupe_key sumir silenciosamente reabriria a criação de duplicata
+// (ver save_task). Exceção: se o novo array já traz uma tag dedupe: explícita, é
+// substituição intencional. Compartilhado por update_task (MCP) e /app/tasks/update
+// (UI, spec 52) — mesma regra nos dois caminhos.
+export async function replaceTaskTagsPreservingDedupe(env: Env, noteId: string, tags: string[]): Promise<void> {
+  let finalTags = tags;
+  const bringsDedupe = tags.some((t) => t.startsWith('dedupe:'));
+  if (!bringsDedupe) {
+    const existing = await getTagsByNote(env, noteId);
+    const dedupeTags = existing.filter((t) => t.startsWith('dedupe:'));
+    if (dedupeTags.length > 0) finalTags = [...tags, ...dedupeTags];
+  }
+  await replaceTags(env, noteId, finalTags);
+}
+
 // Por padrao ignora notas soft-deletadas (deleted_at IS NULL). includeDeleted=true
 // e usado só pelo restore_note, que precisa ler a nota na lixeira pra recuperar.
 export async function getNoteById(env: Env, id: string, includeDeleted = false): Promise<NoteRow | null> {
@@ -594,6 +610,9 @@ export interface TaskPatch {
   priority?: number | null;
   status?: TaskStatus;
   domains?: string; // JSON string, igual ao insertTask
+  // Substitui TODAS as tags ([] limpa as não-reservadas). Reservadas dedupe:*
+  // são preservadas automaticamente por replaceTaskTagsPreservingDedupe — ver ali.
+  tags?: string[];
 }
 
 // Edita campos de uma task existente. Faz UPDATE só das colunas presentes no patch
@@ -648,6 +667,13 @@ export async function updateTask(
   // mudou desde a leitura do cliente).
   if (expectedUpdatedAt !== undefined && (res.meta?.changes ?? 0) === 0) {
     return 'conflict';
+  }
+
+  // Tags vivem em tabela própria (fora do UPDATE de `notes` acima) — só mexe se o
+  // patch trouxer a chave. Aplicado DEPOIS da checagem de conflito: uma escrita
+  // rejeitada por versão não deve tocar tags.
+  if (patch.tags !== undefined) {
+    await replaceTaskTagsPreservingDedupe(env, id, patch.tags);
   }
 
   const after = await getTaskById(env, id);

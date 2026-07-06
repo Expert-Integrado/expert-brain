@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, replaceTags, getTagsByNote, getTaskById } from '../../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, getTaskById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 
@@ -82,6 +82,9 @@ export function registerUpdateTask(server: any, env: Env): void {
       if (input.details !== undefined) patch.body = input.details.trim();
       if (input.priority !== undefined) patch.priority = input.priority;
       if (input.status !== undefined) patch.status = input.status;
+      // updateTask aplica a preservação da tag reservada dedupe: (replaceTaskTagsPreservingDedupe) —
+      // mesma lógica compartilhada com /app/tasks/update (spec 52).
+      if (input.tags !== undefined) patch.tags = input.tags;
 
       if (input.domains !== undefined) {
         const domainError = validateDomains(input.domains, { allowNewDomain: input.allow_new_domain ?? false });
@@ -129,20 +132,6 @@ export function registerUpdateTask(server: any, env: Env): void {
         );
       }
       const task = result;
-
-      if (input.tags !== undefined) {
-        // Preserva as tags reservadas dedupe: no replace — replaceTags apaga tudo,
-        // e a dedupe_key sumir silenciosamente reabriria a criação de duplicata.
-        // Exceção: se o novo array já traz uma tag dedupe:, é substituição explícita.
-        let finalTags = input.tags;
-        const bringsDedupe = input.tags.some((t) => t.startsWith('dedupe:'));
-        if (!bringsDedupe) {
-          const existing = await getTagsByNote(env, input.id);
-          const dedupeTags = existing.filter((t) => t.startsWith('dedupe:'));
-          if (dedupeTags.length > 0) finalTags = [...input.tags, ...dedupeTags];
-        }
-        await replaceTags(env, input.id, finalTags);
-      }
 
       return toolSuccess({
         id: task.id,
