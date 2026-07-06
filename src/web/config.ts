@@ -387,14 +387,25 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     .map((k) => {
       const created = new Date(k.created_at).toLocaleString('pt-BR');
       const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('pt-BR') : '—';
-      const revokeBtn = `<form method="post" action="/app/api-keys/revoke" style="display:inline">
+      const revoked = k.revoked_at !== null;
+      // Revogação lógica (spec 17): a linha permanece como trilha de auditoria. Sem
+      // botão Excluir numa chave já revogada (e não há "un-revoke").
+      const statusBadge = revoked
+        ? `<span class="badge-pill badge-warn">● revogada</span>`
+        : `<span class="badge-pill badge-ok">● ativa</span>`;
+      const revokeBtn = revoked
+        ? '—'
+        : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn-danger">Excluir</button>
+             <button type="submit" class="btn-danger">Revogar</button>
            </form>`;
-      return `<tr>
+      // Escopo (spec 17): full = CRUD completo; read = somente leitura.
+      const scopeLabel = k.scopes === 'read' ? 'read' : 'full';
+      return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
         <td><strong>${esc(k.name)}</strong></td>
         <td><code>${esc(k.prefix)}…</code></td>
-        <td><span class="badge-pill badge-ok">● ativa</span></td>
+        <td><span class="badge-pill">${esc(scopeLabel)}</span></td>
+        <td>${statusBadge}</td>
         <td>${esc(created)}</td>
         <td>${esc(lastUsed)}</td>
         <td>${revokeBtn}</td>
@@ -511,6 +522,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <label>Nome (pra você lembrar onde usa)
               <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
             </label>
+            <label style="display:block;margin-top:12px">Escopo
+              <select name="scope" class="input-text" style="display:block;margin-top:4px">
+                <option value="full">Leitura e escrita — CRUD completo do vault</option>
+                <option value="read">Somente leitura — recall, get, stats, list</option>
+              </select>
+            </label>
             <button type="submit" class="btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>
@@ -519,7 +536,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           ${keys.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>' : `
           <table class="keys-table">
             <thead><tr>
-              <th>Nome</th><th>Prefixo</th><th>Status</th><th>Criada em</th><th>Último uso</th><th></th>
+              <th>Nome</th><th>Prefixo</th><th>Escopo</th><th>Status</th><th>Criada em</th><th>Último uso</th><th></th>
             </tr></thead>
             <tbody>${keyRows}</tbody>
           </table>`}

@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
-import { ApiKeyLimitError, createApiKey, revokeApiKey } from '../auth/api-keys.js';
+import { ApiKeyLimitError, createApiKey, revokeApiKey, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
 // Mantemos a rota só pra não quebrar bookmarks antigos.
@@ -34,9 +34,12 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
   if (!name) return htmlResponse('Nome obrigatório', 400);
+  // Escopo (spec 17): valor inválido/ausente cai em 'full' (comportamento histórico).
+  const scopeRaw = String(form.get('scope') ?? '');
+  const scope: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
   let plainKey: string;
   try {
-    const created = await createApiKey(env, session.email, name);
+    const created = await createApiKey(env, session.email, name, scope);
     plainKey = created.plainKey;
   } catch (err) {
     if (err instanceof ApiKeyLimitError) {
