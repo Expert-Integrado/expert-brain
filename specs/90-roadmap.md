@@ -152,7 +152,9 @@ Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do ch
 | `50-console-v2/59-tasks-privacidade.md` | Opus | Fecha os read paths de TASK que a 31 não cobre + bloqueia share público de task privada. Depois da 31. |
 | `50-console-v2/61-contacts-privacidade.md` | Opus | Entidade/evento privados no contacts, fail-closed no proxy, escopo propagado pelo Brain. Depois da 17 E da onda C2 (gateia endpoints da 56/57); coordena com a 60 (embedding). |
 
-**Sequência canônica de execução (checklist — 21 sessões, 1 spec por sessão):**
+**Sequência canônica de execução (checklist — 22 sessões, 1 spec por sessão):**
+
+> **LOCK DE EXECUÇÃO (05/07/2026 22h30 BRT):** os itens 2-20 estão sendo executados AGORA, de forma automática e encadeada, pelo workflow `wf_a1e5eac3` (sessão `54a7cc4e` no PC do dono), com commits chegando em `feat/console-v2` dos dois repos. QUALQUER outra sessão/agente que ler este checklist: **NÃO inicie executor pra nenhum item** — risco real de colisão de working tree (incidente em 05/07 22h: dois executores simultâneos na spec 21 no mesmo checkout). Lock expira se a branch ficar 24h sem commits novos.
 
 Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
 
