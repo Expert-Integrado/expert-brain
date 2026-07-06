@@ -21,6 +21,9 @@ import { registerGetTask } from './tools/get-task.js';
 import { registerCommentTask } from './tools/comment-task.js';
 import { registerShareTask } from './tools/share-task.js';
 import { registerUnshareTask } from './tools/unshare-task.js';
+import { registerCapture } from './tools/capture.js';
+import { registerListInbox } from './tools/list-inbox.js';
+import { registerResolveInbox } from './tools/resolve-inbox.js';
 import { registerAttachMedia } from './tools/attach-media.js';
 import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
@@ -84,6 +87,13 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
   registerShareTask(reg, env);
   registerUnshareTask(reg, env);
+  // Captura sem fricção + inbox de triagem (spec 50-console-v2/63). As TRÊS são
+  // registradas via `reg`: como todas têm readOnlyHint:false (inclusive list_inbox, de
+  // propósito — o inbox é superfície pré-triagem do dono), o guarda de escopo `read`
+  // SUPRIME as três (fail-closed: só PAT full/dono enxerga/captura no inbox).
+  registerCapture(reg, env);
+  registerListInbox(reg, env);
+  registerResolveInbox(reg, env);
   // Mídia das notas (R2 + dedup SHA-256). Binding opcional: instalação sem R2
   // habilitado (conta free sem billing) sobe sem as tools de mídia — o setup
   // remove o [[r2_buckets]] do wrangler.toml nesse caso.
