@@ -835,3 +835,93 @@ export async function countActiveColumnsInCategory(env: Env, category: TaskStatu
   ).bind(category).first<{ c: number }>();
   return r?.c ?? 0;
 }
+
+// ─────────────────────────── TASK COMMENTS ───────────────────────────
+// Thread de comentários por task (migration 0010). 3 autores: 'owner' (console do
+// dono), 'agent' (MCP) e 'guest' (página pública /s/<token>). Tabela PRÓPRIA — o
+// comentário não é nota, não embeda, não entra no grafo/recall. Ver spec 53.
+export type CommentAuthor = 'owner' | 'guest' | 'agent';
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author: CommentAuthor;
+  author_name: string | null;
+  body: string;
+  created_at: number;
+}
+
+// Insere um comentário. O caller valida ANTES que a task existe e está viva
+// (getTaskById no console/agent; resolveShare no público) — aqui só grava. O
+// author_name já chega trimado/limitado pelo caller (guest exige nome; owner/agent
+// podem ser null). O CHECK de length(body) na migration é a última linha de defesa.
+export async function addTaskComment(env: Env, c: TaskComment): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at)
+     VALUES (?,?,?,?,?,?)`
+  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at).run();
+}
+
+// Lista os comentários de UMA task em ordem cronológica. O JOIN em notes com
+// deleted_at IS NULL garante que comentário de task SOFT-deletada não vaza (o
+// soft-delete não cascateia a FK). limit/offset pra paginação.
+export async function listTaskComments(
+  env: Env, taskId: string, limit = 200, offset = 0
+): Promise<TaskComment[]> {
+  const r = await env.DB.prepare(
+    `SELECT c.id, c.task_id, c.author, c.author_name, c.body, c.created_at
+     FROM task_comments c
+     JOIN notes n ON n.id = c.task_id
+     WHERE c.task_id = ? AND n.deleted_at IS NULL AND n.kind = 'task'
+     ORDER BY c.created_at ASC, c.id ASC
+     LIMIT ? OFFSET ?`
+  ).bind(taskId, limit, offset).all<TaskComment>();
+  return r.results ?? [];
+}
+
+// Conta comentários de UMA task, opcionalmente filtrando por autor (o filtro de
+// autor alimenta o teto absoluto de guest — spec 53, riscos). Mesma defesa do
+// listTaskComments: só conta comentário de task viva.
+export async function countTaskComments(
+  env: Env, taskId: string, author?: CommentAuthor
+): Promise<number> {
+  const base =
+    `SELECT count(*) AS c FROM task_comments c
+     JOIN notes n ON n.id = c.task_id
+     WHERE c.task_id = ? AND n.deleted_at IS NULL AND n.kind = 'task'`;
+  const stmt = author
+    ? env.DB.prepare(`${base} AND c.author = ?`).bind(taskId, author)
+    : env.DB.prepare(base).bind(taskId);
+  const row = await stmt.first<{ c: number }>();
+  return row?.c ?? 0;
+}
+
+// Contagem de comentários por task numa query só (GROUP BY, chunked p/ não estourar
+// binds do D1) — pro payload do board sem N+1. Recebe ids de tasks já vivas (o board
+// só carrega tasks não-deletadas), então dispensa o JOIN: conta os comentários dos
+// ids dados. Retorna Map id→count (ausente = 0 comentários).
+export async function countTaskCommentsBatch(
+  env: Env, taskIds: string[]
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (taskIds.length === 0) return out;
+  for (let i = 0; i < taskIds.length; i += 100) {
+    const chunk = taskIds.slice(i, i + 100);
+    const ph = chunk.map(() => '?').join(',');
+    const r = await env.DB.prepare(
+      `SELECT task_id, count(*) AS c FROM task_comments
+       WHERE task_id IN (${ph})
+       GROUP BY task_id`
+    ).bind(...chunk).all<{ task_id: string; c: number }>();
+    for (const row of r.results ?? []) out.set(row.task_id, row.c);
+  }
+  return out;
+}
+
+// Apaga UM comentário por id (hard delete — moderação do dono pelo console). Retorna
+// true se removeu. NÃO filtra por autor de propósito: o dono pode apagar qualquer
+// comentário, inclusive de convidado. O endpoint que chama já exige sessão do dono.
+export async function deleteTaskComment(env: Env, id: string): Promise<boolean> {
+  const res = await env.DB.prepare(`DELETE FROM task_comments WHERE id = ?`).bind(id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}

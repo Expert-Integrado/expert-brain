@@ -217,6 +217,28 @@ const MIGRATION_0009_STMTS: string[] = [
      WHERE kind = 'task' AND status IS NOT NULL AND column_id IS NULL`,
 ];
 
+// 0010 — TASK COMMENTS. Thread de discussão por task com 3 autores possíveis: o
+// dono (console), o agente (MCP) e o convidado (página pública /s/<token>). Tabela
+// PRÓPRIA (não é nota) — comentário não vira nota de conhecimento, não embeda, não
+// entra no grafo/recall. ON DELETE CASCADE limpa os comentários quando a task é
+// HARD-deletada; o soft-delete (deleted_at) NÃO cascateia, então todos os read paths
+// de comentário filtram a task viva (JOIN notes deleted_at IS NULL) pra que comentário
+// de task na lixeira não vaze em nenhuma superfície. author_name é obrigatório (em
+// código) quando author='guest' (≤60 chars); body 1..4000 (o público limita a 2000
+// em código). created_at em unix ms (Date.now()), igual às demais tabelas. Aditiva:
+// tabela nova + índice, não toca nenhuma linha existente. Ver spec 50-console-v2/53.
+const MIGRATION_0010_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS task_comments (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    author      TEXT NOT NULL CHECK (author IN ('owner','guest','agent')),
+    author_name TEXT,
+    body        TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 4000),
+    created_at  INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments (task_id, created_at)`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -227,6 +249,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0007_note_media', stmts: MIGRATION_0007_STMTS },
   { id: '0008_share_task', stmts: MIGRATION_0008_STMTS },
   { id: '0009_kanban_columns', stmts: MIGRATION_0009_STMTS },
+  { id: '0010_task_comments', stmts: MIGRATION_0010_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

@@ -1,6 +1,6 @@
 # Comentários em tasks: thread no console, tool MCP e comentário de convidado no link público
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (acoplamento suave com `50-console-v2/52`: o card/detalhe exibem contagem/thread quando esta spec existir; qualquer ordem funciona)
 > **Agente sugerido:** Opus (superfície pública sem auth exige cuidado)
 
