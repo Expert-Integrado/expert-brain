@@ -4,7 +4,7 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
 import { renderMarkdown } from './markdown.js';
-import { brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
+import { brtDatetimeLocal, brtDateOnly, brtTimeOnly, formatBrtDateTime } from '../util/time.js';
 import { PRIORITIES } from '../util/priority.js';
 import {
   getNoteById,
@@ -13,6 +13,9 @@ import {
   getEdgesTo,
   updateNote,
   listTaskComments,
+  listKanbanColumns,
+  resolveTaskColumn,
+  getTagsByNote,
   TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
@@ -23,6 +26,7 @@ import { validateDomains, CANONICAL_DOMAINS } from '../db/validation.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { getShareStatus } from './share.js';
 import { renderCommentThread } from './comments-render.js';
+import { visibleTags } from './tasks.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -580,22 +584,55 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     ? `<button type="button" class="task-d-btn task-d-complete" data-task-complete data-task-id="${esc(task.id)}">✓ Concluir</button>`
     : '';
 
-  // Options dos selects de status/prioridade (montados no servidor pra o SSR já
-  // vir com o valor atual selecionado; a edição real é wired no client bundle).
-  // Prioridade usa rótulos nomeados estilo ClickUp (spec 36 fase 3).
-  const statusOptions = TASK_STATUSES.map(
-    (s) => `<option value="${esc(s)}"${s === status ? ' selected' : ''}>${esc(TASK_STATUS_LABELS[s] ?? s)}</option>`
-  ).join('');
+  // Coluna do Kanban (spec 52): a sidebar troca o antigo select cru de "Status" por
+  // um select de COLUNA (mais granular, espelha a interação do board — spec 51).
+  // Só colunas ATIVAS são selecionáveis; muda via POST /app/tasks/move (não
+  // /app/tasks/update), que já deriva status+completed_at da categoria da coluna.
+  // Se a coluna atual da task estiver arquivada (drift raro — ex. seed
+  // col_cancelado nasce arquivado), aparece como opção desabilitada só pra não
+  // mentir o estado — o dono escolhe uma ativa pra sair dali.
+  const allColumns = await listKanbanColumns(env, true);
+  const activeColumns = allColumns.filter((c) => c.archived_at === null);
+  const resolvedCol = resolveTaskColumn(task, allColumns);
+  const columnGroups = TASK_STATUSES.map((cat) => {
+    const cols = activeColumns.filter((c) => c.category === cat);
+    if (cols.length === 0) return '';
+    const opts = cols
+      .map((c) => `<option value="${esc(c.id)}"${resolvedCol?.id === c.id ? ' selected' : ''}>${esc(c.label)}</option>`)
+      .join('');
+    return `<optgroup label="${esc(TASK_STATUS_LABELS[cat] ?? cat)}">${opts}</optgroup>`;
+  }).join('');
+  const archivedCurrentOption = resolvedCol && resolvedCol.archived_at !== null
+    ? `<option value="${esc(resolvedCol.id)}" selected disabled>${esc(resolvedCol.label)} (arquivada)</option>`
+    : '';
+  const columnSelectHtml = `<select class="task-edit-select" data-field="column" aria-label="Coluna">${archivedCurrentOption}${columnGroups}</select>`;
+
+  // Tags (spec 52): editor de chips na sidebar, autosave via /app/tasks/update
+  // (patch.tags). Reservadas dedupe:* NUNCA aparecem aqui (visibleTags filtra) —
+  // o servidor as preserva automaticamente mesmo sem o dono vê-las.
+  const tags = visibleTags(await getTagsByNote(env, task.id));
+
+  // Options do select de prioridade (montado no servidor pra o SSR já vir com o
+  // valor atual selecionado; a edição real é wired no client bundle). Rótulos
+  // nomeados estilo ClickUp (spec 36 fase 3).
   const prioOptions = [
     `<option value=""${task.priority === null ? ' selected' : ''}>Sem prioridade</option>`,
     ...PRIORITIES.map((m) => `<option value="${m.value}"${task.priority === m.value ? ' selected' : ''}>${esc(m.label)}</option>`),
   ].join('');
 
-  // Editor inline (spec 36). Re-diagramado tipo ClickUp: título grande borderless
-  // no topo, linha de metadados alinhada (status | prioridade | prazo | domínios)
-  // com espaçamento uniforme, ações agrupadas à direita, descrição com label +
-  // botão Salvar alinhado à direita, prévia bem separada. Concorrência otimista
-  // via data-updated-at. CSP: wiring todo em client/task-edit.ts.
+  // Datas read-only da sidebar, sempre BRT.
+  const datesHtml = `
+    <div class="task-sidebar-field task-sidebar-dates">
+      <div><span class="task-sidebar-lbl">Criada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.created_at))}</span></div>
+      <div><span class="task-sidebar-lbl">Atualizada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.updated_at))}</span></div>
+      ${task.completed_at !== null ? `<div><span class="task-sidebar-lbl">Concluída</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.completed_at))}</span></div>` : ''}
+    </div>`;
+
+  // Editor inline (spec 36/52). Duas colunas estilo ClickUp: corpo (título +
+  // descrição + prévia + atividade) à esquerda, sidebar de metadados (coluna,
+  // prioridade, prazo, tags, áreas, datas, compartilhar) à direita — empilha no
+  // mobile. Concorrência otimista via data-updated-at. CSP: wiring todo em
+  // client/task-edit.ts.
   const body = `
     <div class="task-d-banner">
       <a href="/app/tasks" class="task-d-back">← Tasks</a>
@@ -604,53 +641,65 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     </div>
 
     <div class="task-edit" data-task-id="${esc(task.id)}" data-updated-at="${task.updated_at}">
-      <div class="task-edit-titlerow">
-        <input type="text" class="task-edit-title" data-field="title" value="${esc(task.title)}" maxlength="200" placeholder="Título da task" aria-label="Título da task" />
-        <button type="button" class="task-d-btn task-edit-save" data-save="title">Salvar</button>
-      </div>
-
-      <div class="task-edit-controls">
-        <label class="task-edit-ctl">
-          <span class="task-edit-lbl">Status</span>
-          <select class="task-edit-select" data-field="status" aria-label="Status">${statusOptions}</select>
-        </label>
-        <label class="task-edit-ctl">
-          <span class="task-edit-lbl">Prioridade</span>
-          <select class="task-edit-select" data-field="priority" aria-label="Prioridade">${prioOptions}</select>
-        </label>
-        <div class="task-edit-ctl task-edit-ctl-due">
-          <span class="task-edit-lbl">Prazo (BRT)</span>
-          <div class="task-edit-duerow">
-            <input type="date" class="task-edit-due-date" data-field="due-date" value="${esc(dueDate)}" aria-label="Data do prazo" />
-            <input type="time" class="task-edit-due-time" data-field="due-time" value="${esc(dueTime)}" aria-label="Hora do prazo (opcional)" />
-            <button type="button" class="task-edit-clear" data-clear="due" title="Limpar prazo" aria-label="Limpar prazo">✕</button>
+      <div class="task-detail-grid">
+        <div class="task-detail-main">
+          <div class="task-edit-titlerow">
+            <input type="text" class="task-edit-title" data-field="title" value="${esc(task.title)}" maxlength="200" placeholder="Título da task" aria-label="Título da task" />
+            <button type="button" class="task-d-btn task-edit-save" data-save="title">Salvar</button>
           </div>
-        </div>
-        <div class="task-edit-ctl">
-          <span class="task-edit-lbl">Domínios</span>
-          <span class="task-edit-domains">${domainsToBadges(task.domains)}</span>
-        </div>
-      </div>
 
-      <div class="task-edit-bodyrow">
-        <div class="task-edit-bodyhead">
-          <span class="task-edit-lbl">Descrição (markdown)</span>
-          <button type="button" class="task-d-btn task-edit-save" data-save="body">Salvar descrição</button>
+          <div class="task-edit-bodyrow">
+            <div class="task-edit-bodyhead">
+              <span class="task-edit-lbl">Descrição (markdown)</span>
+              <button type="button" class="task-d-btn task-edit-save" data-save="body">Salvar descrição</button>
+            </div>
+            <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
+          </div>
+
+          <div class="task-edit-previewrow">
+            <div class="task-edit-preview-head">Prévia</div>
+            <div class="note-body task-edit-preview" data-preview>${renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })}</div>
+          </div>
+
+          <div class="task-edit-status" data-editstatus role="status" aria-live="polite"></div>
+
+          ${activitySection}
         </div>
-        <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
-      </div>
 
-      <div class="task-edit-previewrow">
-        <div class="task-edit-preview-head">Prévia</div>
-        <div class="note-body task-edit-preview" data-preview>${renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })}</div>
-      </div>
+        <aside class="task-detail-sidebar">
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Coluna</span>
+            ${columnSelectHtml}
+          </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Prioridade</span>
+            <select class="task-edit-select" data-field="priority" aria-label="Prioridade">${prioOptions}</select>
+          </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Prazo (BRT)</span>
+            <div class="task-edit-duerow">
+              <input type="date" class="task-edit-due-date" data-field="due-date" value="${esc(dueDate)}" aria-label="Data do prazo" />
+              <input type="time" class="task-edit-due-time" data-field="due-time" value="${esc(dueTime)}" aria-label="Hora do prazo (opcional)" />
+              <button type="button" class="task-edit-clear" data-clear="due" title="Limpar prazo" aria-label="Limpar prazo">✕</button>
+            </div>
+          </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Tags</span>
+            <div class="task-tags-editor" data-tags-editor data-tags="${esc(JSON.stringify(tags))}">
+              <input type="text" class="task-tags-input" data-tags-input maxlength="60" placeholder="+ tag" aria-label="Adicionar tag" />
+            </div>
+          </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Áreas</span>
+            <span class="task-edit-domains">${domainsToBadges(task.domains)}</span>
+          </div>
 
-      <div class="task-edit-status" data-editstatus role="status" aria-live="polite"></div>
+          ${datesHtml}
+
+          ${shareSection}
+        </aside>
+      </div>
     </div>
-
-    ${activitySection}
-
-    ${shareSection}
 
     <section class="note-media" data-note-id="${esc(task.id)}">
       <h2>Anexos</h2>
@@ -695,16 +744,23 @@ const TASK_DETAIL_CSS = `
 .task-edit-title:hover { border-color:var(--border); }
 .task-edit-title:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
 
-/* Linha de metadados: grid alinhado, espaçamento uniforme, labels em cima */
-.task-edit-controls {
-  display:flex; flex-wrap:wrap; align-items:flex-start; gap:24px;
-  padding:16px 18px; margin-bottom:26px;
+/* Duas colunas estilo ClickUp (spec 52): corpo + sidebar de metadados. Empilha
+   no mobile (media query no fim do arquivo). */
+.task-detail-grid { display:grid; grid-template-columns:1fr 300px; gap:28px; align-items:start; }
+.task-detail-main { min-width:0; }
+.task-detail-sidebar {
+  display:flex; flex-direction:column; gap:20px;
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:18px 20px;
 }
-.task-edit-ctl { display:flex; flex-direction:column; gap:7px; }
+.task-sidebar-field { display:flex; flex-direction:column; gap:7px; }
+.task-sidebar-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.task-sidebar-val { font-size:13px; color:var(--text); }
+.task-sidebar-dates { gap:10px; }
+.task-sidebar-dates > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
 .task-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
 .task-edit-select {
-  background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
+  width:100%; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
   border-radius:var(--radius-sm); padding:7px 11px; font-size:13px; font-family:inherit; cursor:pointer;
   transition:border-color 160ms var(--ease);
 }
@@ -715,7 +771,8 @@ const TASK_DETAIL_CSS = `
   border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; font-family:inherit;
   transition:border-color 160ms var(--ease);
 }
-.task-edit-due-time { width:104px; }
+.task-edit-due-time { width:96px; }
+.task-edit-due-date { min-width:0; flex:1; }
 .task-edit-due-date:focus, .task-edit-due-time:focus { outline:none; border-color:var(--accent-lav); }
 .task-edit-clear {
   background:none; border:1px solid var(--border); color:var(--text-faint);
@@ -723,9 +780,28 @@ const TASK_DETAIL_CSS = `
   transition:color 160ms var(--ease), border-color 160ms var(--ease);
 }
 .task-edit-clear:hover { color:#fca5a5; border-color:rgba(239,68,68,0.4); }
-.task-edit-ctl-due { flex:0 0 auto; }
-.task-edit-domains { display:flex; gap:6px; align-items:center; min-height:32px; }
+.task-edit-domains { display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:24px; }
 .task-edit-domains:empty::after { content:"—"; color:var(--text-faint); }
+
+/* Editor de tags (spec 52): chips + input inline, autosave via a fila de rajada */
+.task-tags-editor { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.task-tag-chip {
+  display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:500;
+  color:var(--text-dim); background:var(--surface-raised); border:1px solid var(--border);
+  border-radius:999px; padding:3px 6px 3px 9px;
+}
+.task-tag-remove {
+  background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:13px;
+  line-height:1; padding:0 3px; transition:color 140ms var(--ease);
+}
+.task-tag-remove:hover { color:#fca5a5; }
+.task-tags-input {
+  flex:1 1 70px; min-width:70px; background:transparent; border:1px solid transparent;
+  color:var(--text); font-family:inherit; font-size:12px; padding:4px 7px; border-radius:6px;
+  transition:border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.task-tags-input::placeholder { color:var(--text-faint); }
+.task-tags-input:focus { outline:none; border-color:var(--accent-lav); background:var(--bg-accent); }
 
 /* Descrição: label + botão Salvar alinhado à direita do label (não flutuando) */
 .task-edit-bodyrow { margin-bottom:8px; }
@@ -753,8 +829,8 @@ const TASK_DETAIL_CSS = `
 .task-edit-status.err { color:#fca5a5; }
 .task-edit-save.dirty { border-color:var(--accent-lav); color:var(--accent-lav); }
 
-/* Compartilhamento público (spec 33) */
-.task-share { margin:32px 0 8px; }
+/* Compartilhamento público (spec 33) — vive na sidebar (spec 52), espaçamento
+   vem do gap do flex column ao redor, não de margin própria */
 .task-share h2 { font-size:15px; margin-bottom:10px; }
 .task-share-state { color:var(--text-dim); font-size:13px; line-height:1.5; margin-bottom:14px; }
 .task-share-state strong { color:var(--text); }
@@ -816,7 +892,7 @@ const TASK_DETAIL_CSS = `
 @media (max-width: 640px) {
   .task-d-banner { flex-wrap:wrap; }
   .task-d-actions { margin-left:0; width:100%; }
-  .task-edit-controls { gap:16px; }
+  .task-detail-grid { grid-template-columns:1fr; }
 }
 `;
 
