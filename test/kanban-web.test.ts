@@ -119,6 +119,15 @@ describe('POST /app/tasks/move (spec 51)', () => {
     const res = await jsonPost('/app/tasks/move', { id: 't1', column_id: 'col_nope' }, await cookie());
     expect(res.status).toBe(404);
   });
+
+  it('resposta traz updated_at fresco (spec 52 — select de coluna no detalhe reusa como base otimista)', async () => {
+    await seedTask('t1', 'open');
+    const res = await jsonPost('/app/tasks/move', { id: 't1', column_id: 'col_progresso' }, await cookie());
+    const data = (await res.json()) as any;
+    expect(typeof data.updated_at).toBe('number');
+    const t = await getTaskById(E, 't1');
+    expect(data.updated_at).toBe(t?.updated_at);
+  });
 });
 
 describe('gestão de colunas via /app/config (spec 51)', () => {
