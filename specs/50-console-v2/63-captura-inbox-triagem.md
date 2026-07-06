@@ -1,6 +1,6 @@
 # Captura sem fricção: inbox de rascunhos + fila de triagem no console
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (independente do resto da Fase 6; pode rodar a qualquer momento pós-C1)
 > **Agente sugerido:** Opus (schema + contrato MCP) · **Esforço de execução:** padrão
 
@@ -69,12 +69,12 @@ O bot Telegram/WhatsApp (sessão Claude na VPS) chama `capture` quando a mensage
 
 ## Critérios de aceite
 
-- [ ] `capture` grava em <1 roundtrip e NADA aparece em recall/FTS/grafo/stats (por construção — teste de vazamento confirmando).
-- [ ] `list_inbox` lista pendentes; item triado some do default.
-- [ ] `/app/inbox`: virar nota e virar task pré-preenchem, salvam pelo fluxo normal e resolvem o item com `result_id`; descartar marca `discard`.
-- [ ] Badge na navegação mostra contagem correta e some em zero.
-- [ ] PAT com escopo `read`: nenhuma das 3 tools registrada (inbox é superfície do dono).
-- [ ] Quick-add do console grava com `source: 'console'`.
+- [x] `capture` grava em <1 roundtrip e NADA aparece em recall/FTS/grafo/stats (por construção — teste de vazamento confirmando).
+- [x] `list_inbox` lista pendentes; item triado some do default.
+- [x] `/app/inbox`: virar nota e virar task pré-preenchem, salvam pelo fluxo normal e resolvem o item com `result_id`; descartar marca `discard`.
+- [x] Badge na navegação mostra contagem correta e some em zero.
+- [x] PAT com escopo `read`: nenhuma das 3 tools registrada (inbox é superfície do dono).
+- [x] Quick-add do console grava com `source: 'console'`.
 
 ## Validação
 
