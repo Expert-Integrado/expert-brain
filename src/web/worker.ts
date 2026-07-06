@@ -6,15 +6,22 @@
  */
 import type { Env } from '../env.js';
 import { handleApp } from './handler.js';
-import { handleSharePage, shareNotFound, SHARE_TOKEN_RE } from './share.js';
+import { handleSharePage, handleShareCommentPost, shareNotFound, SHARE_TOKEN_RE } from './share.js';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname.startsWith('/s/')) {
-      const token = url.pathname.slice('/s/'.length);
-      if (req.method === 'GET' && SHARE_TOKEN_RE.test(token)) {
-        return handleSharePage(req, env, token);
+      const rest = url.pathname.slice('/s/'.length);
+      if (rest.endsWith('/comment')) {
+        const token = rest.slice(0, -'/comment'.length);
+        if (req.method === 'POST' && SHARE_TOKEN_RE.test(token)) {
+          return handleShareCommentPost(req, env, token);
+        }
+        return shareNotFound();
+      }
+      if (req.method === 'GET' && SHARE_TOKEN_RE.test(rest)) {
+        return handleSharePage(req, env, rest);
       }
       return shareNotFound();
     }

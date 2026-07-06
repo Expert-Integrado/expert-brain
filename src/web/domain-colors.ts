@@ -66,3 +66,58 @@ export function domainColorMuted(domain: string): string {
   const mb = Math.round(b * (1 - mix) + 200 * mix);
   return `rgb(${mr}, ${mg}, ${mb})`;
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Taxonomia configurável (spec 54) — cor/label de área e kind customizados pelo
+// dono, guardados na chave `taxonomy_config` da tabela `meta` (server-side, ver
+// src/web/taxonomy-config.ts). Os tipos moram AQUI (módulo folha, zero import)
+// em vez de em taxonomy-config.ts porque este arquivo é importado pelos bundles
+// CLIENT (graph.ts, notes.ts, local-graph.ts) via esbuild — taxonomy-config.ts
+// puxa session.js/queries.js (D1, server-only) e NÃO pode entrar nesse grafo de
+// import sem inflar os bundles do browser com código de Worker.
+export interface TaxonomyEntry {
+  label: string;
+  color: string; // #rrggbb
+}
+
+export interface TaxonomyConfig {
+  domains: Record<string, TaxonomyEntry>;
+  kinds: Record<string, TaxonomyEntry>;
+}
+
+export const EMPTY_TAXONOMY_CONFIG: TaxonomyConfig = { domains: {}, kinds: {} };
+
+// Resolve label + cor de uma ÁREA: customização do dono > paleta compilada >
+// cinza+slug. Nunca falha (mesmo pra slug totalmente desconhecido).
+export function resolveDomainMeta(
+  slug: string,
+  config?: TaxonomyConfig | null
+): { label: string; color: string } {
+  const custom = config?.domains?.[slug];
+  if (custom) return { label: custom.label, color: custom.color };
+  return { label: slug, color: domainColor(slug) };
+}
+
+// Paleta padrão dos 7 kinds de conhecimento — mesmos valores usados no modo de
+// coloração "Por tipo" do grafo (client/graph.ts). Duplicada aqui (não importada
+// de lá) porque graph.ts é o entrypoint do bundle, não um módulo folha — manter
+// os valores em sincronia é responsabilidade de quem editar qualquer um dos dois.
+export const KIND_COLOR_FALLBACK: Record<string, string> = {
+  concept: '#7dd3fc',
+  decision: '#fbbf24',
+  insight: '#f472b6',
+  fact: '#94a3b8',
+  pattern: '#a78bfa',
+  principle: '#fb923c',
+  question: '#86efac',
+};
+
+// Resolve label + cor de um KIND: customização do dono > paleta fixa > cinza.
+export function resolveKindMeta(
+  kind: string,
+  config?: TaxonomyConfig | null
+): { label: string; color: string } {
+  const custom = config?.kinds?.[kind];
+  if (custom) return { label: custom.label, color: custom.color };
+  return { label: kind, color: KIND_COLOR_FALLBACK[kind] ?? DOMAIN_FALLBACK };
+}

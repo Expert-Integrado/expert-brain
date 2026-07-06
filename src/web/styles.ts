@@ -299,9 +299,12 @@ a:hover { color: var(--text); }
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(167, 139, 250, 0.12);
-  color: var(--accent-lav);
-  border: 1px solid rgba(167, 139, 250, 0.22);
+  /* --chip (spec 54): setado inline por área quando há uma cor resolvida
+     (customizada ou da paleta compilada). Fallback = lavanda original, pro
+     badge de relação de edge (que não é de área) ficar igual a antes. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 16%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 88%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 32%, transparent);
   margin-right: 6px;
 }
 
@@ -634,6 +637,15 @@ a:hover { color: var(--text); }
 }
 .btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
 
+/* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
+.tax-swatch {
+  width: 40px; height: 30px; padding: 2px;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer;
+}
+.tax-inline-error { color: var(--danger); font-size: 13px; margin-top: 6px; }
+.tax-inline-status { color: var(--text-dim); font-size: 13px; }
+
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
 .key-flash {
   margin-bottom: 18px; padding: 16px 18px;
@@ -875,6 +887,108 @@ a:hover { color: var(--text); }
 .panel-event-kind { font-weight: 600; color: var(--text); }
 .panel-event-ts { color: var(--text-faint); margin-left: 6px; font-size: 10.5px; }
 .panel-event-ctx { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.panel-empty { color: var(--text-dim); font-size: 13px; margin: 0; list-style: none; }
+.panel-timeline-wrap { margin-top: 16px; }
+
+/* Botão "Carregar mais" da timeline paginada (spec 50-console-v2/57) */
+.panel-timeline-more {
+  margin-top: 8px;
+  padding: 7px 12px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease);
+}
+.panel-timeline-more:hover { background: rgba(167, 139, 250, 0.1); border-color: var(--border-strong); }
+.panel-timeline-more:disabled { opacity: 0.55; cursor: progress; }
+
+/* Disclosure "Registrar interação" (spec 50-console-v2/57) — mesmo padrão visual
+   do form de adicionar conexão do console standalone de contatos. */
+.panel-addconn {
+  margin-top: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.panel-addconn[open] { border-color: var(--border-strong); }
+.panel-addconn-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-lav);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 160ms var(--ease);
+}
+.panel-addconn-summary::-webkit-details-marker { display: none; }
+.panel-addconn-summary::before {
+  content: "+";
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent-lav);
+  transition: transform 200ms var(--ease);
+}
+.panel-addconn[open] .panel-addconn-summary::before { transform: rotate(45deg); }
+.panel-addconn-summary:hover { background: rgba(167, 139, 250, 0.08); }
+
+.panel-form { display: flex; flex-direction: column; gap: 12px; padding: 4px 14px 16px; }
+.panel-form-field { display: flex; flex-direction: column; gap: 5px; }
+.panel-form-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.panel-form-input,
+.panel-form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.panel-form-textarea { resize: vertical; line-height: 1.5; }
+.panel-form-input:focus,
+.panel-form-textarea:focus { border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.05); }
+select.panel-form-input { cursor: pointer; }
+
+.panel-form-feedback { font-size: 12.5px; line-height: 1.45; min-height: 0; }
+.panel-form-feedback.error { color: var(--danger); }
+.panel-form-feedback.ok { color: var(--accent-cyan); }
+.panel-form-feedback:empty { display: none; }
+
+.panel-form-submit {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
+  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
+  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease), opacity 150ms var(--ease);
+}
+.panel-form-submit:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
+.panel-form-submit:active { transform: translateY(0); }
+.panel-form-submit:disabled { opacity: 0.55; cursor: progress; transform: none; box-shadow: none; }
 
 .graph-status {
   font-size: 11.5px;
@@ -1093,9 +1207,10 @@ a:hover { color: var(--text); }
 .panel-kind {
   display: inline-block;
   padding: 2px 8px;
-  background: rgba(167, 139, 250, 0.18);
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  /* --chip (spec 54): cor do kind resolvida, setada inline pelo client/graph.ts. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 600;
@@ -1421,14 +1536,32 @@ a:hover { color: var(--text); }
 .kind-badge {
   display: inline-block;
   padding: 2px 9px;
-  background: rgba(167, 139, 250, 0.18);
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  /* --chip (spec 54): cor do kind resolvida (customizada ou paleta fixa). Sem
+     customização o resolver ainda manda uma cor (fallback da paleta), então
+     --chip está SEMPRE setado aqui — o default abaixo é só defesa. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+/* Selo de privacidade (spec 31): badge 🔒 no card de nota e no detalhe. Amarelo
+   discreto — sinaliza confidencialidade sem gritar. */
+.private-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* Compact rows */
@@ -1629,12 +1762,31 @@ a:hover { color: var(--text); }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   text-transform: lowercase;
 }
+/* Grupos da busca unificada (spec 66): Notas / Tarefas / Contatos, sempre que a
+   query não estiver vazia; ou Recentes / Comandos no estado zero. Não-selecionável
+   (role="presentation") — a navegação por setas pula direto pros .cmd-row. */
+.cmd-group-header {
+  padding: 10px 18px 4px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cmd-group-header:first-child { padding-top: 6px; }
 .cmd-empty {
   padding: 20px 18px;
   color: var(--text-faint);
   text-align: center;
   font-size: 13px;
   font-style: italic;
+}
+/* Aviso inline por grupo (ex.: "contatos indisponíveis") — mesma linguagem visual
+   do .cmd-empty geral, mas dentro de uma seção específica em vez da lista toda. */
+.cmd-empty-inline {
+  padding: 6px 18px 10px;
+  text-align: left;
+  font-size: 12px;
 }
 .cmd-help {
   display: flex;

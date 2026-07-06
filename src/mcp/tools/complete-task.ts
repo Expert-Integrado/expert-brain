@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
 import { completeTask, getTaskById } from '../../db/queries.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
@@ -22,7 +22,7 @@ Optional \`expected_updated_at\` guards against concurrent writes (see update_ta
 
 interface CompleteInput { id: string; outcome?: string; expected_updated_at?: number; }
 
-export function registerCompleteTask(server: any, env: Env): void {
+export function registerCompleteTask(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'complete_task',
     {
@@ -37,7 +37,7 @@ export function registerCompleteTask(server: any, env: Env): void {
     },
     safeToolHandler(async (input: CompleteInput) => {
       const now = Date.now();
-      const result = await completeTask(env, input.id, now, input.outcome, input.expected_updated_at);
+      const result = await completeTask(env, input.id, now, input.outcome, input.expected_updated_at, writeActor(auth));
 
       if (result === 'not-found') {
         return toolError(

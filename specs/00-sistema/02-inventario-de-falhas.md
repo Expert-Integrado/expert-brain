@@ -98,9 +98,9 @@ O artefato é este próprio arquivo. Estrutura: uma tabela por severidade (colun
 | `contacts-owner-token-monolitico` | `OWNER_TOKEN` monolítico de escrita total, sem escopo | security | contacts API | `10-backend/24` | aberto |
 | `sem-rate-limit-login-e-api` | Login do Console e API sem nenhum rate-limit | security | contacts console | `20-frontend/27` | aberto |
 | `reembed-perde-category-metadata` | Qualquer passada de reembed APAGA a category da metadata do Vectorize (SELECT não inclui category) | bug | contacts API | `10-backend/20` | aberto |
-| `similarity-1-query-por-no` | Console faz 1 query Vectorize POR NÓ — repete exatamente o padrão que derrubou o grafo do Brain (1102) | perf | contacts console | `10-backend/21` | aberto |
-| `layout-guard-nao-portado` | `computeLayout` roda forceAtlas2 150 iterações incondicionalmente — guard de escala do Brain não portado | perf | contacts console | `10-backend/21` | aberto |
-| `connections-full-scan-truncado` | Tabela connections inteira em memória (`LIMIT 8000` sem ORDER BY, filtro em JS) — truncamento silencioso e arbitrário | perf | contacts | `10-backend/21` | aberto |
+| `similarity-1-query-por-no` | Console faz 1 query Vectorize POR NÓ — repete exatamente o padrão que derrubou o grafo do Brain (1102) | perf | contacts console | `10-backend/21` | resolvido em código 05/07/2026 (`feat/console-v2` `fceecf3`; similar_edges pré-computadas, deploy/gate G5-C0 pendente) |
+| `layout-guard-nao-portado` | `computeLayout` roda forceAtlas2 150 iterações incondicionalmente — guard de escala do Brain não portado | perf | contacts console | `10-backend/21` | resolvido em código 05/07/2026 (`feat/console-v2` `fceecf3`; `FA2_MAX_NODES=900` portado, deploy pendente) |
+| `connections-full-scan-truncado` | Tabela connections inteira em memória (`LIMIT 8000` sem ORDER BY, filtro em JS) — truncamento silencioso e arbitrário | perf | contacts | `10-backend/21` | resolvido em código 05/07/2026 (`feat/console-v2` `fceecf3`; `loadConnectionsBetween` IN chunked + `warnIfTruncated`, deploy pendente) |
 | `meta-brain-sem-cache` | Meta do vault brain re-serializa ~1815 notas + ~10k arestas via service binding a cada load da palette | perf | contacts console | `20-frontend/24` | aberto |
 | `cron-sem-teto-de-trabalho` | Cron processa até 4000 pessoas numa invocação única sem teto — estoura limites do scheduled e re-tenta em loop de starvation | perf | contacts cron | `10-backend/22` | aberto |
 | `contacts-cron-morre-em-silencio` | Cron avança a janela mesmo quando o fetch falhou — modificações perdidas pra sempre, sem alerta | bug | contacts cron | `10-backend/22` | aberto |
@@ -151,7 +151,7 @@ O artefato é este próprio arquivo. Estrutura: uma tabela por severidade (colun
 
 | # | item | spec que cobre | status |
 |---|---|---|---|
-| 1 | Selo de privacidade | `30-features/31` (depende de `10-backend/17`) | aberto |
+| 1 | Selo de privacidade | `30-features/31` (depende de `10-backend/17`) | implementado 06/07/2026 (`feat/console-v2`) — deploy/validação do dono pendente |
 | 2 | Compartilhamento público `/s/<token>` | `30-features/33` | aberto |
 | 3 | `dedupe_key` no save_task | `10-backend/14` | aberto |
 | 4 | Parametrizar dono nas instructions | `10-backend/11` | aberto |

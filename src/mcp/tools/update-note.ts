@@ -1,9 +1,10 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor, noteUrl, canSeePrivate } from '../helpers.js';
 import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
+import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
   id: z.string().min(1),
@@ -17,6 +18,15 @@ const inputSchema = {
   tags: z.array(z.string()).optional(),
   allow_new_domain: z.boolean().optional().describe(
     'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area.'
+  ),
+  private: z.boolean().optional().describe(
+    'Set true to MARK the note private (invisible via recall/get_note/expand/stats to any credential without the `private` scope). Passing false is REJECTED — un-marking a note as public is only possible in the logged-in owner UI. This is one-way from tools.'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to ADD as mentions (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts — never a free-text name. Additive: this does NOT remove mentions absent from the array (use mentions_remove for that). A newly-added mention fires a `mentioned_in_brain` event on that contact\'s timeline.'
+  ),
+  mentions_remove: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to REMOVE from this note\'s mentions. Removing a mention does NOT delete the timeline event already fired on the contact (the timeline is history).'
   ),
 };
 
@@ -55,9 +65,13 @@ interface UpdateNoteInput {
   kind?: NoteKind;
   tags?: string[];
   allow_new_domain?: boolean;
+  private?: boolean;
+  mentions?: string[];
+  mentions_remove?: string[];
 }
 
-export function registerUpdateNote(server: any, env: Env): void {
+export function registerUpdateNote(server: any, env: Env, auth: AuthContext): void {
+  const actor = writeActor(auth);
   server.registerTool(
     'update_note',
     {
@@ -72,16 +86,29 @@ export function registerUpdateNote(server: any, env: Env): void {
     },
     safeToolHandler(async (input: UpdateNoteInput) => {
       const { id, title, body, tldr, domains, kind, tags } = input;
+      // Selo de privacidade (spec 31): desmarcar (private: false) é PROIBIDO via tool —
+      // só a UI logada do dono (POST /app/notes/{id}/private) torna pública, pra um
+      // agente comprometido/enganado não des-privatizar em massa. Marcar (true) é ok.
+      if (input.private === false) {
+        return toolError(
+          `Cannot set a note back to public via update_note. Un-marking is only possible in the ` +
+          `logged-in owner UI at /app/notes/${id}. update_note can only MARK a note private (private: true).`
+        );
+      }
+      const setsPrivate = input.private === true;
+      const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
       const touchesD1Columns = title !== undefined || body !== undefined || tldr !== undefined
-        || domains !== undefined || kind !== undefined;
-      if (!touchesD1Columns && tags === undefined) {
+        || domains !== undefined || kind !== undefined || setsPrivate;
+      if (!touchesD1Columns && tags === undefined && !touchesMentions) {
         return toolError(
           `update_note requires at least one field besides id to be provided. ` +
-          `Editable fields: title, body, tldr, domains, kind, tags.`
+          `Editable fields: title, body, tldr, domains, kind, tags, private (true only), mentions, mentions_remove.`
         );
       }
 
-      const existing = await getNoteById(env, id);
+      // canSeePrivate: um caller sem escopo `private` não enxerga nota já privada
+      // (recebe "not found", como get_note) — mas ainda pode MARCAR uma nota pública.
+      const existing = await getNoteById(env, id, false, canSeePrivate(auth));
       if (!existing) {
         return toolError(
           `Note '${id}' not found in the vault. Call recall() or get_note() to confirm the id. Do NOT retry with this id.`
@@ -113,14 +140,17 @@ export function registerUpdateNote(server: any, env: Env): void {
 
       const now = Date.now();
       const fieldsChanged: string[] = [...colFieldsChanged];
+      if (setsPrivate) fieldsChanged.push('private');
 
       if (touchesD1Columns) {
         await updateNote(env, id, {
           title, body, tldr,
           domains: domains !== undefined ? JSON.stringify(domains) : undefined,
           kind,
+          // Marcar privada (spec 31): 1 só. `private: false` já foi barrado acima.
+          private: setsPrivate ? 1 : undefined,
           updated_at: now,
-        });
+        }, undefined, actor);
       }
 
       if (tags !== undefined) {
@@ -128,7 +158,7 @@ export function registerUpdateNote(server: any, env: Env): void {
         // Ensure updated_at advances even when only tags changed — downstream
         // code treats notes.updated_at as the "this note was edited" signal.
         if (!touchesD1Columns) {
-          await updateNote(env, id, { updated_at: now });
+          await updateNote(env, id, { updated_at: now }, undefined, actor);
         }
         fieldsChanged.push('tags');
       }
@@ -138,11 +168,28 @@ export function registerUpdateNote(server: any, env: Env): void {
         title, body, tldr, domains, kind,
       });
 
+      // Menções (spec 62): add/remove. Tolerante a falha do contacts (applyMentions engole
+      // tudo — a menção D1 grava, o evento na timeline é eco). O título usado no contexto do
+      // evento é o NOVO (se mudou) ou o existente.
+      let mentionsChanged: { created: number; removed: number } | undefined;
+      if (touchesMentions) {
+        mentionsChanged = await applyMentions(env, {
+          noteId: id,
+          title: title ?? existing.title,
+          url: noteUrl(env, id),
+          add: input.mentions,
+          remove: input.mentions_remove,
+          seePrivate: canSeePrivate(auth),
+        });
+        if (mentionsChanged.created > 0 || mentionsChanged.removed > 0) fieldsChanged.push('mentions');
+      }
+
       return toolSuccess({
         id,
         updated: true,
         fields_changed: fieldsChanged,
         reembedded,
+        ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
       });
     }) as any
   );

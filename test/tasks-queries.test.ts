@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import {
   insertTask, listActiveTasks, listRecentClosedTasks, setTaskStatus, updateTask, ftsSearch,
-  ftsSearchTasks,
+  ftsSearchTasks, insertTags, getTagsByNote,
   type TaskRow, type UpdateResult,
 } from '../src/db/queries.js';
 import { registerStats } from '../src/mcp/tools/stats.js';
@@ -98,6 +98,23 @@ describe('task queries', () => {
     await knowledgeNote('k', 'concept');
     expect(await updateTask(E, 'k', { priority: 1 }, Date.now())).toBe('not-found');
     expect(await updateTask(E, 'missing', { priority: 1 }, Date.now())).toBe('not-found');
+  });
+
+  it('updateTask with tags replaces the set and preserves reserved dedupe: tags (spec 52)', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 't', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    await insertTags(E, 'u', ['dedupe:k1', 'old-tag']);
+    asTask(await updateTask(E, 'u', { tags: ['new-tag'] }, now + 1));
+    const tags = await getTagsByNote(E, 'u');
+    expect(tags.sort()).toEqual(['dedupe:k1', 'new-tag']);
+  });
+
+  it('updateTask with tags-only patch still bumps updated_at', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 'u', title: 't', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    const updated = asTask(await updateTask(E, 'u', { tags: ['x'] }, now + 7));
+    expect(updated.updated_at).toBe(now + 7);
+    expect(await getTagsByNote(E, 'u')).toEqual(['x']);
   });
 
   it('listRecentClosedTasks caps and returns done/canceled', async () => {

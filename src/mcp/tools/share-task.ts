@@ -51,6 +51,12 @@ export function registerShareTask(server: any, env: Env): void {
             `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`
           );
         }
+        if (result.reason === 'private') {
+          // Selo de privacidade (spec 59): task privada NUNCA tem link público.
+          return toolError(
+            `Task '${input.id}' is PRIVATE and cannot have a public link. Make it public first (in the logged-in owner UI at /app/tasks/${input.id}) before sharing.`
+          );
+        }
         // already-shared: link vivo, sem renew. Devolve a expiração atual (não é erro
         // de verdade — é a resposta idempotente; o plaintext do link antigo não pode
         // ser reconstruído porque só guardamos o hash).

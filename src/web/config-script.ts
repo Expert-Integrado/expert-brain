@@ -48,6 +48,140 @@ export function configPageScript(): string {
     el.addEventListener('focus', function () { el.select(); });
     el.addEventListener('click', function () { el.select(); });
   });
+
+  // ── Áreas e tipos (taxonomia configurável — spec 54) ──
+  // Slugifica um label pro mesmo formato exigido no servidor (DOMAIN_SLUG_REGEX:
+  // minúsculo, kebab-case ASCII, começa com letra, 2-40 chars).
+  var TAX_DIACRITICS_RE = new RegExp('[\\u0300-\\u036f]', 'g');
+  function taxSlugify(s) {
+    var out = (s || '').normalize('NFD').replace(TAX_DIACRITICS_RE, '');
+    out = out.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!out) return '';
+    if (!/^[a-z]/.test(out)) out = 'a-' + out;
+    if (out.length > 40) out = out.replace(/-+$/, '').slice(0, 40);
+    if (out.length < 2) out = out + '-x';
+    return out;
+  }
+  function taxEscape(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  var taxAddBtn = document.getElementById('tax-add-domain');
+  if (taxAddBtn) {
+    taxAddBtn.addEventListener('click', function () {
+      var input = document.getElementById('tax-new-label');
+      var errEl = document.getElementById('tax-new-error');
+      var label = (input.value || '').trim();
+      errEl.style.display = 'none';
+      if (!label) {
+        errEl.textContent = 'Digite um nome pra área.';
+        errEl.style.display = 'block';
+        return;
+      }
+      var slug = taxSlugify(label);
+      if (!slug) {
+        errEl.textContent = 'Não foi possível gerar um slug válido pra esse nome.';
+        errEl.style.display = 'block';
+        return;
+      }
+      var tbody = document.getElementById('taxonomy-domains-body');
+      var existing = tbody.querySelectorAll('tr[data-slug]');
+      for (var i = 0; i < existing.length; i++) {
+        if (existing[i].getAttribute('data-slug') === slug) {
+          errEl.textContent = "Área '" + slug + "' já existe.";
+          errEl.style.display = 'block';
+          return;
+        }
+      }
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-slug', slug);
+      tr.innerHTML =
+        '<td><input type="color" class="tax-swatch" value="#64748b" aria-label="Cor de ' + taxEscape(slug) + '"></td>' +
+        '<td><input type="text" class="input-text tax-label-input" maxlength="40" value="' + taxEscape(label) + '" aria-label="Nome de exibição de ' + taxEscape(slug) + '"></td>' +
+        '<td><code>' + taxEscape(slug) + '</code></td>' +
+        '<td>0</td>';
+      tbody.appendChild(tr);
+      input.value = '';
+    });
+  }
+
+  function collectTaxonomy() {
+    var domains = {};
+    document.querySelectorAll('#taxonomy-domains-body tr[data-slug]').forEach(function (tr) {
+      var slug = tr.getAttribute('data-slug');
+      var colorEl = tr.querySelector('.tax-swatch');
+      var labelEl = tr.querySelector('.tax-label-input');
+      var label = labelEl ? labelEl.value.trim() : '';
+      if (slug && label) domains[slug] = { label: label, color: colorEl ? colorEl.value : '#64748b' };
+    });
+    var kinds = {};
+    document.querySelectorAll('#taxonomy-kinds-body tr[data-kind]').forEach(function (tr) {
+      var kind = tr.getAttribute('data-kind');
+      var colorEl = tr.querySelector('.tax-swatch');
+      var labelEl = tr.querySelector('.tax-label-input');
+      var label = labelEl ? labelEl.value.trim() : '';
+      if (kind && label) kinds[kind] = { label: label, color: colorEl ? colorEl.value : '#64748b' };
+    });
+    return { domains: domains, kinds: kinds };
+  }
+
+  var taxSaveBtn = document.getElementById('taxonomy-save');
+  if (taxSaveBtn) {
+    taxSaveBtn.addEventListener('click', function () {
+      var statusEl = document.getElementById('taxonomy-status');
+      statusEl.textContent = 'Salvando...';
+      statusEl.style.color = '';
+      fetch('/app/config/taxonomy', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(collectTaxonomy()),
+      })
+        .then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (data) {
+            if (!res.ok) {
+              statusEl.textContent = data.error || ('Erro ao salvar (' + res.status + ')');
+              statusEl.style.color = '#f87171';
+              return;
+            }
+            location.href = '/app/config?saved=taxonomy#taxonomy';
+          });
+        })
+        .catch(function () {
+          statusEl.textContent = 'Falha de rede ao salvar.';
+          statusEl.style.color = '#f87171';
+        });
+    });
+  }
+
+  var taxResetBtn = document.getElementById('taxonomy-reset');
+  if (taxResetBtn) {
+    taxResetBtn.addEventListener('click', function () {
+      if (!confirm('Restaurar a taxonomia padrão? Cores e nomes customizados (e áreas pré-criadas sem notas) somem.')) return;
+      fetch('/app/config/taxonomy/reset', { method: 'POST', headers: { accept: 'application/json' }, credentials: 'same-origin' })
+        .then(function () { location.href = '/app/config?saved=taxonomy#taxonomy'; })
+        .catch(function () {
+          var statusEl = document.getElementById('taxonomy-status');
+          statusEl.textContent = 'Falha de rede ao restaurar.';
+          statusEl.style.color = '#f87171';
+        });
+    });
+  }
+
+  // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
+  // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
+  // contador "usados/max" (usa o maxlength do próprio campo como teto).
+  document.querySelectorAll('textarea[data-charcount]').forEach(function (ta) {
+    var out = document.getElementById(ta.getAttribute('data-charcount'));
+    if (!out) return;
+    var max = ta.getAttribute('maxlength');
+    var render = function () {
+      out.textContent = ta.value.length + (max ? '/' + max : '');
+    };
+    ta.addEventListener('input', render);
+    render();
+  });
 })();
 `;
 }

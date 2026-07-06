@@ -24,7 +24,8 @@ if (root) {
   const titleInput = root.querySelector<HTMLInputElement>('[data-field="title"]');
   const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-field="body"]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
-  const statusSel = root.querySelector<HTMLSelectElement>('[data-field="status"]');
+  const columnSel = root.querySelector<HTMLSelectElement>('[data-field="column"]');
+  const projectSel = root.querySelector<HTMLSelectElement>('[data-field="project"]');
   const prioSel = root.querySelector<HTMLSelectElement>('[data-field="priority"]');
   const dueDateInput = root.querySelector<HTMLInputElement>('[data-field="due-date"]');
   const dueTimeInput = root.querySelector<HTMLInputElement>('[data-field="due-time"]');
@@ -137,9 +138,41 @@ if (root) {
     statusEl.appendChild(btn);
   }
 
-  // ── Autosave: status / prioridade / prazo (enfileirado — rajada) ──
-  statusSel?.addEventListener('change', () => { queue.enqueue({ status: statusSel.value }); });
+  // ── Coluna (spec 52): substitui o antigo select de "Status" — mais granular,
+  // espelha a interação de drag&drop do board (spec 51). Muda via POST
+  // /app/tasks/move (não /app/tasks/update): o servidor deriva status+completed_at
+  // da categoria da coluna. Fora da fila de rajada (endpoint diferente) — atualiza
+  // expectedUpdatedAt direto na resposta.
+  columnSel?.addEventListener('change', async () => {
+    const columnId = columnSel.value;
+    if (!columnId) return;
+    setStatus('Salvando...', 'saving');
+    try {
+      const res = await appFetch('/app/tasks/move', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: taskId, column_id: columnId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStatus('Erro: ' + (data && (data as any).error ? (data as any).error : res.status), 'err');
+        return;
+      }
+      if (typeof (data as any).updated_at === 'number') expectedUpdatedAt = (data as any).updated_at;
+      setStatus('Salvo', 'ok');
+    } catch {
+      setStatus('Falha de conexão ao salvar', 'err');
+    }
+  });
 
+  // ── Autosave: projeto/pasta (spec 58) — enfileirado (rajada) via /app/tasks/update.
+  // "" = Sem projeto → project_id null; senão o id do projeto. Só ids de projetos
+  // ativos aparecem no select; o servidor valida (arquivado/inexistente → erro).
+  projectSel?.addEventListener('change', () => {
+    queue.enqueue({ project_id: projectSel.value === '' ? null : projectSel.value });
+  });
+
+  // ── Autosave: prioridade / prazo (enfileirado — rajada) ──
   prioSel?.addEventListener('change', () => {
     // "" = sem prioridade → null; senão inteiro 1-4.
     const v = prioSel.value === '' ? null : Number(prioSel.value);
@@ -164,6 +197,49 @@ if (root) {
     if (dueTimeInput) dueTimeInput.value = '';
     queue.enqueue({ due: null });
   });
+
+  // ── Tags (spec 52): editor de chips na sidebar. Full-array replace a cada
+  // mudança, na MESMA fila de rajada dos campos estruturados — o servidor
+  // preserva as tags reservadas dedupe:* automaticamente (replaceTaskTagsPreservingDedupe).
+  const tagsEditor = document.querySelector<HTMLElement>('[data-tags-editor]');
+  if (tagsEditor) {
+    let tags: string[] = [];
+    try { tags = JSON.parse(tagsEditor.dataset.tags || '[]'); } catch { tags = []; }
+    const tagsInput = tagsEditor.querySelector<HTMLInputElement>('[data-tags-input]');
+
+    function renderTagChips() {
+      tagsEditor!.querySelectorAll('.task-tag-chip').forEach((el) => el.remove());
+      for (const t of tags) {
+        const chip = document.createElement('span');
+        chip.className = 'task-tag-chip';
+        chip.textContent = t;
+        const rm = document.createElement('button');
+        rm.type = 'button';
+        rm.className = 'task-tag-remove';
+        rm.textContent = '×';
+        rm.setAttribute('aria-label', `Remover tag ${t}`);
+        rm.addEventListener('click', () => {
+          tags = tags.filter((x) => x !== t);
+          renderTagChips();
+          queue.enqueue({ tags: [...tags] });
+        });
+        chip.appendChild(rm);
+        tagsEditor!.insertBefore(chip, tagsInput ?? null);
+      }
+    }
+    renderTagChips();
+
+    tagsInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const v = tagsInput.value.trim().toLowerCase().slice(0, 60);
+      tagsInput.value = '';
+      if (!v || tags.includes(v)) return;
+      tags.push(v);
+      renderTagChips();
+      queue.enqueue({ tags: [...tags] });
+    });
+  }
 
   // ── Save por botão: título ──
   async function saveTitle() {

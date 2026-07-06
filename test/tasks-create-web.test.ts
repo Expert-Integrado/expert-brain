@@ -2,7 +2,7 @@ import { env, SELF } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
-import { getTaskById } from '../src/db/queries.js';
+import { getTaskById, createKanbanColumn, setColumnArchived } from '../src/db/queries.js';
 
 const E = env as any;
 
@@ -127,5 +127,49 @@ describe('POST /app/tasks/create (criação de task pela UI — spec 36 fase 2)'
       body: '{not json',
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('POST /app/tasks/create com column_id (criação inline no rodapé da coluna — spec 52)', () => {
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM notes');
+    await E.DB.exec('DELETE FROM kanban_columns');
+  });
+
+  it('column_id de uma coluna ativa: task nasce nela, status = categoria da coluna', async () => {
+    const cookie = await sessionCookieHeader();
+    const col = await createKanbanColumn(E, { id: 'col_aguardando', label: 'Aguardando', color: null, category: 'in_progress' });
+    const res = await post({ title: 'Ligar de volta', column_id: col.id }, cookie);
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as any;
+    expect(data.status).toBe('in_progress');
+    expect(data.column_id).toBe(col.id);
+    const t = await getTaskById(E, data.id);
+    expect(t?.column_id).toBe(col.id);
+    expect(t?.status).toBe('in_progress');
+  });
+
+  it('column_id inexistente → 404', async () => {
+    const cookie = await sessionCookieHeader();
+    const res = await post({ title: 'x', column_id: 'col_nao_existe' }, cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it('column_id arquivado → 404', async () => {
+    const cookie = await sessionCookieHeader();
+    const col = await createKanbanColumn(E, { id: 'col_velha', label: 'Velha', color: null, category: 'open' });
+    await setColumnArchived(E, col.id, Date.now());
+    const res = await post({ title: 'x', column_id: col.id }, cookie);
+    expect(res.status).toBe(404);
+  });
+
+  it('sem column_id: comportamento default inalterado (status open, sem column_id na resposta)', async () => {
+    const cookie = await sessionCookieHeader();
+    const res = await post({ title: 'Sem coluna' }, cookie);
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as any;
+    expect(data.status).toBe('open');
+    expect(data.column_id).toBeNull();
   });
 });

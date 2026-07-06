@@ -12,9 +12,10 @@ const json = (data: unknown, status = 200): Response =>
     status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-// Bearer (Console/cron/MCP-externo) OU sessão de browser. null = autorizado.
+// Bearer escopo 'media' (só GRAPH_EXPORT_TOKEN — o TASK_REMINDER_TOKEN do cron NÃO
+// autoriza mídia, spec 17) OU sessão de browser. null = autorizado.
 async function authReq(req: Request, env: Env): Promise<Response | null> {
-  if (authorizeBearer(req, env)) return null;
+  if (await authorizeBearer(req, env, 'media')) return null;
   const s = await requireSession(req, env);
   return s.ok ? null : s.response;
 }

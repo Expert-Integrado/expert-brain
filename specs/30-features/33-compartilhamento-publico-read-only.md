@@ -3,6 +3,8 @@
 > **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `30-features/31-selo-de-privacidade.md`
 
+> **Nota (04/07/2026):** o compartilhamento público shipou PRIMEIRO pra TASKS, com design mais simples que o desta spec — colunas `share_token`/`share_expires_at` na própria `notes` (migration runtime `0008_share_task`), módulo `src/web/share.ts`, página `/s/<token>` e tools MCP `share_task`/`unshare_task`. A UI de compartilhamento no console vive em `50-console-v2/52`; comentários de convidado na página pública, em `50-console-v2/53`. Esta spec permanece como referência pra estender o share a NOTAS de conhecimento (tabela dedicada, `include_media`); ao executá-la, reconciliar com o que já shipou — provavelmente convergindo pro mesmo trilho de `share.ts`.
+
 ## Contexto
 
 Hoje o Expert Brain é 100% privado: toda superfície web vive sob `/app/*` e exige sessão de browser ou Bearer token.

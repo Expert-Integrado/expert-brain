@@ -716,6 +716,6 @@ async function renderGraphLikePage(
   const extraHead = `<link rel="preload" href="/app/graph/bundle.js?v=${assetVersion('graph.bundle.js')}" as="script">`;
 
   return htmlResponse(
-    renderShell({ title: opts.title, active: opts.active, email: session.email, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: opts.title, active: opts.active, email: session.email, env, body, extraHead, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }

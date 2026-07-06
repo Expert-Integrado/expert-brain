@@ -30,6 +30,24 @@ export async function handleLoginGet(req: Request): Promise<Response> {
   return htmlResponse(renderLoginPage(null, next));
 }
 
+// Sanitiza o `next` do login contra open redirect, sem derrubar querystring legítima.
+// A checagem de path traversal ('..', '//') só faz sentido no PATH — dot-segments e
+// barras duplas na QUERY são inertes (RFC 3986 §5.2.4 só normaliza o path), mas texto
+// compartilhado via Web Share Target (specs/50-console-v2/68-pwa-instalavel.md) pode
+// legitimamente conter '..' (reticências) nos params `title`/`text`/`url` — checar a
+// string inteira derrubava esse conteúdo de volta pro login. Split no primeiro '?'
+// mantém a defesa (path ainda precisa começar com '/app/' e não pode ter '..'/'//')
+// sem penalizar a query.
+function safeNextPath(next: string): string {
+  const qIndex = next.indexOf('?');
+  const path = qIndex === -1 ? next : next.slice(0, qIndex);
+  const query = qIndex === -1 ? '' : next.slice(qIndex);
+  if (path.startsWith('/app/') && !path.includes('//') && !path.includes('..')) {
+    return path + query;
+  }
+  return '/app/graph';
+}
+
 function checkOrigin(req: Request): boolean {
   const origin = req.headers.get('origin');
   if (!origin) return false;
@@ -54,10 +72,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   }
 
   const token = await signSession(env.OWNER_EMAIL, env.SESSION_SECRET, Math.floor(Date.now() / 1000));
-  const safeNext =
-    next.startsWith('/app/') && !next.includes('//') && !next.includes('..')
-      ? next
-      : '/app/graph';
+  const safeNext = safeNextPath(next);
   return new Response(null, {
     status: 302,
     headers: {

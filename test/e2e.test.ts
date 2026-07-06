@@ -22,7 +22,8 @@ describe('e2e: all tools wired', () => {
     await E.DB.prepare('DELETE FROM tags').run();
     await E.DB.prepare('DELETE FROM notes').run();
     const s: any = { registerTool: (n: string, _m: any, h: any) => { tools[n] = h; } };
-    registerSaveNote(s, E); registerRecall(s, E); registerGetNote(s, E);
+    const AUTH = { email: 'test@example.com', loggedInAt: 0 };
+    registerSaveNote(s, E, AUTH); registerRecall(s, E); registerGetNote(s, E);
     registerExpand(s, E); registerLink(s, E);
   });
 

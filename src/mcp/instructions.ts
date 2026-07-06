@@ -19,6 +19,7 @@ const TOOL_NAMES = [
   'list_tasks',
   'complete_task',
   'update_task',
+  'comment_task',
   'share_task',
   'unshare_task',
   'attach_media_to_note',
@@ -41,7 +42,7 @@ const TOOL_NAMES = [
  */
 export function buildServerInstructions(
   personalizationPrompt: string | null,
-  opts: { hasMedia?: boolean; hasContacts?: boolean } = {}
+  opts: { hasMedia?: boolean; hasContacts?: boolean; ownerInstructions?: string | null } = {}
 ): string {
   const trimmedPrompt = personalizationPrompt?.trim() ?? '';
   // Mídia (binding MEDIA/R2) e contatos (binding CONTACTS -> Worker separado,
@@ -55,6 +56,14 @@ export function buildServerInstructions(
 
   const ownerBlock = trimmedPrompt
     ? `\n\nContexto do dono (definido em /app/config):\n${trimmedPrompt}`
+    : '';
+
+  // "Instruções do dono" (spec 50-console-v2/70): bloco livre editado em
+  // /app/config, anexado NO FIM do handshake. Quando vazio/ausente, o texto
+  // sai byte-a-byte idêntico ao anterior (nada é concatenado).
+  const trimmedOwnerInstructions = opts.ownerInstructions?.trim() ?? '';
+  const ownerInstructionsBlock = trimmedOwnerInstructions
+    ? `\n\n--- INSTRUÇÕES DO DONO DESTA INSTÂNCIA (editáveis em /app/config) ---\n${trimmedOwnerInstructions}`
     : '';
 
   return `${header}${ownerBlock}
@@ -76,7 +85,7 @@ Fluxo recomendado:
 8. Depois de um \`recall\` que achou nota relevante, \`expand\` mostra os edges dela (descobre notas conectadas); \`get_note\` traz a nota completa por id quando já se sabe o id.
 9. \`reembed\` re-gera o embedding de uma nota — usar depois de editar título/corpo de forma grande, quando o recall parecer desatualizado.
 10. \`stats\` dá um panorama do vault; use quando o usuário perguntar sobre composição ou crescimento.
-11. Tasks (kind='task') têm fluxo próprio: \`save_task\` cria, \`list_tasks_due_today\` lista o que vence/venceu (só tasks com prazo), \`list_tasks\` lista TODAS as tasks (inclui sem prazo; filtra por status/tag — use pra ver tudo e pra checar se a task já existe ANTES de criar/dedupe), \`update_task\` edita (patch parcial) e \`complete_task\` conclui (com outcome opcional). \`update_note\` NÃO edita task — use \`update_task\`. Pra mandar UMA task a alguém sem conta (read-only, sem expor o vault): \`share_task\` gera um link público /s/<token> com expiração obrigatória (default 30 dias, max 365) — o link aparece UMA vez e o banco guarda só o hash; \`unshare_task\` revoga o link na hora (o /s/<token> passa a dar 404). Só tasks são compartilháveis; sem edges, sem outras notas, sem dados do dono na página pública.
+11. Tasks (kind='task') têm fluxo próprio: \`save_task\` cria, \`list_tasks_due_today\` lista o que vence/venceu (só tasks com prazo), \`list_tasks\` lista TODAS as tasks (inclui sem prazo; filtra por status/tag — use pra ver tudo e pra checar se a task já existe ANTES de criar/dedupe), \`update_task\` edita (patch parcial) e \`complete_task\` conclui (com outcome opcional). \`comment_task\` anota progresso na thread da task (autor 'agente'), sem sobrescrever o body — \`get_task\` traz a task com a thread e a contagem de comentários. \`update_note\` NÃO edita task — use \`update_task\`. Pra mandar UMA task a alguém sem conta (read-only, sem expor o vault): \`share_task\` gera um link público /s/<token> com expiração obrigatória (default 30 dias, max 365) — o link aparece UMA vez e o banco guarda só o hash; \`unshare_task\` revoga o link na hora (o /s/<token> passa a dar 404). Só tasks são compartilháveis; sem edges, sem outras notas, sem dados do dono na página pública.
 ${hasMedia ? `12. Mídia: \`attach_media_to_note\` anexa arquivo (base64 ou URL) numa nota com dedup por SHA-256 no R2 e retorna URL assinada válida por ~1h; \`get_note_media\` lista a mídia de uma nota (URLs assinadas ~1h); \`delete_note_media\` remove um anexo.
 ` : ''}${hasContacts ? `13. Contatos (read-only): \`list_contacts\`, \`search_contacts\`, \`get_contact\` e \`get_contact_by_phone\` leem o vault de contatos — use quando a pergunta é sobre UMA pessoa/empresa específica (telefone, e-mail, cargo, relações). Use \`recall\` quando a pergunta é sobre ideias/conceitos, não sobre uma entidade. \`get_contact_by_phone\` é match exato de telefone; \`search_contacts\` é busca por nome/semântica.
 ` : ''}
@@ -85,7 +94,7 @@ management | sales | marketing | education | ai-applied | leadership | product |
 
 \`save_note\` e \`update_note\` rejeitam domínios fora dessa lista. Se a nota não cabe perfeitamente em nenhum dos 12, escolha o mais próximo — o canon é a unidade de recall cross-domain. A mensagem de erro sugere o canônico mais próximo, então re-tentar é barato.
 
-Escape hatch: se o usuário GENUINAMENTE abriu uma área nova (ex: mudou de mercado, começou a estudar biotech), passe \`allow_new_domain: true\` no save_note/update_note daquela chamada. Não abuse — o canon existe pra evitar a proliferação de domínios que quebra o recall cross-domain.`;
+Escape hatch: se o usuário GENUINAMENTE abriu uma área nova (ex: mudou de mercado, começou a estudar biotech), passe \`allow_new_domain: true\` no save_note/update_note daquela chamada. Não abuse — o canon existe pra evitar a proliferação de domínios que quebra o recall cross-domain.${ownerInstructionsBlock}`;
 }
 
 export { TOOL_NAMES };

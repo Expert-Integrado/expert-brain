@@ -2,7 +2,7 @@ import { env, SELF } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
-import { getTaskById } from '../src/db/queries.js';
+import { getTaskById, insertTags } from '../src/db/queries.js';
 
 const E = env as any;
 
@@ -143,5 +143,58 @@ describe('POST /app/tasks/update (edição inline de task — spec 36)', () => {
     const cookie = await sessionCookieHeader();
     const res = await post({ id: 'ghost', patch: { priority: 1 } }, cookie);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /app/tasks/update — tags (editor de chips da sidebar, spec 52)', () => {
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM tags');
+    await E.DB.exec('DELETE FROM notes');
+  });
+
+  it('substitui todas as tags e devolve a lista atualizada (sem reservadas)', async () => {
+    await seedTask('t1', 1000);
+    await insertTags(E, 't1', ['antigo']);
+    const cookie = await sessionCookieHeader();
+    const res = await post({ id: 't1', patch: { tags: ['novo', 'vip'] } }, cookie);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(data.tags.sort()).toEqual(['novo', 'vip']);
+    const rows = await E.DB.prepare(`SELECT tag FROM tags WHERE note_id = 't1' ORDER BY tag`).all();
+    expect(rows.results.map((r: any) => r.tag)).toEqual(['novo', 'vip']);
+  });
+
+  it('preserva a tag reservada dedupe: mesmo sem o caller pedir', async () => {
+    await seedTask('t1', 1000);
+    await insertTags(E, 't1', ['dedupe:origem-x', 'velha']);
+    const cookie = await sessionCookieHeader();
+    const res = await post({ id: 't1', patch: { tags: ['nova'] } }, cookie);
+    expect(res.status).toBe(200);
+    const rows = await E.DB.prepare(`SELECT tag FROM tags WHERE note_id = 't1' ORDER BY tag`).all();
+    const tags = rows.results.map((r: any) => r.tag);
+    expect(tags).toContain('nova');
+    expect(tags).toContain('dedupe:origem-x');
+    expect(tags).not.toContain('velha');
+    // A resposta nunca expõe a reservada pro editor da UI.
+    const data = (await res.json()) as any;
+    expect(data.tags).not.toContain('dedupe:origem-x');
+  });
+
+  it('[] limpa as tags não-reservadas', async () => {
+    await seedTask('t1', 1000);
+    await insertTags(E, 't1', ['a', 'b']);
+    const cookie = await sessionCookieHeader();
+    const res = await post({ id: 't1', patch: { tags: [] } }, cookie);
+    expect(res.status).toBe(200);
+    const rows = await E.DB.prepare(`SELECT count(*) c FROM tags WHERE note_id = 't1'`).first();
+    expect(rows.c).toBe(0);
+  });
+
+  it('tags inválidas (não-array ou item não-string) → 400', async () => {
+    await seedTask('t1', 1000);
+    const cookie = await sessionCookieHeader();
+    expect((await post({ id: 't1', patch: { tags: 'nao-e-array' } }, cookie)).status).toBe(400);
+    expect((await post({ id: 't1', patch: { tags: ['ok', 123] } }, cookie)).status).toBe(400);
   });
 });

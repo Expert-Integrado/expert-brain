@@ -1,15 +1,21 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent } from './contacts-data.js';
+import { handleHomePage } from './home.js';
+import { handleJournalPage } from './journal.js';
+import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
-import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
+import { handleConfigPage, configPageScript, handleConfigPrefsPost, handleConfigOwnerInstructionsPost } from './config.js';
+import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from './taxonomy-config.js';
+import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
-import { handleNoteSearch } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskSharePost, handleTaskUnsharePost } from './tasks.js';
+import { handleNoteSearch, handleSearchAll } from './search.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
+import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { NEBULA_CSS } from './styles.js';
 
@@ -18,14 +24,21 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   const path = url.pathname;
   if (!path.startsWith('/app')) return null;
 
-  if (path === '/app' || path === '/app/') {
-    return new Response(null, { status: 302, headers: { location: '/app/graph' } });
-  }
+  // Home "Hoje" (spec 50-console-v2/65): raiz do console logado. Antes redirecionava
+  // pro grafo — /app/graph continua existindo como antes, só deixou de ser o destino
+  // default. Nenhuma rota existente muda de comportamento (critério de aceite).
+  if ((path === '/app' || path === '/app/') && req.method === 'GET') return handleHomePage(req, env);
   if (path === '/app/login' && req.method === 'GET') return handleLoginGet(req);
   if (path === '/app/login' && req.method === 'POST') return handleLoginPost(req, env);
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
+  // Journal cronológico unificado (spec 65 §3): notas + tasks + interações de contato.
+  if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
   if (path === '/app/notes' && req.method === 'GET') return handleNotesList(req, env);
   if (path === '/app/search' && req.method === 'GET') return handleNoteSearch(req, env);
+  // Busca unificada da paleta de comando (spec 66): notas + tasks + contatos num
+  // request só. Rota NOVA — não substitui o /app/search acima (página de Notas e
+  // fallback Fuse da paleta continuam nele).
+  if (path === '/app/search/all' && req.method === 'GET') return handleSearchAll(req, env);
 
   const noteGraphMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/graph$/);
   if (noteGraphMatch && req.method === 'GET') return handleNoteGraph(req, env, noteGraphMatch[1]);
@@ -46,6 +59,17 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // depois de notes/, mas 'update' casaria como id num GET — aqui é POST).
   if (path === '/app/notes/update' && req.method === 'POST') return handleNoteUpdatePost(req, env);
 
+  // Criar task a partir de uma nota (spec 62 §2): task com origin_note_id + menções
+  // herdadas. Path exato, vem ANTES do noteMatch (que só casa GET, mas 'task-from-note'
+  // casaria como id num GET — aqui é POST). Sessão de browser (o handler valida).
+  if (path === '/app/notes/task-from-note' && req.method === 'POST') return handleTaskFromNotePost(req, env);
+
+  // Toggle do selo de privacidade (spec 31): ÚNICA superfície que desmarca. Sessão de
+  // browser só (o handler exige requireSession). Vem ANTES do noteMatch (GET) — path
+  // com sufixo /private não colide com o regex de id de 1 segmento.
+  const notePrivateMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/private$/);
+  if (notePrivateMatch && req.method === 'POST') return handleNotePrivatePost(req, env, notePrivateMatch[1]);
+
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);
 
@@ -55,6 +79,18 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/data' && req.method === 'GET') return handleTasksData(req, env);
   if (path === '/app/tasks/status' && req.method === 'POST') return handleTaskStatusPost(req, env);
   if (path === '/app/tasks/complete' && req.method === 'POST') return handleTaskCompletePost(req, env);
+  // Kanban colunas customizáveis (spec 51): mover card entre colunas (JSON, board)
+  // e gestão de colunas via UI de config (form + redirect, sessão de browser).
+  if (path === '/app/tasks/move' && req.method === 'POST') return handleTaskMovePost(req, env);
+  if (path === '/app/tasks/columns/create' && req.method === 'POST') return handleColumnCreatePost(req, env);
+  if (path === '/app/tasks/columns/update' && req.method === 'POST') return handleColumnUpdatePost(req, env);
+  if (path === '/app/tasks/columns/reorder' && req.method === 'POST') return handleColumnReorderPost(req, env);
+  if (path === '/app/tasks/columns/archive' && req.method === 'POST') return handleColumnArchivePost(req, env);
+  // Projetos/pastas de task (spec 58): gestão via UI de config (form + redirect, sessão).
+  if (path === '/app/tasks/projects/create' && req.method === 'POST') return handleProjectCreatePost(req, env);
+  if (path === '/app/tasks/projects/update' && req.method === 'POST') return handleProjectUpdatePost(req, env);
+  if (path === '/app/tasks/projects/reorder' && req.method === 'POST') return handleProjectReorderPost(req, env);
+  if (path === '/app/tasks/projects/archive' && req.method === 'POST') return handleProjectArchivePost(req, env);
   // Edição inline de task pela UI (spec 36): patch de title/body/due/priority/status.
   if (path === '/app/tasks/update' && req.method === 'POST') return handleTaskUpdatePost(req, env);
   // Criação de task pela UI (spec 36 fase 2): title obrigatório + body/priority/due opcionais.
@@ -63,12 +99,29 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // /s/<token>. Reusa a MESMA lógica da tool share_task/unshare_task (src/web/share.ts).
   if (path === '/app/tasks/share' && req.method === 'POST') return handleTaskSharePost(req, env);
   if (path === '/app/tasks/unshare' && req.method === 'POST') return handleTaskUnsharePost(req, env);
+  // Selo de privacidade de task (spec 59): toggle privada/pública. ÚNICA superfície que
+  // desmarca; sessão de browser só (requireSession no handler). Marcar privada revoga o
+  // link público na mesma escrita. Path exato, vem ANTES do taskMatch (GET).
+  if (path === '/app/tasks/private' && req.method === 'POST') return handleTaskPrivatePost(req, env);
+  // Comentários em task (spec 53): dono adiciona/apaga pelo console (form + redirect,
+  // sessão de browser). Vêm ANTES do taskMatch (que só casa GET) — paths exatos.
+  if (path === '/app/tasks/comment' && req.method === 'POST') return handleTaskCommentPost(req, env);
+  if (path === '/app/tasks/comment/delete' && req.method === 'POST') return handleTaskCommentDeletePost(req, env);
 
   // Detalhe de uma task (superfície própria — NÃO o editor de nota). Vem DEPOIS dos
   // paths exatos acima pra não capturar /data /status /complete. /bundle.js tem ponto,
   // então o regex (sem '.') não casa com ele.
   const taskMatch = path.match(/^\/app\/tasks\/([A-Za-z0-9_-]+)$/);
   if (taskMatch && req.method === 'GET') return handleTaskDetail(req, env, taskMatch[1]);
+
+  // Inbox de captura + triagem (spec 50-console-v2/63). Página + quick-add + 3 ações
+  // (virar nota / virar task / descartar), todas por <form> nativo (sessão + redirect,
+  // padrão CSRF dos demais POSTs). Paths exatos — sem regex, sem conflito.
+  if (path === '/app/inbox' && req.method === 'GET') return handleInboxPage(req, env);
+  if (path === '/app/inbox/add' && req.method === 'POST') return handleInboxAddPost(req, env);
+  if (path === '/app/inbox/resolve' && req.method === 'POST') return handleInboxResolvePost(req, env);
+  if (path === '/app/inbox/to-note' && req.method === 'POST') return handleInboxToNotePost(req, env);
+  if (path === '/app/inbox/to-task' && req.method === 'POST') return handleInboxToTaskPost(req, env);
 
   // Contatos embutido NO Brain: mesma sidebar/URL, painel direito = grafo de contatos
   // (dados puxados do Worker do Contacts via binding). /app/contacts-sso fica como
@@ -77,11 +130,34 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts/data' && req.method === 'GET') return handleContactsData(req, env);
   if (path === '/app/contacts/meta' && req.method === 'GET') return handleContactsMeta(req, env);
   if (path === '/app/contacts/entity' && req.method === 'GET') return handleContactsEntity(req, env);
+  // Timeline paginada de interações + registro manual (spec 50-console-v2/57).
+  // GET via proxy read-only (mesmo CONTACTS_PROXY_TOKEN do detalhe/grafo); POST
+  // via proxy de ESCRITA escopado (CONTACTS_WRITE_TOKEN, allowlist de 1 path do
+  // lado do contacts) — cada handler valida a própria sessão do Brain.
+  if (path === '/app/contacts/entity/events' && req.method === 'GET') return handleContactsEntityEvents(req, env);
+  if (path === '/app/contacts/entity/event' && req.method === 'POST') return handleContactsEntityEventCreate(req, env);
+  // Vizinhança de 1º/2º nível (spec 50-console-v2/56 §2) — mesmo proxy read-only.
+  if (path === '/app/contacts/entity/neighbors' && req.method === 'GET') return handleContactsEntityNeighbors(req, env);
+  // Seções reversas da página do contato (spec 62 §4): notas e tasks que MENCIONAM o
+  // contato. Brain-LOCAL (tabela mentions), sem proxy — sessão do dono.
+  if (path === '/app/contacts/entity/mentions' && req.method === 'GET') return handleContactMentions(req, env);
+  // Busca de contatos pro @autocomplete do editor de nota (spec 62 §2) — proxy read-only.
+  if (path === '/app/contacts/search' && req.method === 'GET') return handleContactsSearch(req, env);
+  // Feed global de interações (spec 65 §1) — consumido pelo client da home (card
+  // "Últimas interações", async) e pelo journal (fonte "interações", SSR).
+  if (path === '/app/contacts/events/recent' && req.method === 'GET') return handleContactsEventsRecent(req, env);
   const contactsMediaMatch = path.match(/^\/app\/contacts\/media\/([0-9a-f]{64})$/i);
   if (contactsMediaMatch && req.method === 'GET') {
     return handleContactsMedia(req, env, contactsMediaMatch[1]);
   }
   if (path === '/app/contacts-sso' && req.method === 'GET') return handleContactsSso(req, env);
+
+  // Página própria do contato (spec 50-console-v2/56 §3) — regex checado por
+  // ÚLTIMO dentre as rotas /app/contacts/* pra não engolir os paths exatos acima
+  // (data/meta/entity/entity+subpaths). Bundles (.js, tem ponto) e /app/contacts/
+  // media/<hash> (2 segmentos) também não casam este regex de 1 segmento só.
+  const contactIdMatch = path.match(/^\/app\/contacts\/([A-Za-z0-9_-]+)$/);
+  if (contactIdMatch && req.method === 'GET') return handleContactPage(req, env, contactIdMatch[1]);
 
   if (path === '/app/graph' && req.method === 'GET') return handleGraphPage(req, env);
   // Legado: o 3D virou um MODO dentro de /app/graph (mesmo painel/URL, só o palco
@@ -140,6 +216,15 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/edit.bundle.js' && req.method === 'GET') {
     return serveBundle('/task-edit.bundle.js');
   }
+  if (path === '/app/contacts/contact-page.bundle.js' && req.method === 'GET') {
+    return serveBundle('/contact-page.bundle.js');
+  }
+  if (path === '/app/home/bundle.js' && req.method === 'GET') {
+    return serveBundle('/home.bundle.js');
+  }
+  if (path === '/app/journal/bundle.js' && req.method === 'GET') {
+    return serveBundle('/journal.bundle.js');
+  }
 
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);
   if (path === '/app/api-keys/create' && req.method === 'POST') return handleApiKeyCreate(req, env);
@@ -147,6 +232,19 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/prefs' && req.method === 'POST') return handleConfigPrefsPost(req, env);
+  // "Instruções do dono" (spec 50-console-v2/70): bloco livre anexado ao handshake
+  // MCP. Sessão obrigatória; nenhum caminho público novo.
+  if (path === '/app/config/owner-instructions' && req.method === 'POST') return handleConfigOwnerInstructionsPost(req, env);
+  // Taxonomia configurável (spec 54): cor/label de áreas e kinds. GET é consumido
+  // pelos bundles client (graph.ts, notes.ts) pra resolver cor/label sem embutir
+  // a config em cada página; POST/reset vêm da seção "Áreas e tipos" de /app/config.
+  if (path === '/app/config/taxonomy' && req.method === 'GET') return handleTaxonomyGet(req, env);
+  if (path === '/app/config/taxonomy' && req.method === 'POST') return handleTaxonomyPost(req, env);
+  if (path === '/app/config/taxonomy/reset' && req.method === 'POST') return handleTaxonomyResetPost(req, env);
+  // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
+  // obrigatória nos dois — nenhum caminho público novo.
+  if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);
+  if (path === '/app/export' && req.method === 'GET') return handleExportGet(req, env);
   if (path === '/app/config/bundle.js' && req.method === 'GET') {
     return new Response(configPageScript(), {
       headers: {

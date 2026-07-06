@@ -5,8 +5,13 @@ import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js'
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
-import { readPersonalizationPrompt } from '../db/meta.js';
+import { readPersonalizationPrompt, readOwnerInstructions, writeOwnerInstructions, OWNER_INSTRUCTIONS_MAX_LEN } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
+import { readLastBackup } from '../backup/snapshot.js';
+import { formatBrtDateTime } from '../util/time.js';
+import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject, KNOWLEDGE_KINDS, listDomainCounts } from '../db/queries.js';
+import { resolveDomainMeta, resolveKindMeta } from './domain-colors.js';
+import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -28,6 +33,297 @@ async function getPersonalizationPrompt(env: Env): Promise<string> {
   return (await readPersonalizationPrompt(env)) ?? DEFAULT_PREFS_BLOCK;
 }
 
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
+// ─────────────── Seção "Quadro de tarefas" (Kanban — spec 51) ───────────────
+// Rótulos pt-BR das 4 categorias canônicas (imutáveis) usados no select/badge.
+const CATEGORY_LABELS: Record<TaskStatus, string> = {
+  open: 'A fazer',
+  in_progress: 'Em progresso',
+  done: 'Concluído',
+  canceled: 'Cancelado',
+};
+
+const categoryOptions = (selected?: TaskStatus): string =>
+  TASK_STATUSES.map(
+    (c) => `<option value="${c}"${c === selected ? ' selected' : ''}>${esc(CATEGORY_LABELS[c])}</option>`
+  ).join('');
+
+function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: KanbanColumn[]): string {
+  const archived = col.archived_at !== null;
+  const colorVal = col.color ?? '';
+  // Destino pras tasks ao arquivar uma coluna ATIVA que tem tasks (mesma categoria).
+  const destOptions = activeSameCat
+    .filter((c) => c.id !== col.id)
+    .map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`)
+    .join('');
+  const archiveCell = archived
+    ? `<form method="post" action="/app/tasks/columns/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(col.id)}">
+         <input type="hidden" name="archived" value="0">
+         <button type="submit">Desarquivar</button>
+       </form>`
+    : `<form method="post" action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
+         <input type="hidden" name="id" value="${esc(col.id)}">
+         <input type="hidden" name="archived" value="1">
+         ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
+         <button type="submit" class="btn-danger">Arquivar</button>
+       </form>`;
+  return `<tr${archived ? ' style="opacity:0.55"' : ''}>
+    <td>
+      <form method="post" action="/app/tasks/columns/update" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="id" value="${esc(col.id)}">
+        <input type="text" name="label" value="${esc(col.label)}" maxlength="40" class="input-text" style="width:150px">
+        <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
+        <button type="submit">Salvar</button>
+      </form>
+    </td>
+    <td><span class="badge-pill">${esc(CATEGORY_LABELS[col.category])}</span></td>
+    <td>
+      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="up">
+        <button type="submit" aria-label="Subir">↑</button>
+      </form>
+      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="down">
+        <button type="submit" aria-label="Descer">↓</button>
+      </form>
+    </td>
+    <td>${count}</td>
+    <td>${archiveCell}</td>
+  </tr>`;
+}
+
+function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>, savedBoard: boolean): string {
+  const activeByCat = new Map<TaskStatus, KanbanColumn[]>();
+  for (const c of columns) {
+    if (c.archived_at === null) {
+      const arr = activeByCat.get(c.category) ?? [];
+      arr.push(c);
+      activeByCat.set(c.category, arr);
+    }
+  }
+  const rows = columns
+    .map((c) => renderColumnRow(c, counts.get(c.id) ?? 0, activeByCat.get(c.category) ?? []))
+    .join('');
+  return `
+    <details class="disclosure-advanced conn-section" id="board"${savedBoard ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">4. Quadro de tarefas</span>
+        <span class="adv-sub">Colunas/estágios do Kanban — crie, renomeie, recolora, reordene e arquive</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>As colunas do board <a href="/app/tasks">/app/tasks</a> vêm daqui. Cada coluna pertence a uma das 4 categorias fixas (<em>${TASK_STATUSES.map((c) => esc(CATEGORY_LABELS[c])).join(', ')}</em>), que definem o estado real da task — a categoria é travada após a criação. Arrastar um card pra uma coluna aplica a categoria dela.</p>
+          <table class="keys-table">
+            <thead><tr>
+              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tasks</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="adv-section">
+          <h3>Nova coluna</h3>
+          <form method="post" action="/app/tasks/columns/create" class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-label" style="font-size:12px;color:var(--text-dim)">Nome da coluna</label>
+              <input id="new-col-label" type="text" name="label" required maxlength="40" placeholder="Ex.: Backlog" class="input-text" style="width:170px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-color" style="font-size:12px;color:var(--text-dim)">Cor (opcional)</label>
+              <input id="new-col-color" type="text" name="color" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:130px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-category" style="font-size:12px;color:var(--text-dim)">Categoria (estado real da task)</label>
+              <select id="new-col-category" name="category" required>${categoryOptions('open')}</select>
+            </div>
+            <button type="submit" class="btn-primary">Criar coluna</button>
+          </form>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Ex.: uma coluna <strong>Backlog</strong> pertence à categoria <strong>Aberta</strong> — a categoria é o estado REAL da task (o que o MCP e as automações leem); a coluna é só o estágio visual no board.</p>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">A coluna <strong>Cancelado</strong> nasce arquivada — desarquive-a aqui pra ver tasks canceladas no board.</p>
+        </div>
+      </div>
+    </details>`;
+}
+
+// ─────────────── Seção "Projetos" (pastas de task — spec 58) ───────────────
+function renderProjectRow(proj: TaskProject, count: number): string {
+  const archived = proj.archived_at !== null;
+  const colorVal = proj.color ?? '';
+  const archiveCell = archived
+    ? `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(proj.id)}">
+         <input type="hidden" name="archived" value="0">
+         <button type="submit">Desarquivar</button>
+       </form>`
+    : `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+         <input type="hidden" name="id" value="${esc(proj.id)}">
+         <input type="hidden" name="archived" value="1">
+         <button type="submit" class="btn-danger">Arquivar</button>
+       </form>`;
+  return `<tr${archived ? ' style="opacity:0.55"' : ''}>
+    <td>
+      <form method="post" action="/app/tasks/projects/update" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="id" value="${esc(proj.id)}">
+        <input type="text" name="label" value="${esc(proj.label)}" maxlength="40" class="input-text" style="width:170px">
+        <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
+        <button type="submit">Salvar</button>
+      </form>
+    </td>
+    <td>
+      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="up">
+        <button type="submit" aria-label="Subir">↑</button>
+      </form>
+      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+        <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="down">
+        <button type="submit" aria-label="Descer">↓</button>
+      </form>
+    </td>
+    <td>${count}</td>
+    <td>${archiveCell}</td>
+  </tr>`;
+}
+
+function renderProjectsSection(projects: TaskProject[], counts: Map<string, number>, savedProjects: boolean): string {
+  const total = projects.length;
+  const rows = projects.length
+    ? projects.map((p) => renderProjectRow(p, counts.get(p.id) ?? 0)).join('')
+    : `<tr><td colspan="4" style="color:var(--text-dim)">Nenhum projeto ainda. Crie um abaixo, ou deixe a task sem projeto (o padrão).</td></tr>`;
+  const atCap = total >= TASK_PROJECT_CAP;
+  return `
+    <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">5. Projetos</span>
+        <span class="adv-sub">Pastas de tarefas — agrupe tasks por projeto, com cor e ciclo de vida (arquivar)</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Projeto é uma <strong>pasta</strong> de tarefas: single-valorado (cada task pertence a 0 ou 1 projeto), com cor e filtro próprio no board <a href="/app/tasks">/app/tasks</a>. Diferente de <em>tag</em> (rótulo transversal, multi). Arquivar um projeto <strong>não mexe nas tasks</strong> — elas continuam no board (chip esmaecido), o projeto só some dos seletores. ${total}/${TASK_PROJECT_CAP} projetos.</p>
+          <table class="keys-table">
+            <thead><tr>
+              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tasks</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        <div class="adv-section">
+          <h3>Novo projeto</h3>
+          ${atCap
+            ? `<p style="color:var(--text-dim)">Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.</p>`
+            : `<form method="post" action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            <input type="text" name="label" required maxlength="40" placeholder="Nome do projeto" class="input-text" style="width:200px">
+            <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
+            <button type="submit" class="btn-primary">Criar projeto</button>
+          </form>`}
+        </div>
+      </div>
+    </details>`;
+}
+
+// ─────────────── Seção "Áreas e tipos" (taxonomia configurável — spec 54) ───────────────
+function renderDomainRow(slug: string, label: string, color: string, count: number): string {
+  return `<tr data-slug="${esc(slug)}">
+    <td><input type="color" class="tax-swatch" value="${esc(color)}" aria-label="Cor de ${esc(slug)}"></td>
+    <td><input type="text" class="input-text tax-label-input" value="${esc(label)}" maxlength="40" aria-label="Nome de exibição de ${esc(slug)}"></td>
+    <td><code>${esc(slug)}</code></td>
+    <td>${count}</td>
+  </tr>`;
+}
+
+function renderKindRow(kind: string, label: string, color: string): string {
+  return `<tr data-kind="${esc(kind)}">
+    <td><input type="color" class="tax-swatch" value="${esc(color)}" aria-label="Cor de ${esc(kind)}"></td>
+    <td><input type="text" class="input-text tax-label-input" value="${esc(label)}" maxlength="40" aria-label="Nome de exibição de ${esc(kind)}"></td>
+    <td><code>${esc(kind)}</code></td>
+  </tr>`;
+}
+
+function renderTaxonomySection(
+  domainCounts: Record<string, number>,
+  taxonomy: { domains: Record<string, { label: string; color: string }>; kinds: Record<string, { label: string; color: string }> },
+  savedTaxonomy: boolean
+): string {
+  const domainSlugs = mergedDomainSlugs(taxonomy, Object.keys(domainCounts));
+  const domainRows = domainSlugs
+    .map((slug) => {
+      const meta = resolveDomainMeta(slug, taxonomy);
+      return renderDomainRow(slug, meta.label, meta.color, domainCounts[slug] ?? 0);
+    })
+    .join('');
+  const kindRows = KNOWLEDGE_KINDS
+    .map((k) => {
+      const meta = resolveKindMeta(k, taxonomy);
+      return renderKindRow(k, meta.label, meta.color);
+    })
+    .join('');
+  return `
+    <details class="disclosure-advanced conn-section" id="taxonomy"${savedTaxonomy ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">6. Áreas e tipos</span>
+        <span class="adv-sub">Cor e nome de exibição das áreas (domains) e tipos (kinds) — crie áreas novas aqui</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <h3>Áreas</h3>
+          <p>O <strong>slug</strong> é a chave canônica (MCP, grafo, filtros) — mudar cor ou nome aqui é só exibição: não renomeia o slug, não move nenhuma nota.</p>
+          <table class="keys-table">
+            <thead><tr><th>Cor</th><th>Nome de exibição</th><th>Slug</th><th>Notas</th></tr></thead>
+            <tbody id="taxonomy-domains-body">${domainRows}</tbody>
+          </table>
+          <div class="row" style="gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="tax-new-label" placeholder="Nome da nova área (ex: Vida Pessoal)" maxlength="40" class="input-text" style="width:220px">
+            <button type="button" id="tax-add-domain">+ Nova área</button>
+          </div>
+          <p id="tax-new-error" class="tax-inline-error" style="display:none"></p>
+        </div>
+        <div class="adv-section">
+          <h3>Tipos (kinds)</h3>
+          <p>Os 7 tipos são fixos (enum estrutural do MCP) — só cor e nome de exibição são editáveis; criar/excluir kind está fora de escopo aqui.</p>
+          <table class="keys-table">
+            <thead><tr><th>Cor</th><th>Nome de exibição</th><th>Kind</th></tr></thead>
+            <tbody id="taxonomy-kinds-body">${kindRows}</tbody>
+          </table>
+        </div>
+        <div class="row" style="gap:8px">
+          <button type="button" id="taxonomy-save" class="btn-primary">Salvar</button>
+          <button type="button" id="taxonomy-reset" class="btn-danger">Restaurar padrão</button>
+        </div>
+        <p id="taxonomy-status" class="tax-inline-status" role="status" aria-live="polite"></p>
+      </div>
+    </details>`;
+}
+
+// ─────────── Seção "Instruções pros agentes (MCP)" — CLAUDE.md do Brain (spec 70) ───────────
+function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: boolean): string {
+  const len = ownerInstructions.length;
+  return `
+    <details class="disclosure-advanced conn-section" id="owner-instructions"${savedOwner ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">7. Instruções pros agentes (MCP)</span>
+        <span class="adv-sub">Um "CLAUDE.md do Brain": orientações suas que TODO agente recebe no handshake</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Este texto é anexado às instruções que o servidor MCP anuncia no <strong>handshake</strong> — ou seja, TODO agente que conecta (Claude Code, Desktop, sistemas web, automações) recebe estas orientações automaticamente, sem você configurar cliente por cliente. Use pra regras globais tipo <em>"sempre responda em pt-BR"</em>, <em>"priorize o domínio X"</em> ou <em>"nunca crie task sem prazo"</em>.</p>
+          <form method="post" action="/app/config/owner-instructions">
+            <label for="owner-instructions-text">Instruções (texto puro/markdown leve, máx ${OWNER_INSTRUCTIONS_MAX_LEN} caracteres)</label>
+            <textarea id="owner-instructions-text" name="owner_instructions" rows="8" maxlength="${OWNER_INSTRUCTIONS_MAX_LEN}" class="prefs-textarea" data-charcount="owner-instructions-count" placeholder="Ex: Sempre responda em pt-BR. Antes de salvar nota, varra analogias em outros domínios.">${esc(ownerInstructions)}</textarea>
+            <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+              <button type="submit" class="btn-primary">Salvar</button>
+              <span id="owner-instructions-count" style="color:var(--text-dim);font-size:13px">${len}/${OWNER_INSTRUCTIONS_MAX_LEN}</span>
+            </div>
+          </form>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Aparece pra qualquer credencial válida (login OAuth ou chave de API) no início da sessão do agente — deixe em branco e salve pra remover.<br>Não são segredo e vão pro handshake em texto puro: <strong>nunca coloque senhas, tokens ou chaves aqui</strong>.</p>
+        </div>
+      </div>
+    </details>`;
+}
+
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -44,6 +340,21 @@ export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Res
     .bind(PREFS_META_KEY, prompt)
     .run();
   return new Response(null, { status: 302, headers: { location: '/app/config?saved=prefs#prefs' } });
+}
+
+// POST /app/config/owner-instructions — "CLAUDE.md do Brain" (spec 50-console-v2/70).
+// Sessão obrigatória (mesmo padrão de /app/config/prefs). Texto vazio REMOVE a
+// chave `owner_instructions` (writeOwnerInstructions cuida do cap 4000 + sanitize).
+export async function handleConfigOwnerInstructionsPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+  const raw = String(form.get('owner_instructions') ?? '');
+  await writeOwnerInstructions(env, raw);
+  return new Response(null, {
+    status: 302,
+    headers: { location: '/app/config?saved=owner#owner-instructions' },
+  });
 }
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
@@ -69,12 +380,59 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
   // "Sistemas web" (que contém o prompt) já expandida.
   const savedPrefs = url.searchParams.get('saved') === 'prefs';
+  // Idem pra gestão de colunas do Kanban (?saved=board reabre a seção "Quadro de tarefas").
+  const savedBoard = url.searchParams.get('saved') === 'board';
+  // Idem pra gestão de projetos (?saved=projects reabre a seção "Projetos").
+  const savedProjects = url.searchParams.get('saved') === 'projects';
+  // Idem pra taxonomia de áreas/kinds (?saved=taxonomy reabre "Áreas e tipos").
+  const savedTaxonomy = url.searchParams.get('saved') === 'taxonomy';
+  // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
+  const savedOwner = url.searchParams.get('saved') === 'owner';
+
+  // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
+  const [kanbanColumns, kanbanCounts] = await Promise.all([
+    listKanbanColumns(env, true),
+    taskCountsByColumn(env),
+  ]);
+  const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
+
+  // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58).
+  const [taskProjects, projectCounts] = await Promise.all([
+    listTaskProjects(env, true),
+    taskCountsByProject(env),
+  ]);
+  const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
+
+  // Seção "Áreas e tipos" (spec 54): contagem por área (NON_TASK_FILTER) + config
+  // customizada do dono (cor/label + áreas pré-criadas).
+  const [domainCounts, taxonomyConfig] = await Promise.all([
+    listDomainCounts(env),
+    getTaxonomyConfig(env),
+  ]);
+  const taxonomySection = renderTaxonomySection(domainCounts, taxonomyConfig, savedTaxonomy);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
+  // Seção "Instruções pros agentes (MCP)" (spec 70): valor cru da meta (vazio
+  // quando a chave não existe) + estado do accordion.
+  const ownerInstructions = (await readOwnerInstructions(env)) ?? '';
+  const ownerInstructionsSection = renderOwnerInstructionsSection(ownerInstructions, savedOwner);
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
     ? new Date(stats.lastWrite).toLocaleString('pt-BR')
     : 'Nunca';
+
+  // Seção Backup (spec 67): status do último snapshot lido de meta.last_backup
+  // (gravado tanto pelo cron semanal quanto pelo "Fazer backup agora").
+  const lastBackup = await readLastBackup(env);
+  let backupStatus: string;
+  if (!lastBackup) {
+    backupStatus = `<p style="color:var(--text-dim)">Nenhum snapshot ainda. O backup automático roda toda segunda às 02:00 (BRT) — ou dispare um agora.</p>`;
+  } else if (lastBackup.ok) {
+    const nTables = Object.keys(lastBackup.tables).length;
+    backupStatus = `<p><span class="badge-pill badge-ok">● OK</span> &nbsp;<strong>${esc(formatBrtDateTime(lastBackup.at))}</strong> &nbsp;·&nbsp; ${lastBackup.total_rows} linhas em ${nTables} tabelas &nbsp;·&nbsp; ${esc(formatBytes(lastBackup.bytes))} &nbsp;·&nbsp; <code>${esc(lastBackup.prefix)}</code></p>`;
+  } else {
+    backupStatus = `<p><span class="badge-pill badge-warn">○ Falhou</span> &nbsp;<strong>${esc(formatBrtDateTime(lastBackup.at))}</strong> &nbsp;·&nbsp; <span style="color:var(--text-dim)">${esc(lastBackup.error ?? 'erro desconhecido')}</span></p>`;
+  }
 
   const badge = stats.connected
     ? `<span class="badge-pill badge-ok">● Claude conectado</span>`
@@ -86,14 +444,26 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     .map((k) => {
       const created = new Date(k.created_at).toLocaleString('pt-BR');
       const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('pt-BR') : '—';
-      const revokeBtn = `<form method="post" action="/app/api-keys/revoke" style="display:inline">
+      const revoked = k.revoked_at !== null;
+      // Revogação lógica (spec 17): a linha permanece como trilha de auditoria. Sem
+      // botão Excluir numa chave já revogada (e não há "un-revoke").
+      const statusBadge = revoked
+        ? `<span class="badge-pill badge-warn">● revogada</span>`
+        : `<span class="badge-pill badge-ok">● ativa</span>`;
+      const revokeBtn = revoked
+        ? '—'
+        : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn-danger">Excluir</button>
+             <button type="submit" class="btn-danger">Revogar</button>
            </form>`;
-      return `<tr>
+      // Escopo (spec 17 + 31): CSV — base full/read + escopo aditivo 'private'.
+      // Mostra o CSV integral (ex.: 'full,private') pra o dono ver o alcance real.
+      const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
+      return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
         <td><strong>${esc(k.name)}</strong></td>
         <td><code>${esc(k.prefix)}…</code></td>
-        <td><span class="badge-pill badge-ok">● ativa</span></td>
+        <td><span class="badge-pill">${esc(scopeLabel)}</span></td>
+        <td>${statusBadge}</td>
         <td>${esc(created)}</td>
         <td>${esc(lastUsed)}</td>
         <td>${revokeBtn}</td>
@@ -118,6 +488,20 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <h2>Status do vault</h2>
       <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
       <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
+    </div>
+
+    <div class="card" id="backup">
+      <h2>Backup</h2>
+      ${backupStatus}
+      <div class="row" style="gap:8px;margin-top:10px">
+        <form method="post" action="/app/config/backup-now">
+          <button type="submit" class="btn-primary">Fazer backup agora</button>
+        </form>
+        <form method="get" action="/app/export">
+          <button type="submit">Baixar export (.zip)</button>
+        </form>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
     </div>
 
     <h2 class="conn-heading">Conexões</h2>
@@ -196,6 +580,16 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <label>Nome (pra você lembrar onde usa)
               <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
             </label>
+            <label style="display:block;margin-top:12px">Escopo
+              <select name="scope" class="input-text" style="display:block;margin-top:4px">
+                <option value="full">Leitura e escrita — CRUD completo do vault</option>
+                <option value="read">Somente leitura — recall, get, stats, list</option>
+              </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
+              <input type="checkbox" name="private_scope" value="1">
+              <span>Acesso a notas privadas <span style="color:var(--text-dim)">— sem isto, a chave NÃO vê notas marcadas como privadas (spec 31)</span></span>
+            </label>
             <button type="submit" class="btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>
@@ -204,7 +598,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           ${keys.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>' : `
           <table class="keys-table">
             <thead><tr>
-              <th>Nome</th><th>Prefixo</th><th>Status</th><th>Criada em</th><th>Último uso</th><th></th>
+              <th>Nome</th><th>Prefixo</th><th>Escopo</th><th>Status</th><th>Criada em</th><th>Último uso</th><th></th>
             </tr></thead>
             <tbody>${keyRows}</tbody>
           </table>`}
@@ -212,11 +606,19 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    ${boardSection}
+
+    ${projectsSection}
+
+    ${taxonomySection}
+
+    ${ownerInstructionsSection}
+
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
-    renderShell({ title: 'Configurações', active: 'config', email: session.email, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: 'Configurações', active: 'config', email: session.email, env, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

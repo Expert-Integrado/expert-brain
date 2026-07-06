@@ -9,6 +9,7 @@ import {
   type TaskStatus,
   type TaskRow,
   type TaskPatch,
+  type KanbanColumn,
   listActiveTasks,
   listRecentClosedTasks,
   listTasksDueBefore,
@@ -17,11 +18,38 @@ import {
   updateTask,
   insertTask,
   getTaskById,
+  listKanbanColumns,
+  moveTaskToColumn,
+  setTaskPrivate,
+  getColumnById,
+  createKanbanColumn,
+  updateKanbanColumn,
+  reorderKanbanColumn,
+  setColumnArchived,
+  reassignColumn,
+  countTasksInColumn,
+  countActiveColumnsInCategory,
+  addTaskComment,
+  deleteTaskComment,
+  countTaskCommentsBatch,
+  getTagsForNotes,
+  getTagsByNote,
+  type TaskProject,
+  listTaskProjects,
+  getProjectById,
+  createTaskProject,
+  updateTaskProject,
+  reorderTaskProject,
+  setProjectArchived,
+  countTaskProjects,
+  TASK_PROJECT_CAP,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
+import { commentBadge } from '../util/comment-badge.js';
+import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -33,7 +61,7 @@ const json = (data: unknown, status = 200): Response =>
 // Auth: Bearer (VPS/Console) OU sessão de browser. Igual ao padrão das rotas
 // /app/graph/*. Retorna null quando autorizado, ou a Response de erro/redirect.
 async function authTask(req: Request, env: Env): Promise<Response | null> {
-  if (authorizeBearer(req, env)) return null;
+  if (await authorizeBearer(req, env, 'tasks')) return null;
   const session = await requireSession(req, env);
   return session.ok ? null : session.response;
 }
@@ -53,10 +81,24 @@ interface TaskView {
   created_at: number;
   completed_at: number | null;
   updated_at: number; // base do versionamento otimista na edição inline (spec 36)
+  comment_count: number; // contagem da thread de comentários (spec 53)
+  tags: string[]; // sem tags reservadas dedupe:* — nunca aparecem na UI (spec 52)
+  shared: boolean; // link público ATIVO (não-expirado) — pro ícone 🔗 do card (spec 52)
+  share_expires_brt: string | null; // "DD/MM" — tooltip do ícone quando shared=true
+  project_id: string | null; // pasta/projeto (spec 58); null = "Sem projeto". Chip resolvido via board.projects
+  private: boolean; // selo de privacidade (spec 59): badge 🔒 no card + detalhe
 }
 
-function toView(t: TaskRow, now: number): TaskView {
+// Tags reservadas (`dedupe:*`) são um detalhe interno de dedupe do save_task —
+// nunca devem aparecer em UI nenhuma (card, sidebar do detalhe). Compartilhado
+// pelos dois pontos que expõem tags de task ao dono (board + detalhe).
+export function visibleTags(tags: string[]): string[] {
+  return tags.filter((t) => !t.startsWith('dedupe:'));
+}
+
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []): TaskView {
   const due = t.due_at ?? null;
+  const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
     id: t.id,
     title: t.title,
@@ -72,7 +114,109 @@ function toView(t: TaskRow, now: number): TaskView {
     created_at: t.created_at,
     completed_at: t.completed_at,
     updated_at: t.updated_at,
+    comment_count: commentCount,
+    tags,
+    shared,
+    share_expires_brt: shared ? formatBrtShort(t.share_expires_at!) : null,
+    project_id: t.project_id,
+    private: t.private === 1,
   };
+}
+
+// Uma coluna do board já com as tasks resolvidas (spec 51). Substitui o objeto
+// fixo { open, in_progress, done } — as colunas agora vêm do banco.
+interface BoardColumn {
+  id: string;
+  label: string;
+  color: string | null;
+  position: number;
+  category: TaskStatus;
+  tasks: TaskView[];
+}
+
+// Projeto no payload do board (spec 58): usado pelo select de filtro no header e
+// pra resolver o chip de cada card (por project_id). Inclui arquivados (archived=true)
+// pra o subgrupo "Arquivados" do filtro e o chip esmaecido.
+interface BoardProject {
+  id: string;
+  label: string;
+  color: string | null;
+  archived: boolean;
+}
+
+interface BoardPayload {
+  columns: BoardColumn[];
+  projects: BoardProject[];
+}
+
+// Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
+// recentes. Cada task é alocada na coluna do seu column_id (quando ativa e coerente
+// com o status) ou, como fallback, na coluna default (menor position) da categoria
+// do status — assim uma task com column_id NULL/órfão nunca some do board. Tasks
+// cuja categoria não tem NENHUMA coluna ativa (ex.: canceladas com col_cancelado
+// arquivado) simplesmente não renderizam, mantendo o comportamento histórico do board.
+async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
+  const [activeCols, active, closed, allProjects] = await Promise.all([
+    listKanbanColumns(env, false),
+    // includePrivate=true (spec 59): o board é superfície do dono (sessão OU bearer de
+    // tasks) — mostra task privada com badge 🔒. O gate por escopo é dos read paths MCP.
+    listActiveTasks(env, true),
+    listRecentClosedTasks(env, 100, true),
+    listTaskProjects(env, true),
+  ]);
+  const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
+  // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
+  const defaultByCat = new Map<string, KanbanColumn>();
+  for (const c of activeCols) if (!defaultByCat.has(c.category)) defaultByCat.set(c.category, c);
+
+  // Contagem de comentários + tags em lote (spec 53/52): 1 query (chunked) cada
+  // pro board inteiro, nunca N+1. Cobre tasks ativas + fechadas recentes que serão
+  // renderizadas. Tags reservadas dedupe:* são filtradas AQUI — nunca chegam ao
+  // TaskView (defesa única, board e nenhum outro read path de card as vaza).
+  const allIds = [...active, ...closed].map((t) => t.id);
+  const [commentCounts, tagsById] = await Promise.all([
+    countTaskCommentsBatch(env, allIds),
+    getTagsForNotes(env, allIds),
+  ]);
+
+  const buckets = new Map<string, TaskView[]>();
+  for (const c of activeCols) buckets.set(c.id, []);
+
+  const place = (t: TaskRow) => {
+    const status = t.status ?? 'open';
+    let colId: string | null = null;
+    const assigned = t.column_id ? activeById.get(t.column_id) : undefined;
+    if (assigned && assigned.category === status) colId = assigned.id;
+    else colId = defaultByCat.get(status)?.id ?? null;
+    const tags = visibleTags(tagsById.get(t.id) ?? []);
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags));
+  };
+  for (const t of active) place(t);
+  for (const t of closed) place(t);
+
+  const columns = activeCols.map((c) => ({
+    id: c.id,
+    label: c.label,
+    color: c.color,
+    position: c.position,
+    category: c.category as TaskStatus,
+    tasks: buckets.get(c.id) ?? [],
+  }));
+  const projects: BoardProject[] = allProjects.map((p) => ({
+    id: p.id,
+    label: p.label,
+    color: p.color,
+    archived: p.archived_at !== null,
+  }));
+  return { columns, projects };
+}
+
+// Total de tasks abertas (categorias open + in_progress) no board — pro contador do
+// header, sempre sem filtro de vencimento.
+function countOpenOnBoard(columns: BoardColumn[]): number {
+  return columns
+    .filter((c) => c.category === 'open' || c.category === 'in_progress')
+    .reduce((n, c) => n + c.tasks.length, 0);
 }
 
 // GET /app/tasks/data — board (default) ou due-soon (?scope=due&horizon_hours=N).
@@ -86,20 +230,35 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
 
   if (scope === 'due') {
     const horizon = Math.min(Math.max(Number(url.searchParams.get('horizon_hours')) || 24, 1), 168);
-    const rows = await listTasksDueBefore(env, now + horizon * 3600_000);
+    // includePrivate=true (spec 59): superfície do dono (sessão OU bearer de tasks).
+    const rows = await listTasksDueBefore(env, now + horizon * 3600_000, true);
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const [active, closed] = await Promise.all([
-    listActiveTasks(env),
-    listRecentClosedTasks(env, 100),
-  ]);
-  const columns = {
-    open: active.filter((t) => t.status === 'open').map((t) => toView(t, now)),
-    in_progress: active.filter((t) => t.status === 'in_progress').map((t) => toView(t, now)),
-    done: closed.map((t) => toView(t, now)),
-  };
-  return json({ now, columns });
+  const { columns, projects } = await buildBoard(env, now);
+  return json({ now, columns, projects });
+}
+
+// POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
+// (drag & drop). moveTaskToColumn resolve a coluna, seta column_id + status =
+// category + completed_at coerente. Aceita Bearer OU sessão (igual /status). Substitui
+// /status como o caminho primário do board (o /status segue aceito p/ compat).
+export async function handleTaskMovePost(req: Request, env: Env): Promise<Response> {
+  const denied = await authTask(req, env);
+  if (denied) return denied;
+  let body: { id?: string; column_id?: string };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const id = (body.id || '').trim();
+  const columnId = (body.column_id || '').trim();
+  if (!id) return json({ error: 'id required' }, 400);
+  if (!columnId) return json({ error: 'column_id required' }, 400);
+  const result = await moveTaskToColumn(env, id, columnId, Date.now());
+  if (result === 'column-not-found') return json({ error: 'column not found' }, 404);
+  if (result === 'not-found') return json({ error: 'task not found' }, 404);
+  // updated_at aditivo (spec 52): o detalhe da task usa o select de coluna como
+  // substituto do antigo select de status — precisa da base fresca de versionamento
+  // otimista pra continuar salvando título/corpo/tags sem 409 auto-infligido.
+  return json({ ok: true, id, column_id: columnId, status: result.status, updated_at: result.updated_at });
 }
 
 // POST /app/tasks/status — { id, status }
@@ -160,6 +319,8 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
       priority?: unknown;
       status?: unknown;
       domains?: unknown;
+      tags?: unknown;
+      project_id?: unknown;
     };
     expected_updated_at?: unknown;
   };
@@ -249,9 +410,37 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     }
   }
 
+  // tags — REPLACE de todas as tags (mesma semântica de update_task MCP); []
+  // limpa as não-reservadas. Reservadas dedupe:* são preservadas automaticamente
+  // por replaceTaskTagsPreservingDedupe dentro de updateTask.
+  if (p.tags !== undefined) {
+    if (!Array.isArray(p.tags) || p.tags.some((t) => typeof t !== 'string')) {
+      return json({ error: 'tags must be an array of strings' }, 400);
+    }
+    patch.tags = p.tags as string[];
+  }
+
+  // project_id — id de projeto ATIVO pra vincular, ou null/'' pra DESvincular (spec 58).
+  // O select do detalhe só oferece projetos ativos + "Sem projeto"; aqui aceitamos só
+  // id (não label — o auto-create por label é caminho do MCP, não da UI). Projeto
+  // inexistente/arquivado → 400.
+  if (p.project_id !== undefined) {
+    if (p.project_id === null || p.project_id === '') {
+      patch.project_id = null;
+    } else if (typeof p.project_id === 'string') {
+      const proj = await getProjectById(env, p.project_id.trim());
+      if (!proj || proj.archived_at !== null) {
+        return json({ error: 'project not found (or archived)' }, 404);
+      }
+      patch.project_id = proj.id;
+    } else {
+      return json({ error: 'project_id must be a project id string or null' }, 400);
+    }
+  }
+
   // Precisa de ao menos um campo editável.
   if (Object.keys(patch).length === 0) {
-    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains' }, 400);
+    return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains, tags, project_id' }, 400);
   }
 
   const result = await updateTask(env, id, patch, Date.now(), expectedUpdatedAt);
@@ -268,6 +457,10 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
   }
 
   const task = result;
+  // tags só entra na resposta quando o patch mexeu nelas (evita 1 query extra nos
+  // outros patches, muito mais frequentes) — devolve já sem as reservadas dedupe:*,
+  // pro chip editor da sidebar (spec 52) atualizar sem precisar de reload.
+  const tagsOut = patch.tags !== undefined ? visibleTags(await getTagsByNote(env, task.id)) : undefined;
   return json({
     ok: true,
     id: task.id,
@@ -277,6 +470,7 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     due_at: task.due_at,
     due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
     updated_at: task.updated_at,
+    ...(tagsOut !== undefined ? { tags: tagsOut } : {}),
   });
 }
 
@@ -284,7 +478,10 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
 // do /update: mesmo authTask (Bearer OU sessão) + validações 1:1 com a tool MCP
 // save_task (title 1-200, priority 1-4 ou null, due via parseDueToMs). Reusa
 // insertTask + newId; domains default ['operations']. Sem embedding (task não vira
-// vetor). Body: { title, body?, priority?, due?, domains? }.
+// vetor). Body: { title, body?, priority?, due?, domains?, column_id? }.
+//   - `column_id` (spec 52, criação inline no rodapé da coluna do board): opcional,
+//     deve ser uma coluna ATIVA existente. Quando presente, a task nasce JÁ na
+//     coluna (e status = categoria dela) em vez do default 'open'/col_aberto.
 export async function handleTaskCreatePost(req: Request, env: Env): Promise<Response> {
   const denied = await authTask(req, env);
   if (denied) return denied;
@@ -295,6 +492,7 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     priority?: unknown;
     due?: unknown;
     domains?: unknown;
+    column_id?: unknown;
   };
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
 
@@ -346,6 +544,22 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     if (domainError) return json({ error: domainError }, 400);
   }
 
+  // column_id — opcional (spec 52). Deve resolver pra uma coluna ATIVA; a categoria
+  // dela vira o status inicial da task (default sem column_id: 'open', igual antes).
+  let status: TaskStatus = 'open';
+  let columnId: string | null = null;
+  if (body.column_id !== undefined && body.column_id !== null) {
+    if (typeof body.column_id !== 'string' || !body.column_id.trim()) {
+      return json({ error: 'column_id must be a non-empty string' }, 400);
+    }
+    const col = await getColumnById(env, body.column_id.trim());
+    if (!col || col.archived_at !== null) {
+      return json({ error: 'column not found (or archived)' }, 404);
+    }
+    columnId = col.id;
+    status = col.category;
+  }
+
   const now = Date.now();
   const id = newId();
   await insertTask(env, {
@@ -354,23 +568,25 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     body: details || title,
     tldr: title.slice(0, 280),
     domains: JSON.stringify(domains),
-    status: 'open',
+    status,
     due_at: dueMs,
     priority,
     completed_at: null,
     created_at: now,
     updated_at: now,
+    column_id: columnId,
   });
 
   return json({
     ok: true,
     id,
     title,
-    status: 'open',
+    status,
     priority,
     due_at: dueMs,
     due_brt: dueMs !== null ? formatBrtDateTime(dueMs) : null,
     updated_at: now,
+    column_id: columnId,
   }, 201);
 }
 
@@ -405,6 +621,10 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
   const result = await createShare(env, id, { expiresDays, renew }, Date.now());
   if (!result.ok) {
     if (result.reason === 'not-found') return json({ error: 'not found' }, 404);
+    // Selo de privacidade (spec 59): task privada não pode ter link público.
+    if (result.reason === 'private') {
+      return json({ error: 'private', message: 'Task privada não pode ter link público. Torne-a pública primeiro.' }, 409);
+    }
     // already-shared (sem renew): não é erro — devolve a expiração atual.
     return json({
       ok: true,
@@ -419,6 +639,44 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
     expires_at: result.expires_at,
     expires_brt: result.expires_brt,
   }, 201);
+}
+
+// ─────────────────── Selo de privacidade de task (spec 59) ───────────────────
+// POST /app/tasks/private — { id, private: boolean }. É a ÚNICA superfície que DESMARCA
+// (torna pública). SÓ sessão de browser (requireSession, sem Bearer/PAT — PAT/bearer
+// caem em 401 antes daqui). Marcar privada revoga QUALQUER link público na mesma escrita
+// (setTaskPrivate). Aceita JSON { private } OU form-encoded (private=1|0), espelhando o
+// toggle de nota (handleNotePrivatePost) — o form do detalhe é CSP-safe.
+export async function handleTaskPrivatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const ct = req.headers.get('content-type') || '';
+  const wantsJson = ct.includes('application/json');
+  let id: string;
+  let makePrivate: boolean;
+  if (wantsJson) {
+    let body: { id?: unknown; private?: unknown };
+    try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+    id = typeof body.id === 'string' ? body.id.trim() : '';
+    if (typeof body.private !== 'boolean') return json({ error: 'private must be a boolean' }, 400);
+    makePrivate = body.private;
+  } else {
+    const form = await req.formData();
+    id = String(form.get('id') ?? '').trim();
+    makePrivate = String(form.get('private') ?? '') === '1';
+  }
+  if (!id) return wantsJson ? json({ error: 'id required' }, 400) : htmlResponse('id obrigatório', 400);
+
+  const r = await setTaskPrivate(env, id, makePrivate ? 1 : 0, Date.now(), `oauth:${session.email}`);
+  if (!r.ok) {
+    return wantsJson
+      ? json({ error: 'task not found' }, 404)
+      : new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+  }
+  return wantsJson
+    ? json({ ok: true, id, private: makePrivate, share_revoked: r.shareRevoked })
+    : new Response(null, { status: 302, headers: { location: `/app/tasks/${encodeURIComponent(id)}` } });
 }
 
 // POST /app/tasks/unshare — { id }. Revoga o link (limpa o token). Idempotente.
@@ -437,13 +695,287 @@ export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Res
   return json({ ok: true, revoked });
 }
 
+// ─────────────────── Comentários de task (spec 53) ───────────────────
+// Console do dono: adiciona comentário 'owner' e apaga QUALQUER comentário (moderação,
+// inclusive de convidado). Form-encoded + redirect de volta ao detalhe da task (mesmo
+// padrão das colunas do Kanban) — funciona sob a CSP sem JS inline. Sessão de browser
+// obrigatória (sem Bearer): comentar/moderar é ação do dono logado, não de cron.
+const OWNER_COMMENT_MAX = 4000;
+
+function taskDetailRedirect(taskId: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { location: `/app/tasks/${encodeURIComponent(taskId)}#atividade` },
+  });
+}
+
+// POST /app/tasks/comment — form { task_id, body }. author='owner'.
+export async function handleTaskCommentPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const taskId = String(form.get('task_id') ?? '').trim();
+  if (!taskId) return htmlResponse('task_id obrigatório', 400);
+  const body = String(form.get('body') ?? '').trim().slice(0, OWNER_COMMENT_MAX);
+  if (!body) return htmlResponse('Comentário vazio', 400);
+
+  const task = await getTaskById(env, taskId);
+  if (!task) return htmlResponse('Task não encontrada', 404);
+
+  await addTaskComment(env, {
+    id: `cmt_${newId()}`, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
+  });
+  return taskDetailRedirect(taskId);
+}
+
+// POST /app/tasks/comment/delete — form { id, task_id? }. Apaga qualquer comentário.
+export async function handleTaskCommentDeletePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do comentário obrigatório', 400);
+  const taskId = String(form.get('task_id') ?? '').trim();
+
+  await deleteTaskComment(env, id);
+  return taskId
+    ? taskDetailRedirect(taskId)
+    : new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+}
+
+// ─────────────── Gestão de colunas do Kanban (spec 51) ───────────────
+// Endpoints da seção "Quadro de tarefas" em /app/config. Form-encoded + redirect
+// (mesmo padrão de /app/config/prefs e /app/api-keys/*), sessão de browser
+// obrigatória (sem Bearer — é gestão de UI, não automação).
+
+const BOARD_REDIRECT = '/app/config?saved=board#board';
+const boardRedirect = (): Response =>
+  new Response(null, { status: 302, headers: { location: BOARD_REDIRECT } });
+
+// Normaliza a cor: '' → null (neutro); #rrggbb → lowercase; qualquer outra coisa →
+// 'invalid' (o caller devolve 400).
+function parseColumnColor(raw: string): string | null | 'invalid' {
+  const c = raw.trim();
+  if (c === '') return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(c)) return c.toLowerCase();
+  return 'invalid';
+}
+
+// POST /app/tasks/columns/create — form { label, color?, category }.
+export async function handleColumnCreatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const label = String(form.get('label') ?? '').trim();
+  if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+
+  const category = String(form.get('category') ?? '').trim() as TaskStatus;
+  if (!TASK_STATUSES.includes(category)) {
+    return htmlResponse(`Categoria inválida (use uma de: ${TASK_STATUSES.join(', ')})`, 400);
+  }
+
+  const color = parseColumnColor(String(form.get('color') ?? ''));
+  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+
+  await createKanbanColumn(env, { id: `col_${newId().slice(0, 8)}`, label, color, category });
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/update — form { id, label?, color? }. Categoria é travada.
+export async function handleColumnUpdatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+
+  const patch: { label?: string; color?: string | null } = {};
+  if (form.has('label')) {
+    const label = String(form.get('label') ?? '').trim();
+    if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+    patch.label = label;
+  }
+  if (form.has('color')) {
+    const color = parseColumnColor(String(form.get('color') ?? ''));
+    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    patch.color = color;
+  }
+
+  const ok = await updateKanbanColumn(env, id, patch);
+  if (!ok) return htmlResponse('Coluna não encontrada', 404);
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/reorder — form { id, direction: up|down }. Sem vizinha =
+// no-op (redireciona mesmo assim, não é erro).
+export async function handleColumnReorderPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  const direction = String(form.get('direction') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+
+  await reorderKanbanColumn(env, id, direction);
+  return boardRedirect();
+}
+
+// POST /app/tasks/columns/archive — form { id, archived: 1|0, to? }.
+//   - archived=0 → desarquiva (só limpa archived_at).
+//   - archived=1 → arquiva. Se a coluna tem tasks, exige `to` (coluna ATIVA da MESMA
+//     categoria, != id) e realoca as tasks antes de arquivar. Seeds col_aberto/
+//     col_concluido não podem ser arquivados se forem a última coluna ativa da categoria.
+export async function handleColumnArchivePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+
+  const col = await getColumnById(env, id);
+  if (!col) return htmlResponse('Coluna não encontrada', 404);
+
+  const archived = String(form.get('archived') ?? '1').trim() !== '0';
+
+  if (!archived) {
+    await setColumnArchived(env, id, null);
+    return boardRedirect();
+  }
+
+  // Já arquivada → no-op.
+  if (col.archived_at !== null) return boardRedirect();
+
+  // Guard: não deixar uma categoria essencial sem coluna ativa.
+  if ((id === 'col_aberto' || id === 'col_concluido')) {
+    const activeInCat = await countActiveColumnsInCategory(env, col.category);
+    if (activeInCat <= 1) {
+      return htmlResponse('Não é possível arquivar a última coluna ativa dessa categoria', 400);
+    }
+  }
+
+  // Coluna com tasks precisa de destino da MESMA categoria (ativa, != id).
+  const taskCount = await countTasksInColumn(env, id);
+  if (taskCount > 0) {
+    const to = String(form.get('to') ?? '').trim();
+    if (!to) return htmlResponse('Escolha uma coluna destino pras tasks antes de arquivar', 400);
+    if (to === id) return htmlResponse('A coluna destino não pode ser a própria coluna arquivada', 400);
+    const dest = await getColumnById(env, to);
+    if (!dest || dest.archived_at !== null || dest.category !== col.category) {
+      return htmlResponse('Coluna destino inválida (deve ser ativa e da mesma categoria)', 400);
+    }
+    await reassignColumn(env, id, to);
+  }
+
+  await setColumnArchived(env, id, Date.now());
+  return boardRedirect();
+}
+
+// ─────────────── Gestão de projetos/pastas (spec 58) ───────────────
+// Seção "Projetos" em /app/config. Form-encoded + redirect (mesmo padrão das colunas
+// do Kanban), sessão de browser obrigatória (sem Bearer — gestão de UI). Arquivar um
+// projeto NÃO realoca tasks (só some dos selects; o chip esmaece). NÃO há excluir —
+// só arquivar (evita órfãos). Cap de 64 aplicado no create.
+
+const PROJECTS_REDIRECT = '/app/config?saved=projects#projects';
+const projectsRedirect = (): Response =>
+  new Response(null, { status: 302, headers: { location: PROJECTS_REDIRECT } });
+
+// POST /app/tasks/projects/create — form { label, color? }.
+export async function handleProjectCreatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const label = String(form.get('label') ?? '').trim();
+  if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+
+  const color = parseColumnColor(String(form.get('color') ?? ''));
+  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+
+  // Cap 64 (ativos + arquivados) — mesma regra do auto-create do MCP.
+  const count = await countTaskProjects(env);
+  if (count >= TASK_PROJECT_CAP) {
+    return htmlResponse(`Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.`, 400);
+  }
+
+  await createTaskProject(env, { id: `proj_${newId().slice(0, 8)}`, label, color }, Date.now());
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/update — form { id, label?, color? }.
+export async function handleProjectUpdatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+
+  const patch: { label?: string; color?: string | null } = {};
+  if (form.has('label')) {
+    const label = String(form.get('label') ?? '').trim();
+    if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+    patch.label = label;
+  }
+  if (form.has('color')) {
+    const color = parseColumnColor(String(form.get('color') ?? ''));
+    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    patch.color = color;
+  }
+
+  const ok = await updateTaskProject(env, id, patch);
+  if (!ok) return htmlResponse('Projeto não encontrado', 404);
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/reorder — form { id, direction: up|down }. Sem vizinha =
+// no-op (redireciona mesmo assim).
+export async function handleProjectReorderPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  const direction = String(form.get('direction') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+
+  await reorderTaskProject(env, id, direction);
+  return projectsRedirect();
+}
+
+// POST /app/tasks/projects/archive — form { id, archived: 1|0 }. Arquivar NÃO
+// realoca tasks (project_id fica; chip esmaece). Idempotente.
+export async function handleProjectArchivePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+
+  const proj = await getProjectById(env, id);
+  if (!proj) return htmlResponse('Projeto não encontrado', 404);
+
+  const archived = String(form.get('archived') ?? '1').trim() !== '0';
+  await setProjectArchived(env, id, archived ? Date.now() : null);
+  return projectsRedirect();
+}
+
 // ───────────────────────── SSR page ─────────────────────────
 
-const COLS: Array<{ key: TaskStatus; label: string }> = [
-  { key: 'open', label: 'A fazer' },
-  { key: 'in_progress', label: 'Em progresso' },
-  { key: 'done', label: 'Concluído' },
-];
+// Cor de coluna só é aceita como hex #rrggbb (validada na escrita); qualquer outra
+// coisa vira neutro. Defesa dupla no render (o valor vai pra um atributo style).
+function safeColumnColor(color: string | null): string | null {
+  return color && /^#[0-9a-fA-F]{6}$/.test(color) ? color : null;
+}
 
 // Bandeirinha de prioridade estilo ClickUp (flag colorida + rótulo). Compartilha
 // PRIORITIES/flagSvg com o client (util/priority.ts) — server e client renderizam
@@ -460,11 +992,23 @@ function dueBadge(v: TaskView): string {
   return `<span class="${cls}">${esc(v.due_brt)}${v.when ? ` · ${esc(v.when)}` : ''}</span>`;
 }
 
-function renderCardSSR(v: TaskView): string {
+// Chip de projeto do card (spec 58): resolve o project_id da task no BoardProject
+// (do payload) pra pegar label/cor/arquivado. project_id órfão/ausente → sem chip.
+function cardProjectChip(v: TaskView, projectsById: Map<string, BoardProject>): string {
+  if (!v.project_id) return '';
+  const p = projectsById.get(v.project_id);
+  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+}
+
+// Badge 🔒 do card/detalhe (spec 59) — mesma classe global .private-badge das notas.
+const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
+
+function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
-  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}" draggable="true">
-    <div class="task-card-head">${priorityPill(v.priority)}${dueBadge(v)}</div>
+  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''} draggable="true">
+    <div class="task-card-head">${v.private ? PRIVATE_TASK_BADGE : ''}${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
     <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
+    <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
     <div class="task-card-actions">
       ${canClose ? `<button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button>` : ''}
       <a class="task-btn task-open" href="/app/tasks/${esc(v.id)}">abrir</a>
@@ -472,13 +1016,41 @@ function renderCardSSR(v: TaskView): string {
   </div>`;
 }
 
-function renderColumnSSR(label: string, key: TaskStatus, items: TaskView[]): string {
-  return `<section class="task-col" data-col="${key}">
-    <header class="task-col-head"><span class="task-col-label">${esc(label)}</span><span class="task-col-count" data-count="${key}">${items.length}</span></header>
-    <div class="task-col-body" data-dropzone="${key}">
-      ${items.map(renderCardSSR).join('') || '<div class="task-col-empty">—</div>'}
+function columnSwatch(color: string | null): string {
+  const c = safeColumnColor(color);
+  return `<span class="task-col-dot"${c ? ` style="background:${esc(c)}"` : ''}></span>`;
+}
+
+function renderColumnSSR(col: BoardColumn, projectsById: Map<string, BoardProject>): string {
+  const c = safeColumnColor(col.color);
+  return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
+    <header class="task-col-head"><span class="task-col-label">${columnSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${col.tasks.length}</span></header>
+    <div class="task-col-body" data-dropzone="${esc(col.id)}">
+      ${col.tasks.map((t) => renderCardSSR(t, projectsById)).join('') || '<div class="task-col-empty">—</div>'}
     </div>
   </section>`;
+}
+
+// Select de filtro por projeto no header do board (spec 58). "Todos os projetos"
+// (default) | "Sem projeto" | cada ativo (com bolinha de cor) | subgrupo
+// "Arquivados". O estado real (query param + localStorage) é aplicado no client;
+// o SSR só monta o select com todos os projetos. `selected` marca a opção inicial
+// (vinda do ?project=… pra o primeiro paint bater com o client).
+function renderProjectFilter(projects: BoardProject[], selected: string): string {
+  const actives = projects.filter((p) => !p.archived);
+  const archived = projects.filter((p) => p.archived);
+  const opt = (value: string, label: string) =>
+    `<option value="${esc(value)}"${selected === value ? ' selected' : ''}>${esc(label)}</option>`;
+  const activeOpts = actives.map((p) => opt(p.id, p.label)).join('');
+  const archivedOpts = archived.length
+    ? `<optgroup label="Arquivados">${archived.map((p) => opt(p.id, p.label)).join('')}</optgroup>`
+    : '';
+  return `<select class="task-project-filter" id="task-project-filter" aria-label="Filtrar por projeto">
+    ${opt('all', 'Todos os projetos')}
+    ${opt('none', 'Sem projeto')}
+    ${activeOpts}
+    ${archivedOpts}
+  </select>`;
 }
 
 export async function handleTasksPage(req: Request, env: Env): Promise<Response> {
@@ -486,17 +1058,14 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const now = Date.now();
-  const [active, closed] = await Promise.all([
-    listActiveTasks(env),
-    listRecentClosedTasks(env, 100),
-  ]);
-  const cols: Record<TaskStatus, TaskView[]> = {
-    open: active.filter((t) => t.status === 'open').map((t) => toView(t, now)),
-    in_progress: active.filter((t) => t.status === 'in_progress').map((t) => toView(t, now)),
-    done: closed.map((t) => toView(t, now)),
-    canceled: [],
-  };
-  const totalOpen = cols.open.length + cols.in_progress.length;
+  const { columns, projects } = await buildBoard(env, now);
+  const totalOpen = countOpenOnBoard(columns);
+  const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
+
+  // Filtro inicial vindo do ?project= (id|none|all) — o client reconcilia com
+  // localStorage, mas o SSR já marca a opção pra o primeiro paint bater.
+  const url = new URL(req.url);
+  const initialProject = url.searchParams.get('project') || 'all';
 
   // Options de prioridade do form de criação (bandeirinha + rótulo estilo ClickUp).
   const createPrioOptions = [
@@ -518,10 +1087,12 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="today" type="button">Vencem hoje</button>
       <button class="task-filter" data-filter="week" type="button">Esta semana</button>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
+      <span class="task-toolbar-spacer"></span>
+      ${renderProjectFilter(projects, initialProject)}
     </div>
 
     <div class="task-board" id="task-board">
-      ${COLS.map((c) => renderColumnSSR(c.label, c.key, cols[c.key])).join('')}
+      ${columns.map((c) => renderColumnSSR(c, projectsById)).join('')}
     </div>
 
     <div class="task-modal" id="task-create-modal" hidden aria-hidden="true">
@@ -570,10 +1141,11 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   `;
 
   return htmlResponse(
-    renderShell({
+    await renderShell({
       title: 'Tarefas',
       active: 'tasks',
       email: session.email,
+      env,
       body,
       extraHead: `<style>${TASKS_CSS}</style>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),
@@ -610,19 +1182,34 @@ export const TASKS_CSS = `
 .task-filter:hover { color: var(--text); border-color: var(--border-strong); }
 .task-filter.active { color: var(--accent-lav); border-color: var(--border-strong); background: rgba(167,139,250,0.1); }
 
-.task-board { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: start; }
+/* Board: colunas customizáveis (N variável) — grid horizontal com scroll quando
+   passa da largura, cada coluna com largura mínima confortável (spec 51). */
+.task-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 16px; align-items: start; overflow-x: auto; padding-bottom: 4px; }
 .task-col {
   background: var(--surface); border: 1px solid var(--border);
+  border-top: 3px solid var(--col-accent, var(--border));
   border-radius: var(--radius); padding: 14px; min-height: 140px;
   transition: border-color 160ms var(--ease);
 }
 .task-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; padding: 0 2px; }
-.task-col-label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); text-transform: uppercase; }
+.task-col-label { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--text); text-transform: uppercase; }
+/* Bolinha na cor da coluna (neutra quando sem cor definida) */
+.task-col-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--border-strong); flex: none; }
+.task-col-head-right { display: flex; align-items: center; gap: 6px; }
 .task-col-count {
   font-size: 11px; font-weight: 600; color: var(--text-dim); background: var(--surface-raised);
   border-radius: 999px; padding: 2px 9px; min-width: 24px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
+/* Colapsar coluna (spec 52): estado persiste em localStorage (kanban_collapsed) */
+.task-col-collapse-btn {
+  background: none; border: none; color: var(--text-faint); font-size: 11px; line-height: 1;
+  cursor: pointer; padding: 3px 5px; border-radius: 5px; transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.task-col-collapse-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.task-col.collapsed { padding-bottom: 12px; }
+.task-col.collapsed .task-col-body,
+.task-col.collapsed .task-col-inline-create { display: none; }
 .task-col-body {
   display: flex; flex-direction: column; gap: 10px; min-height: 72px;
   border-radius: var(--radius-sm); padding: 2px;
@@ -640,6 +1227,17 @@ export const TASKS_CSS = `
 }
 .task-col-body.drag-over .task-col-empty { border-color: var(--border-strong); color: var(--text-dim); }
 
+/* "+ Nova tarefa" inline no rodapé da coluna (spec 52) — cria já na coluna certa */
+.task-col-inline-create { margin-top: 8px; padding: 0 2px; }
+.task-col-inline-input {
+  width: 100%; box-sizing: border-box; background: transparent; border: 1px dashed var(--border);
+  color: var(--text); border-radius: var(--radius-sm); padding: 7px 10px; font-family: inherit;
+  font-size: 12.5px; transition: border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.task-col-inline-input::placeholder { color: var(--text-faint); }
+.task-col-inline-input:focus { outline: none; border-style: solid; border-color: var(--accent-lav); background: var(--bg-accent); }
+.task-col-inline-input:disabled { opacity: 0.5; }
+
 .task-card {
   background: var(--bg-accent); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 12px 13px; cursor: grab;
@@ -651,10 +1249,20 @@ export const TASKS_CSS = `
 .task-card.dragging { opacity: 0.35; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.7); border-color: var(--accent-lav); cursor: grabbing; }
 .task-card[data-status="done"], .task-card[data-status="canceled"] { opacity: 0.62; }
 .task-card[data-status="done"] .task-card-title { text-decoration: line-through; color: var(--text-dim); }
-.task-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
+/* Card focado via ?task=<id> (spec 66: paleta abre o board com o card em destaque) —
+   anel temporário, remove sozinho depois de scrollar até ele. */
+.task-card.task-card-focused { border-color: var(--accent-lav); box-shadow: 0 0 0 2px var(--accent-lav); }
+/* Linha meta superior: prioridade + tags + ícone de link (spec 52) */
+.task-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
 .task-card-head:empty { display: none; }
-.task-card-title { display: block; color: var(--text); font-size: 14px; line-height: 1.4; font-weight: 500; }
+.task-card-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  color: var(--text); font-size: 14px; line-height: 1.4; font-weight: 500;
+}
 .task-card-title:hover { color: var(--accent-lav); }
+/* Linha meta inferior: prazo + contador de comentários (spec 52) */
+.task-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; min-height: 4px; }
+.task-card-meta:empty { display: none; }
 .task-card-actions { display: flex; gap: 12px; margin-top: 10px; }
 .task-btn {
   background: none; border: none; color: var(--text-faint); font-size: 12px;
@@ -664,6 +1272,37 @@ export const TASKS_CSS = `
 
 .task-due { font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
 .task-due.overdue { color: #fca5a5; background: rgba(239,68,68,0.14); }
+
+/* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
+.task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
+.task-comments-n { font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Tags no card (spec 52): até 3 chips + "+N", cor neutra — nunca dedupe:* */
+.task-tag-chip {
+  display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 500;
+  color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 7px;
+}
+.task-tag-more { color: var(--text-faint); }
+/* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
+.task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
+
+/* Chip de projeto/pasta no card (spec 58): bolinha de cor + label. Arquivado esmaece. */
+.task-project-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600;
+  color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px;
+  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-project-chip.archived { opacity: 0.5; }
+.task-project-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex: none; }
+
+/* Filtro de projeto no header do board (spec 58) */
+.task-toolbar-spacer { flex: 1 1 auto; }
+.task-project-filter {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: border-color 160ms var(--ease);
+}
+.task-project-filter:focus { outline: none; border-color: var(--accent-lav); }
 
 /* Bandeirinha de prioridade estilo ClickUp: flag colorida + rótulo, fundo tênue */
 .task-prio {
@@ -759,7 +1398,7 @@ body.task-dragging .task-col-body { min-height: 90px; }
 @keyframes taskSlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 760px) {
-  .task-board { grid-template-columns: 1fr; }
+  .task-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
 }

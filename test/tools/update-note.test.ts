@@ -4,6 +4,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { registerUpdateNote } from '../../src/mcp/tools/update-note.js';
 
 const E = env as any;
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
 
 function fakeAI() {
   return { run: vi.fn(async () => ({ data: [Array(1024).fill(0.3)] })) };
@@ -26,7 +27,7 @@ async function seed(id: string, tldr: string, domains: string, kind: string): Pr
 
 function reg() {
   const r: any = {};
-  registerUpdateNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  registerUpdateNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
   return r;
 }
 

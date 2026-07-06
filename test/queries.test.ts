@@ -5,6 +5,7 @@ import {
   insertNote, insertEdge, insertTags,
   getNoteById, getTagsByNote, getEdgesFrom, ftsSearch,
   replaceSimilarEdges, getAllSimilarEdges, updateNote,
+  listDomainCounts, insertTask,
 } from '../src/db/queries.js';
 
 const E = env as any;
@@ -109,6 +110,51 @@ describe('queries', () => {
       const n = await getNoteById(E, 'un3');
       expect(n?.title).toBe('orig'); // não sobrescreveu
       expect(n?.updated_at).toBe(1500);
+    });
+  });
+
+  // spec 54 — contagem por área pra seção "Áreas e tipos" de /app/config. Storage
+  // é COMPARTILHADO entre arquivos de teste (isolatedStorage:false — ver comentário
+  // acima em replaceSimilarEdges), então usamos slugs BEM distintivos e checamos só
+  // as chaves nossas no mapa retornado, nunca o mapa inteiro.
+  describe('listDomainCounts (spec 54 — isolamento de task)', () => {
+    it('conta notas de CONHECIMENTO por área, somando entradas repetidas', async () => {
+      await insertNote(E, {
+        id: 'dc1', title: 'dc1', body: '', tldr: 'x',
+        domains: JSON.stringify(['dominio-contagem-x']), kind: 'concept', created_at: 1, updated_at: 1,
+      });
+      await insertNote(E, {
+        id: 'dc2', title: 'dc2', body: '', tldr: 'x',
+        domains: JSON.stringify(['dominio-contagem-x', 'dominio-contagem-y']), kind: 'concept', created_at: 1, updated_at: 1,
+      });
+      const counts = await listDomainCounts(E);
+      expect(counts['dominio-contagem-x']).toBe(2);
+      expect(counts['dominio-contagem-y']).toBe(1);
+    });
+
+    it('task NUNCA entra na contagem, mesmo usando o mesmo slug de uma nota', async () => {
+      await insertNote(E, {
+        id: 'dc3', title: 'dc3', body: '', tldr: 'x',
+        domains: JSON.stringify(['dominio-contagem-task']), kind: 'concept', created_at: 1, updated_at: 1,
+      });
+      await insertTask(E, {
+        id: 'dctask1', title: 'Task dc', body: 'b', tldr: 'Task dc aqui',
+        domains: JSON.stringify(['dominio-contagem-task']),
+        status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1,
+      });
+      const counts = await listDomainCounts(E);
+      // Só a nota conta — a task com o MESMO slug não soma 2.
+      expect(counts['dominio-contagem-task']).toBe(1);
+    });
+
+    it('domínio usado só por uma task (nenhuma nota) não aparece no mapa', async () => {
+      await insertTask(E, {
+        id: 'dctask2', title: 'Task só', body: 'b', tldr: 'Task so aqui',
+        domains: JSON.stringify(['dominio-so-task']),
+        status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1,
+      });
+      const counts = await listDomainCounts(E);
+      expect(counts['dominio-so-task']).toBeUndefined();
     });
   });
 });

@@ -3,7 +3,7 @@ import { McpAgent } from 'agents/mcp';
 import type { Env, AuthContext } from '../env.js';
 import { buildServerInstructions } from './instructions.js';
 import { registerAllTools } from './registry.js';
-import { readPersonalizationPrompt } from '../db/meta.js';
+import { readPersonalizationPrompt, readOwnerInstructions } from '../db/meta.js';
 
 export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthContext> {
   server!: McpServer;
@@ -26,15 +26,28 @@ export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthCon
       prompt = null;
     }
 
+    // "Instruções do dono" (spec 50-console-v2/70): mesmo padrão de leitura suave.
+    // Falha na meta nunca derruba o handshake — cai pro comportamento sem o bloco.
+    let ownerInstructions: string | null = null;
+    try {
+      ownerInstructions = await readOwnerInstructions(this.env);
+    } catch (err) {
+      console.error('ExpertBrainMCP: falha ao ler owner_instructions, seguindo sem o bloco', err);
+      ownerInstructions = null;
+    }
+
     this.server = new McpServer(
       { name: 'expert-brain', version: '0.1.0' },
       {
         instructions: buildServerInstructions(prompt, {
           hasMedia: Boolean(this.env.MEDIA),
           hasContacts: Boolean(this.env.CONTACTS && this.env.CONTACTS_PROXY_TOKEN),
+          ownerInstructions,
         }),
       }
     );
-    registerAllTools(this.server, this.env);
+    // Repassa o AuthContext (spec 17): o registry gateia por escopo (read → só
+    // tools readOnlyHint:true) e as tools de escrita gravam autoria.
+    registerAllTools(this.server, this.env, auth);
   }
 }

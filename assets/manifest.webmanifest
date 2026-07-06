@@ -2,7 +2,7 @@
   "name": "Expert Brain",
   "short_name": "Brain",
   "description": "Personal knowledge graph — notes, connections, semantic recall.",
-  "start_url": "/app/graph",
+  "start_url": "/app",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
@@ -10,6 +10,35 @@
   "theme_color": "#070a13",
   "lang": "pt-BR",
   "categories": ["productivity", "education"],
+  "share_target": {
+    "action": "/app/inbox",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "shortcuts": [
+    {
+      "name": "Capturar",
+      "short_name": "Capturar",
+      "description": "Captura rápida no inbox de triagem",
+      "url": "/app/inbox"
+    },
+    {
+      "name": "Tarefas",
+      "short_name": "Tarefas",
+      "description": "Board de tarefas",
+      "url": "/app/tasks"
+    },
+    {
+      "name": "Hoje",
+      "short_name": "Hoje",
+      "description": "Home com o que vence hoje",
+      "url": "/app"
+    }
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

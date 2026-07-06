@@ -1,36 +1,24 @@
 import type { Env } from '../env.js';
 import type { NoteRow, EdgeRow } from '../db/queries.js';
 import { requireSession } from './session.js';
+import { authorizeBearer } from './bearer-auth.js';
 import { newId } from '../util/id.js';
 import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { explicitPairKey } from './similarity.js';
-import { getTopSimilarEdges } from '../db/queries.js';
+import { getTopSimilarEdges, listAllMentions } from '../db/queries.js';
 import { NON_TASK_FILTER } from '../db/queries.js';
 
-// Porta de auth ADITIVA pras rotas /app/graph/*: além da sessão de cookie do
-// browser, aceita `Authorization: Bearer <token>` quando o token bate com
-// env.GRAPH_EXPORT_TOKEN. Usado pelo Expert Console (adapter do vault brain) pra
-// ler/escrever o grafo via HTTP sem sessão. Se o secret não estiver setado ou o
-// header não bater, retorna false e o chamador cai no requireSession normal —
-// comportamento de browser fica intacto. Comparação de tamanho-constante pra não
-// vazar o token por timing.
-function authorizeGraphExport(req: Request, env: Env): boolean {
-  const expected = env.GRAPH_EXPORT_TOKEN;
-  if (!expected) return false;
-  const header = req.headers.get('authorization') || '';
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  if (!m) return false;
-  const got = m[1].trim();
-  if (got.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
-}
+// Auth das rotas /app/graph/*: escopo 'graph' (só GRAPH_EXPORT_TOKEN) via o helper
+// compartilhado authorizeBearer — a cópia local authorizeGraphExport foi removida
+// (spec 17), eliminando a duplicação e o early-return por tamanho de token.
 
-interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; }
+interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; private: boolean; type?: 'note' | 'contact'; }
 interface ExplicitGraphEdge { id: string; source: string; target: string; type: 'explicit'; why: string; relation_type: string; }
 interface SimilarGraphEdge { id: string; source: string; target: string; type: 'similar'; score: number; }
-type GraphEdge = ExplicitGraphEdge | SimilarGraphEdge;
+// Aresta de MENÇÃO (spec 62): liga uma nota (source) a um NÓ DE CONTATO sintético
+// (target = `contact:<entity_id>`). Estilo visual distinto de edge de conhecimento.
+interface MentionGraphEdge { id: string; source: string; target: string; type: 'mention'; entity_id: string; entity_label: string | null; }
+type GraphEdge = ExplicitGraphEdge | SimilarGraphEdge | MentionGraphEdge;
 
 export interface GraphPayload {
   nodes: GraphNode[];
@@ -49,7 +37,15 @@ export interface GraphPayload {
 // similar edges MUDA o conteúdo do payload (menos edges), mas não o shape; a
 // invalidação vem de graça pelo sourceHash no sufixo (edges/scores diferentes →
 // hash diferente → chave nova).
-const CACHE_KEY = 'graph:v10';
+// v11 (spec 31): GraphNode ganhou o campo `private` (badge/anel visual da nota
+// privada) — bump invalida o payload cacheado sem o campo. O grafo é superfície do
+// dono (sessão ou GRAPH_EXPORT_TOKEN, bearer do console pessoal), então serve TODAS
+// as notas, privadas incluídas; o campo só sinaliza pro client renderizar o selo.
+// v12 (spec 62): GraphNode ganhou `type?` ('note'|'contact') e a união de edges ganhou
+// 'mention' (camada opt-in nota↔contato, servida em /app/graph/data?mentions=1). O SHAPE
+// do JSON base é o mesmo pro grafo de conhecimento (a camada de menção só entra sob o
+// query param), mas o bump garante rebuild limpo do payload cacheado no deploy.
+const CACHE_KEY = 'graph:v12';
 
 // Orçamento de payload do /app/graph/data. Gate anti-regressão (spec 26): o teste
 // sintético N=5k falha se o JSON servido estourar este teto. Bem abaixo do limite
@@ -116,8 +112,9 @@ async function computeSourceHash(env: Env): Promise<string> {
 }
 
 // Domains are stored as a JSON-encoded string array. Parse and pick the first
-// entry for node coloring; fall back to CSV split for legacy rows.
-function firstDomain(raw: string): string {
+// entry for node coloring; fall back to CSV split for legacy rows. Exportada
+// (spec 66) pro agregador de busca (/app/search/all) reusar em vez de duplicar.
+export function firstDomain(raw: string): string {
   if (!raw) return 'misc';
   const trimmed = raw.trim();
   if (trimmed.startsWith('[')) {
@@ -138,7 +135,9 @@ async function buildPayload(env: Env, knownSourceHash?: string): Promise<GraphPa
   // do mesmo Worker e cada uma roda em sua própria conexão.
   const [notesRes, edgesRes] = await Promise.all([
     // Tasks (kind='task') ficam fora do grafo de conhecimento — são to-dos, não ideias.
-    env.DB.prepare(`SELECT id, title, domains FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).all<Pick<NoteRow, 'id' | 'title' | 'domains'>>(),
+    // `private` (spec 31) vem junto pro client renderizar o selo — o grafo é superfície
+    // do dono, então NÃO filtra privadas, só as marca.
+    env.DB.prepare(`SELECT id, title, domains, private FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`).all<Pick<NoteRow, 'id' | 'title' | 'domains' | 'private'>>(),
     env.DB.prepare(`SELECT id, from_id, to_id, relation_type, why, created_at FROM edges`).all<EdgeRow>(),
   ]);
   const notes = notesRes.results ?? [];
@@ -233,6 +232,7 @@ async function buildPayload(env: Env, knownSourceHash?: string): Promise<GraphPa
       size: Math.max(6, Math.min(3 * Math.sqrt((degree.get(n.id) ?? 0) + 1), 30)),
       x: p.x,
       y: p.y,
+      private: (n.private ?? 0) === 1,
     };
   });
 
@@ -283,12 +283,56 @@ async function getPayload(env: Env): Promise<GraphPayload> {
   return payload;
 }
 
+// Camada de MENÇÃO (spec 62 §3.2): estende o payload base com nós de CONTATO sintéticos
+// (`contact:<entity_id>`) e arestas nota↔contato das menções. Opt-in (?mentions=1) pra
+// NÃO alterar o grafo de conhecimento nem sua física (a camada é overlay visual: nós de
+// contato posicionados no centróide das notas que os mencionam, sem tocar o layout KV).
+// Só notas de CONHECIMENTO entram (tasks ficam fora do grafo por design); menção de task
+// não gera nó aqui. O bump do CACHE_KEY (v12) cobre a extensão do shape.
+async function buildMentionsLayer(
+  env: Env, base: GraphPayload
+): Promise<{ nodes: GraphNode[]; edges: MentionGraphEdge[] }> {
+  const posById = new Map(base.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+  const mentions = await listAllMentions(env);
+  const contactNodes = new Map<string, { node: GraphNode; sx: number; sy: number; n: number }>();
+  const edges: MentionGraphEdge[] = [];
+  for (const m of mentions) {
+    const notePos = posById.get(m.note_id);
+    if (!notePos) continue; // note_id não é uma nota de conhecimento viva (task/deletada)
+    const nodeId = `contact:${m.entity_id}`;
+    let entry = contactNodes.get(nodeId);
+    if (!entry) {
+      entry = {
+        node: { id: nodeId, label: m.entity_label ?? m.entity_id, domain: 'contact', size: 8, x: 0, y: 0, private: false, type: 'contact' },
+        sx: 0, sy: 0, n: 0,
+      };
+      contactNodes.set(nodeId, entry);
+    }
+    entry.sx += notePos.x; entry.sy += notePos.y; entry.n += 1;
+    edges.push({ id: `men:${m.id}`, source: m.note_id, target: nodeId, type: 'mention', entity_id: m.entity_id, entity_label: m.entity_label });
+  }
+  const nodes = [...contactNodes.values()].map((e) => {
+    if (e.n > 0) { e.node.x = e.sx / e.n; e.node.y = e.sy / e.n; }
+    return e.node;
+  });
+  return { nodes, edges };
+}
+
 export async function handleGraphData(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
   const payload = await getPayload(env);
+  // Camada de menção opt-in (spec 62): ?mentions=1 anexa nós de contato + arestas de
+  // menção. Sem o param, o grafo de conhecimento sai idêntico (zero regressão de física).
+  if (new URL(req.url).searchParams.get('mentions') === '1') {
+    const layer = await buildMentionsLayer(env, payload);
+    return Response.json(
+      { ...payload, nodes: [...payload.nodes, ...layer.nodes], edges: [...payload.edges, ...layer.edges] },
+      { headers: { 'cache-control': 'no-store' } },
+    );
+  }
   return Response.json(payload, { headers: { 'cache-control': 'no-store' } });
 }
 
@@ -359,6 +403,7 @@ export interface NoteMetaRow {
   tldr: string;
   domains: string[];
   updated_at: number; // ms — aditivo (spec 23): client de notas ordena por ele sem depender do DOM SSR paginado.
+  private: boolean;   // selo de privacidade (spec 31): client renderiza o badge 🔒 na lista/grafo.
 }
 
 // Lightweight metadata for the graph slide panel and client-side fuzzy search.
@@ -367,7 +412,7 @@ export interface NoteMetaRow {
 // A.32 — POST /app/graph/link: cria edge explícita justificada (Latticework).
 // Aceita { source, target, why } e invalida cache.
 export async function handleGraphLink(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
@@ -400,7 +445,7 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
 }
 
 export async function handleGraphMeta(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
@@ -420,9 +465,9 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
   }
 
   const rows = await env.DB.prepare(
-    `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains, updated_at
+    `SELECT id, title, COALESCE(tldr, '') AS tldr, COALESCE(kind, '') AS kind, COALESCE(domains, '') AS domains, updated_at, private
      FROM notes WHERE deleted_at IS NULL AND ${NON_TASK_FILTER}`
-  ).all<{ id: string; title: string; tldr: string; kind: string; domains: string; updated_at: number }>();
+  ).all<{ id: string; title: string; tldr: string; kind: string; domains: string; updated_at: number; private: number }>();
   const results = rows.results ?? [];
 
   const meta: NoteMetaRow[] = results.map((n) => ({
@@ -432,6 +477,7 @@ export async function handleGraphMeta(req: Request, env: Env): Promise<Response>
     tldr: n.tldr || '',
     domains: parseDomains(n.domains),
     updated_at: n.updated_at ?? 0,
+    private: (n.private ?? 0) === 1,
   }));
 
   return Response.json(meta, { headers });

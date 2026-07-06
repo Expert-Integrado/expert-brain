@@ -1,7 +1,9 @@
+import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { FONT_LINKS } from './styles.js';
 import { readCookie } from './session.js';
 import { assetVersion } from './asset-version.js';
+import { countPendingInbox } from '../db/queries.js';
 
 // Lê a preferência de menu recolhido do cookie (gravado client-side pelo shell
 // bundle). Server-side render evita o "flash" de menu abrindo/fechando ao trocar
@@ -12,12 +14,16 @@ export function sidebarCollapsedFromReq(req: Request): boolean {
 
 // Ícones do menu lateral — mesmos traços do bottom-nav (mobile) pra consistência.
 const SIDEBAR_ICONS = {
+  home:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>',
   graph:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>',
   notes:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>',
   tasks:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+  inbox:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
   contacts:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   config:
@@ -28,15 +34,52 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>',
 };
 
-export function renderShell(opts: {
+// Badge de pendentes do inbox (spec 63): contagem ao lado do link Inbox na nav.
+// SSR (uma superfície só) — computado aqui pra aparecer em TODA página. Defensivo:
+// qualquer erro na contagem vira 0 (o badge some) e NUNCA derruba o render da página.
+async function inboxPendingCount(env: Env): Promise<number> {
+  try {
+    return await countPendingInbox(env);
+  } catch (err) {
+    console.error('renderShell: countPendingInbox failed (badge hidden)', err);
+    return 0;
+  }
+}
+
+const NAV_BADGE_CSS = `
+.nav-badge, .bottom-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  background: var(--accent-lav, #a78bfa); color: #0b0b12;
+}
+.nav-item .nav-badge { margin-left: auto; }
+.sidebar-collapsed .nav-item .nav-badge {
+  position: absolute; top: 4px; right: 4px; margin-left: 0;
+  min-width: 16px; height: 16px; font-size: 10px;
+}
+.sidebar-collapsed .nav-item { position: relative; }
+.bottom-nav-item { position: relative; }
+.bottom-nav-badge { position: absolute; top: 3px; right: 22%; min-width: 16px; height: 16px; font-size: 10px; }
+`;
+
+export async function renderShell(opts: {
   title: string;
-  active: 'notes' | 'graph' | 'tasks' | 'contacts' | 'config' | 'api-keys';
+  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'inbox' | 'config' | 'api-keys';
   email: string;
   body: string;
+  env: Env;
   extraHead?: string;
   sidebarCollapsed?: boolean;
-}): string {
+}): Promise<string> {
   const collapsed = opts.sidebarCollapsed === true;
+  const pending = await inboxPendingCount(opts.env);
+  const sidebarBadge = pending > 0
+    ? `<span class="nav-badge" aria-label="${pending} na triagem">${pending}</span>`
+    : '';
+  const bottomBadge = pending > 0
+    ? `<span class="bottom-nav-badge" aria-label="${pending} na triagem">${pending}</span>`
+    : '';
   return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -51,14 +94,17 @@ export function renderShell(opts: {
 <link rel="apple-touch-icon" href="/icon-192.png">
 ${FONT_LINKS}
 <link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}">
+<style>${NAV_BADGE_CSS}</style>
 ${opts.extraHead ?? ''}
 </head><body>
 <div class="shell${collapsed ? ' sidebar-collapsed' : ''}">
   <aside class="sidebar">
     <div class="logo"><span class="logo-text">Expert Brain</span></div>
+    <a class="nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" title="Início">${SIDEBAR_ICONS.home}<span class="nav-label">Início</span></a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" title="Grafo">${SIDEBAR_ICONS.graph}<span class="nav-label">Grafo</span></a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
+    <a class="nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" title="Inbox">${SIDEBAR_ICONS.inbox}<span class="nav-label">Inbox</span>${sidebarBadge}</a>
     <a class="nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" title="Contatos">${SIDEBAR_ICONS.contacts}<span class="nav-label">Contatos</span></a>
     <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" title="Configurações">${SIDEBAR_ICONS.config}<span class="nav-label">Configurações</span></a>
     <div class="bottom">
@@ -70,6 +116,10 @@ ${opts.extraHead ?? ''}
   <main class="main">${opts.body}</main>
 </div>
 <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
+  <a class="bottom-nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" aria-label="Início">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+    <span>Início</span>
+  </a>
   <a class="bottom-nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" aria-label="Grafo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>
     <span>Grafo</span>
@@ -81,6 +131,10 @@ ${opts.extraHead ?? ''}
   <a class="bottom-nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" aria-label="Tarefas">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     <span>Tarefas</span>
+  </a>
+  <a class="bottom-nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" aria-label="Inbox">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+    <span>Inbox</span>${bottomBadge}
   </a>
   <a class="bottom-nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" aria-label="Contatos">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>

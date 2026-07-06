@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, replaceTags, getTagsByNote, getTaskById } from '../../db/queries.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTask, getTaskById, getProjectById, setTaskPrivate } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
+import { resolveProjectForWrite } from './project-ref.js';
+import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id to edit (from save_task / list_tasks_due_today / the /app/tasks board).'),
@@ -17,8 +19,20 @@ const inputSchema = {
   status: z.enum(TASK_STATUSES).optional().describe("New status. done/canceled stamp completed_at=now; reopening (open/in_progress) clears it. To finish a task with an outcome note, prefer complete_task."),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('New canonical English slugs (1-3).'),
   tags: z.array(z.string()).optional().describe('New tags — REPLACES all existing tags. Pass [] to clear. Reserved dedupe: tags are preserved automatically unless you pass a new dedupe: tag explicitly.'),
+  project: z.string().max(40).optional().describe(
+    "Move the task to a PROJECT (folder). Accepts a project id (proj_...) or label (case-insensitive); a new label AUTO-CREATES the project. Pass an EMPTY string \"\" to remove the task from its project. Archived projects are not assignable. Distinct from tags (multi/transversal)."
+  ),
   expected_updated_at: z.number().int().optional().describe(
     'Optimistic concurrency (optional): pass the `updated_at` you last read (from list_tasks / get_task / a prior write). The edit is applied only if the task has NOT changed since; if it changed, the call fails with a conflict error so you can re-read and reapply. Omit for last-write-wins.'
+  ),
+  private: z.boolean().optional().describe(
+    'Set true to MARK the task private (invisible via list_tasks / list_tasks_due_today / get_task to any credential without the `private` scope; also revokes any public /s/<token> link in the same write). Passing false is REJECTED — un-marking is only possible in the logged-in owner UI. One-way from tools.'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to ADD as mentions (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts — never a free-text name. Additive (does NOT remove absent ones — use mentions_remove). A new mention shows the task on the contact\'s page and fires a `mentioned_in_brain` event.'
+  ),
+  mentions_remove: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to REMOVE from this task\'s mentions. Does NOT delete the timeline event already fired on the contact.'
   ),
   allow_new_domain: z.boolean().optional(),
 };
@@ -30,6 +44,7 @@ Use this to reopen a task to attach context, reschedule, reprioritize, rename, c
 Behavior:
 - At least one editable field besides id must be provided.
 - \`details\` REPLACES the body (not append). \`tags\` REPLACES all tags ([] clears them).
+- Move to a project with \`project\` (id or label; a new label auto-creates it); remove from its project with \`project: ""\`. Projects are single-valued, distinct from tags.
 - Remove a due date with \`due: "none"\` (or "clear"); remove a priority with \`priority: null\`.
 - Pass either \`due\` (BRT string) or \`due_at\` (unix ms), never both — passing both errors.
 - Changing \`title\` also updates the tldr (a task's tldr mirrors its title).
@@ -50,11 +65,15 @@ interface UpdateTaskInput {
   status?: TaskStatus;
   domains?: string[];
   tags?: string[];
+  project?: string;
   expected_updated_at?: number;
+  private?: boolean;
+  mentions?: string[];
+  mentions_remove?: string[];
   allow_new_domain?: boolean;
 }
 
-export function registerUpdateTask(server: any, env: Env): void {
+export function registerUpdateTask(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'update_task',
     {
@@ -68,13 +87,29 @@ export function registerUpdateTask(server: any, env: Env): void {
       },
     },
     safeToolHandler(async (input: UpdateTaskInput) => {
-      const hasEdit =
+      const notFoundMsg = () =>
+        `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`;
+
+      // Selo de privacidade (spec 59): desmarcar (private:false) é PROIBIDO via tool —
+      // só a UI logada do dono torna pública, pra um agente comprometido não
+      // des-privatizar em massa. Marcar (true) é ok e revoga share vivo (setTaskPrivate).
+      if (input.private === false) {
+        return toolError(
+          `Cannot set a task back to public via update_task. Un-marking is only possible in the ` +
+          `logged-in owner UI at /app/tasks/${input.id}. update_task can only MARK a task private (private: true).`
+        );
+      }
+      const wantsPrivate = input.private === true;
+
+      const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
+      const hasFieldEdit =
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
-        input.domains !== undefined || input.tags !== undefined;
-      if (!hasEdit) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags.');
+        input.domains !== undefined || input.tags !== undefined ||
+        input.project !== undefined;
+      if (!hasFieldEdit && !wantsPrivate && !touchesMentions) {
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, private (true only), mentions, mentions_remove.');
       }
 
       const patch: TaskPatch = {};
@@ -82,6 +117,19 @@ export function registerUpdateTask(server: any, env: Env): void {
       if (input.details !== undefined) patch.body = input.details.trim();
       if (input.priority !== undefined) patch.priority = input.priority;
       if (input.status !== undefined) patch.status = input.status;
+      // updateTask aplica a preservação da tag reservada dedupe: (replaceTaskTagsPreservingDedupe) —
+      // mesma lógica compartilhada com /app/tasks/update (spec 52).
+      if (input.tags !== undefined) patch.tags = input.tags;
+
+      // Projeto (spec 58): resolve id/label (auto-create em label novo); "" desvincula.
+      // Resolvido ANTES do updateTask pra um erro de projeto (arquivado/cap) não gravar
+      // nada. O now é usado tanto no auto-create do projeto quanto no updateTask.
+      const now = Date.now();
+      if (input.project !== undefined) {
+        const pr = await resolveProjectForWrite(env, input.project, now);
+        if (!pr.ok) return toolError(pr.error);
+        patch.project_id = pr.projectId;
+      }
 
       if (input.domains !== undefined) {
         const domainError = validateDomains(input.domains, { allowNewDomain: input.allow_new_domain ?? false });
@@ -112,39 +160,60 @@ export function registerUpdateTask(server: any, env: Env): void {
         }
       }
 
-      const now = Date.now();
-      const result = await updateTask(env, input.id, patch, now, input.expected_updated_at);
-      if (result === 'not-found') {
-        return toolError(
-          `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`
-        );
+      // Se não há edição de campo (só private:true e/ou menções), valida existência/
+      // visibilidade aqui (espelha mark_private de nota): caller sem escopo não enxerga
+      // task privada → "not found", e nunca marca/menciona uma task que não pode ver.
+      let task: TaskRow | undefined;
+      if (!hasFieldEdit && (wantsPrivate || touchesMentions)) {
+        const visible = await getTaskById(env, input.id, canSeePrivate(auth));
+        if (!visible) return toolError(notFoundMsg());
+        task = visible;
       }
-      if (result === 'conflict') {
-        // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
-        const current = await getTaskById(env, input.id);
-        const currentUpdated = current?.updated_at ?? null;
-        return toolError(
-          `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
-          `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
-        );
-      }
-      const task = result;
 
-      if (input.tags !== undefined) {
-        // Preserva as tags reservadas dedupe: no replace — replaceTags apaga tudo,
-        // e a dedupe_key sumir silenciosamente reabriria a criação de duplicata.
-        // Exceção: se o novo array já traz uma tag dedupe:, é substituição explícita.
-        let finalTags = input.tags;
-        const bringsDedupe = input.tags.some((t) => t.startsWith('dedupe:'));
-        if (!bringsDedupe) {
-          const existing = await getTagsByNote(env, input.id);
-          const dedupeTags = existing.filter((t) => t.startsWith('dedupe:'));
-          if (dedupeTags.length > 0) finalTags = [...input.tags, ...dedupeTags];
+      if (hasFieldEdit) {
+        const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
+        if (result === 'not-found') return toolError(notFoundMsg());
+        if (result === 'conflict') {
+          // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
+          const current = await getTaskById(env, input.id, true);
+          const currentUpdated = current?.updated_at ?? null;
+          return toolError(
+            `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
+            `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
+          );
         }
-        await replaceTags(env, input.id, finalTags);
+        task = result;
       }
 
-      return toolSuccess({
+      // Marcar privada (spec 59): one-way via MCP, revoga share vivo na mesma escrita.
+      // Roda DEPOIS do patch de campos (se houve) — o retorno reflete o estado final.
+      let shareRevoked = false;
+      if (wantsPrivate) {
+        const r = await setTaskPrivate(env, input.id, 1, now, writeActor(auth));
+        if (!r.ok) return toolError(notFoundMsg());
+        shareRevoked = r.shareRevoked;
+        task = (await getTaskById(env, input.id, true)) ?? task;
+      }
+
+      if (!task) return toolError(notFoundMsg());
+
+      // Menções (spec 62): add/remove. DEPOIS do patch/privacidade — o retorno reflete o
+      // estado final. Tolerante a falha do contacts. Usa o título final da task no contexto.
+      let mentionsChanged: { created: number; removed: number } | undefined;
+      if (touchesMentions) {
+        mentionsChanged = await applyMentions(env, {
+          noteId: task.id,
+          title: task.title,
+          url: noteUrl(env, task.id),
+          add: input.mentions,
+          remove: input.mentions_remove,
+          seePrivate: canSeePrivate(auth),
+        });
+      }
+
+      const proj = task.project_id ? await getProjectById(env, task.project_id) : null;
+
+      const out: Record<string, unknown> = {
         id: task.id,
         url: noteUrl(env, task.id),
         title: task.title,
@@ -152,8 +221,16 @@ export function registerUpdateTask(server: any, env: Env): void {
         priority: task.priority,
         due_at: task.due_at,
         due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
+        project: proj ? { id: proj.id, label: proj.label } : null,
+        private: task.private === 1,
         updated_at: task.updated_at,
-      });
+        ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
+      };
+      if (shareRevoked) {
+        out.share_revoked = true;
+        out.share_revoked_note = 'A task ficou privada — o link público que existia foi revogado.';
+      }
+      return toolSuccess(out);
     }) as any
   );
 }

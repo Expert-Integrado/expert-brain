@@ -17,15 +17,35 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { NEBULA_CSS, FONT_LINKS } from './styles.js';
 import { renderMarkdown } from './markdown.js';
-import { getTaskById, type TaskRow } from '../db/queries.js';
+import {
+  getTaskById,
+  addTaskComment,
+  listTaskComments,
+  countTaskComments,
+  type TaskRow,
+  type TaskComment,
+} from '../db/queries.js';
 import { formatBrtDateTime } from '../util/time.js';
 import { PRIORITIES } from '../util/priority.js';
+import { newId } from '../util/id.js';
+import { renderCommentThread } from './comments-render.js';
 
 const TOKEN_PREFIX = 'ebs_';
 const DEFAULT_EXPIRES_DAYS = 30;
 const MAX_EXPIRES_DAYS = 365;
 const MIN_EXPIRES_DAYS = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Comentário de convidado (spec 53). Nome obrigatório ≤60; corpo ≤2000 no público
+// (o schema do banco aceita até 4000 — dono/agente podem mais). Rate-limit no
+// GRAPH_CACHE (sem namespace novo): 10/h por token, 5/h por IP, janela de 1h.
+// Teto absoluto por task pra fechar o form contra botnet multi-IP.
+const GUEST_MAX_NAME = 60;
+const GUEST_MAX_BODY = 2000;
+const RL_TTL_SECONDS = 3600;
+const RL_MAX_PER_TOKEN = 10;
+const RL_MAX_PER_IP = 5;
+const GUEST_HARD_CAP = 200;
 
 // base64url de bytes crus (mesmo padrão de auth/api-keys.ts randomSecret).
 function b64url(bytes: Uint8Array): string {
@@ -63,6 +83,7 @@ export interface CreateShareOk {
 export type CreateShareResult =
   | CreateShareOk
   | { ok: false; reason: 'not-found' }
+  | { ok: false; reason: 'private' }
   | { ok: false; reason: 'already-shared'; expires_at: number; expires_brt: string };
 
 // Cria (ou renova) o share de uma task. Valida kind='task' + não-deletada.
@@ -78,8 +99,11 @@ export async function createShare(
   opts: { expiresDays?: number; renew?: boolean },
   now: number
 ): Promise<CreateShareResult> {
-  const task = await getTaskById(env, taskId);
+  // includePrivate=true: enxerga a task pra poder BLOQUEAR a privada com erro claro
+  // (spec 59) em vez de devolver "not found". Task privada NUNCA tem link público.
+  const task = await getTaskById(env, taskId, true);
   if (!task) return { ok: false, reason: 'not-found' };
+  if (task.private === 1) return { ok: false, reason: 'private' };
 
   const alreadyLive =
     task.share_token != null &&
@@ -161,10 +185,13 @@ export async function resolveShare(env: Env, token: string, now: number): Promis
   if (!SHARE_TOKEN_RE.test(token)) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
+    // `AND private = 0` (spec 59): defesa em profundidade — mesmo que um estado proibido
+    // (privada + token) surja (escrita manual no banco), a rota pública responde 404.
+    // setTaskPrivate já revoga o token ao marcar privada, então normalmente nem chega aqui.
     `SELECT id, title, body, tldr, domains, kind, status, due_at, priority, completed_at,
             created_at, updated_at, share_token, share_expires_at
      FROM notes
-     WHERE share_token = ? AND kind = 'task' AND deleted_at IS NULL`
+     WHERE share_token = ? AND kind = 'task' AND deleted_at IS NULL AND private = 0`
   ).bind(tokenHash).first<TaskRow>();
   if (!row) return null;
   if (row.share_expires_at == null || row.share_expires_at <= now) return null;
@@ -239,19 +266,37 @@ function domainsToBadges(raw: string): string {
   return arr.map((d) => `<span class="share-badge share-badge-domain">${esc(d)}</span>`).join('');
 }
 
-// Renderiza a página read-only de UMA task. SEM: edges, anexos, links pra /app/*,
-// dados do dono. O corpo usa o MESMO pipeline de escaping (renderMarkdown) com
-// resolver vazio — todo [[wikilink]] vira span quebrado, nunca âncora pra outra nota.
-export function renderSharePage(task: TaskRow): Response {
-  const status = task.status ?? 'open';
-  const statusLabel = STATUS_LABELS[status] ?? status;
+// Estado do form de comentário do convidado (spec 53): mensagem de erro/aviso a
+// exibir e valores digitados pra preservar no re-render (rate-limit/validação).
+export interface ShareCommentFormState {
+  error?: string;   // vermelho (rate-limit, validação)
+  notice?: string;  // verde (comentário enviado)
+  name?: string;    // valor a repovoar no campo nome
+  body?: string;    // valor a repovoar no campo comentário
+  formClosed?: boolean; // teto absoluto atingido — esconde o form
+}
+
+// Renderiza a página read-only de UMA task + a thread de comentários e o form do
+// convidado (spec 53). SEM: edges, anexos, links pra /app/*, dados do dono. O corpo
+// usa o MESMO pipeline de escaping (renderMarkdown) com resolver vazio — todo
+// [[wikilink]] vira span quebrado. Os comentários são texto puro escapado (nunca
+// markdown). O form é HTML puro (POST, sem JS, sem cookie) + honeypot invisível.
+export function renderSharePage(
+  task: TaskRow,
+  comments: TaskComment[],
+  token: string,
+  form: ShareCommentFormState = {},
+  status = 200
+): Response {
+  const taskStatus = task.status ?? 'open';
+  const statusLabel = STATUS_LABELS[taskStatus] ?? taskStatus;
   const due = task.due_at != null ? formatBrtDateTime(task.due_at) : null;
   const bodyHtml = task.body?.trim()
     ? renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })
     : '<p class="share-empty">Sem descrição.</p>';
 
   const metaRows = [
-    `<div class="share-meta-row"><span class="share-meta-lbl">Status</span><span class="share-badge share-badge-status share-status-${esc(status)}">${esc(statusLabel)}</span></div>`,
+    `<div class="share-meta-row"><span class="share-meta-lbl">Status</span><span class="share-badge share-badge-status share-status-${esc(taskStatus)}">${esc(statusLabel)}</span></div>`,
     task.priority != null
       ? `<div class="share-meta-row"><span class="share-meta-lbl">Prioridade</span>${priorityBadge(task.priority)}</div>`
       : '',
@@ -279,11 +324,44 @@ ${FONT_LINKS}
     <div class="share-meta">${metaRows}</div>
     <div class="share-body note-body">${bodyHtml}</div>
   </article>
+  ${renderShareComments(token, comments, form)}
   <footer class="share-footer">compartilhado via Expert Brain</footer>
 </main>
 </body></html>`;
 
-  return new Response(html, { status: 200, headers: shareHeaders() });
+  return new Response(html, { status, headers: shareHeaders() });
+}
+
+// Seção "Comentários" da página pública: thread + form do convidado. O form posta
+// em /s/<token>/comment (mesma origem → CSP form-action 'self' via default-src).
+function renderShareComments(token: string, comments: TaskComment[], form: ShareCommentFormState): string {
+  const errorHtml = form.error ? `<p class="cmt-msg cmt-msg-err" role="alert">${esc(form.error)}</p>` : '';
+  const noticeHtml = form.notice ? `<p class="cmt-msg cmt-msg-ok" role="status">${esc(form.notice)}</p>` : '';
+  const formHtml = form.formClosed
+    ? `<p class="cmt-empty">Os comentários deste link foram encerrados.</p>`
+    : `<form class="cmt-form" method="post" action="/s/${esc(token)}/comment#comentarios">
+        <label class="cmt-field">
+          <span class="cmt-lbl">Seu nome</span>
+          <input type="text" name="name" maxlength="${GUEST_MAX_NAME}" required
+            value="${esc(form.name ?? '')}" autocomplete="off" placeholder="Como você quer assinar" />
+        </label>
+        <label class="cmt-field">
+          <span class="cmt-lbl">Comentário</span>
+          <textarea name="body" rows="4" maxlength="${GUEST_MAX_BODY}" required
+            placeholder="Escreva um comentário">${esc(form.body ?? '')}</textarea>
+        </label>
+        <label class="cmt-hp" aria-hidden="true"><span>Não preencha este campo</span>
+          <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
+        <div class="cmt-form-foot">
+          <button type="submit" class="cmt-submit">Comentar</button>
+        </div>
+      </form>`;
+  return `<section class="cmt-section" id="comentarios">
+    <h2 class="cmt-h2">Comentários</h2>
+    ${errorHtml}${noticeHtml}
+    ${renderCommentThread(comments)}
+    ${formHtml}
+  </section>`;
 }
 
 const SHARE_CSS = `
@@ -332,12 +410,151 @@ const SHARE_CSS = `
 .share-body .wikilink.broken { color: var(--text-dim); border-bottom: 1px dotted var(--text-faint); cursor: default; }
 .share-empty { color: var(--text-faint); font-style: italic; }
 .share-footer { text-align: center; margin-top: 22px; font-size: 12px; color: var(--text-faint); letter-spacing: .02em; }
+
+/* Comentários (spec 53) — thread + form do convidado, SSR puro */
+.cmt-section { margin-top: 26px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 26px 30px 28px; }
+.cmt-h2 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.cmt-thread { list-style: none; margin: 0 0 20px; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.cmt-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--bg-accent); }
+.cmt-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.cmt-author { font-size: 13px; font-weight: 600; color: var(--text); }
+.cmt-author-owner { color: var(--accent-lav); }
+.cmt-author-agent { color: #93c5fd; }
+.cmt-author-guest { color: var(--text); }
+.cmt-time { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.cmt-body { font-size: 14px; line-height: 1.55; color: var(--text); word-break: break-word; }
+.cmt-empty { color: var(--text-faint); font-size: 14px; margin-bottom: 20px; }
+.cmt-msg { font-size: 13px; margin-bottom: 14px; padding: 8px 12px; border-radius: var(--radius-sm); }
+.cmt-msg-err { color: #fca5a5; background: rgba(239,68,68,0.12); }
+.cmt-msg-ok { color: #86efac; background: rgba(74,222,128,0.12); }
+.cmt-form { display: flex; flex-direction: column; gap: 12px; }
+.cmt-field { display: flex; flex-direction: column; gap: 6px; }
+.cmt-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 600; }
+.cmt-form input[type=text], .cmt-form textarea {
+  background: var(--bg-accent); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 9px 12px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box;
+}
+.cmt-form textarea { resize: vertical; line-height: 1.5; }
+.cmt-form input[type=text]:focus, .cmt-form textarea:focus { outline: none; border-color: var(--accent-lav); }
+/* Honeypot: fora da tela pra humanos, presente no DOM pra bots preencherem */
+.cmt-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.cmt-form-foot { display: flex; justify-content: flex-end; }
+.cmt-submit {
+  padding: 9px 20px; border: none; border-radius: var(--radius-sm);
+  background: var(--accent-lav); color: #0b0713; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.cmt-submit:hover { filter: brightness(1.08); }
 `;
 
 // Handler da rota pública GET /s/<token>. Zero auth. Token inválido/expirado/
 // revogado/inexistente → MESMO 404 genérico (não confirma existência de task).
+// Carrega a thread de comentários (últimos 200, ordem cronológica) pra render.
 export async function handleSharePage(_req: Request, env: Env, token: string): Promise<Response> {
   const task = await resolveShare(env, token, Date.now());
   if (!task) return shareNotFound();
-  return renderSharePage(task);
+  const comments = await listTaskComments(env, task.id, 200, 0);
+  return renderSharePage(task, comments, token);
+}
+
+// ─────────────── Comentário de convidado (POST /s/<token>/comment) ───────────────
+// SEM auth. Tudo passa por resolveShare (revogar/expirar/deletar corta leitura E
+// escrita no mesmo instante). Rate-limit no GRAPH_CACHE (sem namespace novo).
+
+// SHA-256 hex de uma string. Reusa o mesmo helper do lookup de token (definido no
+// topo deste módulo) — aqui só chamamos a versão já existente.
+
+// Lê o contador de rate-limit. Chave ausente/lixo → 0.
+async function rlCount(env: Env, key: string): Promise<number> {
+  const raw = await env.GRAPH_CACHE.get(key);
+  if (!raw) return 0;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// Incrementa o contador com TTL de 1h (expirationTtl reinicia a janela a cada post
+// aceito — quem para de postar destrava em 1h; quem estoura não incrementa).
+async function rlBump(env: Env, key: string, current: number): Promise<void> {
+  await env.GRAPH_CACHE.put(key, String(current + 1), { expirationTtl: RL_TTL_SECONDS });
+}
+
+// Handler POST /s/<token>/comment. Fluxo: resolveShare → honeypot → validação →
+// rate-limit (token + IP) → teto absoluto → grava guest → redirect 303 #comentarios.
+export async function handleShareCommentPost(req: Request, env: Env, token: string): Promise<Response> {
+  const now = Date.now();
+  const task = await resolveShare(env, token, now);
+  // Share inexistente/expirado/revogado/deletado → MESMO 404 do GET (não vaza).
+  if (!task) return shareNotFound();
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    const comments = await listTaskComments(env, task.id, 200, 0);
+    return renderSharePage(task, comments, token, { error: 'Não consegui ler o formulário. Tente de novo.' }, 400);
+  }
+
+  // Honeypot: bot que preenche o campo invisível → descarta em silêncio (200, nada
+  // gravado, sem erro visível). Um humano nunca preenche (display:none).
+  const honeypot = String(form.get('website') ?? '').trim();
+  if (honeypot) {
+    const comments = await listTaskComments(env, task.id, 200, 0);
+    return renderSharePage(task, comments, token, { notice: 'Comentário enviado.' }, 200);
+  }
+
+  const name = String(form.get('name') ?? '').trim().slice(0, GUEST_MAX_NAME);
+  const rawBody = String(form.get('body') ?? '');
+  const body = rawBody.trim().slice(0, GUEST_MAX_BODY);
+
+  const reRender = (state: ShareCommentFormState, httpStatus: number) =>
+    listTaskComments(env, task.id, 200, 0).then((cs) => renderSharePage(task, cs, token, state, httpStatus));
+
+  // Validação: nome e corpo obrigatórios (guest DEVE assinar).
+  if (!name) return reRender({ error: 'Informe seu nome.', name, body }, 400);
+  if (!body) return reRender({ error: 'Escreva um comentário.', name, body }, 400);
+
+  // Teto absoluto por task (defesa contra botnet multi-IP): fecha o form.
+  const guestCount = await countTaskComments(env, task.id, 'guest');
+  if (guestCount >= GUEST_HARD_CAP) {
+    return reRender({ error: 'Este link atingiu o limite de comentários.', formClosed: true }, 429);
+  }
+
+  // Rate-limit: por token (10/h) e por IP (5/h). IP vem de CF-Connecting-IP e é
+  // HASHEADO antes de virar chave (nunca persiste IP puro). Ausência de IP → só
+  // o limite por token vale. Estourou qualquer um → 429 (não incrementa).
+  const tokenKey = `rl:cmt:t:${await sha256Hex(token)}`;
+  const tokenCount = await rlCount(env, tokenKey);
+  if (tokenCount >= RL_MAX_PER_TOKEN) {
+    return reRender({ error: 'Muitos comentários neste link. Tente novamente mais tarde.', name, body }, 429);
+  }
+  const ip = req.headers.get('CF-Connecting-IP')?.trim() || '';
+  let ipKey = '';
+  let ipCount = 0;
+  if (ip) {
+    ipKey = `rl:cmt:ip:${await sha256Hex(ip)}`;
+    ipCount = await rlCount(env, ipKey);
+    if (ipCount >= RL_MAX_PER_IP) {
+      return reRender({ error: 'Muitos comentários do seu dispositivo. Tente novamente mais tarde.', name, body }, 429);
+    }
+  }
+
+  // Grava o comentário do convidado.
+  await addTaskComment(env, {
+    id: `cmt_${newId()}`,
+    task_id: task.id,
+    author: 'guest',
+    author_name: name,
+    body,
+    created_at: now,
+  });
+
+  // Incrementa os contadores só APÓS gravar com sucesso.
+  await rlBump(env, tokenKey, tokenCount);
+  if (ipKey) await rlBump(env, ipKey, ipCount);
+
+  // Redirect 303 de volta pra página (padrão POST→redirect→GET, sem reenvio ao dar
+  // F5). Âncora #comentarios leva direto pra thread.
+  return new Response(null, {
+    status: 303,
+    headers: { location: `/s/${token}#comentarios`, 'cache-control': 'no-store' },
+  });
 }

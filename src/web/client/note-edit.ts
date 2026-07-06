@@ -205,4 +205,153 @@ if (root) {
   });
 }
 
+// ── Menções (spec 62): @autocomplete de contatos + chips + "Criar task desta nota" ──
+// Bloco independente do editor de nota (a seção .note-mentions vive fora do .note-edit).
+function escHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+}
+
+const mentionsRoot = document.querySelector<HTMLElement>('[data-mentions-editor]');
+if (mentionsRoot) {
+  const noteId = mentionsRoot.dataset.mentionsEditor || '';
+  const chipsBox = mentionsRoot.querySelector<HTMLElement>('[data-mention-chips]');
+  const input = mentionsRoot.querySelector<HTMLInputElement>('[data-mention-input]');
+  const suggest = mentionsRoot.querySelector<HTMLElement>('[data-mention-suggest]');
+  const statusEl = mentionsRoot.querySelector<HTMLElement>('[data-mention-status]');
+
+  function setStatus(msg: string) { if (statusEl) statusEl.textContent = msg; }
+
+  function currentIds(): Set<string> {
+    const ids = new Set<string>();
+    chipsBox?.querySelectorAll<HTMLElement>('[data-entity-id]').forEach((el) => {
+      if (el.dataset.entityId) ids.add(el.dataset.entityId);
+    });
+    return ids;
+  }
+
+  function addChip(entityId: string, label: string) {
+    if (!chipsBox) return;
+    const span = document.createElement('span');
+    span.className = 'mention-chip';
+    span.dataset.entityId = entityId;
+    span.innerHTML =
+      `<a href="/app/contacts/${escHtml(entityId)}">${escHtml(label || entityId)}</a>` +
+      `<button type="button" class="mention-chip-remove" data-mention-remove="${escHtml(entityId)}" title="Remover menção" aria-label="Remover menção">×</button>`;
+    chipsBox.appendChild(span);
+  }
+
+  function hideSuggest() { if (suggest) { suggest.hidden = true; suggest.innerHTML = ''; } }
+
+  async function postMention(body: Record<string, unknown>): Promise<boolean> {
+    try {
+      const res = await appFetch('/app/notes/update', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: noteId, patch: {}, ...body }),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async function addMention(entityId: string, label: string) {
+    if (currentIds().has(entityId)) { hideSuggest(); if (input) input.value = ''; return; }
+    setStatus('Adicionando...');
+    const ok = await postMention({ mentions: [entityId] });
+    if (ok) { addChip(entityId, label); setStatus('Menção adicionada.'); }
+    else setStatus('Falha ao adicionar menção.');
+    if (input) input.value = '';
+    hideSuggest();
+  }
+
+  async function removeMention(entityId: string, chip: HTMLElement) {
+    setStatus('Removendo...');
+    const ok = await postMention({ mentions_remove: [entityId] });
+    if (ok) { chip.remove(); setStatus('Menção removida.'); }
+    else setStatus('Falha ao remover menção.');
+  }
+
+  // Remoção de chip (delegação — chips SSR e os adicionados dinamicamente).
+  chipsBox?.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-mention-remove]');
+    if (!btn) return;
+    const chip = btn.closest<HTMLElement>('[data-entity-id]');
+    const id = btn.dataset.mentionRemove || '';
+    if (chip && id) void removeMention(id, chip);
+  });
+
+  // @autocomplete: debounce da busca no /app/contacts/search.
+  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  input?.addEventListener('input', () => {
+    const q = (input.value || '').replace(/^@/, '').trim();
+    if (searchTimer) clearTimeout(searchTimer);
+    if (q.length < 2) { hideSuggest(); return; }
+    searchTimer = setTimeout(() => {
+      void fetch(`/app/contacts/search?q=${encodeURIComponent(q)}`, { credentials: 'same-origin' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: any) => {
+          if (!suggest) return;
+          const results: Array<{ id: string; name?: string }> = (d && Array.isArray(d.results)) ? d.results : [];
+          const have = currentIds();
+          const items = results.filter((r) => r.id && !have.has(r.id)).slice(0, 8);
+          if (items.length === 0) {
+            suggest.innerHTML = '<div class="mention-suggest-empty">Nenhum contato encontrado.</div>';
+          } else {
+            suggest.innerHTML = items.map((r) =>
+              `<button type="button" class="mention-suggest-item" data-suggest-id="${escHtml(r.id)}" data-suggest-name="${escHtml(r.name || r.id)}">${escHtml(r.name || r.id)}</button>`
+            ).join('');
+          }
+          suggest.hidden = false;
+        })
+        .catch(() => hideSuggest());
+    }, 220);
+  });
+
+  suggest?.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement).closest<HTMLElement>('[data-suggest-id]');
+    if (!item) return;
+    void addMention(item.dataset.suggestId || '', item.dataset.suggestName || '');
+  });
+
+  // Fecha o dropdown ao clicar fora.
+  document.addEventListener('click', (e) => {
+    if (!mentionsRoot.contains(e.target as Node)) hideSuggest();
+  });
+}
+
+// "Criar task desta nota" (spec 62 §2) — cria a task com origin + menções herdadas.
+const createTaskBtn = document.querySelector<HTMLButtonElement>('[data-create-task-from-note]');
+if (createTaskBtn) {
+  const noteId = createTaskBtn.dataset.createTaskFromNote || '';
+  const list = document.querySelector<HTMLElement>('[data-origin-tasks-list]');
+  createTaskBtn.addEventListener('click', () => {
+    createTaskBtn.disabled = true;
+    const original = createTaskBtn.textContent;
+    createTaskBtn.textContent = 'Criando...';
+    void appFetch('/app/notes/task-from-note', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note_id: noteId }),
+    })
+      .then(async (res) => {
+        const data: any = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok || !data.id) throw new Error(data.error || `falha ${res.status}`);
+        if (list) {
+          const empty = list.querySelector('.note-origin-empty');
+          if (empty) empty.remove();
+          const a = document.createElement('a');
+          a.className = 'note-card';
+          a.href = `/app/tasks/${data.id}`;
+          a.innerHTML = `<div class="title">${escHtml(document.title)}</div><div class="meta"><span class="badge">open</span></div>`;
+          list.insertBefore ? list.insertBefore(a, list.firstChild) : list.appendChild(a);
+        }
+        window.location.href = `/app/tasks/${data.id}`;
+      })
+      .catch(() => {
+        createTaskBtn.disabled = false;
+        createTaskBtn.textContent = original;
+      });
+  });
+}
+
 export {};

@@ -34,19 +34,28 @@ export interface ValidateDomainsOptions {
    * MCP tools expose this as `allow_new_domain`.
    */
   allowNewDomain?: boolean;
+  /**
+   * Domains outside the 12 canonical that are still accepted — spec 54:
+   * áreas pré-criadas/customizadas via /app/config (taxonomy_config). Distinto
+   * de allowNewDomain (que abre pra QUALQUER slug sintático): aqui só passam
+   * slugs que o dono já registrou explicitamente na taxonomia, preservando o
+   * rail anti-drift pra texto digitado às cegas.
+   */
+  extraAllowed?: readonly string[];
 }
 
 export function validateDomains(
   domains: string[],
   opts: ValidateDomainsOptions = {}
 ): string | null {
-  const { allowNewDomain = false } = opts;
+  const { allowNewDomain = false, extraAllowed } = opts;
+  const extraSet = extraAllowed ? new Set(extraAllowed) : null;
 
   for (const d of domains) {
     if (typeof d !== 'string' || !DOMAIN_SLUG_REGEX.test(d)) {
       return buildSyntaxError(d);
     }
-    if (!allowNewDomain && !CANONICAL_SET.has(d)) {
+    if (!allowNewDomain && !CANONICAL_SET.has(d) && !extraSet?.has(d)) {
       return buildCanonError(d);
     }
   }

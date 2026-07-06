@@ -1,7 +1,9 @@
 # Selo de privacidade: flag private nas notas + acesso gated por escopo de PAT
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** `10-backend/17-credenciais-escopos-pat-e-bearer.md`
+>
+> **Execução:** migration `0013_private_notes` (o `0009` citado no design era indicativo — o trilho já ia até `0012_api_key_scopes`); espelho SQL em `src/db/migrations/0005_private_notes.sql`. `scopes` virou CSV com helper `hasScope`. Read paths de TASK (get_task/list_tasks) e getTaskById do web NÃO foram gateados aqui (fora de escopo — spec `50-console-v2/59`). Toggle web aceita form-encoded (UI CSP-safe) e JSON. `tsc` + suíte verdes (66 arquivos, 578 testes + auth). **Gate de release (wrangler dev + validação manual do dono + deploy) PENDENTE — só com OK explícito do dono.**
 
 ## Contexto
 
@@ -104,12 +106,14 @@ E parâmetro aditivo `includePrivate: boolean` (default `false` = fail-closed) n
 ### 6. Cross-check com specs vizinhas (registrar, não implementar)
 
 - Spec `30-features/33` (compartilhamento público): share token NUNCA pode expor nota `private` — adicionar critério de aceite lá apontando pra cá.
+- **Tasks**: a coluna `private` passa a existir nas tasks (mesma tabela `notes`), mas os read paths de TASK (`list_tasks`/`list_tasks_due_today`/`get_task`/share `/s/<token>`) NÃO são gateados aqui — spec `50-console-v2/59` (depende desta) fecha essas superfícies e bloqueia share de task privada.
 - `similar_edges` (`src/db/migrate.ts:117-125`) pode conter pares envolvendo nota privada — só é lida pelo grafo (superfície do dono, item 5), então não vaza via MCP. Se um dia `expand` passar a usar similar edges, o filtro do item 3 se aplica.
 
 ## Fora de escopo
 
 - Criptografia at-rest (D1 já cifra em repouso; o selo é controle de ACESSO, não cripto).
-- Extensão ao expert-contacts (spec futura, se houver demanda).
+- Extensão ao expert-contacts — spec `50-console-v2/61` (entidade/evento privados no contacts, escopo propagado pelo Brain).
+- Read paths de TASK — spec `50-console-v2/59` (ver cross-check acima).
 - Compartilhamento público / share token (spec `30-features/33` — só o cross-check acima).
 - Heurística automática de detecção de conteúdo sensível (retroativo é 100% curadoria manual).
 - Metadata `private` no Vectorize / filtro no lado do vetor (D1 é a fonte de verdade única).
@@ -118,16 +122,16 @@ E parâmetro aditivo `includePrivate: boolean` (default `false` = fail-closed) n
 
 ## Critérios de aceite
 
-- [ ] Migração `0009_private_notes` aplicada; todas as notas existentes seguem com `private = 0` e comportamento idêntico ao atual (zero linha alterada além do DEFAULT).
-- [ ] PAT **sem** escopo `private` (incluindo `full`): `recall` (com e sem `domains_filter`), `get_note`, `expand` (base e vizinhos), `stats` e o caminho FTS não retornam nem contam nenhuma nota `private = 1`; `get_note`/`expand` numa nota privada devolvem o mesmo erro de nota inexistente.
-- [ ] PAT **com** escopo `private` (`full,private` ou `read,private`) e sessão OAuth do dono: veem notas privadas em todos esses paths; `stats` inclui `private_notes`.
-- [ ] `save_note` com `private: true` grava `private = 1`; `update_note` com `private: true` marca; `update_note` com `private: false` retorna erro orientando pra UI.
-- [ ] `mark_private` marca nota visível ao caller, é idempotente e não existe tool de desmarcar.
-- [ ] Web logado: lista e detalhe mostram badge de privada; toggle em `POST /app/notes/{id}/private` funciona nos dois sentidos e é a ÚNICA superfície que desmarca; rota recusa request sem sessão (PAT/bearer → 401/redirect).
-- [ ] Grafo (`/app/graph/data` e `/app/graph/meta`) segue completo pra sessão e `GRAPH_EXPORT_TOKEN`, com campo `private` nos nós/meta; `CACHE_KEY` bumpado.
-- [ ] Marcar/desmarcar `private` não dispara embed nem `refreshSimilarEdges`.
-- [ ] Suíte `test/tools/private.test.ts` cobre vazamento em TODOS os read paths (um teste por superfície) e passa.
-- [ ] `npm run typecheck` e `npm test` verdes.
+- [x] Migração `0013_private_notes` aplicada; todas as notas existentes seguem com `private = 0` e comportamento idêntico ao atual (zero linha alterada além do DEFAULT).
+- [x] PAT **sem** escopo `private` (incluindo `full`): `recall` (com e sem `domains_filter`), `get_note`, `expand` (base e vizinhos), `stats` e o caminho FTS não retornam nem contam nenhuma nota `private = 1`; `get_note`/`expand` numa nota privada devolvem o mesmo erro de nota inexistente.
+- [x] PAT **com** escopo `private` (`full,private` ou `read,private`) e sessão OAuth do dono: veem notas privadas em todos esses paths; `stats` inclui `private_notes`.
+- [x] `save_note` com `private: true` grava `private = 1`; `update_note` com `private: true` marca; `update_note` com `private: false` retorna erro orientando pra UI.
+- [x] `mark_private` marca nota visível ao caller, é idempotente e não existe tool de desmarcar.
+- [x] Web logado: lista e detalhe mostram badge de privada; toggle em `POST /app/notes/{id}/private` funciona nos dois sentidos e é a ÚNICA superfície que desmarca; rota recusa request sem sessão (PAT/bearer → 401/redirect).
+- [x] Grafo (`/app/graph/data` e `/app/graph/meta`) segue completo pra sessão e `GRAPH_EXPORT_TOKEN`, com campo `private` nos nós/meta; `CACHE_KEY` bumpado (`graph:v11`).
+- [x] Marcar/desmarcar `private` não dispara embed nem `refreshSimilarEdges`.
+- [x] Suíte `test/tools/private.test.ts` cobre vazamento em TODOS os read paths (um teste por superfície) e passa.
+- [x] `npm run typecheck` e `npm test` verdes.
 
 ## Validação
 

@@ -29,6 +29,11 @@ export interface Env {
   // embute o grafo de contatos puxando /app/graph/{data,meta}?vault=contacts por trás.
   CONTACTS?: Fetcher;
   CONTACTS_PROXY_TOKEN?: string;
+  // Bearer de ESCRITA escopado (spec 50-console-v2/57): o Brain usa pra registrar
+  // interação (POST /app/contacts/entity/event) via service binding CONTACTS.
+  // DIFERENTE do CONTACTS_PROXY_TOKEN (read-only) — o contacts autoriza esse token
+  // SOMENTE nesse 1 path (allowlist do lado de lá). MESMO valor nos dois Workers.
+  CONTACTS_WRITE_TOKEN?: string;
   // Lembrete proativo de prazo (Fase 2): o cron do Worker (scheduled) manda um digest
   // diário das tasks que vencem hoje + atrasadas pro Telegram. Ausentes → o cron roda
   // mas NÃO envia (no-op seguro): fica dormente até os secrets serem setados.
@@ -39,4 +44,14 @@ export interface Env {
 export interface AuthContext extends Record<string, unknown> {
   email: string;
   loggedInAt: number;
+  // Escopos da credencial (spec 10-backend/17 + 30-features/31). Só presente em
+  // sessões via PAT; ausente = 'full' (sessões OAuth existentes continuam com CRUD
+  // completo). CSV (spec 31): base 'full'|'read' + escopos aditivos, hoje só
+  // 'private'. Ex.: 'read', 'full,private'. `hasScope(scopes,'read')` faz o registry
+  // NÃO registrar tools de escrita; `hasScope(scopes,'private')` libera ler notas
+  // privadas nos read paths. Testar SEMPRE via hasScope, nunca por igualdade.
+  scopes?: string;
+  // Id do PAT que autenticou (api_keys.id) — grava autoria de escrita
+  // (created_by/updated_by). Ausente em OAuth (usa-se `oauth:<email>`).
+  keyId?: string;
 }

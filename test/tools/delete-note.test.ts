@@ -4,6 +4,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { registerDeleteNote } from '../../src/mcp/tools/delete-note.js';
 
 const E = env as any;
+const AUTH = { email: 'test@example.com', loggedInAt: 0 };
 
 function fakeVectorize() {
   return {
@@ -27,7 +28,7 @@ async function seed(id: string): Promise<void> {
 
 function reg() {
   const r: any = {};
-  registerDeleteNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  registerDeleteNote({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, AUTH);
   return r;
 }
 

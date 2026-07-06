@@ -1,6 +1,6 @@
 # Escopos de credencial: PAT com scopes, AuthContext propagado, bearer por rota e revogação lógica
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -35,15 +35,17 @@ Nenhuma credencial do sistema pode mais do que precisa: PAT ganha escopo (`full`
 Em `src/db/migrate.ts`, adicionar ao array `MIGRATIONS` (`src/db/migrate.ts:166-174`):
 
 ```ts
-// 0008 — escopo de PAT + autoria de escrita. ADD COLUMN é seguro (não recria tabela).
+// 0012 — escopo de PAT + autoria de escrita. ADD COLUMN é seguro (não recria tabela).
 // DEFAULT 'full' preserva o comportamento de TODAS as chaves existentes.
-const MIGRATION_0008_STMTS: string[] = [
+// (O número 0008 citado nesta spec era indicativo — o trilho já ia até 0011_task_projects,
+//  então usou-se o próximo livre: 0012. Ver regra transversal em specs/90-roadmap.md.)
+const MIGRATION_0012_STMTS: string[] = [
   `ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT 'full'`,
   `ALTER TABLE notes ADD COLUMN created_by TEXT`,
   `ALTER TABLE notes ADD COLUMN updated_by TEXT`,
 ];
 // ...
-{ id: '0008_api_key_scopes', stmts: MIGRATION_0008_STMTS },
+{ id: '0012_api_key_scopes', stmts: MIGRATION_0012_STMTS },
 ```
 
 Valores iniciais de `scopes`: `'full'` | `'read'` (string simples; se um dia virar lista, migra pra CSV/JSON sem quebrar). `created_by`/`updated_by` guardam o **id da api key** (`api_keys.id`) ou `'oauth:<email>'` pra sessões OAuth — nullable, notas antigas ficam NULL. Nunca fazer `DROP`/rebuild: migrations sempre aditivas (rebuild cascatearia edges/tags, ver comentário em `src/db/migrate.ts:64-66`).
@@ -147,18 +149,18 @@ Após deploy validado: rotacionar os PATs de todas as instâncias existentes do 
 
 ## Critérios de aceite
 
-- [ ] Migração `0008_api_key_scopes` aplicada; chaves pré-existentes seguem funcionando com comportamento idêntico (`scopes='full'` via DEFAULT), zero linha alterada em `notes`.
-- [ ] `validateApiKey` retorna `{ email, scopes, keyId }` e `null` pra chave revogada (check de `revoked_at` coberto por teste — não é mais código morto).
-- [ ] `revokeApiKey` faz `UPDATE ... SET revoked_at` (não `DELETE`); a linha permanece no banco e a UI a exibe como revogada; chave revogada é recusada no `/mcp` com 401.
-- [ ] `last_used_at` atualizado via `ctx.waitUntil` quando `ctx` disponível (sem promise flutuante em `src/index.ts` → `validateApiKey`).
-- [ ] PAT com `scopes='read'`: `tools/list` no MCP retorna **apenas** tools com `readOnlyHint: true`; chamar qualquer tool de escrita é impossível (não registrada).
-- [ ] PAT com `scopes='full'` e sessão OAuth: conjunto de tools idêntico ao atual (nenhuma regressão).
-- [ ] Writes via MCP gravam `created_by`/`updated_by` com `keyId` (PAT) ou `oauth:<email>` (OAuth).
-- [ ] `TASK_REMINDER_TOKEN` autoriza `/app/tasks/*` e **recebe 401/redirect** em `/app/notes/{id}/media` (upload) e no delete de mídia; `GRAPH_EXPORT_TOKEN` segue autorizando graph, tasks e media.
-- [ ] `authorizeGraphExport` removido de `src/web/graph-data.ts`; os três call sites usam `authorizeBearer(req, env, 'graph')`.
-- [ ] `tokenMatches` compara digests SHA-256 de tamanho fixo — sem early-return por tamanho do input; comentário condiz com o código.
-- [ ] Form de criação em `/app/config` permite escolher `full`/`read`; valor inválido cai em `full`; tabela mostra a coluna Escopo.
-- [ ] `npm run typecheck` e `npm test` verdes.
+- [x] Migração `0012_api_key_scopes` aplicada; chaves pré-existentes seguem funcionando com comportamento idêntico (`scopes='full'` via DEFAULT), zero linha alterada em `notes`.
+- [x] `validateApiKey` retorna `{ email, scopes, keyId }` e `null` pra chave revogada (check de `revoked_at` coberto por teste — não é mais código morto).
+- [x] `revokeApiKey` faz `UPDATE ... SET revoked_at` (não `DELETE`); a linha permanece no banco e a UI a exibe como revogada; chave revogada é recusada no `/mcp` com 401.
+- [x] `last_used_at` atualizado via `ctx.waitUntil` quando `ctx` disponível (sem promise flutuante em `src/index.ts` → `validateApiKey`).
+- [x] PAT com `scopes='read'`: `tools/list` no MCP retorna **apenas** tools com `readOnlyHint: true`; chamar qualquer tool de escrita é impossível (não registrada).
+- [x] PAT com `scopes='full'` e sessão OAuth: conjunto de tools idêntico ao atual (nenhuma regressão).
+- [x] Writes via MCP gravam `created_by`/`updated_by` com `keyId` (PAT) ou `oauth:<email>` (OAuth).
+- [x] `TASK_REMINDER_TOKEN` autoriza `/app/tasks/*` e **recebe 401/redirect** em `/app/notes/{id}/media` (upload) e no delete de mídia; `GRAPH_EXPORT_TOKEN` segue autorizando graph, tasks e media.
+- [x] `authorizeGraphExport` removido de `src/web/graph-data.ts`; os três call sites usam `authorizeBearer(req, env, 'graph')`.
+- [x] `tokenMatches` compara digests SHA-256 de tamanho fixo — sem early-return por tamanho do input; comentário condiz com o código.
+- [x] Form de criação em `/app/config` permite escolher `full`/`read`; valor inválido cai em `full`; tabela mostra a coluna Escopo.
+- [x] `npm run typecheck` e `npm test` verdes.
 
 ## Validação
 
@@ -185,7 +187,7 @@ Teste manual (preview/local com `wrangler dev`):
 
 ## Arquivos afetados
 
-- `src/db/migrate.ts` — migração `0008_api_key_scopes` (scopes + created_by/updated_by)
+- `src/db/migrate.ts` — migração `0012_api_key_scopes` (scopes + created_by/updated_by)
 - `src/db/migrations/0004_api_key_scopes.sql` — espelho SQL (novo)
 - `src/auth/api-keys.ts` — `ValidatedApiKey`, `scopes` no create/list, revogação lógica, `waitUntil`
 - `src/index.ts` — passar `ctx` ao `validateApiKey`; props com `scopes`/`keyId`

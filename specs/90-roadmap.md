@@ -102,6 +102,129 @@ Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual s
 
 **GATE G4:** cada feature nova entra com testes; o share público (33) exige 2 semanas de rodagem na instância do dono antes de ir pra release de alunos.
 
+### Fase 5 — Console v2 (grupo `50-console-v2/`, pacote aprovado pelo dono em 04/07/2026)
+
+Pacote fim-a-fim pedido pelo dono da instância: Kanban com colunas customizáveis, cards/detalhe estilo ClickUp, comentários (inclusive de convidado no link público), taxonomia configurável, cartela completa de contatos, página própria por contato com vínculos de 1º/2º nível e timeline de interações. Ampliado em 05/07/2026 com: projetos de task (pastas, spec `58`), privacidade de tasks (`59`), observações semânticas de contatos (`60`) e privacidade de contatos (`61`). As specs nasceram `ready` (aprovadas na criação). Pode iniciar após G1 (não depende de G2-G4); a onda C0 só precisa de G0 no contacts.
+
+**Regra transversal de numeração de migrations:** o número de migration citado em QUALQUER spec pendente é INDICATIVO (specs concorrem pelo mesmo trilho — ex.: `10-backend/21` e `50-console-v2/55` no contacts; `10-backend/17`/`30-features/31` citam números que o `0008_share_task` já ocupou no brain). O executor usa o próximo número livre do array `MIGRATIONS` no momento da execução e atualiza a spec no mesmo commit.
+
+**Roteamento de agente (economia + adequação):** coluna "Agente" abaixo — Opus pra schema/migrations/contratos MCP/superfície pública; Sonnet pra UI/SSR/client. Como invocar: abrir Claude Code no repo alvo com o modelo indicado e o prompt "Leia specs/README.md (spec-zero) e execute specs/50-console-v2/<arquivo> seguindo o protocolo". Uma spec por sessão.
+
+**Modo autônomo (sessão rodando sozinha — alternativa ao modo 1-spec-por-sessão):** abrir a sessão com Opus no repo `expert-brain` (branch `spec/console-v2`; no `expert-contacts` trabalhar na branch `feat/console-v2` a partir de `master`) e colar:
+
+> Leia specs/README.md (spec-zero) e specs/90-roadmap.md (Fases 5 e 6). Execute EM SEQUÊNCIA os itens DESMARCADOS do checklist "Sequência canônica de execução", um por vez: implemente a spec, rode typecheck+testes até verdes, commit+push na branch de trabalho, marque o checkbox e o status da spec no MESMO commit. Nas specs marcadas ultrathink, pense com esforço máximo. PROIBIDO: `wrangler deploy`, release, mexer em produção — nos gates de fim de onda (G5-*/G6-*), PARE e peça OK ao dono antes de continuar. Se uma spec falhar validação após 2 tentativas de correção, PARE e reporte o estado. Ao esgotar o contexto, finalize a spec atual, faça commit e encerre com resumo — a próxima sessão retoma pelo checklist.
+
+Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do checklist é otimização de custo do modo manual).
+
+**Onda C0 — fundação de dados (contacts):**
+
+| Spec | Repo | Agente | Nota |
+|---|---|---|---|
+| `10-backend/21-contacts-prevencao-1102-similaridade-e-layout.md` | expert-contacts | Opus | DESBLOQUEADA (deps `20-frontend/22` e `40-ops/44` = done). Ao executar: o trilho de migrations descrito nela mudou — schema real vive em `src/db/migrate.ts` (a 44 portou o runMigrations); aplicar a regra transversal acima. Destrava os vínculos semânticos da 56. |
+
+**Onda C1 — tasks (expert-brain), em sequência (compartilham arquivos):**
+
+| Spec | Agente |
+|---|---|
+| `50-console-v2/51-tasks-kanban-colunas-customizaveis.md` | Opus |
+| `50-console-v2/53-tasks-comentarios.md` | Opus |
+| `50-console-v2/52-tasks-cards-clickup-e-share-ui.md` | Sonnet |
+| `50-console-v2/58-tasks-projetos-pastas.md` | Opus |
+| `50-console-v2/54-taxonomia-configuravel-areas-e-kinds.md` | Sonnet |
+
+(53 antes da 52 rende a contagem de comentários pronta pro card; a 58 vem depois da 52 porque adiciona o chip de projeto ao card desenhado lá; a 54 é independente e pode rodar em paralelo NOUTRO working tree, se houver.)
+
+**Onda C2 — contatos:**
+
+| Spec | Repo | Agente |
+|---|---|---|
+| `50-console-v2/55-contacts-cartela-completa.md` | expert-contacts | Opus |
+| `50-console-v2/57-contacts-timeline-interacoes.md` | ambos | Sonnet |
+| `50-console-v2/56-contact-pagina-propria-e-conexoes.md` | ambos | Sonnet |
+| `50-console-v2/60-contacts-observacoes-semanticas.md` | expert-contacts | Opus |
+
+**Onda C3 — privacidade ("banco privado" / dois acessos MCP):**
+
+| Spec | Agente | Nota |
+|---|---|---|
+| `10-backend/17-credenciais-escopos-pat-e-bearer.md` | Opus | Pré-requisito estrutural da 31, 59 e 61. |
+| `30-features/31-selo-de-privacidade.md` | Opus | Nota `private` invisível pra credencial sem escopo em TODOS os read paths de NOTA. NÃO rodar em paralelo com C1 no mesmo working tree (tocam read paths/web em comum). |
+| `50-console-v2/59-tasks-privacidade.md` | Opus | Fecha os read paths de TASK que a 31 não cobre + bloqueia share público de task privada. Depois da 31. |
+| `50-console-v2/61-contacts-privacidade.md` | Opus | Entidade/evento privados no contacts, fail-closed no proxy, escopo propagado pelo Brain. Depois da 17 E da onda C2 (gateia endpoints da 56/57); coordena com a 60 (embedding). |
+
+**Sequência canônica de execução (checklist — 22 sessões, 1 spec por sessão):**
+
+> **ENCERRAMENTO (06/07/2026):** Ondas C0-C5 (itens 1-20) executadas em 05-06/07/2026 via workflows de agentes; lock ENCERRADO. Pendentes do dono: gates G5/G6 (validação manual), item 21 (spec 67: cron no wrangler.toml local + merge feat/67-backup + deploy) e item 22 (spec 69: exige o dono no loop).
+
+Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
+
+- [x] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0 (impl `feat/console-v2` `fceecf3`, tsc+145 testes verdes; **gate G5-C0 pendente: validação do dono + provision/backfill/deploy**)
+- [x] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
+- [x] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
+- [x] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão) — impl `feat/console-v2` (retomada de working tree herdada, sem commit anterior), tsc+436 testes verdes (55 arquivos + auth.test.ts)
+- [x] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão) — impl `feat/console-v2`, tsc + suíte verdes (58 arquivos, 465 testes + auth)
+- [x] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1 — impl `feat/console-v2`, tsc + suíte verdes (61 arquivos, 517 testes + auth)
+- [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
+- [x] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão) — impl `feat/console-v2` nos dois repos: kinds novos (meeting/email/message), `recordEvent` compartilhado (3 call-sites), endpoint paginado + proxy do Brain, `CONTACTS_WRITE_TOKEN` escopado (allowlist de 1 path), timeline+form nos dois clients. contacts: tsc + 210 testes verdes (19 arquivos); brain: tsc + 522 testes verdes (63 arquivos, incl. auth.test.ts)
+- [x] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão) — impl `feat/console-v2` nos dois repos: `GET /app/entity/neighbors` (1º/2º nível SQL puro, zero Vectorize, caps 25/60) + `GET /app/entity/<id>` (path param) no contacts; `GET /app/contacts/<id>` (SSR + bundle client) + proxy de neighbors + "Abrir contato completo"/deep-link `?focus=` no grafo, no brain. contacts: tsc + 227 testes verdes (21 arquivos); brain: tsc + 530 testes verdes (63 arquivos, incl. auth.test.ts)
+- [x] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2 — concluída em 06/07/2026 na `feat/console-v2` do contacts, 227 testes verdes
+- [x] 11. `10-backend/17` — escopos de credencial (brain, Opus, ultrathink) — C3 — impl `feat/console-v2`: migration `0012_api_key_scopes` (scopes + created_by/updated_by, aditiva), `validateApiKey` retorna {email,scopes,keyId} + `last_used_at` via ctx.waitUntil, revogação lógica (UPDATE), gate de escopo no registry (Proxy: read → só readOnlyHint:true), autoria de escrita nas 7 tools, bearer escopado por rota (graph/tasks/media) com hash-then-compare, UI de escopo + badge revogada. tsc + suíte verdes (64 arquivos, 551 testes + auth). **GATE G3 pendente: rotação assistida dos PATs pelo dono + deploy**
+- [x] 12. `30-features/31` — selo de privacidade em notas (brain, Opus, ultrathink) — impl `feat/console-v2`: migration `0013_private_notes` (coluna private + índice parcial), escopo `private` (scopes vira CSV + `hasScope`), filtro nos read paths MCP (recall com/sem domains_filter, FTS, get_note, expand base+vizinhos, stats), save/update_note (private:false→erro)/mark_private (one-way), badge+toggle web (`POST /app/notes/{id}/private`, única superfície que desmarca), private no grafo (`CACHE_KEY graph:v11`). tsc + suíte verdes (66 arquivos, 578 testes + auth). **GATE G5-C3: pendente — fecha só após 59/61 + validação manual do dono + deploy**
+- [x] 13. `50-console-v2/59` — tasks privadas (brain, Opus, ultrathink) — impl `feat/console-v2`: sem migration nova (reusa coluna `private` da 31); `includePrivate` nas 5 queries de task (listActive/listRecentClosed/ftsSearchTasks/listTasksDueBefore/getTaskById, default fail-closed) + `setTaskPrivate` (marca privada revoga share na MESMA escrita); gate por escopo em `list_tasks`/`list_tasks_due_today`/`get_task` (auth propagado pelo registry, `canSeePrivate`); flag em `save_task`/`update_task` (private:false→erro, one-way via MCP); `share_task`/`createShare` bloqueiam task privada; rota pública `/s/<token>` ganha `AND private = 0` (defesa em profundidade); toggle+badge web (`POST /app/tasks/private`, única superfície que desmarca) + rebuild `tasks.bundle.js`. Novos read paths do dono (board, cron de lembrete) passam `includePrivate=true`. tsc + suíte verdes (66 arquivos, 607 testes + auth). **GATE G5-C3: ainda pendente — fecha só após 61 + validação manual do dono + deploy**
+- [x] 14. `50-console-v2/61` — contacts privados (ambos, Opus, ultrathink) — fecha C3: registrar G5-C3 — impl `feat/console-v2` nos dois repos (retomada de working tree herdada). **contacts:** migration `0007_privacy` (coluna `private` em entities/events + índices parciais, aditiva), helper único `callerSeesPrivate` fail-closed (sessão OU OWNER_TOKEN OU proxy+header `X-Include-Private:1`; header ignorado sem proxy token válido), filtro em TODOS os read paths GET (grafo data/meta, `/app/entity` 404 padrão, timeline com `total` só de visíveis, neighbors 1º/2º nível, REST list/search/get/phone, LIKE + EXISTS de observação), `observationsTextFor` com `AND private = 0` incondicional, evento privado (kind=note) dispara `reembedEntity` via waitUntil (termo nunca entra no vetor), flag one-way no write (`private:false`→400, desmarcar só via UI logada `POST /app/entity/private`), badge 🔒 + toggle + checkbox "observação privada" no console. tsc + suíte verdes (22 arquivos, 269 testes). **brain:** `callContacts`/`proxyToContacts`/`fetchContactEntityServerSide` propagam `X-Include-Private` (rotas web = sessão do dono → sempre; tools MCP = `canSeePrivate(auth)` propagado pelo registry — PAT precisa do escopo `private`). tsc + suíte verdes (67 arquivos, 612 testes + auth). **GATE G5-C3: pendente — fecha só após validação manual do dono via `wrangler dev` (marcar 1 contato + 1 observação, conferir os 2 lados) + deploy (contacts PRIMEIRO — worker antigo ignora o header, então brain novo + contacts antigo não quebra, só não filtra) — tudo SÓ com OK explícito do dono.**
+- [x] 15. `50-console-v2/63` — captura + inbox (brain, Opus, padrão) — C4 — impl `feat/console-v2`: migration `0014_inbox` (tabela separada, rascunho nao vaza em recall/FTS/grafo/stats por construcao), tools `capture`/`list_inbox`/`resolve_inbox` (todas readOnlyHint:false -> suprimidas em PAT read), pagina `/app/inbox` (quick-add source=console + virar nota/task/descartar por form nativo, to-note/to-task pelo fluxo normal + resolve com result_id) e badge SSR de pendentes na nav (renderShell async). tsc + suite verdes (69 arquivos, 634 testes + auth). Vizinhas (digest 64 / home 65 / paleta 66) consomem `countPendingInbox`/`listInboxItems` quando forem executadas.
+- [x] 16. `50-console-v2/62` — menções/tecido conectivo (ambos, Opus, ultrathink) — C4 — impl `feat/console-v2` nos dois repos: migration `0015_mentions` (tabela `mentions` + `origin_note_id`), mentions[]/mentions_remove[] em save/update de nota e task, origin_note_id + herança em save_task/task-from-note, get_note/get_task com mentions[] (label omitido pra contato privado sem escopo), filtro `list_tasks mentions_entity`, evento `mentioned_in_brain` tolerante a falha via CONTACTS_WRITE_TOKEN, página do contato com seções reversas, chips + @autocomplete no editor de nota, camada de menção no grafo (opt-in `?mentions=1`, CACHE v12). contacts: só teste de integração do evento. brain: tsc + 652 testes (+auth) verdes (74 arquivos); contacts: tsc + 273 testes verdes (23 arquivos). Camada de RENDER do grafo (client) e GATE G6-C4 (fecha na 64) pendentes.
+- [x] 17. `50-console-v2/64` — resurfacing/digest (brain, Opus, padrão) — fecha C4: registrar G6-C4 — impl `feat/console-v2`: `src/digest/resurface.ts` (novo, SQL puro + 1 leitura via CONTACTS existente, zero migration — reusa `meta`), 2 queries novas em `db/queries.ts` (`getStaleOpenQuestions`, `getStaleCentralNoteCandidates`) + `countPendingInboxOlderThan`, sorteio semanal determinístico via hash FNV-1a (`pickWeeklyCentralNotes` — um hash polinomial ingênuo testado antes preservava a ordem entre semanas; trocado), cache em `meta.resurface_digest` TTL 20h, bloco "Do seu cérebro" anexado ao cron/notify existente (`buildResurfaceBlock`, nenhum cron novo), tool MCP `digest` (readOnlyHint:false — suprimida em PAT `read`; PAT `full` sem escopo `private` computa fresco sem tocar o cache do dono), card fallback em `/app/notes` (lê só o cache, nunca recomputa no request path). Falha do proxy CONTACTS não derruba o digest (`contacts_degraded`). **Limitação documentada:** `/list_entities` do contacts ainda não devolve `last_contacted` — a seção "contatos esfriando" fica dormente em produção até uma extensão aditiva do lado de lá (fora do repo de trabalho desta execução). tsc + suíte verdes (78 arquivos, 682 testes + auth). **GATE G6-C4: registrado — falta validação manual do dono (`wrangler dev --test-scheduled`) + deploy, tudo SÓ com OK explícito.**
+- [x] 18. `50-console-v2/65` — home Hoje + journal (ambos, Sonnet, padrão) — C5 — impl `feat/console-v2` nos dois repos: **contacts:** `GET /app/events/recent` (feed global paginado, JOIN entities pro nome, mesma allowlist Bearer read-only + privacidade da 61) — tsc + 280 testes verdes (24 arquivos). **brain:** `src/web/home.ts` (raiz `/app` — 4 cards SSR tolerantes a falha isolada: Hoje com quick-complete, Inbox, "Do seu cérebro" reusando `renderDigestCard` da 64, Últimas interações via skeleton+fetch assíncrono pro proxy novo) + `src/web/journal.ts`/`journal-render.ts` (`/app/journal`: merge k-way de 5 streams — notas criadas/atualizadas com dedupe por dia BRT, tasks criadas/concluídas, interações via proxy — cursor composto ts+id local / offset remoto, "Carregar mais" via append client accept:json, filtros client-side) + proxy `handleContactsEventsRecent`/`fetchContactEventsServerSide`, nav ganha "Início", `manifest.webmanifest` start_url `/app`. Corrigido de quebra: `note-edit.bundle.js`/`contact-page.bundle.js` estavam dessincronizados do source desde a 62 (bundle nunca foi rebuildado) — `npm run build:bundles` sincronizou. tsc + suíte verdes (84 arquivos, 719 testes + auth). **Gate de deploy: os DOIS workers só com OK explícito do dono.**
+- [x] 19. `50-console-v2/66` — paleta Ctrl+K (brain, Sonnet, padrão) — impl `feat/console-v2`: `GET /app/search/all` (agregador notas+tasks+contatos em paralelo, cap 6/grupo, `degraded:['contacts']` sem nunca 500; `/app/search` antigo intocado) + `fetchContactsSearchServerSide` (mesmo padrão de degradação de `fetchContactEventsServerSide`) + `firstDomain` exportado do grafo. `src/web/client/shell.ts`: paleta agrupa Notas/Tarefas/Contatos (notas seguem instantâneas via Fuse local + ampliação server-side; tasks/contatos só via agregador), ações rápidas `> task <título>` (cria + navega pro board com `?task=<id>` focado — novo em `tasks.ts`/client, expande coluna recolhida se preciso), `> capturar <texto>` (POST `/app/inbox/add` existente da 63) e `> interação <nome>` (resolve via `/app/contacts/search` existente da 62, abre `/app/contacts/<id>#registrar-interacao` — `contact-page.ts` client expande o `<details>` e foca o textarea), estado zero com recentes (localStorage, últimos itens abertos) + comandos. Atalhos/focus-guard/fallback Fuse preservados. tsc + suíte verdes (85 arquivos, 723 testes + auth). **Gate de deploy: só com OK explícito do dono.**
+- [x] 20. `50-console-v2/68` — PWA instalável (brain, Sonnet, padrão) — fecha C5: registrar G6-C5 — impl `feat/console-v2`: `assets/manifest.webmanifest` ganhou `share_target` (GET `/app/inbox` com `title`/`text`/`url`) + `shortcuts` (Capturar/Tarefas/Hoje); `src/web/inbox.ts` pré-preenche o quick-add a partir da query do share (concatena os 3 params, trunca no teto do body) e marca `source: 'pwa-share'` via hidden input (allowlist fechada no POST, default `console` preservado); `assets/sw.js` bump `v2`→`v3` pra invalidar o cache do manifest antigo. Corrigido de quebra: `src/web/login.ts` tinha bug latente no `safeNext` (checagem de path traversal aplicada na STRING INTEIRA, incluindo query) que derrubava o conteúdo compartilhado sempre que o texto tinha `..` — extraído `safeNextPath` que só valida o PATH (RFC 3986 dot-segments só se aplicam lá) e preserva a query como veio. `start_url` já era `/app` (spec 65 já rodou). tsc + suíte verdes (80 arquivos, 730 testes no pool Workers + 2 arquivos/5 testes no pool node, incl. `test/manifest.test.ts` novo pra validar a estrutura do manifest fora do sandbox workerd). Corrigido também: `test/backup.test.ts` tinha lacuna de hermeticidade (`wipeData()` não limpava `inbox_items`/`mentions`, assumindo por acidente de ordem de execução que outro arquivo já deixava essas tabelas vazias — storage é compartilhado entre arquivos no singleWorker) exposta pelos testes novos desta spec; agora limpa as duas. **GATE G6-C5: registrado — falta validação manual do dono num Android real (share target + long-press dos shortcuts) + Lighthouse + deploy, tudo SÓ com OK explícito.**
+- [x] 21. `50-console-v2/67` — backup/export (ambos, Opus, ultrathink) — C6. Implementada 05/07 (mergeada na `feat/console-v2`) e **DEPLOYADA 06/07 ~15h40** com os crons semanais ativos nos 2 workers (brain seg 05:00 UTC, contacts seg 05:30 UTC; wrangler.toml local do brain atualizado). Falta do dono: clicar "Fazer backup agora" em /app/config (1º snapshot) e conferir contra `stats`.
+- [ ] 22. `50-console-v2/69` — backup off-site (ops, Opus, padrão) — C6: cópia dos snapshots pra fora da Cloudflare (Google Drive + servidor externo). A 67 já está em produção; exige o dono no loop (token R2 read-only + OAuth rclone). Fecha C6: registrar G6-C6.
+- [x] 23. `50-console-v2/70` — instruções do dono no handshake MCP (brain, Opus, padrão) — pós-lançamento, pedido do dono em 06/07: campo em /app/config anexado às instructions de TODO agente conectado. Junto: fix de UX do form "Nova coluna" (rótulos + exemplo Backlog/categoria). 744 testes verdes; aguardando redeploy com OK.
+
+Quem executa marca o checkbox no MESMO commit que promove a spec pra `done`. A ordem é a canônica; desvio só se a dependência formal permitir (grafo abaixo) e sem compartilhar arquivos com spec em andamento.
+
+**GATE G5 (por onda, antes de avançar):** typecheck + testes verdes no(s) repo(s) da onda + validação manual do dono — C0: grafo de contatos com arestas semânticas sem query Vectorize no load; C1: criar coluna custom, mover card, comentar como convidado pelo link público, compartilhar/revogar pela UI, recolorir e criar área, criar projeto e filtrar o board por ele (incl. `list_tasks project:` via MCP); C2: abrir `/app/contacts/<id>`, canais clicáveis, registrar interação, vínculos 1º/2º nível, recall/busca encontrando contato por termo que só existe numa observação; C3: PAT sem escopo `private` não vê nota privada em recall/get_note/expand/stats NEM task privada em list_tasks/get_task NEM contato/evento privado nas tools de contatos (teste de vazamento por superfície nas três frentes) + share de task privada bloqueado/revogado. Deploy de produção e release de alunos SÓ com OK explícito do dono.
+
+### Fase 6 — Console v3: tecido conectivo, captura, resurfacing, interface unificada e resiliência (aprovado pelo dono em 05/07/2026)
+
+Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, contato e memória, tudo integrado". A Fase 5 deixa cada módulo forte por dentro; a Fase 6 constrói o que liga os módulos e o que faz o sistema trabalhar sem ser perguntado. Mapa completo dos gaps na nota `xn8lpwuuq9kj` do vault. Specs nasceram `ready`.
+
+**Onda C4 — o cérebro integrado (após C2 e C3):**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/63-captura-inbox-triagem.md` | expert-brain | Opus | padrão | Independente — pode adiantar pra depois de C1. |
+| `50-console-v2/62-mencoes-tecido-conectivo.md` | ambos | Opus | ultrathink | O item mais crítico da fase (pedido explícito do dono). Após 56/57 (endpoints) e 61 (privacidade). |
+| `50-console-v2/64-resurfacing-digest.md` | expert-brain | Opus | padrão | Estende o cron/notify existente; consome inbox (63) e last_contacted (57). |
+
+**Onda C5 — interface unificada:**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/65-home-hoje-e-journal.md` | ambos | Sonnet | padrão | Home consome 63/64; journal usa endpoint novo no contacts. |
+| `50-console-v2/66-busca-unificada-cmdk.md` | expert-brain | Sonnet | padrão | A paleta Ctrl+K JÁ existe (`src/web/client/shell.ts`) — a spec é EXTENSÃO (tasks+contatos+ações). |
+| `50-console-v2/68-pwa-instalavel.md` | expert-brain | Sonnet | padrão | O PWA base JÁ existe (manifest/SW/ícones) — a spec adiciona share target + shortcuts. Depois da 63. |
+
+**Onda C6 — resiliência:**
+
+| Spec | Repo | Agente | Esforço | Nota |
+|---|---|---|---|---|
+| `50-console-v2/67-backup-export.md` | ambos | Opus | ultrathink | SEM dependências — recomendado ADIANTAR (é a rede de segurança de todo o resto). IMPLEMENTADA 05/07 (ver nota no checklist). |
+| `50-console-v2/69-backup-offsite.md` | ops (servidor externo) | Opus | padrão | Copia os snapshots pra FORA da Cloudflare (rclone → disco externo + Google Drive). Exige o dono no loop (token R2 + OAuth do Drive). Depois da 67 deployada. |
+
+**GATE G6 (por onda):** typecheck + testes verdes + validação manual do dono — C4: capturar pelo bot e triar pela UI; mencionar contato numa nota e ver a nota na página do contato + evento na timeline + task nascida da nota com origem; digest diário chegando com as 4 seções. C5: home responde "o que tem pra hoje" em 1 tela; Ctrl+K acha nota/task/contato e cria task; PWA instalada capturando por share. C6: export baixado + restore validado num banco limpo (contagens = manifest) + off-site: simulação de desastre com a Cloudflare "indisponível" — restaurar só a partir da cópia no Google Drive/servidor externo. Deploy SÓ com OK explícito do dono.
+
+**Backlog C7 — padrões a absorver do benchmark `codebase-memory-mcp` (github.com/DeusData/codebase-memory-mcp, mapeado 05/07/2026; SEM spec ainda — specar após a Fase 6):**
+
+1. **Benchmark de recall publicável** — protocolo do paper deles (arXiv 2603.27277) adaptado: bateria de perguntas reais respondidas COM e SEM o Brain, medindo qualidade da resposta, tokens e tool calls. Vira prova de produto pros alunos. Precisa de: desenho da bateria + harness de medição (recon: nenhum).
+2. **Instalador auto-configurável multi-agente** — o `npm create @expertintegrado/expert-brain` detectar os agentes instalados (Claude Code, Cursor, Gemini CLI, ...) e configurar MCP + instruções em cada um, no padrão do install deles. Precisa de: recon no pacote npm create atual.
+3. **Tool de travessia estruturada do grafo** — hoje só recall/expand; uma tool de query por relação ("decisões ligadas a X via `causes`", caminhos entre 2 notas) cobriria as perguntas que embedding não responde. Precisa de: desenho do contrato (não expor query language crua).
+4. **Detecção de comunidades no curar-brain** — clustering (Louvain ou grau simples) sobre os edges pra sugerir hubs/domínios emergentes no relatório semanal de curadoria. Vive na skill/cron de curadoria, não no Worker.
+5. **Upgrade visual do grafo 3D** — referência: `graph-ui/` do codebase-memory-mcp (React three-fiber + drei + `postprocessing`). O que absorver SEM trazer React: (a) passe de pós-processamento com bloom/glow nos nós (lib `postprocessing` funciona com three puro); (b) nós como instanced mesh (`NodeCloud` deles) pra performance; (c) separação tooltip leve vs painel de detalhe; (d) labels com LOD (só nós próximos/focados). Aplicar em `src/web/client/graph3d.ts` do Brain. O dono avaliou o deles como visualmente superior ao nosso (05/07/2026).
+
+(Seção Security & Trust no README do produto e 1-liner de install assinado: itens de docs/release do pacote npm, fora desta árvore de specs.)
+
 ### Grafo de dependências formais
 
 ```text
@@ -113,6 +236,17 @@ Qualquer agente, lendo apenas este arquivo + a spec-zero, sabe exatamente qual s
 45 ← 19, 44
 21 (backend contacts) ← 22 (frontend brain), 44
 19, 20, 22, 27 ← 42 (suíte de testes do contacts)
+52 ← 51 (suave: 53, só pela contagem de comentários)
+56 ← 55, 57 (suave: 21 — sem ela a página degrada pra só conexões explícitas)
+58 ← 51 (suave: 52 — chip de projeto entra no card desenhado lá)
+59 ← 17, 31
+60 ← 57
+61 ← 17, 31 (ordem: após a onda C2 — gateia endpoints da 56/57; coordena 60)
+62 ← 56, 57 (coordena: 61 — label de contato privado nas menções)
+64 ← 63 (suave), 57 (suave — last_contacted)
+65 ← 63, 64 (coordena: 61 — filtro de privado no journal)
+68 ← 63 (suave: 65 — start_url na home)
+66, 67 ← sem dependência dura
 ```
 
 Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
@@ -135,6 +269,13 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G2 | — | — |
 | G3 | — | — |
 | G4 | — | — |
+| G5-C0 | pendente (dono) | Código pronto: `expert-contacts` `feat/console-v2` `fceecf3` (spec `10-backend/21` done), `tsc --noEmit` limpo + `vitest` 145/145. FALTA (dono): validar grafo com arestas semânticas sem query Vectorize no load + `POST /setup/provision` (migration 0005) + `POST /setup/backfill-similar` em loop + deploy — tudo SÓ com OK explícito. |
+| G5-C1 | 06/07/2026 | Código pronto: `expert-brain` `feat/console-v2` `e2d2464` (spec `50-console-v2/54` done, fecha itens 2-6 da onda C1), `tsc --noEmit` limpo + `vitest` 517/517 + auth (61 arquivos). FALTA (dono): validação manual via `wrangler dev` + deploy — tudo SÓ com OK explícito. |
+| G5-C2 | — | — |
+| G5-C3 | pendente (dono) | Código pronto (specs `17`/`31`/`59`/`61`, itens 11-14): `expert-brain` `feat/console-v2` `f289ba4` (lado brain da 61) + `expert-contacts` `feat/console-v2` `631ded9` (lado contacts da 61: migration `0007_privacy`, `callerSeesPrivate` fail-closed, filtro em todos os read paths GET, embedding sem privados, flag one-way + toggle UI). `tsc --noEmit` limpo nos dois; `vitest` brain 612 + auth (67 arquivos), contacts 269 (22 arquivos). FALTA (dono): validação manual via `wrangler dev` (marcar 1 contato + 1 observação de teste, conferir proxy sem header via curl e console logado, desmarcar pela UI) + deploy dos DOIS workers na ORDEM contacts→brain (worker antigo ignora o header, então brain novo + contacts antigo não vaza, só não filtra) — tudo SÓ com OK explícito. |
+| G6-C4 | — | — |
+| G6-C5 | pendente (dono) | Código pronto (specs `65`, `66`, `68`, itens 18-20): `expert-brain`/`expert-contacts` `feat/console-v2` — tsc + suíte verdes nos dois repos (ver detalhe por spec no checklist acima). FALTA (dono): validação manual (home/journal, paleta Ctrl+K, PWA share target + shortcuts num Android real + Lighthouse) + deploy — tudo SÓ com OK explícito. |
+| G6-C6 | — | — |
 
 Regras de manutenção:
 

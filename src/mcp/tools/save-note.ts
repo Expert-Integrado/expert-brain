@@ -1,11 +1,12 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
+import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
 import { EDGE_TYPES, KNOWLEDGE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 import { refreshSimilarEdges } from '../../web/similarity.js';
+import { applyMentions } from '../mentions.js';
 
 const edgeSchema = z.object({
   to_id: z.string().min(1),
@@ -25,6 +26,12 @@ const inputSchema = {
   edges: z.array(edgeSchema).optional(),
   allow_new_domain: z.boolean().optional().describe(
     'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area; syntactic validation (kebab-case) still applies.'
+  ),
+  private: z.boolean().optional().describe(
+    'Mark the note PRIVATE (default false). A private note is invisible via recall/get_note/expand/stats to any credential WITHOUT the `private` scope. One-way from tools: only the owner UI can make it public again.'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'Optional CONTACT entity ids this note is about (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts / list_contacts — do NOT pass a free-text name (it would create a phantom mention on typo/homonym). Each mention links the note to the contact, fires a `mentioned_in_brain` event on that contact\'s timeline, and shows on the contact\'s page. Passing an id twice is deduped.'
   ),
 };
 
@@ -63,9 +70,11 @@ interface SaveNoteInput {
   tags?: string[];
   edges?: Array<{ to_id: string; relation_type: EdgeType; why: string }>;
   allow_new_domain?: boolean;
+  private?: boolean;
+  mentions?: string[];
 }
 
-export function registerSaveNote(server: any, env: Env): void {
+export function registerSaveNote(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'save_note',
     {
@@ -126,9 +135,12 @@ export function registerSaveNote(server: any, env: Env): void {
         tldr: input.tldr,
         domains: JSON.stringify(input.domains),
         kind: input.kind,
+        // Selo de privacidade (spec 31): qualquer caller com a tool registrada pode
+        // CRIAR privada — marcar é barato e fail-safe (one-way).
+        private: input.private ? 1 : 0,
         created_at: now,
         updated_at: now,
-      });
+      }, writeActor(auth));
       if (input.tags?.length) await insertTags(env, id, input.tags);
 
       let edgesCreated = 0;
@@ -163,11 +175,27 @@ export function registerSaveNote(server: any, env: Env): void {
         console.error('save_note: refreshSimilarEdges failed (note saved anyway)', err);
       }
 
+      // Menções (spec 62): vínculo first-class nota→contato. Aplicadas DEPOIS do save
+      // (a nota já existe) e totalmente tolerantes a falha do contacts (applyMentions
+      // engole tudo — a menção D1 já grava, o evento na timeline é eco).
+      let mentionsCreated = 0;
+      if (input.mentions?.length) {
+        const r = await applyMentions(env, {
+          noteId: id,
+          title: input.title,
+          url: noteUrl(env, id),
+          add: input.mentions,
+          seePrivate: canSeePrivate(auth),
+        });
+        mentionsCreated = r.created;
+      }
+
       return toolSuccess({
         id,
         url: noteUrl(env, id),
         saved: { title: input.title, domains: input.domains },
         edges_created: edgesCreated,
+        mentions_created: mentionsCreated,
       });
     }) as any
   );

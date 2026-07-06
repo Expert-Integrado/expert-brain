@@ -69,6 +69,34 @@ describe('/app/login', () => {
     expect(res.headers.get('location')).toBe('/app/graph');
   });
 
+  // spec 50-console-v2/68 (PWA share target): compartilhar de outro app cai em
+  // /app/inbox?title=&text=&url= — sem sessão, o dono precisa logar e VOLTAR pro
+  // quick-add com o conteúdo intacto. O texto compartilhado pode legitimamente
+  // conter '..' (reticências); a defesa de open-redirect só pode reprovar o PATH,
+  // nunca a query, senão descarta a captura.
+  it('preserva querystring do share target (incl. ".." no texto) no round-trip completo do login', async () => {
+    const sharedNext = '/app/inbox?title=Ideia&text=vou%20fazer%20isso...%20depois&url=https%3A%2F%2Fexemplo.com';
+
+    const getRes = await SELF.fetch(`https://x.test/app/login?next=${encodeURIComponent(sharedNext)}`);
+    expect(getRes.status).toBe(200);
+    const html = await getRes.text();
+    expect(html).toContain('name="next"');
+
+    const form = new URLSearchParams({
+      email: 'owner@example.com',
+      password: 'correct-horse-battery-staple',
+      next: sharedNext,
+    });
+    const postRes = await SELF.fetch('https://x.test/app/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://x.test' },
+      body: form.toString(),
+      redirect: 'manual',
+    });
+    expect(postRes.status).toBe(302);
+    expect(postRes.headers.get('location')).toBe(sharedNext);
+  });
+
   it('POST /app/logout clears the cookie', async () => {
     const res = await SELF.fetch('https://x.test/app/logout', {
       method: 'POST',

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor } from '../helpers.js';
 import { deleteNote, getNoteById } from '../../db/queries.js';
 
 const inputSchema = {
@@ -29,7 +29,7 @@ TASKS: this tool rejects kind='task'. A task has its own lifecycle (status/compl
 
 interface DeleteNoteInput { id: string; confirm: true; }
 
-export function registerDeleteNote(server: any, env: Env): void {
+export function registerDeleteNote(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'delete_note',
     {
@@ -88,7 +88,7 @@ export function registerDeleteNote(server: any, env: Env): void {
         );
       }
 
-      await deleteNote(env, input.id);
+      await deleteNote(env, input.id, writeActor(auth));
 
       return toolSuccess({
         id: input.id,

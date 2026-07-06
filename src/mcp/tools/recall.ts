@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { ftsSearch, getNotesByIds, NON_TASK_FILTER, type NoteRow } from '../../db/queries.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
+import { ftsSearch, getNotesByIds, NON_TASK_FILTER, PUBLIC_ONLY_FILTER, type NoteRow } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, queryVector } from '../../vector/index.js';
 
@@ -39,7 +39,11 @@ interface RecallHit {
 
 interface RecallInput { query: string; limit?: number; offset?: number; domains_filter?: string[]; }
 
-export function registerRecall(server: any, env: Env): void {
+export function registerRecall(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 31): quem não pode ver privadas recebe o filtro em TODAS
+  // as 3 fontes do pool (retrieval por domínio, FTS e hidratação D1). O Vectorize pode
+  // devolver ids privados — eles caem na hidratação (getNotesByIds), nunca no resultado.
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'recall',
     {
@@ -61,7 +65,7 @@ export function registerRecall(server: any, env: Env): void {
       const vec = await embed(env, input.query);
       const [vectorMatches, ftsRows] = await Promise.all([
         queryVector(env, vec, 30),
-        ftsSearch(env, input.query, 30),
+        ftsSearch(env, input.query, 30, false, seePrivate),
       ]);
 
       const ids = new Set<string>();
@@ -82,10 +86,12 @@ export function registerRecall(server: any, env: Env): void {
           // (o filtro em memória filtra por domínio, não por kind). LIMIT 200 é o
           // teto real de enumeração de um domínio via offset; o chunking da
           // hidratação (getNotesByIds) absorve o pool maior.
+          // Selo de privacidade (spec 31): sem escopo, o pool por domínio também
+          // exclui privadas (senão a nota privada entraria via retrieval de domínio).
           `SELECT DISTINCT n.id
            FROM notes n, json_each(n.domains) je
            WHERE je.value IN (${dfPlaceholders}) AND n.deleted_at IS NULL
-             AND ${NON_TASK_FILTER}
+             AND ${NON_TASK_FILTER}${seePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`}
            ORDER BY n.updated_at DESC
            LIMIT 200`
         ).bind(...input.domains_filter).all<{ id: string }>();
@@ -102,7 +108,7 @@ export function registerRecall(server: any, env: Env): void {
       // acima do cap de ~100 binds por statement do D1 (que faria a query estourar
       // em runtime com "too many SQL variables"). getNotesByIds também aplica o
       // NON_TASK_FILTER — defesa em profundidade contra qualquer id de task no pool.
-      const hydrated = await getNotesByIds(env, Array.from(ids));
+      const hydrated = await getNotesByIds(env, Array.from(ids), seePrivate);
 
       const byId = new Map<string, RecallHit>();
       for (const r of hydrated) {

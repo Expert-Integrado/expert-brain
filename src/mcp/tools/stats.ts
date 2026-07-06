@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolSuccess, canSeePrivate } from '../helpers.js';
 
 const inputSchema = {
   top_domains_limit: z.number().int().min(1).max(200).optional().default(50),
@@ -26,7 +26,15 @@ interface KindRow { kind: string | null; count: number; }
 
 interface StatsInput { top_domains_limit?: number; }
 
-export function registerStats(server: any, env: Env): void {
+export function registerStats(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 31): sem escopo, TODAS as contagens (total, edges,
+  // recentes, por domínio e por kind) excluem notas privadas — o número não pode
+  // sequer denunciar que elas existem. COM escopo, o payload ganha `private_notes`.
+  const seePrivate = canSeePrivate(auth);
+  // Fragmentos interpolados condicionalmente (sem bind — são literais 'private = 0').
+  const priv = seePrivate ? '' : ' AND private = 0';                 // notes (sem alias)
+  const privN = seePrivate ? '' : ' AND notes.private = 0';          // domain query (alias notes)
+  const privE = seePrivate ? '' : ' AND f.private = 0 AND t.private = 0'; // edges: ambos extremos públicos
   server.registerTool(
     'stats',
     {
@@ -47,20 +55,22 @@ export function registerStats(server: any, env: Env): void {
 
       const [totalsRow, domainRows, kindRows] = await Promise.all([
         // Tasks (kind='task') ficam fora do panorama do vault — stats é sobre
-        // CONHECIMENTO. Os to-dos têm seu próprio contador no /app/tasks.
+        // CONHECIMENTO. Os to-dos têm seu próprio contador no /app/tasks. `pc` conta
+        // as privadas (só exposto no payload quando o caller tem escopo `private`).
         env.DB.prepare(
           `SELECT
-             (SELECT count(*) FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS notes,
+             (SELECT count(*) FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')${priv}) AS notes,
              (SELECT count(*) FROM edges e
               JOIN notes f ON f.id = e.from_id JOIN notes t ON t.id = e.to_id
-              WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL) AS edges,
-             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS r7,
-             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')) AS r30`
-        ).bind(d7, d30).first<{ notes: number; edges: number; r7: number; r30: number }>(),
+              WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL${privE}) AS edges,
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')${priv}) AS r7,
+             (SELECT count(*) FROM notes WHERE created_at >= ? AND deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')${priv}) AS r30,
+             (SELECT count(*) FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task') AND private = 1) AS pc`
+        ).bind(d7, d30).first<{ notes: number; edges: number; r7: number; r30: number; pc: number }>(),
         env.DB.prepare(
           `SELECT je.value AS domain, count(*) AS count
            FROM notes, json_each(notes.domains) je
-           WHERE json_valid(notes.domains) AND notes.deleted_at IS NULL AND (notes.kind IS NULL OR notes.kind <> 'task')
+           WHERE json_valid(notes.domains) AND notes.deleted_at IS NULL AND (notes.kind IS NULL OR notes.kind <> 'task')${privN}
            GROUP BY je.value
            ORDER BY count DESC, domain ASC
            LIMIT ?`
@@ -72,20 +82,23 @@ export function registerStats(server: any, env: Env): void {
         env.DB.prepare(
           `SELECT kind, count(*) AS count
            FROM notes
-           WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')
+           WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')${priv}
            GROUP BY kind
            ORDER BY (kind IS NULL) ASC, count DESC, kind ASC`
         ).all<KindRow>(),
       ]);
 
-      return toolSuccess({
+      const payload: Record<string, unknown> = {
         total_notes: totalsRow?.notes ?? 0,
         total_edges: totalsRow?.edges ?? 0,
         notes_by_domain: domainRows.results ?? [],
         notes_by_kind: kindRows.results ?? [],
         recent_7d: totalsRow?.r7 ?? 0,
         recent_30d: totalsRow?.r30 ?? 0,
-      });
+      };
+      // Caller COM escopo `private` (ou sessão do dono) vê o contador de privadas.
+      if (seePrivate) payload.private_notes = totalsRow?.pc ?? 0;
+      return toolSuccess(payload);
     }) as any
   );
 }
