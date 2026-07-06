@@ -1,5 +1,6 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
+import { listNotesMentioning, countNotesMentioning } from '../db/queries.js';
 
 // Proxy server-side: o Brain puxa o grafo de contatos do Worker do Expert Contacts
 // via service binding (CONTACTS) + Bearer (CONTACTS_PROXY_TOKEN). O browser fala só
@@ -134,6 +135,80 @@ export async function handleContactsEntityEventCreate(req: Request, env: Env): P
       'cache-control': 'no-store',
     },
   });
+}
+
+// GET /app/contacts/search?q=<termo> — busca de contatos pro @autocomplete do editor
+// de nota (spec 62 §2). Proxy read-only (CONTACTS_PROXY_TOKEN) pro /recall_entity do
+// contacts; a sessão do dono propaga o escopo private (header) pra achar até contato
+// privado. Retorna a lista crua do contacts ({ results: [{id, name, ...}] }).
+export async function handleContactsSearch(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    });
+  }
+  const q = (new URL(req.url).searchParams.get('q') || '').trim();
+  if (!q) {
+    return new Response(JSON.stringify({ ok: true, results: [] }), {
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    });
+  }
+  const out = new URL('https://contacts/recall_entity');
+  out.searchParams.set('q', q);
+  out.searchParams.set('limit', '8');
+  const res = await env.CONTACTS.fetch(new Request(out.toString(), {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}`, 'x-include-private': '1' },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: {
+      'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+// GET /app/contacts/entity/mentions?id=<entity_id> — seções reversas da página do
+// contato (spec 62 §4). Dados 100% Brain-LOCAL (query na tabela `mentions` do Brain, sem
+// roundtrip pro contacts): "Notas sobre esta pessoa" (conhecimento que a menciona) e
+// "Tarefas com esta pessoa" (abertas/em progresso) + contador de fechadas. Sessão do dono
+// (requireSession) → vê privadas (includePrivate=true).
+export async function handleContactMentions(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const id = (new URL(req.url).searchParams.get('id') || '').trim();
+  if (!id) {
+    return new Response(JSON.stringify({ ok: false, error: 'id_required' }), {
+      status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    });
+  }
+
+  const base = (env.WORKER_URL ?? '').replace(/\/$/, '');
+  const [notes, tasksOpen, tasksClosedCount] = await Promise.all([
+    listNotesMentioning(env, id, { mode: 'knowledge', includePrivate: true, limit: 100 }),
+    listNotesMentioning(env, id, { mode: 'task', statuses: ['open', 'in_progress'], includePrivate: true, limit: 100 }),
+    countNotesMentioning(env, id, { mode: 'task', statuses: ['done', 'canceled'], includePrivate: true }),
+  ]);
+
+  return new Response(JSON.stringify({
+    ok: true,
+    id,
+    notes: notes.map((n) => ({
+      id: n.id, title: n.title, kind: n.kind, private: n.private === 1,
+      updated_at: n.updated_at, url: `${base}/app/notes/${n.id}`,
+    })),
+    tasks_open: tasksOpen.map((t) => ({
+      id: t.id, title: t.title, status: t.status, due_at: t.due_at, priority: t.priority,
+      private: t.private === 1, url: `${base}/app/tasks/${t.id}`,
+    })),
+    tasks_closed_count: tasksClosedCount,
+  }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 }
 
 // Avatar/mídia do contato — streaming passthrough pro /media/<hash> do Expert

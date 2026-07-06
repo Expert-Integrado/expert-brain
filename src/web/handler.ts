@@ -1,8 +1,8 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch } from './contacts-data.js';
 import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
@@ -49,6 +49,11 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // path exato /update não colide com o regex de id (que não tem barra interna
   // depois de notes/, mas 'update' casaria como id num GET — aqui é POST).
   if (path === '/app/notes/update' && req.method === 'POST') return handleNoteUpdatePost(req, env);
+
+  // Criar task a partir de uma nota (spec 62 §2): task com origin_note_id + menções
+  // herdadas. Path exato, vem ANTES do noteMatch (que só casa GET, mas 'task-from-note'
+  // casaria como id num GET — aqui é POST). Sessão de browser (o handler valida).
+  if (path === '/app/notes/task-from-note' && req.method === 'POST') return handleTaskFromNotePost(req, env);
 
   // Toggle do selo de privacidade (spec 31): ÚNICA superfície que desmarca. Sessão de
   // browser só (o handler exige requireSession). Vem ANTES do noteMatch (GET) — path
@@ -124,6 +129,11 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts/entity/event' && req.method === 'POST') return handleContactsEntityEventCreate(req, env);
   // Vizinhança de 1º/2º nível (spec 50-console-v2/56 §2) — mesmo proxy read-only.
   if (path === '/app/contacts/entity/neighbors' && req.method === 'GET') return handleContactsEntityNeighbors(req, env);
+  // Seções reversas da página do contato (spec 62 §4): notas e tasks que MENCIONAM o
+  // contato. Brain-LOCAL (tabela mentions), sem proxy — sessão do dono.
+  if (path === '/app/contacts/entity/mentions' && req.method === 'GET') return handleContactMentions(req, env);
+  // Busca de contatos pro @autocomplete do editor de nota (spec 62 §2) — proxy read-only.
+  if (path === '/app/contacts/search' && req.method === 'GET') return handleContactsSearch(req, env);
   const contactsMediaMatch = path.match(/^\/app\/contacts\/media\/([0-9a-f]{64})$/i);
   if (contactsMediaMatch && req.method === 'GET') {
     return handleContactsMedia(req, env, contactsMediaMatch[1]);

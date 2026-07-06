@@ -13,11 +13,14 @@ import {
   getEdgesTo,
   updateNote,
   setNotePrivate,
+  insertTask,
   listTaskComments,
   listKanbanColumns,
   resolveTaskColumn,
   getTagsByNote,
   listTaskProjects,
+  listMentionsForNote,
+  listTasksFromOrigin,
   TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
@@ -26,6 +29,8 @@ import {
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
+import { applyMentions } from '../mcp/mentions.js';
+import { newId } from '../util/id.js';
 import { getShareStatus } from './share.js';
 import { renderCommentThread } from './comments-render.js';
 import { visibleTags } from './tasks.js';
@@ -77,6 +82,29 @@ function domainsToBadges(raw: string, taxonomy: TaxonomyConfig): string {
 }
 
 const NOTES_PAGE_SIZE = 100;
+
+// Menções (spec 62): chips + editor @ na nota, chips read-only na task. CSS enxuto,
+// reusa as variáveis do tema. Injetado no extraHead do detalhe de nota e de task.
+const MENTIONS_CSS = `
+.note-mentions, .note-origin-tasks { margin-top:28px; }
+.mention-chips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+.mention-chip { display:inline-flex; align-items:center; gap:6px; font-size:13px; padding:3px 6px 3px 10px; border:1px solid var(--border); border-radius:999px; background:var(--surface); }
+.mention-chip a { color:var(--text); text-decoration:none; }
+.mention-chip a:hover { color:var(--accent-lav); }
+.mention-chip-remove { border:none; background:transparent; color:var(--text-dim); cursor:pointer; font-size:15px; line-height:1; padding:0 4px; }
+.mention-chip-remove:hover { color:#fca5a5; }
+.mention-add { position:relative; max-width:360px; }
+.mention-add-input { width:100%; font-size:14px; padding:7px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); }
+.mention-add-input:focus { outline:none; border-color:var(--accent-lav); }
+.mention-suggest { position:absolute; z-index:20; left:0; right:0; margin-top:4px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:240px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.35); }
+.mention-suggest-item { display:block; width:100%; text-align:left; padding:8px 12px; font-size:14px; background:transparent; border:none; color:var(--text); cursor:pointer; }
+.mention-suggest-item:hover, .mention-suggest-item.active { background:rgba(167,139,250,0.14); }
+.mention-suggest-empty { padding:8px 12px; font-size:13px; color:var(--text-dim); }
+.mention-status { font-size:13px; color:var(--text-dim); margin-top:8px; min-height:1em; }
+.note-origin-empty { color:var(--text-dim); font-size:14px; }
+.task-d-origin { font-size:13px; color:var(--text-dim); }
+.task-d-origin a { color:var(--accent-lav); text-decoration:none; }
+`;
 
 export async function handleNotesList(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -232,10 +260,13 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     idSet.add(r.id);
   }
 
-  const [outbound, inbound, taxonomy] = await Promise.all([
+  const [outbound, inbound, taxonomy, mentions, tasksFromNote] = await Promise.all([
     getEdgesFrom(env, id, /* includePrivate */ true),
     getEdgesTo(env, id, /* includePrivate */ true),
     getTaxonomyConfig(env),
+    // Menções (spec 62): contatos citados por esta nota (chips) + tasks originadas dela.
+    listMentionsForNote(env, id),
+    listTasksFromOrigin(env, id, /* includePrivate */ true),
   ]);
 
   const relatedIds = Array.from(
@@ -271,6 +302,35 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
         .map((e) => renderEdgeCard(e.from_id, e.relation_type, e.why, 'in'))
         .join('')}</div>`
     : '';
+
+  // Menções (spec 62): seção de contatos citados, editável via @autocomplete (note-edit.ts).
+  // Os chips SSR nascem prontos; o client hidrata add/remove. data-mentions-editor guarda
+  // o id da nota; cada chip tem data-entity-id pra o botão de remover.
+  const mentionChip = (entityId: string, label: string | null): string =>
+    `<span class="mention-chip" data-entity-id="${esc(entityId)}">
+      <a href="/app/contacts/${esc(entityId)}">${esc(label || entityId)}</a>
+      <button type="button" class="mention-chip-remove" data-mention-remove="${esc(entityId)}" title="Remover menção" aria-label="Remover menção">×</button>
+    </span>`;
+  const mentionsHtml = `
+    <section class="note-mentions" data-mentions-editor="${esc(note.id)}">
+      <h2>Contatos mencionados</h2>
+      <div class="mention-chips" data-mention-chips>${mentions.map((m) => mentionChip(m.entity_id, m.entity_label)).join('')}</div>
+      <div class="mention-add">
+        <input type="text" class="mention-add-input" data-mention-input placeholder="@ mencionar contato..." autocomplete="off" />
+        <div class="mention-suggest" data-mention-suggest hidden></div>
+      </div>
+      <div class="mention-status" data-mention-status role="status" aria-live="polite"></div>
+    </section>`;
+
+  // Tasks originadas desta nota (spec 62 §4) + botão "Criar task desta nota".
+  const tasksFromNoteHtml = `
+    <section class="note-origin-tasks" data-origin-tasks="${esc(note.id)}">
+      <h2>Tasks originadas desta nota</h2>
+      <div class="note-edges" data-origin-tasks-list>${tasksFromNote.length
+        ? tasksFromNote.map((t) => `<a class="note-card" href="/app/tasks/${esc(t.id)}"><div class="title">${esc(t.title)}</div><div class="meta"><span class="badge">${esc(t.status ?? 'open')}</span></div></a>`).join('')
+        : '<p class="note-origin-empty">Nenhuma task nasceu desta nota ainda.</p>'}</div>
+      <button type="button" class="note-edit-copy" data-create-task-from-note="${esc(note.id)}">Criar task desta nota</button>
+    </section>`;
 
   // Edição inline (spec 36 fase 2). Modo LEITURA é o default visual: campos parecem
   // texto até hover/focus (borderless). Título grande editável, tldr com contador,
@@ -365,6 +425,9 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       </label>
     </section>
 
+    ${mentionsHtml}
+    ${tasksFromNoteHtml}
+
     ${outboundHtml}
     ${inboundHtml}
 
@@ -374,7 +437,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    await renderShell({ title: note.title, active: 'notes', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: note.title, active: 'notes', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}${MENTIONS_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 
@@ -401,13 +464,29 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
       kind?: unknown;
     };
     expected_updated_at?: unknown;
+    // Menções (spec 62): ids de contato pra vincular/desvincular. Top-level (não no
+    // patch) — não são colunas de `notes`, têm caminho próprio (tabela `mentions`).
+    mentions?: unknown;
+    mentions_remove?: unknown;
   };
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
 
   const id = (body.id || '').trim();
   if (!id) return json({ error: 'id required' }, 400);
-  const p = body.patch;
-  if (!p || typeof p !== 'object') return json({ error: 'patch required' }, 400);
+  const p = (body.patch && typeof body.patch === 'object') ? body.patch : {};
+
+  // Menções (spec 62): arrays de ids de contato (strings). Inválidos → 400.
+  const parseIds = (v: unknown): string[] | undefined | null => {
+    if (v === undefined) return undefined;
+    if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) return null;
+    return (v as string[]).map((s) => s.trim()).filter(Boolean);
+  };
+  const mentionsAdd = parseIds(body.mentions);
+  const mentionsRemove = parseIds(body.mentions_remove);
+  if (mentionsAdd === null || mentionsRemove === null) {
+    return json({ error: 'mentions/mentions_remove must be arrays of string ids' }, 400);
+  }
+  const touchesMentions = (mentionsAdd?.length ?? 0) > 0 || (mentionsRemove?.length ?? 0) > 0;
 
   // expected_updated_at (opcional): inteiro ms. null/omitido = last-write-wins.
   let expectedUpdatedAt: number | undefined;
@@ -475,9 +554,10 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     kind = k as NoteKind;
   }
 
-  if (title === undefined && noteBody === undefined && tldr === undefined
-    && domains === undefined && kind === undefined) {
-    return json({ error: 'patch must include at least one of: title, body, tldr, domains, kind' }, 400);
+  const hasFieldEdit = title !== undefined || noteBody !== undefined || tldr !== undefined
+    || domains !== undefined || kind !== undefined;
+  if (!hasFieldEdit && !touchesMentions) {
+    return json({ error: 'patch must include at least one of: title, body, tldr, domains, kind (or mentions/mentions_remove)' }, 400);
   }
 
   // Sessão do dono edita notas privadas normalmente (spec 31).
@@ -490,22 +570,39 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
   }
 
   const now = Date.now();
-  const result = await updateNote(env, id, {
-    title, body: noteBody, tldr,
-    domains: domains !== undefined ? JSON.stringify(domains) : undefined,
-    kind,
-    updated_at: now,
-  }, expectedUpdatedAt);
+  if (hasFieldEdit) {
+    const result = await updateNote(env, id, {
+      title, body: noteBody, tldr,
+      domains: domains !== undefined ? JSON.stringify(domains) : undefined,
+      kind,
+      updated_at: now,
+    }, expectedUpdatedAt);
 
-  if (result === 'conflict') {
-    // Relê pra devolver o updated_at atual — a UI mostra "editada em outro lugar,
-    // recarregue" sem sobrescrever. Mesmo espírito do 409 de /app/tasks/update.
-    const current = await getNoteById(env, id, false, /* includePrivate */ true);
-    return json({
-      error: 'conflict',
-      message: 'Esta nota foi editada em outro lugar. Recarregue antes de salvar.',
-      current_updated_at: current?.updated_at ?? null,
-    }, 409);
+    if (result === 'conflict') {
+      // Relê pra devolver o updated_at atual — a UI mostra "editada em outro lugar,
+      // recarregue" sem sobrescrever. Mesmo espírito do 409 de /app/tasks/update.
+      const current = await getNoteById(env, id, false, /* includePrivate */ true);
+      return json({
+        error: 'conflict',
+        message: 'Esta nota foi editada em outro lugar. Recarregue antes de salvar.',
+        current_updated_at: current?.updated_at ?? null,
+      }, 409);
+    }
+  }
+
+  // Menções (spec 62): add/remove pelo editor (chips + @autocomplete). Tolerante a falha
+  // do contacts (applyMentions engole tudo — a menção D1 grava, o evento é eco). A sessão
+  // do dono vê privados, então seePrivate=true (fetch de label com o header).
+  let mentionsChanged: { created: number; removed: number } | undefined;
+  if (touchesMentions) {
+    mentionsChanged = await applyMentions(env, {
+      noteId: id,
+      title: title ?? existing.title,
+      url: `${(env.WORKER_URL ?? '').replace(/\/$/, '')}/app/notes/${id}`,
+      add: mentionsAdd,
+      remove: mentionsRemove,
+      seePrivate: true,
+    });
   }
 
   // Re-embeda pela função compartilhada (só se tldr/domains/kind mudou de fato).
@@ -513,12 +610,14 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
   // falha de Workers AI/Vectorize não pode perder o save do usuário nem retornar
   // erro — o recall só fica ~1-2 min desatualizado até o próximo write path.
   let reembedded = false;
-  try {
-    reembedded = await reembedNoteIfNeeded(env, existing, {
-      title, body: noteBody, tldr, domains, kind,
-    });
-  } catch (err) {
-    console.error('handleNoteUpdatePost: reembed failed (edit persisted anyway)', err);
+  if (hasFieldEdit) {
+    try {
+      reembedded = await reembedNoteIfNeeded(env, existing, {
+        title, body: noteBody, tldr, domains, kind,
+      });
+    } catch (err) {
+      console.error('handleNoteUpdatePost: reembed failed (edit persisted anyway)', err);
+    }
   }
 
   return json({
@@ -526,7 +625,63 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     id,
     updated_at: now,
     reembedded,
+    ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
   });
+}
+
+// POST /app/notes/task-from-note — cria uma task A PARTIR de uma nota (spec 62 §2):
+// registra origin_note_id + HERDA as menções da nota. Sessão do dono (requireSession).
+// Body JSON { note_id, title? } — title default = título da nota. Retorna { ok, id, url }.
+export async function handleTaskFromNotePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  let body: { note_id?: unknown; title?: unknown };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const noteId = (typeof body.note_id === 'string' ? body.note_id : '').trim();
+  if (!noteId) return json({ error: 'note_id required' }, 400);
+
+  // Sessão do dono → vê nota privada. Task NÃO origina task (só nota de conhecimento).
+  const origin = await getNoteById(env, noteId, false, /* includePrivate */ true);
+  if (!origin || origin.kind === 'task') return json({ error: 'note not found' }, 404);
+
+  const title = (typeof body.title === 'string' && body.title.trim())
+    ? body.title.trim().slice(0, 200)
+    : origin.title.slice(0, 200);
+
+  const now = Date.now();
+  const id = newId();
+  await insertTask(env, {
+    id,
+    title,
+    body: title,
+    tldr: title.slice(0, 280),
+    domains: JSON.stringify(['operations']),
+    status: 'open',
+    due_at: null,
+    priority: null,
+    project_id: null,
+    // A task herda a privacidade da nota de origem (nota privada → task privada), pra
+    // não vazar uma decisão sensível numa task pública.
+    private: (origin.private ?? 0) === 1 ? 1 : 0,
+    origin_note_id: noteId,
+    created_at: now,
+    updated_at: now,
+  });
+
+  // Herda as menções da nota de origem (spec 62 §2). Tolerante a falha do contacts.
+  const inherited = await listMentionsForNote(env, noteId);
+  if (inherited.length > 0) {
+    await applyMentions(env, {
+      noteId: id,
+      title,
+      url: `${(env.WORKER_URL ?? '').replace(/\/$/, '')}/app/tasks/${id}`,
+      add: inherited.map((m) => m.entity_id),
+      seePrivate: true,
+    });
+  }
+
+  return json({ ok: true, id, url: `${(env.WORKER_URL ?? '').replace(/\/$/, '')}/app/tasks/${id}` });
 }
 
 // POST /app/notes/{id}/private — toggle do SELO DE PRIVACIDADE (spec 31). É a ÚNICA
@@ -609,10 +764,16 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
   // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
   // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
-  const [comments, taxonomy] = await Promise.all([
+  const [comments, taxonomy, taskMentions] = await Promise.all([
     listTaskComments(env, task.id, 500, 0),
     getTaxonomyConfig(env),
+    // Menções (spec 62): contatos que esta task cita (chips de leitura + link).
+    listMentionsForNote(env, task.id),
   ]);
+  // Origem (spec 62): nota que originou a task ("Criar task desta nota").
+  const originNote = task.origin_note_id
+    ? await getNoteById(env, task.origin_note_id, false, /* includePrivate */ true)
+    : null;
   const activitySection = `
     <section class="task-activity" id="atividade">
       <h2>Atividade</h2>
@@ -760,6 +921,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       <a href="/app/tasks" class="task-d-back">← Tasks</a>
       <span class="task-d-tag">Task</span>
       ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
+      ${originNote ? `<span class="task-d-origin">de <a href="/app/notes/${esc(originNote.id)}">${esc(originNote.title)}</a></span>` : ''}
       <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="task-d-btn">Abrir no board</a></div>
     </div>
 
@@ -820,6 +982,11 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
             <span class="task-sidebar-lbl">Áreas</span>
             <span class="task-edit-domains">${domainsToBadges(task.domains, taxonomy)}</span>
           </div>
+          ${taskMentions.length ? `
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Contatos</span>
+            <div class="mention-chips">${taskMentions.map((m) => `<span class="mention-chip"><a href="/app/contacts/${esc(m.entity_id)}">${esc(m.entity_label || m.entity_id)}</a></span>`).join('')}</div>
+          </div>` : ''}
 
           ${datesHtml}
 
@@ -844,7 +1011,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    await renderShell({ title: task.title, active: 'tasks', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${TASK_DETAIL_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: task.title, active: 'tasks', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${TASK_DETAIL_CSS}${MENTIONS_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

@@ -121,10 +121,49 @@ function renderHeaderAndCartela(container: HTMLElement, id: string, detail: Enti
       <h2>Vínculos</h2>
       <p class="contact-page-empty">Carregando vínculos...</p>
     </div>
+    <div class="contact-page-section" data-section="mention-notes">
+      <h2>Notas sobre esta pessoa</h2>
+      <p class="contact-page-empty">Carregando...</p>
+    </div>
+    <div class="contact-page-section" data-section="mention-tasks">
+      <h2>Tarefas com esta pessoa</h2>
+      <p class="contact-page-empty">Carregando...</p>
+    </div>
     <div class="contact-page-section" data-section="timeline">
       <h2>Interações</h2>
     </div>
   `;
+}
+
+// Menções reversas (spec 62 §4): notas de conhecimento + tasks abertas que mencionam
+// este contato, dados 100% Brain-local (GET /app/contacts/entity/mentions).
+interface MentionNote { id: string; title: string; kind: string | null; private?: boolean; url: string; }
+interface MentionTask { id: string; title: string; status: string | null; due_at: number | null; priority: number | null; private?: boolean; url: string; }
+interface MentionsResponse { ok?: boolean; notes?: MentionNote[]; tasks_open?: MentionTask[]; tasks_closed_count?: number; }
+
+function renderMentionNotes(section: HTMLElement, notes: MentionNote[]): void {
+  const body = notes.length
+    ? `<div class="contact-page-vinculos">${notes.map((n) => `
+        <a class="panel-conn" href="${esc(n.url)}">
+          <span class="panel-conn-label">${esc(n.title)}${n.private ? ' 🔒' : ''}</span>
+          <span class="panel-conn-rel">${esc(n.kind || 'nota')}</span>
+        </a>`).join('')}</div>`
+    : '<p class="contact-page-empty">Nenhuma nota menciona esta pessoa ainda.</p>';
+  section.innerHTML = `<h2>Notas sobre esta pessoa</h2>${body}`;
+}
+
+function renderMentionTasks(section: HTMLElement, tasks: MentionTask[], closedCount: number): void {
+  const body = tasks.length
+    ? `<div class="contact-page-vinculos">${tasks.map((t) => `
+        <a class="panel-conn" href="${esc(t.url)}">
+          <span class="panel-conn-label">${esc(t.title)}${t.private ? ' 🔒' : ''}</span>
+          <span class="panel-conn-rel">${esc(t.status || 'open')}</span>
+        </a>`).join('')}</div>`
+    : '<p class="contact-page-empty">Nenhuma tarefa aberta com esta pessoa.</p>';
+  const closed = closedCount > 0
+    ? `<p class="contact-page-warn">+ ${closedCount} tarefa${closedCount === 1 ? '' : 's'} concluída${closedCount === 1 ? '' : 's'}.</p>`
+    : '';
+  section.innerHTML = `<h2>Tarefas com esta pessoa</h2>${body}${closed}`;
 }
 
 function neighborLine(n: NeighborItem): string {
@@ -349,6 +388,28 @@ async function main(): Promise<void> {
       })
       .catch(() => {
         neighborsSection.innerHTML = '<h2>Vínculos</h2><p class="contact-page-empty">Vínculos indisponíveis no momento.</p>';
+      });
+  }
+
+  // Seções reversas de menção (spec 62 §4): notas + tasks que mencionam este contato.
+  const notesSection = container.querySelector('[data-section="mention-notes"]') as HTMLElement | null;
+  const tasksSection = container.querySelector('[data-section="mention-tasks"]') as HTMLElement | null;
+  if (notesSection || tasksSection) {
+    void fetch(`/app/contacts/entity/mentions?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: MentionsResponse | null) => {
+        if (notesSection) {
+          if (!d || d.ok === false) notesSection.innerHTML = '<h2>Notas sobre esta pessoa</h2><p class="contact-page-empty">Indisponível no momento.</p>';
+          else renderMentionNotes(notesSection, d.notes ?? []);
+        }
+        if (tasksSection) {
+          if (!d || d.ok === false) tasksSection.innerHTML = '<h2>Tarefas com esta pessoa</h2><p class="contact-page-empty">Indisponível no momento.</p>';
+          else renderMentionTasks(tasksSection, d.tasks_open ?? [], d.tasks_closed_count ?? 0);
+        }
+      })
+      .catch(() => {
+        if (notesSection) notesSection.innerHTML = '<h2>Notas sobre esta pessoa</h2><p class="contact-page-empty">Indisponível no momento.</p>';
+        if (tasksSection) tasksSection.innerHTML = '<h2>Tarefas com esta pessoa</h2><p class="contact-page-empty">Indisponível no momento.</p>';
       });
   }
 
