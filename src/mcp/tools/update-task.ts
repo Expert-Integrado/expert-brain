@@ -5,6 +5,7 @@ import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTas
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
+import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id to edit (from save_task / list_tasks_due_today / the /app/tasks board).'),
@@ -26,6 +27,12 @@ const inputSchema = {
   ),
   private: z.boolean().optional().describe(
     'Set true to MARK the task private (invisible via list_tasks / list_tasks_due_today / get_task to any credential without the `private` scope; also revokes any public /s/<token> link in the same write). Passing false is REJECTED — un-marking is only possible in the logged-in owner UI. One-way from tools.'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to ADD as mentions (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts — never a free-text name. Additive (does NOT remove absent ones — use mentions_remove). A new mention shows the task on the contact\'s page and fires a `mentioned_in_brain` event.'
+  ),
+  mentions_remove: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to REMOVE from this task\'s mentions. Does NOT delete the timeline event already fired on the contact.'
   ),
   allow_new_domain: z.boolean().optional(),
 };
@@ -61,6 +68,8 @@ interface UpdateTaskInput {
   project?: string;
   expected_updated_at?: number;
   private?: boolean;
+  mentions?: string[];
+  mentions_remove?: string[];
   allow_new_domain?: boolean;
 }
 
@@ -92,14 +101,15 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       }
       const wantsPrivate = input.private === true;
 
+      const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
       const hasFieldEdit =
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
         input.domains !== undefined || input.tags !== undefined ||
         input.project !== undefined;
-      if (!hasFieldEdit && !wantsPrivate) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, private (true only).');
+      if (!hasFieldEdit && !wantsPrivate && !touchesMentions) {
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, private (true only), mentions, mentions_remove.');
       }
 
       const patch: TaskPatch = {};
@@ -150,15 +160,16 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         }
       }
 
-      // Se só há private:true (sem edição de campo), valida existência/visibilidade aqui
-      // (espelha mark_private de nota): caller sem escopo não enxerga task privada →
-      // "not found", e nunca marca uma task que não pode ver. Task pública é visível → ok.
-      if (!hasFieldEdit && wantsPrivate) {
+      // Se não há edição de campo (só private:true e/ou menções), valida existência/
+      // visibilidade aqui (espelha mark_private de nota): caller sem escopo não enxerga
+      // task privada → "not found", e nunca marca/menciona uma task que não pode ver.
+      let task: TaskRow | undefined;
+      if (!hasFieldEdit && (wantsPrivate || touchesMentions)) {
         const visible = await getTaskById(env, input.id, canSeePrivate(auth));
         if (!visible) return toolError(notFoundMsg());
+        task = visible;
       }
 
-      let task: TaskRow | undefined;
       if (hasFieldEdit) {
         const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
         if (result === 'not-found') return toolError(notFoundMsg());
@@ -185,6 +196,21 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       }
 
       if (!task) return toolError(notFoundMsg());
+
+      // Menções (spec 62): add/remove. DEPOIS do patch/privacidade — o retorno reflete o
+      // estado final. Tolerante a falha do contacts. Usa o título final da task no contexto.
+      let mentionsChanged: { created: number; removed: number } | undefined;
+      if (touchesMentions) {
+        mentionsChanged = await applyMentions(env, {
+          noteId: task.id,
+          title: task.title,
+          url: noteUrl(env, task.id),
+          add: input.mentions,
+          remove: input.mentions_remove,
+          seePrivate: canSeePrivate(auth),
+        });
+      }
+
       const proj = task.project_id ? await getProjectById(env, task.project_id) : null;
 
       const out: Record<string, unknown> = {
@@ -198,6 +224,7 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         project: proj ? { id: proj.id, label: proj.label } : null,
         private: task.private === 1,
         updated_at: task.updated_at,
+        ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
       };
       if (shareRevoked) {
         out.share_revoked = true;

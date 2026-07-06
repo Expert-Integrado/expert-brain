@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
-import { getEdgesFrom, getEdgesTo, getNoteById, getTagsByNote } from '../../db/queries.js';
+import { getEdgesFrom, getEdgesTo, getNoteById, getTagsByNote, listTasksFromOrigin } from '../../db/queries.js';
+import { mentionsForOutput } from '../mentions.js';
 
 const inputSchema = { id: z.string().min(1) };
 
@@ -31,10 +32,15 @@ export function registerGetNote(server: any, env: Env, auth?: AuthContext): void
           `Note '${input.id}' not found. Call recall() to discover the correct id. Do NOT retry with this id.`
         );
       }
-      const [tags, edgesOut, edgesIn] = await Promise.all([
+      const [tags, edgesOut, edgesIn, mentions, tasksFromOrigin] = await Promise.all([
         getTagsByNote(env, input.id),
         getEdgesFrom(env, input.id, seePrivate),
         getEdgesTo(env, input.id, seePrivate),
+        // Menções (spec 62): contatos que esta nota cita. Label omitido pra contato
+        // privado quando o caller não tem escopo `private` (não vaza o nome).
+        mentionsForOutput(env, input.id, seePrivate),
+        // Tasks originadas desta nota ("Criar task desta nota"): gate de privacidade de task.
+        listTasksFromOrigin(env, input.id, seePrivate),
       ]);
       return toolSuccess({
         id: n.id,
@@ -51,6 +57,8 @@ export function registerGetNote(server: any, env: Env, auth?: AuthContext): void
           out: edgesOut.map((e) => ({ id: e.id, to_id: e.to_id, relation_type: e.relation_type, why: e.why })),
           in:  edgesIn.map((e) => ({ id: e.id, from_id: e.from_id, relation_type: e.relation_type, why: e.why })),
         },
+        mentions,
+        tasks_from_origin: tasksFromOrigin.map((t) => ({ id: t.id, title: t.title, status: t.status })),
       });
     }) as any
   );

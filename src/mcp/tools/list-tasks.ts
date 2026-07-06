@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
-import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, type TaskRow, type TaskProject } from '../../db/queries.js';
+import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, type TaskRow, type TaskProject } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -10,6 +10,7 @@ const inputSchema = {
   include_closed: z.boolean().optional().describe('Also include done/canceled tasks (most recent first). Redundant when status already lists done/canceled or when query is set. Default false.'),
   tag: z.string().optional().describe('Only tasks carrying this tag (case-insensitive). Tag is a MULTI-valued, transversal label (e.g. a contact name, maquina:pc-principal) — for a single-valued folder use `project` instead.'),
   project: z.string().optional().describe('Only tasks in this PROJECT (folder). Accepts a project id (proj_...) or label (case-insensitive); resolves among BOTH active AND archived projects (so you can list a finished project’s history). A single-valued grouping, distinct from `tag`. No match → empty result.'),
+  mentions_entity: z.string().optional().describe('Only tasks that MENTION this CONTACT (entity id from the Contacts vault) — "tasks with this person". Get the id via get_contact_by_phone / search_contacts. No match → empty result. Composes with status/tag/project/query.'),
   limit: z.number().int().min(1).max(500).optional().describe('Max tasks to return (default 200).'),
 };
 
@@ -19,7 +20,7 @@ This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks 
 
 Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, comment_count, url, updated_at. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
-interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; limit?: number; }
+interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; limit?: number; }
 
 export function registerListTasks(server: any, env: Env, auth?: AuthContext): void {
   // Selo de privacidade (spec 59): sem escopo `private`, task privada some de TODAS as
@@ -72,6 +73,15 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
         const proj = await getProjectByIdOrLabel(env, input.project, false);
         if (!proj) return toolSuccess({ count: 0, tasks: [] });
         tasks = tasks.filter((t) => t.project_id === proj.id);
+      }
+
+      // filtro de menção (spec 62): "tasks com essa pessoa". Cruza com o conjunto de
+      // note_ids que mencionam a entidade. As tasks já vêm gateadas por privacidade
+      // (listActiveTasks/ftsSearchTasks com seePrivate), então filtrar aqui é seguro.
+      if (input.mentions_entity !== undefined && input.mentions_entity.trim() !== '') {
+        const mentioned = await listNoteIdsMentioning(env, input.mentions_entity.trim());
+        if (mentioned.size === 0) return toolSuccess({ count: 0, tasks: [] });
+        tasks = tasks.filter((t) => mentioned.has(t.id));
       }
 
       // Sem filtro de tag: corta ANTES de buscar tags (não busca tags de itens que

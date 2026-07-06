@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
+import { mentionsForOutput } from '../mentions.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id (from save_task / list_tasks / list_tasks_due_today / the /app/tasks board).'),
@@ -47,6 +48,9 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       // Projeto/pasta (spec 58): resolve {id,label} da task (mesmo arquivado — o
       // get_task não esconde a pasta; o chip é que esmaece na UI).
       const proj = t.project_id ? await getProjectById(env, t.project_id) : null;
+      // Menções (spec 62): contatos que esta task cita. Label omitido pra contato privado
+      // quando o caller não tem escopo `private`.
+      const mentions = await mentionsForOutput(env, input.id, seePrivate);
       const now = Date.now();
       return toolSuccess({
         id: t.id,
@@ -65,6 +69,8 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
         column: col ? { id: col.id, label: col.label } : null,
         project: proj ? { id: proj.id, label: proj.label } : null,
         private: t.private === 1,
+        origin_note_id: t.origin_note_id ?? null,
+        mentions,
         comment_count: commentCount,
         comments: comments.map((c) => ({
           id: c.id,

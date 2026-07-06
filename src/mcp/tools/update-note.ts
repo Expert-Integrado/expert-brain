@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, writeActor, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor, noteUrl, canSeePrivate } from '../helpers.js';
 import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
+import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
   id: z.string().min(1),
@@ -20,6 +21,12 @@ const inputSchema = {
   ),
   private: z.boolean().optional().describe(
     'Set true to MARK the note private (invisible via recall/get_note/expand/stats to any credential without the `private` scope). Passing false is REJECTED — un-marking a note as public is only possible in the logged-in owner UI. This is one-way from tools.'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to ADD as mentions (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts — never a free-text name. Additive: this does NOT remove mentions absent from the array (use mentions_remove for that). A newly-added mention fires a `mentioned_in_brain` event on that contact\'s timeline.'
+  ),
+  mentions_remove: z.array(z.string().min(1)).optional().describe(
+    'CONTACT entity ids to REMOVE from this note\'s mentions. Removing a mention does NOT delete the timeline event already fired on the contact (the timeline is history).'
   ),
 };
 
@@ -59,6 +66,8 @@ interface UpdateNoteInput {
   tags?: string[];
   allow_new_domain?: boolean;
   private?: boolean;
+  mentions?: string[];
+  mentions_remove?: string[];
 }
 
 export function registerUpdateNote(server: any, env: Env, auth: AuthContext): void {
@@ -87,12 +96,13 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
         );
       }
       const setsPrivate = input.private === true;
+      const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
       const touchesD1Columns = title !== undefined || body !== undefined || tldr !== undefined
         || domains !== undefined || kind !== undefined || setsPrivate;
-      if (!touchesD1Columns && tags === undefined) {
+      if (!touchesD1Columns && tags === undefined && !touchesMentions) {
         return toolError(
           `update_note requires at least one field besides id to be provided. ` +
-          `Editable fields: title, body, tldr, domains, kind, tags, private (true only).`
+          `Editable fields: title, body, tldr, domains, kind, tags, private (true only), mentions, mentions_remove.`
         );
       }
 
@@ -158,11 +168,28 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
         title, body, tldr, domains, kind,
       });
 
+      // Menções (spec 62): add/remove. Tolerante a falha do contacts (applyMentions engole
+      // tudo — a menção D1 grava, o evento na timeline é eco). O título usado no contexto do
+      // evento é o NOVO (se mudou) ou o existente.
+      let mentionsChanged: { created: number; removed: number } | undefined;
+      if (touchesMentions) {
+        mentionsChanged = await applyMentions(env, {
+          noteId: id,
+          title: title ?? existing.title,
+          url: noteUrl(env, id),
+          add: input.mentions,
+          remove: input.mentions_remove,
+          seePrivate: canSeePrivate(auth),
+        });
+        if (mentionsChanged.created > 0 || mentionsChanged.removed > 0) fieldsChanged.push('mentions');
+      }
+
       return toolSuccess({
         id,
         updated: true,
         fields_changed: fieldsChanged,
         reembedded,
+        ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
       });
     }) as any
   );

@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskByTag, findSimilarActiveTasksByTitle } from '../../db/queries.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
+import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskByTag, findSimilarActiveTasksByTitle, getNoteById, listMentionsForNote } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
+import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
   title: z.string().min(1).max(200).describe('What needs to be done — short, action-first. Becomes the task card title.'),
@@ -26,6 +27,12 @@ const inputSchema = {
   ),
   private: z.boolean().optional().describe(
     'Set true to create the task PRIVATE: invisible via list_tasks / list_tasks_due_today / get_task to any credential without the `private` scope (including a `full` PAT), and it can NEVER have a public /s/<token> link. Un-marking is only possible in the logged-in owner UI. Default false (public).'
+  ),
+  mentions: z.array(z.string().min(1)).optional().describe(
+    'Optional CONTACT entity ids this task is about (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts — never a free-text name. Each mention shows the task on the contact\'s page ("Tarefas com esta pessoa") and fires a `mentioned_in_brain` event on the contact\'s timeline.'
+  ),
+  origin_note_id: z.string().min(1).optional().describe(
+    'Optional id of the NOTE that originated this task ("create a task from this note"). Records provenance (why this task exists). When set and `mentions` is omitted, the task INHERITS the origin note\'s mentions. The note must exist.'
   ),
   allow_new_domain: z.boolean().optional(),
 };
@@ -59,6 +66,8 @@ interface SaveTaskInput {
   project?: string;
   dedupe_key?: string;
   private?: boolean;
+  mentions?: string[];
+  origin_note_id?: string;
   allow_new_domain?: boolean;
 }
 
@@ -165,6 +174,25 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         resolvedProject = pr.project ? { id: pr.project.id, label: pr.project.label } : null;
       }
 
+      // Origem (spec 62): "Criar task desta nota". Valida que a nota existe ANTES do
+      // insert (a coluna origin_note_id referencia notes(id)) — erro claro em vez de
+      // FK/menção órfã. Herda as menções da nota de origem quando `mentions` foi omitido.
+      let originNoteId: string | null = null;
+      let mentionIds: string[] = input.mentions ?? [];
+      if (input.origin_note_id !== undefined) {
+        const origin = await getNoteById(env, input.origin_note_id, false, canSeePrivate(auth));
+        if (!origin) {
+          return toolError(
+            `origin_note_id '${input.origin_note_id}' not found. Pass the id of an existing note (the one this task comes from).`
+          );
+        }
+        originNoteId = origin.id;
+        if (input.mentions === undefined) {
+          const inherited = await listMentionsForNote(env, origin.id);
+          mentionIds = inherited.map((m) => m.entity_id);
+        }
+      }
+
       const id = newId();
       // Task nascendo fechada (done/canceled) stampa completed_at — preserva o
       // invariante "fechada ⇒ completed_at preenchido". Ver spec 14 item 4 (opção A).
@@ -183,6 +211,8 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         project_id: projectId,
         // Selo de privacidade (spec 59): nasce privada quando pedido.
         private: input.private ? 1 : 0,
+        // Origem (spec 62): nota que originou a task.
+        origin_note_id: originNoteId,
         created_at: now,
         updated_at: now,
       }, writeActor(auth));
@@ -190,6 +220,20 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       const allTags = [...(input.tags ?? [])];
       if (dedupeTag) allTags.push(dedupeTag);
       if (allTags.length > 0) await insertTags(env, id, allTags);
+
+      // Menções (spec 62): explícitas ou herdadas da nota de origem. Tolerante a falha
+      // do contacts (a menção D1 grava; o evento na timeline é eco).
+      let mentionsCreated = 0;
+      if (mentionIds.length > 0) {
+        const r = await applyMentions(env, {
+          noteId: id,
+          title,
+          url: noteUrl(env, id),
+          add: mentionIds,
+          seePrivate: canSeePrivate(auth),
+        });
+        mentionsCreated = r.created;
+      }
 
       const out: Record<string, unknown> = {
         id,
@@ -202,6 +246,8 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         due_brt: dueMs !== null ? formatBrtDateTime(dueMs) : null,
         project: resolvedProject,
         private: input.private === true,
+        origin_note_id: originNoteId,
+        mentions_created: mentionsCreated,
         updated_at: now,
       };
       if (possibleDuplicates.length > 0) {
