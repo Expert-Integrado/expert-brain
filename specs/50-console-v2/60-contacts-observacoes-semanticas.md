@@ -1,8 +1,8 @@
 # Contacts: observações que alimentam a busca semântica — events no embedding + busca textual em contexts
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
 
-> **Execução (05-06/07/2026):** PARCIAL — agente caiu por limite de sessão com o trabalho na working tree do `expert-contacts` (branch `feat/console-v2`, sem commit). Retomar por herança da tree, não refazer.
+> **Execução:** concluída em 06/07/2026 na `feat/console-v2` do `expert-contacts` (227 testes verdes).
 > **Depende de:** `50-console-v2/57` (função `recordEvent` extraída + form de registro no console)
 > **Agente sugerido:** Opus (mexe no texto canônico de embedding)
 
