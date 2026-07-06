@@ -368,6 +368,28 @@ export async function ftsSearch(
   return r.results ?? [];
 }
 
+// Conta quantas notas de CONHECIMENTO (NON_TASK_FILTER — task NUNCA entra aqui)
+// usam cada área. Usado pela seção "Áreas e tipos" de /app/config (spec 54) pra
+// mostrar a contagem por linha. `domains` é JSON-encoded (array de slugs); sem
+// índice pra DISTINCT no D1, agrega em memória — aceitável no volume do vault
+// (mesma ordem de grandeza de handleGraphMeta, que já faz full scan de notes).
+export async function listDomainCounts(env: Env): Promise<Record<string, number>> {
+  const rows = await env.DB.prepare(
+    `SELECT domains FROM notes WHERE deleted_at IS NULL AND ${NON_TASK_FILTER}`
+  ).all<{ domains: string }>();
+  const counts: Record<string, number> = {};
+  for (const row of rows.results ?? []) {
+    let arr: unknown;
+    try { arr = JSON.parse(row.domains || '[]'); } catch { continue; }
+    if (!Array.isArray(arr)) continue;
+    for (const d of arr) {
+      if (typeof d !== 'string' || !d) continue;
+      counts[d] = (counts[d] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 // ───────────────────────────── TASKS ─────────────────────────────
 // (TaskRow/InsertTaskInput/TASK_COLS declarados abaixo; ftsSearchTasks fica lá.)
 // Tasks são notas (kind='task') com 4 colunas extras. Estas funções leem/escrevem
