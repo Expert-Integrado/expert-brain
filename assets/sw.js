@@ -6,7 +6,10 @@
 
 // v2: limpa o cache acumulado da era `?v=Date.now()` (cada load gerava uma URL
 // nova e entulhava o cache). Agora os bundles usam ?v=<hash> estável.
-const VERSION = 'v2';
+// v3: manifest.webmanifest ganhou share_target/shortcuts (specs/50-console-v2/
+// 68-pwa-instalavel.md) — bump invalida o cache antigo do manifest (stale-while-
+// revalidate por extensão) pra que o SO recarregue os atalhos/share target.
+const VERSION = 'v3';
 const CACHE = `brain-${VERSION}`;
 const ASSET_RE = /\.(js|css|png|svg|webmanifest|woff2?)$/;
 
