@@ -1,6 +1,6 @@
 # Contacts: privacidade — entidade e evento privados, fail-closed no proxy e escopo propagado pelo Brain
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (expert-contacts + expert-brain)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** ambos (expert-contacts + expert-brain)
 > **Depende de:** `10-backend/17` (AuthContext propagado) **e** `30-features/31` (helper `hasScope`, formato CSV de scopes e o escopo `private` com checkbox na UI de PAT — tudo nasce lá). Rodar DEPOIS da onda C2 (`55`/`56`/`57` criam os endpoints que esta spec gateia) e junto/depois da `60` (o filtro de embedding referencia a coluna criada aqui).
 > **Agente sugerido:** Opus (superfície de segurança cross-repo)
 
