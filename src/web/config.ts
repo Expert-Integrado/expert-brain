@@ -7,6 +7,8 @@ import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
 import { readPersonalizationPrompt } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
+import { readLastBackup } from '../backup/snapshot.js';
+import { formatBrtDateTime } from '../util/time.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -26,6 +28,12 @@ const PREFS_MAX_LEN = 8000;
 
 async function getPersonalizationPrompt(env: Env): Promise<string> {
   return (await readPersonalizationPrompt(env)) ?? DEFAULT_PREFS_BLOCK;
+}
+
+function formatBytes(n: number): string {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
 }
 
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
@@ -76,6 +84,19 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ? new Date(stats.lastWrite).toLocaleString('pt-BR')
     : 'Nunca';
 
+  // Seção Backup (spec 67): status do último snapshot lido de meta.last_backup
+  // (gravado tanto pelo cron semanal quanto pelo "Fazer backup agora").
+  const lastBackup = await readLastBackup(env);
+  let backupStatus: string;
+  if (!lastBackup) {
+    backupStatus = `<p style="color:var(--text-dim)">Nenhum snapshot ainda. O backup automático roda toda segunda às 02:00 (BRT) — ou dispare um agora.</p>`;
+  } else if (lastBackup.ok) {
+    const nTables = Object.keys(lastBackup.tables).length;
+    backupStatus = `<p><span class="badge-pill badge-ok">● OK</span> &nbsp;<strong>${esc(formatBrtDateTime(lastBackup.at))}</strong> &nbsp;·&nbsp; ${lastBackup.total_rows} linhas em ${nTables} tabelas &nbsp;·&nbsp; ${esc(formatBytes(lastBackup.bytes))} &nbsp;·&nbsp; <code>${esc(lastBackup.prefix)}</code></p>`;
+  } else {
+    backupStatus = `<p><span class="badge-pill badge-warn">○ Falhou</span> &nbsp;<strong>${esc(formatBrtDateTime(lastBackup.at))}</strong> &nbsp;·&nbsp; <span style="color:var(--text-dim)">${esc(lastBackup.error ?? 'erro desconhecido')}</span></p>`;
+  }
+
   const badge = stats.connected
     ? `<span class="badge-pill badge-ok">● Claude conectado</span>`
     : `<span class="badge-pill badge-warn">○ Aguardando — conecte numa das opções abaixo</span>`;
@@ -118,6 +139,20 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <h2>Status do vault</h2>
       <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
       <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
+    </div>
+
+    <div class="card" id="backup">
+      <h2>Backup</h2>
+      ${backupStatus}
+      <div class="row" style="gap:8px;margin-top:10px">
+        <form method="post" action="/app/config/backup-now">
+          <button type="submit" class="btn-primary">Fazer backup agora</button>
+        </form>
+        <form method="get" action="/app/export">
+          <button type="submit">Baixar export (.zip)</button>
+        </form>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
     </div>
 
     <h2 class="conn-heading">Conexões</h2>

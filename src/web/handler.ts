@@ -6,6 +6,7 @@ import { handleContactsData, handleContactsMeta, handleContactsEntity, handleCon
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
+import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskSharePost, handleTaskUnsharePost } from './tasks.js';
@@ -147,6 +148,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/prefs' && req.method === 'POST') return handleConfigPrefsPost(req, env);
+  // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
+  // obrigatória nos dois — nenhum caminho público novo.
+  if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);
+  if (path === '/app/export' && req.method === 'GET') return handleExportGet(req, env);
   if (path === '/app/config/bundle.js' && req.method === 'GET') {
     return new Response(configPageScript(), {
       headers: {
