@@ -299,9 +299,12 @@ a:hover { color: var(--text); }
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: rgba(167, 139, 250, 0.12);
-  color: var(--accent-lav);
-  border: 1px solid rgba(167, 139, 250, 0.22);
+  /* --chip (spec 54): setado inline por área quando há uma cor resolvida
+     (customizada ou da paleta compilada). Fallback = lavanda original, pro
+     badge de relação de edge (que não é de área) ficar igual a antes. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 16%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 88%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 32%, transparent);
   margin-right: 6px;
 }
 
@@ -633,6 +636,15 @@ a:hover { color: var(--text); }
   transition: background 160ms var(--ease);
 }
 .btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
+
+/* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
+.tax-swatch {
+  width: 40px; height: 30px; padding: 2px;
+  background: transparent; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer;
+}
+.tax-inline-error { color: var(--danger); font-size: 13px; margin-top: 6px; }
+.tax-inline-status { color: var(--text-dim); font-size: 13px; }
 
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
 .key-flash {
@@ -1093,9 +1105,10 @@ a:hover { color: var(--text); }
 .panel-kind {
   display: inline-block;
   padding: 2px 8px;
-  background: rgba(167, 139, 250, 0.18);
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  /* --chip (spec 54): cor do kind resolvida, setada inline pelo client/graph.ts. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 600;
@@ -1421,9 +1434,12 @@ a:hover { color: var(--text); }
 .kind-badge {
   display: inline-block;
   padding: 2px 9px;
-  background: rgba(167, 139, 250, 0.18);
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  /* --chip (spec 54): cor do kind resolvida (customizada ou paleta fixa). Sem
+     customização o resolver ainda manda uma cor (fallback da paleta), então
+     --chip está SEMPRE setado aqui — o default abaixo é só defesa. */
+  background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
+  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 600;

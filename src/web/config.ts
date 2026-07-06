@@ -9,7 +9,9 @@ import { readPersonalizationPrompt } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
 import { formatBrtDateTime } from '../util/time.js';
-import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject } from '../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject, KNOWLEDGE_KINDS, listDomainCounts } from '../db/queries.js';
+import { resolveDomainMeta, resolveKindMeta } from './domain-colors.js';
+import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -213,6 +215,79 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
     </details>`;
 }
 
+// ─────────────── Seção "Áreas e tipos" (taxonomia configurável — spec 54) ───────────────
+function renderDomainRow(slug: string, label: string, color: string, count: number): string {
+  return `<tr data-slug="${esc(slug)}">
+    <td><input type="color" class="tax-swatch" value="${esc(color)}" aria-label="Cor de ${esc(slug)}"></td>
+    <td><input type="text" class="input-text tax-label-input" value="${esc(label)}" maxlength="40" aria-label="Nome de exibição de ${esc(slug)}"></td>
+    <td><code>${esc(slug)}</code></td>
+    <td>${count}</td>
+  </tr>`;
+}
+
+function renderKindRow(kind: string, label: string, color: string): string {
+  return `<tr data-kind="${esc(kind)}">
+    <td><input type="color" class="tax-swatch" value="${esc(color)}" aria-label="Cor de ${esc(kind)}"></td>
+    <td><input type="text" class="input-text tax-label-input" value="${esc(label)}" maxlength="40" aria-label="Nome de exibição de ${esc(kind)}"></td>
+    <td><code>${esc(kind)}</code></td>
+  </tr>`;
+}
+
+function renderTaxonomySection(
+  domainCounts: Record<string, number>,
+  taxonomy: { domains: Record<string, { label: string; color: string }>; kinds: Record<string, { label: string; color: string }> },
+  savedTaxonomy: boolean
+): string {
+  const domainSlugs = mergedDomainSlugs(taxonomy, Object.keys(domainCounts));
+  const domainRows = domainSlugs
+    .map((slug) => {
+      const meta = resolveDomainMeta(slug, taxonomy);
+      return renderDomainRow(slug, meta.label, meta.color, domainCounts[slug] ?? 0);
+    })
+    .join('');
+  const kindRows = KNOWLEDGE_KINDS
+    .map((k) => {
+      const meta = resolveKindMeta(k, taxonomy);
+      return renderKindRow(k, meta.label, meta.color);
+    })
+    .join('');
+  return `
+    <details class="disclosure-advanced conn-section" id="taxonomy"${savedTaxonomy ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">6. Áreas e tipos</span>
+        <span class="adv-sub">Cor e nome de exibição das áreas (domains) e tipos (kinds) — crie áreas novas aqui</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <h3>Áreas</h3>
+          <p>O <strong>slug</strong> é a chave canônica (MCP, grafo, filtros) — mudar cor ou nome aqui é só exibição: não renomeia o slug, não move nenhuma nota.</p>
+          <table class="keys-table">
+            <thead><tr><th>Cor</th><th>Nome de exibição</th><th>Slug</th><th>Notas</th></tr></thead>
+            <tbody id="taxonomy-domains-body">${domainRows}</tbody>
+          </table>
+          <div class="row" style="gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
+            <input type="text" id="tax-new-label" placeholder="Nome da nova área (ex: Vida Pessoal)" maxlength="40" class="input-text" style="width:220px">
+            <button type="button" id="tax-add-domain">+ Nova área</button>
+          </div>
+          <p id="tax-new-error" class="tax-inline-error" style="display:none"></p>
+        </div>
+        <div class="adv-section">
+          <h3>Tipos (kinds)</h3>
+          <p>Os 7 tipos são fixos (enum estrutural do MCP) — só cor e nome de exibição são editáveis; criar/excluir kind está fora de escopo aqui.</p>
+          <table class="keys-table">
+            <thead><tr><th>Cor</th><th>Nome de exibição</th><th>Kind</th></tr></thead>
+            <tbody id="taxonomy-kinds-body">${kindRows}</tbody>
+          </table>
+        </div>
+        <div class="row" style="gap:8px">
+          <button type="button" id="taxonomy-save" class="btn-primary">Salvar</button>
+          <button type="button" id="taxonomy-reset" class="btn-danger">Restaurar padrão</button>
+        </div>
+        <p id="taxonomy-status" class="tax-inline-status" role="status" aria-live="polite"></p>
+      </div>
+    </details>`;
+}
+
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -258,6 +333,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedBoard = url.searchParams.get('saved') === 'board';
   // Idem pra gestão de projetos (?saved=projects reabre a seção "Projetos").
   const savedProjects = url.searchParams.get('saved') === 'projects';
+  // Idem pra taxonomia de áreas/kinds (?saved=taxonomy reabre "Áreas e tipos").
+  const savedTaxonomy = url.searchParams.get('saved') === 'taxonomy';
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const [kanbanColumns, kanbanCounts] = await Promise.all([
@@ -272,6 +349,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     taskCountsByProject(env),
   ]);
   const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
+
+  // Seção "Áreas e tipos" (spec 54): contagem por área (NON_TASK_FILTER) + config
+  // customizada do dono (cor/label + áreas pré-criadas).
+  const [domainCounts, taxonomyConfig] = await Promise.all([
+    listDomainCounts(env),
+    getTaxonomyConfig(env),
+  ]);
+  const taxonomySection = renderTaxonomySection(domainCounts, taxonomyConfig, savedTaxonomy);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
   const stats = await getVaultStatus(env);
@@ -445,6 +530,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ${boardSection}
 
     ${projectsSection}
+
+    ${taxonomySection}
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;

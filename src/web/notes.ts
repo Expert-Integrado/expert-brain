@@ -23,11 +23,13 @@ import {
   type EdgeRow,
   type NoteKind,
 } from '../db/queries.js';
-import { validateDomains, CANONICAL_DOMAINS } from '../db/validation.js';
+import { validateDomains } from '../db/validation.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { getShareStatus } from './share.js';
 import { renderCommentThread } from './comments-render.js';
 import { visibleTags } from './tasks.js';
+import { resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from './domain-colors.js';
+import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -63,9 +65,12 @@ function parseDomains(raw: string): string[] {
   return trimmed.split(',').map((d) => d.trim()).filter(Boolean);
 }
 
-function domainsToBadges(raw: string): string {
+function domainsToBadges(raw: string, taxonomy: TaxonomyConfig): string {
   return parseDomains(raw)
-    .map((d) => `<span class="badge">${esc(d)}</span>`)
+    .map((d) => {
+      const meta = resolveDomainMeta(d, taxonomy);
+      return `<span class="badge" style="--chip:${esc(meta.color)}">${esc(meta.label)}</span>`;
+    })
     .join('');
 }
 
@@ -81,7 +86,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   const rawOffset = Number(url.searchParams.get('offset') ?? '0');
   const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.floor(rawOffset) : 0;
 
-  const [rows, totalRow] = await Promise.all([
+  const [rows, totalRow, taxonomy] = await Promise.all([
     env.DB.prepare(
       `SELECT id, title, domains, kind, tldr, updated_at FROM notes
        WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')
@@ -91,6 +96,7 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
     env.DB.prepare(
       `SELECT COUNT(*) c FROM notes WHERE deleted_at IS NULL AND (kind IS NULL OR kind <> 'task')`
     ).first<{ c: number }>(),
+    getTaxonomyConfig(env),
   ]);
   const all = rows.results ?? [];
   // Buscamos PAGE_SIZE+1 pra saber se há mais SEM um COUNT extra da página.
@@ -102,15 +108,16 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   // leaving it in place keeps the no-JS fallback useful and gives the browser
   // something to paint immediately.
   const ssrItems = page
-    .map(
-      (n) => `
+    .map((n) => {
+      const kindMeta = n.kind ? resolveKindMeta(n.kind, taxonomy) : null;
+      return `
       <a class="note-card" href="/app/notes/${esc(n.id)}" data-note-id="${esc(n.id)}" data-updated-at="${n.updated_at}">
-        <div class="note-card-head">${n.kind ? `<span class="kind-badge">${esc(n.kind)}</span>` : ''}<span class="note-card-date">${formatDate(n.updated_at)}</span></div>
+        <div class="note-card-head">${kindMeta ? `<span class="kind-badge" style="--chip:${esc(kindMeta.color)}">${esc(kindMeta.label)}</span>` : ''}<span class="note-card-date">${formatDate(n.updated_at)}</span></div>
         <div class="title">${esc(n.title)}</div>
         ${n.tldr ? `<div class="note-card-tldr">${esc(n.tldr)}</div>` : ''}
-        <div class="meta">${domainsToBadges(n.domains)}</div>
-      </a>`
-    )
+        <div class="meta">${domainsToBadges(n.domains, taxonomy)}</div>
+      </a>`;
+    })
     .join('');
 
   // Link no-JS-friendly de paginação. Com JS o client vira janela de render (append),
@@ -217,9 +224,10 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     idSet.add(r.id);
   }
 
-  const [outbound, inbound] = await Promise.all([
+  const [outbound, inbound, taxonomy] = await Promise.all([
     getEdgesFrom(env, id),
     getEdgesTo(env, id),
+    getTaxonomyConfig(env),
   ]);
 
   const relatedIds = Array.from(
@@ -262,12 +270,20 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   // com botão Salvar + prévia. Concorrência otimista via data-updated-at. CSP:
   // wiring todo em client/note-edit.ts (zero inline). Edges/grafo/mídia intocados.
   const currentDomains = parseDomains(note.domains);
-  const kindOptions = KNOWLEDGE_KINDS.map(
-    (k) => `<option value="${esc(k)}"${k === note.kind ? ' selected' : ''}>${esc(k)}</option>`
-  ).join('');
-  const domainChecks = CANONICAL_DOMAINS.map((d) => {
+  const kindOptions = KNOWLEDGE_KINDS.map((k) => {
+    const label = resolveKindMeta(k, taxonomy).label;
+    return `<option value="${esc(k)}"${k === note.kind ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+  // União: 12 canônicos + pré-criados na config + os domínios ATUAIS desta nota
+  // (mesmo que fora do canon — legado ou salvo via allow_new_domain no MCP). Sem
+  // isto, um domínio fora da lista nunca teria checkbox pra ser marcado de volta
+  // e sumiria da nota no próximo autosave de domains (perda silenciosa de dado).
+  const domainSlugs = mergedDomainSlugs(taxonomy, currentDomains);
+  const domainChecks = domainSlugs.map((d) => {
     const checked = currentDomains.includes(d) ? ' checked' : '';
-    return `<label class="note-edit-domain"><input type="checkbox" data-domain="${esc(d)}"${checked} />${esc(d)}</label>`;
+    const meta = resolveDomainMeta(d, taxonomy);
+    const slugHint = meta.label !== d ? ` <code class="note-edit-domain-slug">${esc(d)}</code>` : '';
+    return `<label class="note-edit-domain"><input type="checkbox" data-domain="${esc(d)}"${checked} />${esc(meta.label)}${slugHint}</label>`;
   }).join('');
   const tldrLen = (note.tldr ?? '').trim().length;
 
@@ -416,7 +432,10 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     tldr = t;
   }
 
-  // domains — 1..3 slugs canônicos (validateDomains, mesma função do MCP).
+  // domains — 1..3 slugs. Canônicos SEMPRE aceitos; slugs pré-criados na
+  // taxonomia do dono (spec 54, /app/config "Áreas e tipos") também — só
+  // texto arbitrário digitado às cegas continua rejeitado (allowNewDomain
+  // segue false: essa é a válvula do MCP, não do editor web).
   let domains: string[] | undefined;
   if (p.domains !== undefined) {
     if (!Array.isArray(p.domains) || p.domains.some((d) => typeof d !== 'string')) {
@@ -424,7 +443,11 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     }
     const arr = p.domains as string[];
     if (arr.length < 1 || arr.length > 3) return json({ error: 'domains must have 1-3 entries' }, 400);
-    const domainError = validateDomains(arr, { allowNewDomain: false });
+    const taxonomyForValidation = await getTaxonomyConfig(env);
+    const domainError = validateDomains(arr, {
+      allowNewDomain: false,
+      extraAllowed: Object.keys(taxonomyForValidation.domains),
+    });
     if (domainError) return json({ error: domainError }, 400);
     domains = arr;
   }
@@ -532,7 +555,10 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
   // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
   // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
-  const comments = await listTaskComments(env, task.id, 500, 0);
+  const [comments, taxonomy] = await Promise.all([
+    listTaskComments(env, task.id, 500, 0),
+    getTaxonomyConfig(env),
+  ]);
   const activitySection = `
     <section class="task-activity" id="atividade">
       <h2>Atividade</h2>
@@ -712,7 +738,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>
           <div class="task-sidebar-field">
             <span class="task-sidebar-lbl">Áreas</span>
-            <span class="task-edit-domains">${domainsToBadges(task.domains)}</span>
+            <span class="task-edit-domains">${domainsToBadges(task.domains, taxonomy)}</span>
           </div>
 
           ${datesHtml}
@@ -960,6 +986,8 @@ const NOTE_EDIT_CSS = `
 .note-edit-domain:hover { border-color:var(--border-strong); color:var(--text); }
 .note-edit-domain input { accent-color:var(--accent-lav); margin:0; }
 .note-edit-domains.at-max .note-edit-domain input:not(:checked) { opacity:.4; }
+/* spec 54 — slug canônico ao lado do label quando customizado, sempre mono */
+.note-edit-domain-slug { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:10.5px; color:var(--text-faint); }
 .note-edit-updated { font-size:12px; color:var(--text-faint); margin-left:auto; align-self:center; }
 .note-edit-copy {
   background:none; border:1px solid var(--border); border-radius:6px; color:var(--text-dim);
