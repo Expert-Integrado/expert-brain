@@ -160,7 +160,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 
 - [x] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0 (impl `feat/console-v2` `fceecf3`, tsc+145 testes verdes; **gate G5-C0 pendente: validação do dono + provision/backfill/deploy**)
 - [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
-- [ ] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
+- [x] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
 - [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão)
 - [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão)
 - [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1

@@ -1,6 +1,6 @@
 # Comentários em tasks: thread no console, tool MCP e comentário de convidado no link público
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (acoplamento suave com `50-console-v2/52`: o card/detalhe exibem contagem/thread quando esta spec existir; qualquer ordem funciona)
 > **Agente sugerido:** Opus (superfície pública sem auth exige cuidado)
 
@@ -82,13 +82,13 @@ Na página de share (`src/web/share.ts`):
 
 ## Critérios de aceite
 
-- [ ] Dono comenta e apaga qualquer comentário pelo console; thread com autor/nome/data BRT corretos.
-- [ ] `comment_task` via MCP cria comentário `agent`; `get_task` traz thread e contagem; `list_tasks` traz contagem.
-- [ ] Convidado comenta pela página pública com nome; comentário aparece pro dono no console imediatamente.
-- [ ] Rate-limit: 11º comentário no mesmo token dentro de 1h → 429; honeypot preenchido → descartado sem erro visível.
-- [ ] Share revogado/expirado: GET e POST retornam 404.
-- [ ] Comentário com `<script>` ou HTML renderiza como texto inerte em TODAS as superfícies.
-- [ ] `comment_count` no board bate com a thread (query em lote, sem N+1 — verificar nº de queries no teste).
+- [x] Dono comenta e apaga qualquer comentário pelo console; thread com autor/nome/data BRT corretos.
+- [x] `comment_task` via MCP cria comentário `agent`; `get_task` traz thread e contagem; `list_tasks` traz contagem.
+- [x] Convidado comenta pela página pública com nome; comentário aparece pro dono no console imediatamente.
+- [x] Rate-limit: 11º comentário no mesmo token dentro de 1h → 429; honeypot preenchido → descartado sem erro visível.
+- [x] Share revogado/expirado: GET e POST retornam 404.
+- [x] Comentário com `<script>` ou HTML renderiza como texto inerte em TODAS as superfícies.
+- [x] `comment_count` no board bate com a thread (query em lote, sem N+1 — verificar nº de queries no teste).
 
 ## Validação
 
