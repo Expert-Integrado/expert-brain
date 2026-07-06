@@ -55,11 +55,20 @@ export const SEED_COLUMN_BY_CATEGORY: Record<TaskStatus, string> = {
 // legadas sem kind; `kind <> 'task'` esconde os tasks.
 export const NON_TASK_FILTER = `(kind IS NULL OR kind <> 'task')`;
 
+// Fragmento de visibilidade do SELO DE PRIVACIDADE (spec 30-features/31), espelhando
+// a convenção do soft-delete: uma constante única citada em TODOS os read paths pra
+// que o filtro não divirja entre superfícies. `private` é INTEGER 0/1 NOT NULL DEFAULT 0
+// (migration 0013). Aplicado a uma credencial SEM o escopo `private` (fail-closed): a
+// nota privada some de recall/FTS/get_note/expand/stats. A sessão web do dono e o PAT
+// COM escopo `private` passam includePrivate=true e veem tudo.
+export const PUBLIC_ONLY_FILTER = `private = 0`;
+
 export interface NoteRow {
   id: string; title: string; body: string; tldr: string;
   domains: string; kind: string | null;
   created_at: number; updated_at: number;
   deleted_at?: number | null; // soft-delete: null = viva, timestamp = na lixeira
+  private?: number; // selo de privacidade (spec 31): 0 = pública (default), 1 = privada
 }
 
 export interface EdgeRow {
@@ -74,9 +83,11 @@ export interface SimilarEdgeRow { from_id: string; to_id: string; score: number;
 // mudança de comportamento. Numa nota recém-criada created_by == updated_by == actor.
 export async function insertNote(env: Env, n: NoteRow, actor?: string | null): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,created_by,updated_by,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
-  ).bind(n.id, n.title, n.body, n.tldr, n.domains, n.kind, actor ?? null, actor ?? null, n.created_at, n.updated_at).run();
+    // `private` (spec 31): parâmetro aditivo, default 0 (pública). Chamadas que não
+    // passam n.private caem no DEFAULT da coluna — zero mudança de comportamento.
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,private,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(n.id, n.title, n.body, n.tldr, n.domains, n.kind, n.private ?? 0, actor ?? null, actor ?? null, n.created_at, n.updated_at).run();
 }
 
 // Retorna true se a edge foi inserida; false se já existia (INSERT OR IGNORE na
@@ -180,6 +191,10 @@ export interface NotePatch {
   tldr?: string;
   domains?: string;
   kind?: NoteKind;
+  // Selo de privacidade (spec 31): 1 = marca privada, 0 = torna pública. A tool MCP
+  // update_note só passa 1 (marcar); desmarcar (0) é exclusivo da UI logada do dono
+  // (setNotePrivate via POST /app/notes/{id}/private). Omitir → não mexe.
+  private?: 0 | 1;
   updated_at: number;
 }
 
@@ -204,6 +219,7 @@ export async function updateNote(
   if (patch.tldr !== undefined) { fields.push('tldr = ?'); values.push(patch.tldr); }
   if (patch.domains !== undefined) { fields.push('domains = ?'); values.push(patch.domains); }
   if (patch.kind !== undefined) { fields.push('kind = ?'); values.push(patch.kind); }
+  if (patch.private !== undefined) { fields.push('private = ?'); values.push(patch.private); }
   fields.push('updated_at = ?'); values.push(patch.updated_at);
   // Autoria (spec 17): COALESCE preserva o updated_by anterior quando o caller não
   // passa actor (edições web/legadas) — bind null vira no-op, zero mudança.
@@ -240,6 +256,22 @@ export async function restoreNote(env: Env, id: string, actor?: string | null): 
   await env.DB.prepare(`UPDATE notes SET deleted_at = NULL, updated_by = COALESCE(?, updated_by) WHERE id = ?`).bind(actor ?? null, id).run();
 }
 
+// Marca/desmarca `private` numa NOTA de conhecimento viva (spec 31). SÓ toca a coluna
+// private + updated_at (+ autoria) — NÃO re-embeda (private não altera tldr/domains/kind,
+// então não muda o vetor) nem toca similar_edges. `kind <> 'task'` exclui tasks (read
+// paths de task são gateados pela spec 59, não aqui). Advancing updated_at invalida o
+// cache do grafo (sourceHash inclui MAX(updated_at)), pra o badge/anel de privada
+// aparecer/sumir. Retorna true se alterou uma nota (viva, de conhecimento).
+export async function setNotePrivate(
+  env: Env, id: string, priv: 0 | 1, now: number, actor?: string | null
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE notes SET private = ?, updated_at = ?, updated_by = COALESCE(?, updated_by)
+     WHERE id = ? AND deleted_at IS NULL AND ${NON_TASK_FILTER}`
+  ).bind(priv, now, actor ?? null, id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
 export async function replaceTags(env: Env, noteId: string, tags: string[]): Promise<void> {
   await env.DB.prepare(`DELETE FROM tags WHERE note_id = ?`).bind(noteId).run();
   const norm = normalizeTags(tags);
@@ -267,11 +299,16 @@ export async function replaceTaskTagsPreservingDedupe(env: Env, noteId: string, 
 
 // Por padrao ignora notas soft-deletadas (deleted_at IS NULL). includeDeleted=true
 // e usado só pelo restore_note, que precisa ler a nota na lixeira pra recuperar.
-export async function getNoteById(env: Env, id: string, includeDeleted = false): Promise<NoteRow | null> {
-  const sql = includeDeleted
-    ? `SELECT * FROM notes WHERE id = ?`
-    : `SELECT * FROM notes WHERE id = ? AND deleted_at IS NULL`;
-  return env.DB.prepare(sql).bind(id).first<NoteRow>();
+// includePrivate (spec 31): default false (fail-closed) appenda `AND private = 0`, então
+// uma credencial sem escopo `private` recebe null (indistinguível de inexistente — não
+// vaza que a nota existe). A sessão do dono e o PAT com escopo passam true e veem tudo.
+export async function getNoteById(
+  env: Env, id: string, includeDeleted = false, includePrivate = false
+): Promise<NoteRow | null> {
+  const conds = ['id = ?'];
+  if (!includeDeleted) conds.push('deleted_at IS NULL');
+  if (!includePrivate) conds.push(PUBLIC_ONLY_FILTER);
+  return env.DB.prepare(`SELECT * FROM notes WHERE ${conds.join(' AND ')}`).bind(id).first<NoteRow>();
 }
 
 export async function getTagsByNote(env: Env, id: string): Promise<string[]> {
@@ -303,18 +340,23 @@ export async function getTagsForNotes(env: Env, ids: string[]): Promise<Map<stri
 // Edges cujo OUTRO extremo esteja soft-deletado sao filtradas (o JOIN garante
 // que a nota vizinha esta viva). Soft-delete nao cascateia (a linha fica), entao
 // sem esse filtro apareceriam edges fantasma pra notas na lixeira.
-export async function getEdgesFrom(env: Env, id: string): Promise<EdgeRow[]> {
+// includePrivate (spec 31): default false appenda `AND n.private = 0` no vizinho, então
+// uma nota privada nunca aparece como vizinha (nem via get_note/expand) pra credencial
+// sem escopo — mesmo padrão do soft-delete, agora com dois eixos de visibilidade.
+export async function getEdgesFrom(env: Env, id: string, includePrivate = false): Promise<EdgeRow[]> {
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT e.* FROM edges e JOIN notes n ON n.id = e.to_id
-     WHERE e.from_id = ? AND n.deleted_at IS NULL`
+     WHERE e.from_id = ? AND n.deleted_at IS NULL${priv}`
   ).bind(id).all<EdgeRow>();
   return r.results ?? [];
 }
 
-export async function getEdgesTo(env: Env, id: string): Promise<EdgeRow[]> {
+export async function getEdgesTo(env: Env, id: string, includePrivate = false): Promise<EdgeRow[]> {
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT e.* FROM edges e JOIN notes n ON n.id = e.from_id
-     WHERE e.to_id = ? AND n.deleted_at IS NULL`
+     WHERE e.to_id = ? AND n.deleted_at IS NULL${priv}`
   ).bind(id).all<EdgeRow>();
   return r.results ?? [];
 }
@@ -341,16 +383,20 @@ function sanitizeFtsQuery(raw: string, prefix = false): string | null {
 // domínio já exclui task, mas isto garante que nenhuma fonte futura de ids reabra o
 // vazamento). Seleciona só as 5 colunas leves que o recall usa (sem body).
 export async function getNotesByIds(
-  env: Env, ids: string[]
+  env: Env, ids: string[], includePrivate = false
 ): Promise<Array<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>> {
   const out: Array<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>> = [];
   if (ids.length === 0) return out;
+  // Selo de privacidade (spec 31): default false appenda `AND private = 0`. O Vectorize
+  // pode devolver ids de notas privadas no top-30; elas caem AQUI na hidratação pra
+  // caller sem escopo (recebe menos resultados, nunca resultados privados).
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   for (let i = 0; i < ids.length; i += 100) {
     const chunk = ids.slice(i, i + 100);
     const ph = chunk.map(() => '?').join(',');
     const r = await env.DB.prepare(
       `SELECT id, title, tldr, domains, kind FROM notes
-       WHERE id IN (${ph}) AND deleted_at IS NULL AND ${NON_TASK_FILTER}`
+       WHERE id IN (${ph}) AND deleted_at IS NULL AND ${NON_TASK_FILTER}${priv}`
     ).bind(...chunk).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>();
     out.push(...(r.results ?? []));
   }
@@ -358,16 +404,18 @@ export async function getNotesByIds(
 }
 
 export async function ftsSearch(
-  env: Env, query: string, limit: number, prefix = false
+  env: Env, query: string, limit: number, prefix = false, includePrivate = false
 ): Promise<Array<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>> {
   const safe = sanitizeFtsQuery(query, prefix);
   if (!safe) return [];
+  // Selo de privacidade (spec 31): default false appenda `AND n.private = 0`.
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT n.id, n.title, n.tldr, n.domains, n.kind
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
      WHERE notes_fts MATCH ? AND n.deleted_at IS NULL
-       AND (n.kind IS NULL OR n.kind <> 'task')
+       AND (n.kind IS NULL OR n.kind <> 'task')${priv}
      ORDER BY rank
      LIMIT ?`
   ).bind(safe, limit).all<Pick<NoteRow,'id'|'title'|'tldr'|'domains'|'kind'>>();

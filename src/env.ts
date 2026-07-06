@@ -44,10 +44,13 @@ export interface Env {
 export interface AuthContext extends Record<string, unknown> {
   email: string;
   loggedInAt: number;
-  // Escopo da credencial (spec 10-backend/17). Só presente em sessões via PAT;
-  // ausente = 'full' (sessões OAuth existentes continuam com CRUD completo). 'read'
-  // faz o registry NÃO registrar as tools de escrita nessa sessão MCP.
-  scopes?: 'full' | 'read';
+  // Escopos da credencial (spec 10-backend/17 + 30-features/31). Só presente em
+  // sessões via PAT; ausente = 'full' (sessões OAuth existentes continuam com CRUD
+  // completo). CSV (spec 31): base 'full'|'read' + escopos aditivos, hoje só
+  // 'private'. Ex.: 'read', 'full,private'. `hasScope(scopes,'read')` faz o registry
+  // NÃO registrar tools de escrita; `hasScope(scopes,'private')` libera ler notas
+  // privadas nos read paths. Testar SEMPRE via hasScope, nunca por igualdade.
+  scopes?: string;
   // Id do PAT que autenticou (api_keys.id) — grava autoria de escrita
   // (created_by/updated_by). Ausente em OAuth (usa-se `oauth:<email>`).
   keyId?: string;

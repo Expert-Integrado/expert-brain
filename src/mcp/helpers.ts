@@ -1,10 +1,21 @@
 import type { Env, AuthContext } from '../env.js';
+import { hasScope } from '../auth/api-keys.js';
 
 // Autoria de escrita (spec 17): id do PAT que autenticou (created_by/updated_by),
 // ou `oauth:<email>` numa sessão OAuth (sem keyId). É o valor gravado nas colunas
 // de autoria das tools de escrita. `auth` é sempre presente no registro das tools.
 export function writeActor(auth: AuthContext): string {
   return auth.keyId ?? `oauth:${auth.email}`;
+}
+
+// Visibilidade de nota privada nos read paths MCP (spec 30-features/31). FAIL-CLOSED:
+// só vê privadas quem é a sessão OAuth do dono (sem keyId — marcador de "dono logado",
+// ver spec 17) OU um PAT que carrega o escopo `private` no CSV. PAT `full` SEM `private`
+// NÃO vê nota privada — `full` dá CRUD, não confidência. `auth` ausente (chamadas de
+// teste que registram a tool sem contexto) → false (o mais restritivo).
+export function canSeePrivate(auth?: AuthContext): boolean {
+  if (!auth) return false;
+  return auth.keyId === undefined || hasScope(auth.scopes, 'private');
 }
 
 export function noteUrl(env: Env, id: string): string {

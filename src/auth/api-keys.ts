@@ -21,10 +21,9 @@ function randomSecret(): string {
   return b64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-// Escopo de um PAT (spec 10-backend/17). 'full' = CRUD completo do vault (padrão,
+// Escopo BASE de um PAT (spec 10-backend/17). 'full' = CRUD completo do vault (padrão,
 // idêntico ao comportamento histórico de toda chave). 'read' = somente leitura: as
-// tools de escrita nem são registradas no MCP dessa sessão. String simples — se um
-// dia virar lista de escopos, migra pra CSV/JSON sem quebrar o schema.
+// tools de escrita nem são registradas no MCP dessa sessão.
 export type ApiKeyScope = 'full' | 'read';
 
 export const API_KEY_SCOPES: readonly ApiKeyScope[] = ['full', 'read'] as const;
@@ -33,22 +32,32 @@ export function isApiKeyScope(v: unknown): v is ApiKeyScope {
   return v === 'full' || v === 'read';
 }
 
+// scopes virou LISTA CSV (spec 30-features/31): o escopo base ('full'|'read') mais
+// escopos aditivos, hoje só 'private' (acesso a notas privadas). Exemplos: 'full',
+// 'read', 'full,private', 'read,private'. Nenhuma migração de dados: os valores
+// existentes ('full'/'read') já são CSVs de 1 item. `hasScope` testa se um escopo
+// específico está presente; ausente/vazio → trata como 'full' (comportamento
+// histórico de OAuth e de chave sem escopo — nunca restringe por dado corrompido).
+export function hasScope(scopes: string | undefined, scope: string): boolean {
+  return (scopes ?? 'full').split(',').map((s) => s.trim()).includes(scope);
+}
+
 export interface ApiKeyRow {
   id: string;
   owner_email: string;
   name: string;
   prefix: string;
-  scopes: ApiKeyScope;
+  scopes: string; // CSV — ver hasScope
   created_at: number;
   last_used_at: number | null;
   revoked_at: number | null;
 }
 
-// Retorno de validateApiKey: quem é o dono, o escopo da chave e o id dela (pra
+// Retorno de validateApiKey: quem é o dono, os escopos da chave (CSV) e o id dela (pra
 // autoria de escrita created_by/updated_by). null quando a chave é inválida/revogada.
 export interface ValidatedApiKey {
   email: string;
-  scopes: ApiKeyScope;
+  scopes: string; // CSV — ver hasScope
   keyId: string;
 }
 
@@ -70,7 +79,7 @@ export async function createApiKey(
   env: Env,
   ownerEmail: string,
   name: string,
-  scopes: ApiKeyScope = 'full'
+  scopes: string = 'full' // CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'
 ): Promise<CreateApiKeyResult> {
   // Cap por owner pra evitar criação ilimitada via sessão comprometida. revokeApiKey
   // faz UPDATE (revogação lógica), então o count precisa filtrar revoked_at IS NULL
@@ -135,8 +144,11 @@ export async function validateApiKey(
     .bind(Date.now(), keyHash).run();
   if (ctx) ctx.waitUntil(touch.then(() => undefined).catch(() => {}));
   else void touch.catch(() => {});
-  // scopes só é 'full' | 'read'; qualquer valor legado/inesperado cai em 'full'
-  // (comportamento histórico — nunca restringe uma chave por dado corrompido).
-  const scopes: ApiKeyScope = row.scopes === 'read' ? 'read' : 'full';
+  // scopes é um CSV (spec 31) — preservado NA ÍNTEGRA (ex.: 'read,private'). NÃO
+  // reduzir a 'full'|'read' aqui: isso descartaria o escopo 'private'. Valor
+  // null/vazio (legado/corrompido) cai em 'full' (comportamento histórico — nunca
+  // restringe uma chave por dado ausente). O gate de escopo (registry) e a
+  // visibilidade de nota privada (canSeePrivate) usam hasScope() sobre este CSV.
+  const scopes: string = row.scopes && row.scopes.trim() ? row.scopes : 'full';
   return { email: row.owner_email, scopes, keyId: row.id };
 }
