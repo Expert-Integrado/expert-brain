@@ -12,7 +12,7 @@ import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './con
 import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from './taxonomy-config.js';
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
-import { handleNoteSearch } from './search.js';
+import { handleNoteSearch, handleSearchAll } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
@@ -35,6 +35,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
   if (path === '/app/notes' && req.method === 'GET') return handleNotesList(req, env);
   if (path === '/app/search' && req.method === 'GET') return handleNoteSearch(req, env);
+  // Busca unificada da paleta de comando (spec 66): notas + tasks + contatos num
+  // request só. Rota NOVA — não substitui o /app/search acima (página de Notas e
+  // fallback Fuse da paleta continuam nele).
+  if (path === '/app/search/all' && req.method === 'GET') return handleSearchAll(req, env);
 
   const noteGraphMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/graph$/);
   if (noteGraphMatch && req.method === 'GET') return handleNoteGraph(req, env, noteGraphMatch[1]);

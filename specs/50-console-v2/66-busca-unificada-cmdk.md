@@ -1,6 +1,6 @@
 # Busca unificada: estender a paleta Ctrl+K existente pra tasks, contatos e ações rápidas
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma dura. Suave: `63` (ação Capturar), `56` (navegar pra página do contato), `58` (nova task com projeto).
 > **Agente sugerido:** Sonnet (endpoint + extensão de client) · **Esforço de execução:** padrão
 

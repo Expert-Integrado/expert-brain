@@ -119,6 +119,46 @@ export async function fetchContactEventsServerSide(
   }
 }
 
+export interface ContactSearchHit { id: string; name: string; category: string | null; }
+
+// Busca DIRETA (sem Request/sessão) de contatos — usada SERVER-SIDE pelo agregador
+// da paleta de comando (spec 66, GET /app/search/all), que já rodou requireSession
+// antes de chamar isto. Mesmo padrão de degradação de fetchContactEventsServerSide:
+// binding/token ausente, resposta não-ok ou JSON inesperado viram `{ ok: false }` —
+// nunca lança (o caller vira grupo `contacts` vazio + `degraded`, nunca 500).
+export async function fetchContactsSearchServerSide(
+  env: Env,
+  q: string,
+  limit: number,
+): Promise<{ ok: true; results: ContactSearchHit[] } | { ok: false }> {
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) return { ok: false };
+  try {
+    const out = new URL('https://contacts/recall_entity');
+    out.searchParams.set('q', q);
+    out.searchParams.set('limit', String(limit));
+    const res = await env.CONTACTS.fetch(new Request(out.toString(), {
+      method: 'GET',
+      headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}`, 'x-include-private': '1' },
+    }));
+    if (!res.ok) return { ok: false };
+    const data: any = await res.json().catch(() => null);
+    const rows = Array.isArray(data?.results) ? data.results : Array.isArray(data) ? data : null;
+    if (!rows) return { ok: false };
+    const results: ContactSearchHit[] = rows
+      .slice(0, limit)
+      .map((r: any) => ({
+        id: typeof r?.id === 'string' ? r.id : '',
+        name: typeof r?.name === 'string' ? r.name : '',
+        category: typeof r?.category === 'string' ? r.category : null,
+      }))
+      .filter((r: ContactSearchHit) => r.id && r.name);
+    return { ok: true, results };
+  } catch (err) {
+    console.error('fetchContactsSearchServerSide: falha ao consultar contacts (degradado)', err);
+    return { ok: false };
+  }
+}
+
 // Busca DIRETA do detalhe de um contato (sem passar por Request/sessão) — usada
 // no SSR de /app/contacts/<id> (spec 50-console-v2/56 §3) pra decidir 404 ANTES
 // de renderizar o shell. O client hidrata de novo via GET /app/contacts/entity

@@ -112,8 +112,9 @@ async function computeSourceHash(env: Env): Promise<string> {
 }
 
 // Domains are stored as a JSON-encoded string array. Parse and pick the first
-// entry for node coloring; fall back to CSV split for legacy rows.
-function firstDomain(raw: string): string {
+// entry for node coloring; fall back to CSV split for legacy rows. Exportada
+// (spec 66) pro agregador de busca (/app/search/all) reusar em vez de duplicar.
+export function firstDomain(raw: string): string {
   if (!raw) return 'misc';
   const trimmed = raw.trim();
   if (trimmed.startsWith('[')) {
