@@ -25,8 +25,12 @@ async function wipeData(): Promise<void> {
   // filho → pai por causa das FKs (o CASCADE de notes também limparia, mas a
   // ordem explícita documenta a dependência). kanban_columns e task_projects vêm
   // DEPOIS de notes (notes.column_id → kanban_columns spec 51; notes.project_id →
-  // task_projects spec 58).
-  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'notes', 'api_keys', 'meta', 'kanban_columns', 'task_projects']) {
+  // task_projects spec 58). inbox_items (spec 63) e mentions (spec 62, FK pra
+  // notes) entram aqui pelo mesmo motivo: FIXTURE_COUNTS espera 0 nas duas, e
+  // storage é compartilhado entre arquivos no singleWorker — sem wipe explícito,
+  // resíduo de OUTRO arquivo (ex.: teste que descarta item de inbox sem apagar a
+  // linha) vaza pra cá e quebra as contagens do manifest.
+  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'mentions', 'inbox_items', 'notes', 'api_keys', 'meta', 'kanban_columns', 'task_projects']) {
     await E.DB.exec(`DELETE FROM ${t}`);
   }
 }
