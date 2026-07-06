@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate } from './contacts-data.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
@@ -95,6 +95,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts/data' && req.method === 'GET') return handleContactsData(req, env);
   if (path === '/app/contacts/meta' && req.method === 'GET') return handleContactsMeta(req, env);
   if (path === '/app/contacts/entity' && req.method === 'GET') return handleContactsEntity(req, env);
+  // Timeline paginada de interações + registro manual (spec 50-console-v2/57).
+  // GET via proxy read-only (mesmo CONTACTS_PROXY_TOKEN do detalhe/grafo); POST
+  // via proxy de ESCRITA escopado (CONTACTS_WRITE_TOKEN, allowlist de 1 path do
+  // lado do contacts) — cada handler valida a própria sessão do Brain.
+  if (path === '/app/contacts/entity/events' && req.method === 'GET') return handleContactsEntityEvents(req, env);
+  if (path === '/app/contacts/entity/event' && req.method === 'POST') return handleContactsEntityEventCreate(req, env);
   const contactsMediaMatch = path.match(/^\/app\/contacts\/media\/([0-9a-f]{64})$/i);
   if (contactsMediaMatch && req.method === 'GET') {
     return handleContactsMedia(req, env, contactsMediaMatch[1]);

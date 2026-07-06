@@ -54,6 +54,50 @@ export function handleContactsEntity(req: Request, env: Env): Promise<Response> 
   return proxyToContacts(req, env, '/app/entity');
 }
 
+// Timeline paginada de interações (?id=&offset=&limit=) — spec 50-console-v2/57 §2.
+// Mesmo proxy read-only (CONTACTS_PROXY_TOKEN) que o detalhe/grafo — o contacts
+// aceita GET /app/entity/events nessa MESMA allowlist.
+export function handleContactsEntityEvents(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/entity/events');
+}
+
+// POST /app/contacts/entity/event — registra interação pela página do Brain
+// (sessão do Brain). Repassa pro contacts via service binding com Bearer
+// CONTACTS_WRITE_TOKEN — token de ESCRITA escopado, NUNCA o CONTACTS_PROXY_TOKEN
+// read-only. O contacts autoriza esse token SOMENTE em POST /app/entity/event
+// (allowlist de 1 path do lado de lá, spec 50-console-v2/57 §3).
+export async function handleContactsEntityEventCreate(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  let bodyText: string;
+  try { bodyText = await req.text(); } catch { bodyText = ''; }
+
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/app/entity/event', {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`,
+      'content-type': 'application/json',
+    },
+    body: bodyText,
+  }));
+
+  const resBody = await res.text();
+  return new Response(resBody, {
+    status: res.status,
+    headers: {
+      'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
 // Avatar/mídia do contato — streaming passthrough pro /media/<hash> do Expert
 // Console (rota pública lá; proxiar aqui mantém same-origin no browser). O hash
 // é validado (sha256 hex) pra rota não virar proxy arbitrário, e a resposta é
