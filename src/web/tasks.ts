@@ -28,11 +28,15 @@ import {
   reassignColumn,
   countTasksInColumn,
   countActiveColumnsInCategory,
+  addTaskComment,
+  deleteTaskComment,
+  countTaskCommentsBatch,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
+import { commentBadge } from '../util/comment-badge.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -64,9 +68,10 @@ interface TaskView {
   created_at: number;
   completed_at: number | null;
   updated_at: number; // base do versionamento otimista na edição inline (spec 36)
+  comment_count: number; // contagem da thread de comentários (spec 53)
 }
 
-function toView(t: TaskRow, now: number): TaskView {
+function toView(t: TaskRow, now: number, commentCount = 0): TaskView {
   const due = t.due_at ?? null;
   return {
     id: t.id,
@@ -83,6 +88,7 @@ function toView(t: TaskRow, now: number): TaskView {
     created_at: t.created_at,
     completed_at: t.completed_at,
     updated_at: t.updated_at,
+    comment_count: commentCount,
   };
 }
 
@@ -114,6 +120,12 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
   const defaultByCat = new Map<string, KanbanColumn>();
   for (const c of activeCols) if (!defaultByCat.has(c.category)) defaultByCat.set(c.category, c);
 
+  // Contagem de comentários em lote (spec 53): 1 query (chunked) pro board inteiro,
+  // nunca N+1. Cobre tasks ativas + fechadas recentes que serão renderizadas.
+  const commentCounts = await countTaskCommentsBatch(
+    env, [...active, ...closed].map((t) => t.id)
+  );
+
   const buckets = new Map<string, TaskView[]>();
   for (const c of activeCols) buckets.set(c.id, []);
 
@@ -123,7 +135,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardColumn[]> {
     const assigned = t.column_id ? activeById.get(t.column_id) : undefined;
     if (assigned && assigned.category === status) colId = assigned.id;
     else colId = defaultByCat.get(status)?.id ?? null;
-    if (colId) buckets.get(colId)?.push(toView(t, now));
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -519,6 +531,56 @@ export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Res
   return json({ ok: true, revoked });
 }
 
+// ─────────────────── Comentários de task (spec 53) ───────────────────
+// Console do dono: adiciona comentário 'owner' e apaga QUALQUER comentário (moderação,
+// inclusive de convidado). Form-encoded + redirect de volta ao detalhe da task (mesmo
+// padrão das colunas do Kanban) — funciona sob a CSP sem JS inline. Sessão de browser
+// obrigatória (sem Bearer): comentar/moderar é ação do dono logado, não de cron.
+const OWNER_COMMENT_MAX = 4000;
+
+function taskDetailRedirect(taskId: string): Response {
+  return new Response(null, {
+    status: 302,
+    headers: { location: `/app/tasks/${encodeURIComponent(taskId)}#atividade` },
+  });
+}
+
+// POST /app/tasks/comment — form { task_id, body }. author='owner'.
+export async function handleTaskCommentPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const taskId = String(form.get('task_id') ?? '').trim();
+  if (!taskId) return htmlResponse('task_id obrigatório', 400);
+  const body = String(form.get('body') ?? '').trim().slice(0, OWNER_COMMENT_MAX);
+  if (!body) return htmlResponse('Comentário vazio', 400);
+
+  const task = await getTaskById(env, taskId);
+  if (!task) return htmlResponse('Task não encontrada', 404);
+
+  await addTaskComment(env, {
+    id: `cmt_${newId()}`, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
+  });
+  return taskDetailRedirect(taskId);
+}
+
+// POST /app/tasks/comment/delete — form { id, task_id? }. Apaga qualquer comentário.
+export async function handleTaskCommentDeletePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id do comentário obrigatório', 400);
+  const taskId = String(form.get('task_id') ?? '').trim();
+
+  await deleteTaskComment(env, id);
+  return taskId
+    ? taskDetailRedirect(taskId)
+    : new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+}
+
 // ─────────────── Gestão de colunas do Kanban (spec 51) ───────────────
 // Endpoints da seção "Quadro de tarefas" em /app/config. Form-encoded + redirect
 // (mesmo padrão de /app/config/prefs e /app/api-keys/*), sessão de browser
@@ -677,7 +739,7 @@ function dueBadge(v: TaskView): string {
 function renderCardSSR(v: TaskView): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}" draggable="true">
-    <div class="task-card-head">${priorityPill(v.priority)}${dueBadge(v)}</div>
+    <div class="task-card-head">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}</div>
     <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
     <div class="task-card-actions">
       ${canClose ? `<button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button>` : ''}
@@ -880,6 +942,10 @@ export const TASKS_CSS = `
 
 .task-due { font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
 .task-due.overdue { color: #fca5a5; background: rgba(239,68,68,0.14); }
+
+/* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
+.task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
+.task-comments-n { font-variant-numeric: tabular-nums; line-height: 1; }
 
 /* Bandeirinha de prioridade estilo ClickUp: flag colorida + rótulo, fundo tênue */
 .task-prio {

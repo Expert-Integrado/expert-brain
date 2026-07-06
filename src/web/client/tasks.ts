@@ -9,6 +9,7 @@
 import { appFetch } from './http.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
+import { commentBadge } from '../../util/comment-badge.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -27,6 +28,7 @@ interface TaskView {
   created_at: number;
   completed_at: number | null;
   updated_at: number;
+  comment_count: number;
 }
 
 interface BoardColumn {
@@ -114,7 +116,7 @@ function prioOptions(p: number | null): string {
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
   return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}" data-updated-at="${t.updated_at}" draggable="true">
-    <div class="task-card-head">${prioPill(t.priority)}${dueBadge(t)}
+    <div class="task-card-head">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>

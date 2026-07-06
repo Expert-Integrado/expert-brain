@@ -12,6 +12,7 @@ import {
   getEdgesFrom,
   getEdgesTo,
   updateNote,
+  listTaskComments,
   TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
@@ -21,6 +22,7 @@ import {
 import { validateDomains, CANONICAL_DOMAINS } from '../db/validation.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { getShareStatus } from './share.js';
+import { renderCommentThread } from './comments-render.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -523,6 +525,25 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // Nunca expõe token plaintext (o banco só tem o hash) — só se está compartilhada e
   // até quando. O link real só é revelado quando o dono clica "Compartilhar" e o
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
+  // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
+  // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
+  const comments = await listTaskComments(env, task.id, 500, 0);
+  const activitySection = `
+    <section class="task-activity" id="atividade">
+      <h2>Atividade</h2>
+      ${renderCommentThread(comments, { deleteTaskId: task.id })}
+      <form class="cmt-form" method="post" action="/app/tasks/comment">
+        <input type="hidden" name="task_id" value="${esc(task.id)}" />
+        <label class="cmt-field">
+          <span class="cmt-lbl">Novo comentário</span>
+          <textarea name="body" rows="3" maxlength="4000" required placeholder="Escreva um comentário"></textarea>
+        </label>
+        <div class="cmt-form-foot">
+          <button type="submit" class="task-d-btn cmt-submit">Comentar</button>
+        </div>
+      </form>
+    </section>`;
+
   const shareStatus = await getShareStatus(env, task.id, Date.now());
   const shared = shareStatus?.shared ?? false;
   const shareExpiresBrt = shareStatus?.expires_brt ?? '';
@@ -626,6 +647,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
 
       <div class="task-edit-status" data-editstatus role="status" aria-live="polite"></div>
     </div>
+
+    ${activitySection}
 
     ${shareSection}
 
@@ -759,6 +782,36 @@ const TASK_DETAIL_CSS = `
 .task-share-status.ok { color:#86efac; }
 .task-share-status.err { color:#fca5a5; }
 .task-share-status.saving { color:var(--text-dim); }
+
+/* Atividade — thread de comentários (spec 53) no console do dono */
+.task-activity { margin:32px 0 8px; }
+.task-activity h2 { font-size:15px; margin-bottom:14px; }
+.cmt-thread { list-style:none; margin:0 0 18px; padding:0; display:flex; flex-direction:column; gap:12px; }
+.cmt-item { border:1px solid var(--border); border-radius:var(--radius); padding:11px 14px; background:var(--surface); }
+.cmt-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.cmt-author { font-size:13px; font-weight:600; color:var(--text); }
+.cmt-author-owner { color:var(--accent-lav); }
+.cmt-author-agent { color:#93c5fd; }
+.cmt-author-guest { color:var(--text); }
+.cmt-time { font-size:11.5px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.cmt-body { font-size:14px; line-height:1.55; color:var(--text); word-break:break-word; }
+.cmt-empty { color:var(--text-faint); font-size:14px; margin-bottom:18px; }
+.cmt-del-form { margin-left:auto; }
+.cmt-del { background:none; border:none; color:var(--text-faint); font-size:11.5px; cursor:pointer; padding:0; transition:color 140ms var(--ease); }
+.cmt-del:hover { color:#fca5a5; }
+.cmt-form { display:flex; flex-direction:column; gap:10px; }
+.cmt-field { display:flex; flex-direction:column; gap:6px; }
+.cmt-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.cmt-form textarea {
+  width:100%; box-sizing:border-box; resize:vertical; min-height:64px;
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  border-radius:var(--radius-sm); padding:11px 13px; font-family:inherit; font-size:14px; line-height:1.5;
+  transition:border-color 160ms var(--ease);
+}
+.cmt-form textarea:focus { outline:none; border-color:var(--accent-lav); }
+.cmt-form-foot { display:flex; justify-content:flex-end; }
+.cmt-submit { border-color:rgba(167,139,250,0.4); color:var(--accent-lav); }
+.cmt-submit:hover { background:rgba(167,139,250,0.12); }
 
 @media (max-width: 640px) {
   .task-d-banner { flex-wrap:wrap; }

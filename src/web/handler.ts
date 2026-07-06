@@ -9,7 +9,7 @@ import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './con
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost } from './tasks.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { NEBULA_CSS } from './styles.js';
@@ -71,6 +71,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // /s/<token>. Reusa a MESMA lógica da tool share_task/unshare_task (src/web/share.ts).
   if (path === '/app/tasks/share' && req.method === 'POST') return handleTaskSharePost(req, env);
   if (path === '/app/tasks/unshare' && req.method === 'POST') return handleTaskUnsharePost(req, env);
+  // Comentários em task (spec 53): dono adiciona/apaga pelo console (form + redirect,
+  // sessão de browser). Vêm ANTES do taskMatch (que só casa GET) — paths exatos.
+  if (path === '/app/tasks/comment' && req.method === 'POST') return handleTaskCommentPost(req, env);
+  if (path === '/app/tasks/comment/delete' && req.method === 'POST') return handleTaskCommentDeletePost(req, env);
 
   // Detalhe de uma task (superfície própria — NÃO o editor de nota). Vem DEPOIS dos
   // paths exatos acima pra não capturar /data /status /complete. /bundle.js tem ponto,
