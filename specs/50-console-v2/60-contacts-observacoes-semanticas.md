@@ -1,6 +1,8 @@
 # Contacts: observações que alimentam a busca semântica — events no embedding + busca textual em contexts
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+
+> **Execução (05-06/07/2026):** implementada em `expert-contacts` na branch `feat/console-v2` via workflow de execução do pacote Console v2+v3.
 > **Depende de:** `50-console-v2/57` (função `recordEvent` extraída + form de registro no console)
 > **Agente sugerido:** Opus (mexe no texto canônico de embedding)
 

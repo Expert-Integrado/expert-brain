@@ -1,6 +1,8 @@
 # Contacts: cartela completa de contato — múltiplos e-mails, redes sociais, link de CRM e ManyChat
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-contacts
+
+> **Execução (05-06/07/2026):** implementada em `expert-contacts` na branch `feat/console-v2` via workflow de execução do pacote Console v2+v3.
 > **Depende de:** nenhuma bloqueante. Coordenação: `10-backend/19` (write-path/canon, draft) toca `handleSaveEntity` — se executarem próximas, sequenciar (19 antes) pra evitar conflito no mesmo arquivo.
 > **Agente sugerido:** Opus (schema + contrato MCP)
 

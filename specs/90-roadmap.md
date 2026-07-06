@@ -154,20 +154,20 @@ Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do ch
 
 **Sequência canônica de execução (checklist — 22 sessões, 1 spec por sessão):**
 
-> **LOCK DE EXECUÇÃO (05/07/2026 22h30 BRT):** os itens 2-20 estão sendo executados AGORA, de forma automática e encadeada, pelo workflow `wf_a1e5eac3` (sessão `54a7cc4e` no PC do dono), com commits chegando em `feat/console-v2` dos dois repos. QUALQUER outra sessão/agente que ler este checklist: **NÃO inicie executor pra nenhum item** — risco real de colisão de working tree (incidente em 05/07 22h: dois executores simultâneos na spec 21 no mesmo checkout). Lock expira se a branch ficar 24h sem commits novos.
+> **LOCK DE EXECUÇÃO (atualizado 06/07/2026):** ondas C1-C2 (itens 1,2,3,7,10 — specs `21`, `51`, `53`, `55`, `60`) foram executadas com sucesso em 05-06/07/2026 pelo workflow `wf_a1e5eac3` (sessão `54a7cc4e` no PC do dono), commits em `feat/console-v2` dos dois repos. As specs `52` (cards + share UI) e `60`'s vizinha de onda `58`/`54` (itens 4-6) ficaram pendentes — a `52-tasks-cards-clickup-e-share-ui.md` falhou/não rodou nesta rodada e segue `ready`. Lock reduzido: continua valendo SÓ para os itens ainda `[ ]` (4-22) — **NÃO inicie executor pra esses itens sem checar primeiro se outra sessão já está rodando**. Lock expira se a branch ficar 24h sem commits novos.
 
 Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
 
 - [x] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0 (impl `feat/console-v2` `fceecf3`, tsc+145 testes verdes; **gate G5-C0 pendente: validação do dono + provision/backfill/deploy**)
-- [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
+- [x] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
 - [x] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
 - [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão)
 - [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão)
 - [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1
-- [ ] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
+- [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
 - [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)
 - [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão)
-- [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2
+- [x] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2
 - [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus, ultrathink) — C3
 - [ ] 12. `30-features/31` — selo de privacidade em notas (brain, Opus, ultrathink)
 - [ ] 13. `50-console-v2/59` — tasks privadas (brain, Opus, ultrathink)
