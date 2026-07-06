@@ -16,6 +16,7 @@ import { registerListTasks } from './tools/list-tasks.js';
 import { registerCompleteTask } from './tools/complete-task.js';
 import { registerUpdateTask } from './tools/update-task.js';
 import { registerGetTask } from './tools/get-task.js';
+import { registerCommentTask } from './tools/comment-task.js';
 import { registerShareTask } from './tools/share-task.js';
 import { registerUnshareTask } from './tools/unshare-task.js';
 import { registerAttachMedia } from './tools/attach-media.js';
@@ -42,6 +43,8 @@ export function registerAllTools(server: any, env: Env): void {
   registerCompleteTask(server, env);
   registerUpdateTask(server, env);
   registerGetTask(server, env);
+  // Comentários em task (thread): agente anota progresso sem sobrescrever o body.
+  registerCommentTask(server, env);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
   registerShareTask(server, env);
   registerUnshareTask(server, env);

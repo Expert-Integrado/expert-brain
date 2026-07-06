@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn } from '../../db/queries.js';
+import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -12,7 +12,7 @@ const DESCRIPTION = `Reads a single TASK by id, with its full task state.
 
 get_note returns a NOTE shape (title/body/tldr/domains) WITHOUT status/due/priority — it does NOT serve tasks. Use get_task to read a task's status, due date, priority, completed_at, tags and body in one call.
 
-Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, created_at, updated_at, url }. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
+Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, comments, comment_count, created_at, updated_at, url }. \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_name, body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
 
 interface GetTaskInput { id: string; }
 
@@ -35,6 +35,12 @@ export function registerGetTask(server: any, env: Env): void {
       // Coluna do Kanban (aditivo — spec 51): resolve o estágio visual da task.
       const columns = await listKanbanColumns(env, true);
       const col = resolveTaskColumn(t, columns);
+      // Thread de comentários (spec 53): últimos 50 em ordem cronológica. offset =
+      // count-50 quando há mais de 50, pra pegar os MAIS RECENTES mas exibi-los na
+      // ordem em que foram escritos.
+      const commentCount = await countTaskComments(env, input.id);
+      const offset = commentCount > 50 ? commentCount - 50 : 0;
+      const comments = await listTaskComments(env, input.id, 50, offset);
       const now = Date.now();
       return toolSuccess({
         id: t.id,
@@ -51,6 +57,15 @@ export function registerGetTask(server: any, env: Env): void {
         domains: JSON.parse(t.domains),
         tags,
         column: col ? { id: col.id, label: col.label } : null,
+        comment_count: commentCount,
+        comments: comments.map((c) => ({
+          id: c.id,
+          author: c.author,
+          author_name: c.author_name,
+          body: c.body,
+          created_at: c.created_at,
+          created_brt: formatBrtDateTime(c.created_at),
+        })),
         created_at: t.created_at,
         updated_at: t.updated_at,
       });

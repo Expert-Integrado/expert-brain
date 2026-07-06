@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env } from '../../env.js';
 import { safeToolHandler, toolSuccess, noteUrl } from '../helpers.js';
-import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, type TaskRow } from '../../db/queries.js';
+import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, type TaskRow } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -16,7 +16,7 @@ const DESCRIPTION = `Lists tasks regardless of due date — including tasks WITH
 
 This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks (ordered by due date then priority). Pass \`query\` for full-text search over tasks (title+body, all statuses), \`status\` to filter (asking for ['done']/['canceled'] auto-includes closed tasks — no include_closed needed, capped to the most recent by \`limit\`), \`tag\` to scope (case-insensitive, e.g. maquina:pc-principal), \`limit\` to cap.
 
-Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) filter by machine/project tag. Each task returns id, title, status, priority, due (BRT) + "when", tags, url, updated_at. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
+Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) filter by machine/project tag. Each task returns id, title, status, priority, due (BRT) + "when", tags, comment_count, url, updated_at. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; limit?: number; }
 
@@ -79,6 +79,8 @@ export function registerListTasks(server: any, env: Env): void {
       // Colunas do Kanban carregadas UMA vez (aditivo — spec 51): resolve o estágio
       // visual de cada task em memória, sem N queries.
       const columns = await listKanbanColumns(env, true);
+      // Contagem de comentários em lote (spec 53): 1 query (chunked), nunca N+1.
+      const commentCounts = await countTaskCommentsBatch(env, tasks.map((t) => t.id));
       const items = tasks.map((t) => {
         const col = resolveTaskColumn(t, columns);
         return {
@@ -92,6 +94,7 @@ export function registerListTasks(server: any, env: Env): void {
           overdue: t.due_at !== null && t.due_at < now && t.status !== 'done' && t.status !== 'canceled',
           tags: tagsById.get(t.id) ?? [],
           column: col ? { id: col.id, label: col.label } : null,
+          comment_count: commentCounts.get(t.id) ?? 0,
           updated_at: t.updated_at,
           url: noteUrl(env, t.id),
         };
