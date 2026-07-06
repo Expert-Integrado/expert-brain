@@ -179,6 +179,44 @@ const MIGRATION_0008_STMTS: string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_share_token ON notes (share_token) WHERE share_token IS NOT NULL`,
 ];
 
+// 0009 — KANBAN COLUMNS. Colunas/estágios customizáveis do board /app/tasks,
+// persistidos no banco (antes eram fixos em código). `notes.status` continua a
+// fonte canônica de ESTADO (4 categorias, CHECK imutável da 0006); cada coluna
+// AMARRA-se a uma dessas 4 via `category` e `notes.column_id` é o estágio VISUAL.
+// ADD COLUMN column_id é seguro (não recria a tabela notes, que cascatearia
+// edges/tags): nasce NULL pra todas as notas e é preenchido no backfill só pras
+// tasks. Índice PARCIAL (WHERE kind='task') não indexa as notas de conhecimento.
+// Seeds espelham o board fixo atual (INSERT OR IGNORE = idempotente); col_cancelado
+// nasce ARQUIVADO (o board sempre escondeu canceladas — o dono desarquiva se quiser
+// vê-las). Backfill mapeia os 4 status pros 4 seeds. Tudo aditivo. Ver spec 51.
+const MIGRATION_0009_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS kanban_columns (
+    id          TEXT PRIMARY KEY,
+    label       TEXT NOT NULL,
+    color       TEXT,
+    position    INTEGER NOT NULL,
+    category    TEXT NOT NULL CHECK (category IN ('open','in_progress','done','canceled')),
+    archived_at INTEGER
+  )`,
+  `ALTER TABLE notes ADD COLUMN column_id TEXT REFERENCES kanban_columns(id)`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_column ON notes (column_id) WHERE kind = 'task'`,
+  `INSERT OR IGNORE INTO kanban_columns (id, label, color, position, category, archived_at)
+     VALUES ('col_aberto', 'A fazer', NULL, 1, 'open', NULL)`,
+  `INSERT OR IGNORE INTO kanban_columns (id, label, color, position, category, archived_at)
+     VALUES ('col_progresso', 'Em progresso', NULL, 2, 'in_progress', NULL)`,
+  `INSERT OR IGNORE INTO kanban_columns (id, label, color, position, category, archived_at)
+     VALUES ('col_concluido', 'Concluído', NULL, 3, 'done', NULL)`,
+  `INSERT OR IGNORE INTO kanban_columns (id, label, color, position, category, archived_at)
+     VALUES ('col_cancelado', 'Cancelado', NULL, 4, 'canceled', strftime('%s','now')*1000)`,
+  `UPDATE notes SET column_id = 'col_' || CASE status
+       WHEN 'open' THEN 'aberto'
+       WHEN 'in_progress' THEN 'progresso'
+       WHEN 'done' THEN 'concluido'
+       WHEN 'canceled' THEN 'cancelado'
+     END
+     WHERE kind = 'task' AND status IS NOT NULL AND column_id IS NULL`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -188,6 +226,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0006_task_fields', stmts: MIGRATION_0006_STMTS },
   { id: '0007_note_media', stmts: MIGRATION_0007_STMTS },
   { id: '0008_share_task', stmts: MIGRATION_0008_STMTS },
+  { id: '0009_kanban_columns', stmts: MIGRATION_0009_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

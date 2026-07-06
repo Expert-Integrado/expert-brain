@@ -25,6 +25,31 @@ export type NoteKind = typeof NOTE_KINDS[number];
 export const TASK_STATUSES = ['open','in_progress','done','canceled'] as const;
 export type TaskStatus = typeof TASK_STATUSES[number];
 
+// ─────────────────────────── KANBAN COLUMNS ───────────────────────────
+// Colunas/estágios customizáveis do board (migration 0009). `notes.status` continua
+// a fonte canônica de ESTADO (4 categorias imutáveis); `kanban_columns.category`
+// AMARRA cada coluna a uma dessas 4 categorias e `notes.column_id` é o estágio
+// VISUAL. Invariante mantido server-side: category(column_id) == notes.status.
+// Ver spec 50-console-v2/51.
+export interface KanbanColumn {
+  id: string;
+  label: string;
+  color: string | null;      // hex #rrggbb; null = neutro do tema
+  position: number;
+  category: TaskStatus;
+  archived_at: number | null; // coluna arquivada não renderiza no board
+}
+
+// Seed fixo por categoria — usado como fallback quando não existe coluna ATIVA da
+// categoria (ex.: canceladas com col_cancelado arquivado). Espelha os seeds da
+// migration 0009. NUNCA muda (slugs estáveis).
+export const SEED_COLUMN_BY_CATEGORY: Record<TaskStatus, string> = {
+  open: 'col_aberto',
+  in_progress: 'col_progresso',
+  done: 'col_concluido',
+  canceled: 'col_cancelado',
+};
+
 // Filtro reutilizado por todos os read paths de CONHECIMENTO (grafo, lista de
 // notas, stats, FTS, meta) pra esconder os to-dos. `kind IS NULL` cobre notas
 // legadas sem kind; `kind <> 'task'` esconde os tasks.
@@ -337,6 +362,9 @@ export interface TaskRow {
   kind: string | null;
   status: string | null; due_at: number | null;
   priority: number | null; completed_at: number | null;
+  // Estágio visual do Kanban (migration 0009). NULL = nunca alocado (render cai no
+  // default da categoria do status). Ver resolveTaskColumn / SEED_COLUMN_BY_CATEGORY.
+  column_id: string | null;
   created_at: number; updated_at: number;
   // Compartilhamento público read-only (migration 0008). share_token guarda o HASH
   // sha256 do token (nunca o plaintext); NULL = task não compartilhada. Opcionais no
@@ -353,9 +381,12 @@ export interface InsertTaskInput {
   // preserva o invariante "fechada ⇒ completed_at preenchido" mantido por
   // setTaskStatus/updateTask/completeTask. Chamadores antigos passam null/omitem.
   completed_at?: number | null;
+  // Estágio visual (migration 0009). Omitir/null → insertTask resolve a coluna
+  // default da categoria do status. Ver spec 51.
+  column_id?: string | null;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, created_at, updated_at, share_token, share_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
@@ -378,12 +409,19 @@ export async function ftsSearchTasks(env: Env, query: string, limit: number): Pr
 }
 
 // Insere uma task. NÃO embeda — diferente de insertNote, que é seguido por
-// upsertNoteVector no save_note. Aqui não há vetor de propósito.
+// upsertNoteVector no save_note. Aqui não há vetor de propósito. Aloca a coluna
+// default da categoria do status quando `column_id` não vier explícito (spec 51),
+// pra a task já nascer coerente com o Kanban.
 export async function insertTask(env: Env, t: InsertTaskInput): Promise<void> {
+  let columnId = t.column_id ?? null;
+  if (columnId === null) {
+    const col = await defaultColumnForCategory(env, t.status);
+    columnId = col?.id ?? null;
+  }
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,created_at,updated_at)
-     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?)`
-  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, t.created_at, t.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.created_at, t.updated_at).run();
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -478,13 +516,17 @@ export async function listTasksDueBefore(env: Env, beforeMs: number): Promise<Ta
 }
 
 // Muda o status de uma task. Ao marcar done/canceled grava completed_at=now; ao
-// reabrir (open/in_progress) limpa completed_at. Retorna false se o id não é uma task.
+// reabrir (open/in_progress) limpa completed_at. Realoca column_id pra coluna default
+// da nova categoria (mantém o invariante category(column_id)==status). Retorna false
+// se o id não é uma task.
 export async function setTaskStatus(env: Env, id: string, status: TaskStatus, now: number): Promise<boolean> {
   const closing = status === 'done' || status === 'canceled';
+  const col = await defaultColumnForCategory(env, status);
+  const columnId = col?.id ?? null;
   const res = await env.DB.prepare(
-    `UPDATE notes SET status = ?, completed_at = ${closing ? '?' : 'NULL'}, updated_at = ?
+    `UPDATE notes SET status = ?, column_id = ?, completed_at = ${closing ? '?' : 'NULL'}, updated_at = ?
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
-  ).bind(...(closing ? [status, now, now, id] : [status, now, id])).run();
+  ).bind(...(closing ? [status, columnId, now, now, id] : [status, columnId, now, id])).run();
   return (res.meta?.changes ?? 0) > 0;
 }
 
@@ -515,9 +557,13 @@ export async function completeTask(
   }
 
   const trimmed = outcome && outcome.trim() ? outcome.trim() : null;
+  // Realoca pra coluna default de 'done' (mantém invariante category==status).
+  const doneCol = await defaultColumnForCategory(env, 'done');
+  const doneColId = doneCol?.id ?? null;
   const res = await env.DB.prepare(
     `UPDATE notes
      SET status = 'done',
+         column_id = ?,
          completed_at = ?,
          updated_at = ?,
          body = CASE WHEN ? IS NULL THEN body
@@ -525,7 +571,7 @@ export async function completeTask(
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL
        AND status <> 'done'
        AND (? IS NULL OR updated_at = ?)`
-  ).bind(now, now, trimmed, trimmed, id, expectedUpdatedAt ?? null, expectedUpdatedAt ?? null).run();
+  ).bind(doneColId, now, now, trimmed, trimmed, id, expectedUpdatedAt ?? null, expectedUpdatedAt ?? null).run();
 
   if ((res.meta?.changes ?? 0) === 0) {
     // Alguém venceu a corrida ou a versão não bateu. Reler pra decidir o sentinel.
@@ -578,6 +624,10 @@ export async function updateTask(
   if (patch.status !== undefined) {
     const closing = patch.status === 'done' || patch.status === 'canceled';
     sets.push('status = ?'); binds.push(patch.status);
+    // Realoca column_id pra coluna default da nova categoria (invariante
+    // category(column_id)==status). Mudança de status por MCP/UI reflete no board.
+    const col = await defaultColumnForCategory(env, patch.status);
+    sets.push('column_id = ?'); binds.push(col?.id ?? null);
     sets.push(`completed_at = ${closing ? '?' : 'NULL'}`);
     if (closing) binds.push(now);
   }
@@ -602,4 +652,180 @@ export async function updateTask(
 
   const after = await getTaskById(env, id);
   return after ?? 'not-found';
+}
+
+// ─────────────────────────── KANBAN COLUMNS ───────────────────────────
+// CRUD + resolução de coluna. Ver spec 51 e a migration 0009.
+
+// Lista colunas. Por padrão só as ATIVAS (archived_at IS NULL), ordenadas por
+// position. includeArchived=true traz também as arquivadas (usado pela UI de config).
+export async function listKanbanColumns(env: Env, includeArchived = false): Promise<KanbanColumn[]> {
+  const sql = includeArchived
+    ? `SELECT id, label, color, position, category, archived_at FROM kanban_columns ORDER BY position ASC`
+    : `SELECT id, label, color, position, category, archived_at FROM kanban_columns WHERE archived_at IS NULL ORDER BY position ASC`;
+  const r = await env.DB.prepare(sql).all<KanbanColumn>();
+  return r.results ?? [];
+}
+
+export async function getColumnById(env: Env, id: string): Promise<KanbanColumn | null> {
+  return env.DB.prepare(
+    `SELECT id, label, color, position, category, archived_at FROM kanban_columns WHERE id = ?`
+  ).bind(id).first<KanbanColumn>();
+}
+
+// Coluna default de uma categoria: a ATIVA de menor position. Se não houver ativa,
+// cai no seed fixo da categoria MESMO arquivado (nunca devolve null pras 4 categorias
+// canônicas num banco provisionado) — garante que uma escrita sempre resolve um
+// column_id coerente. Ver SEED_COLUMN_BY_CATEGORY.
+export async function defaultColumnForCategory(env: Env, category: TaskStatus): Promise<KanbanColumn | null> {
+  const active = await env.DB.prepare(
+    `SELECT id, label, color, position, category, archived_at FROM kanban_columns
+     WHERE category = ? AND archived_at IS NULL
+     ORDER BY position ASC LIMIT 1`
+  ).bind(category).first<KanbanColumn>();
+  if (active) return active;
+  const seedId = SEED_COLUMN_BY_CATEGORY[category];
+  return seedId ? getColumnById(env, seedId) : null;
+}
+
+// Resolve a coluna de UMA task a partir de um conjunto já carregado de colunas
+// (puro, sem env) — evita N queries no list_tasks e centraliza a regra:
+//   1) coluna atribuída (mesmo arquivada) se o column_id existe;
+//   2) senão, a ativa de menor position da categoria do status;
+//   3) senão, o seed da categoria (mesmo arquivado).
+// Devolve null só se o conjunto não tiver NENHUMA coluna da categoria (banco não
+// provisionado) — o caller então cai no status cru.
+export function resolveTaskColumn(
+  task: { column_id?: string | null; status: string | null },
+  columns: KanbanColumn[]
+): KanbanColumn | null {
+  if (task.column_id) {
+    const assigned = columns.find((c) => c.id === task.column_id);
+    if (assigned) return assigned;
+  }
+  const cat = (task.status ?? 'open') as TaskStatus;
+  const active = columns
+    .filter((c) => c.category === cat && c.archived_at === null)
+    .sort((a, b) => a.position - b.position);
+  if (active.length > 0) return active[0];
+  const seedId = SEED_COLUMN_BY_CATEGORY[cat];
+  return columns.find((c) => c.id === seedId) ?? null;
+}
+
+export type MoveResult = TaskRow | 'not-found' | 'column-not-found';
+
+// Move uma task pra uma coluna (drag & drop do board). Resolve a coluna, seta
+// column_id E status = category da coluna, e completed_at quando a categoria fecha
+// (done/canceled) ou limpa ao reabrir — tudo num único UPDATE atômico (mantém o
+// invariante category(column_id)==status). Ver spec 51 item 2.
+export async function moveTaskToColumn(env: Env, id: string, columnId: string, now: number): Promise<MoveResult> {
+  const col = await getColumnById(env, columnId);
+  if (!col) return 'column-not-found';
+  const closing = col.category === 'done' || col.category === 'canceled';
+  const res = await env.DB.prepare(
+    `UPDATE notes SET column_id = ?, status = ?, completed_at = ${closing ? '?' : 'NULL'}, updated_at = ?
+     WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(...(closing ? [columnId, col.category, now, now, id] : [columnId, col.category, now, id])).run();
+  if ((res.meta?.changes ?? 0) === 0) return 'not-found';
+  const after = await getTaskById(env, id);
+  return after ?? 'not-found';
+}
+
+// Realoca em massa as tasks de uma coluna pra outra (usado ao arquivar uma coluna
+// com tasks). Só mexe em column_id — status não muda (destino é da MESMA categoria,
+// validado no caller). Retorna quantas linhas mudaram.
+export async function reassignColumn(env: Env, fromId: string, toId: string): Promise<number> {
+  const res = await env.DB.prepare(
+    `UPDATE notes SET column_id = ? WHERE kind = 'task' AND column_id = ?`
+  ).bind(toId, fromId).run();
+  return res.meta?.changes ?? 0;
+}
+
+// Conta tasks (não deletadas) alocadas numa coluna — pra decidir se o arquivamento
+// precisa de coluna destino.
+export async function countTasksInColumn(env: Env, columnId: string): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM notes WHERE kind = 'task' AND deleted_at IS NULL AND column_id = ?`
+  ).bind(columnId).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+// Contagem de tasks por column_id numa query só (GROUP BY) — pra a UI de config
+// mostrar quantas tasks cada coluna tem sem N+1.
+export async function taskCountsByColumn(env: Env): Promise<Map<string, number>> {
+  const r = await env.DB.prepare(
+    `SELECT column_id, count(*) AS c FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL AND column_id IS NOT NULL
+     GROUP BY column_id`
+  ).all<{ column_id: string; c: number }>();
+  const m = new Map<string, number>();
+  for (const row of r.results ?? []) m.set(row.column_id, row.c);
+  return m;
+}
+
+// Cria uma coluna nova. id = 'col_' + slug aleatório; position = max+1. archived_at
+// nasce null (ativa). Retorna a coluna criada.
+export async function createKanbanColumn(
+  env: Env, input: { label: string; color: string | null; category: TaskStatus; id: string }
+): Promise<KanbanColumn> {
+  const row = await env.DB.prepare(
+    `SELECT COALESCE(MAX(position), 0) AS m FROM kanban_columns`
+  ).first<{ m: number }>();
+  const position = (row?.m ?? 0) + 1;
+  await env.DB.prepare(
+    `INSERT INTO kanban_columns (id, label, color, position, category, archived_at)
+     VALUES (?, ?, ?, ?, ?, NULL)`
+  ).bind(input.id, input.label, input.color, position, input.category).run();
+  return { id: input.id, label: input.label, color: input.color, position, category: input.category, archived_at: null };
+}
+
+// Edita label/color de uma coluna (categoria é TRAVADA após criação — mudá-la
+// reclassificaria status em massa, fora de escopo). Retorna false se o id não existe.
+export async function updateKanbanColumn(
+  env: Env, id: string, patch: { label?: string; color?: string | null }
+): Promise<boolean> {
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  if (patch.label !== undefined) { sets.push('label = ?'); binds.push(patch.label); }
+  if (patch.color !== undefined) { sets.push('color = ?'); binds.push(patch.color); }
+  if (sets.length === 0) return false;
+  binds.push(id);
+  const res = await env.DB.prepare(
+    `UPDATE kanban_columns SET ${sets.join(', ')} WHERE id = ?`
+  ).bind(...binds).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Reordena trocando a position da coluna com a vizinha na direção dada (↑/↓), no
+// conjunto de colunas ATIVAS ordenado por position. Retorna false se não há vizinha
+// (já é a primeira/última) ou o id não é uma coluna ativa.
+export async function reorderKanbanColumn(env: Env, id: string, direction: 'up' | 'down'): Promise<boolean> {
+  const cols = await listKanbanColumns(env, false); // ativas, ordenadas por position
+  const idx = cols.findIndex((c) => c.id === id);
+  if (idx === -1) return false;
+  const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapIdx < 0 || swapIdx >= cols.length) return false;
+  const a = cols[idx];
+  const b = cols[swapIdx];
+  const upd = env.DB.prepare(`UPDATE kanban_columns SET position = ? WHERE id = ?`);
+  await env.DB.batch([upd.bind(b.position, a.id), upd.bind(a.position, b.id)]);
+  return true;
+}
+
+// Arquiva/desarquiva uma coluna. Só mexe em archived_at — a realocação de tasks
+// (quando arquiva) fica a cargo do caller (endpoint), que valida a coluna destino.
+export async function setColumnArchived(env: Env, id: string, archivedAt: number | null): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE kanban_columns SET archived_at = ? WHERE id = ?`
+  ).bind(archivedAt, id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Quantas colunas ATIVAS existem numa categoria (pra impedir arquivar a última
+// coluna ativa de open/done — senão as tasks dessas categorias sumiriam do board).
+export async function countActiveColumnsInCategory(env: Env, category: TaskStatus): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM kanban_columns WHERE category = ? AND archived_at IS NULL`
+  ).bind(category).first<{ c: number }>();
+  return r?.c ?? 0;
 }

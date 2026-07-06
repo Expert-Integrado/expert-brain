@@ -1,6 +1,6 @@
 # Kanban de tarefas: colunas/estágios customizáveis pela UI, persistidos no banco
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** nenhuma (vizinhas sem overlap: `30-features/32` lifecycle/digest, `30-features/36` edição inline)
 > **Agente sugerido:** Opus (schema + compatibilidade MCP)
 
