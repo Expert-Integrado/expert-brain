@@ -42,7 +42,7 @@ const TOOL_NAMES = [
  */
 export function buildServerInstructions(
   personalizationPrompt: string | null,
-  opts: { hasMedia?: boolean; hasContacts?: boolean } = {}
+  opts: { hasMedia?: boolean; hasContacts?: boolean; ownerInstructions?: string | null } = {}
 ): string {
   const trimmedPrompt = personalizationPrompt?.trim() ?? '';
   // Mídia (binding MEDIA/R2) e contatos (binding CONTACTS -> Worker separado,
@@ -56,6 +56,14 @@ export function buildServerInstructions(
 
   const ownerBlock = trimmedPrompt
     ? `\n\nContexto do dono (definido em /app/config):\n${trimmedPrompt}`
+    : '';
+
+  // "Instruções do dono" (spec 50-console-v2/70): bloco livre editado em
+  // /app/config, anexado NO FIM do handshake. Quando vazio/ausente, o texto
+  // sai byte-a-byte idêntico ao anterior (nada é concatenado).
+  const trimmedOwnerInstructions = opts.ownerInstructions?.trim() ?? '';
+  const ownerInstructionsBlock = trimmedOwnerInstructions
+    ? `\n\n--- INSTRUÇÕES DO DONO DESTA INSTÂNCIA (editáveis em /app/config) ---\n${trimmedOwnerInstructions}`
     : '';
 
   return `${header}${ownerBlock}
@@ -86,7 +94,7 @@ management | sales | marketing | education | ai-applied | leadership | product |
 
 \`save_note\` e \`update_note\` rejeitam domínios fora dessa lista. Se a nota não cabe perfeitamente em nenhum dos 12, escolha o mais próximo — o canon é a unidade de recall cross-domain. A mensagem de erro sugere o canônico mais próximo, então re-tentar é barato.
 
-Escape hatch: se o usuário GENUINAMENTE abriu uma área nova (ex: mudou de mercado, começou a estudar biotech), passe \`allow_new_domain: true\` no save_note/update_note daquela chamada. Não abuse — o canon existe pra evitar a proliferação de domínios que quebra o recall cross-domain.`;
+Escape hatch: se o usuário GENUINAMENTE abriu uma área nova (ex: mudou de mercado, começou a estudar biotech), passe \`allow_new_domain: true\` no save_note/update_note daquela chamada. Não abuse — o canon existe pra evitar a proliferação de domínios que quebra o recall cross-domain.${ownerInstructionsBlock}`;
 }
 
 export { TOOL_NAMES };

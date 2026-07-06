@@ -8,7 +8,7 @@ import { handleJournalPage } from './journal.js';
 import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
-import { handleConfigPage, configPageScript, handleConfigPrefsPost } from './config.js';
+import { handleConfigPage, configPageScript, handleConfigPrefsPost, handleConfigOwnerInstructionsPost } from './config.js';
 import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from './taxonomy-config.js';
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
@@ -232,6 +232,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
 
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
   if (path === '/app/config/prefs' && req.method === 'POST') return handleConfigPrefsPost(req, env);
+  // "Instruções do dono" (spec 50-console-v2/70): bloco livre anexado ao handshake
+  // MCP. Sessão obrigatória; nenhum caminho público novo.
+  if (path === '/app/config/owner-instructions' && req.method === 'POST') return handleConfigOwnerInstructionsPost(req, env);
   // Taxonomia configurável (spec 54): cor/label de áreas e kinds. GET é consumido
   // pelos bundles client (graph.ts, notes.ts) pra resolver cor/label sem embutir
   // a config em cada página; POST/reset vêm da seção "Áreas e tipos" de /app/config.

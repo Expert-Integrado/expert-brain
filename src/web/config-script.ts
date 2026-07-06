@@ -168,6 +168,20 @@ export function configPageScript(): string {
         });
     });
   }
+
+  // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
+  // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
+  // contador "usados/max" (usa o maxlength do próprio campo como teto).
+  document.querySelectorAll('textarea[data-charcount]').forEach(function (ta) {
+    var out = document.getElementById(ta.getAttribute('data-charcount'));
+    if (!out) return;
+    var max = ta.getAttribute('maxlength');
+    var render = function () {
+      out.textContent = ta.value.length + (max ? '/' + max : '');
+    };
+    ta.addEventListener('input', render);
+    render();
+  });
 })();
 `;
 }

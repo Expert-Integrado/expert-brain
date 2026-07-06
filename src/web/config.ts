@@ -5,7 +5,7 @@ import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js'
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
-import { readPersonalizationPrompt } from '../db/meta.js';
+import { readPersonalizationPrompt, readOwnerInstructions, writeOwnerInstructions, OWNER_INSTRUCTIONS_MAX_LEN } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
 import { formatBrtDateTime } from '../util/time.js';
@@ -128,12 +128,22 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
         </div>
         <div class="adv-section">
           <h3>Nova coluna</h3>
-          <form method="post" action="/app/tasks/columns/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
-            <input type="text" name="label" required maxlength="40" placeholder="Nome da coluna" class="input-text" style="width:170px">
-            <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
-            <select name="category" required>${categoryOptions('open')}</select>
+          <form method="post" action="/app/tasks/columns/create" class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-label" style="font-size:12px;color:var(--text-dim)">Nome da coluna</label>
+              <input id="new-col-label" type="text" name="label" required maxlength="40" placeholder="Ex.: Backlog" class="input-text" style="width:170px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-color" style="font-size:12px;color:var(--text-dim)">Cor (opcional)</label>
+              <input id="new-col-color" type="text" name="color" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:130px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              <label for="new-col-category" style="font-size:12px;color:var(--text-dim)">Categoria (estado real da task)</label>
+              <select id="new-col-category" name="category" required>${categoryOptions('open')}</select>
+            </div>
             <button type="submit" class="btn-primary">Criar coluna</button>
           </form>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Ex.: uma coluna <strong>Backlog</strong> pertence à categoria <strong>Aberta</strong> — a categoria é o estado REAL da task (o que o MCP e as automações leem); a coluna é só o estágio visual no board.</p>
           <p style="color:var(--text-dim);font-size:13px;margin-top:8px">A coluna <strong>Cancelado</strong> nasce arquivada — desarquive-a aqui pra ver tasks canceladas no board.</p>
         </div>
       </div>
@@ -288,6 +298,32 @@ function renderTaxonomySection(
     </details>`;
 }
 
+// ─────────── Seção "Instruções pros agentes (MCP)" — CLAUDE.md do Brain (spec 70) ───────────
+function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: boolean): string {
+  const len = ownerInstructions.length;
+  return `
+    <details class="disclosure-advanced conn-section" id="owner-instructions"${savedOwner ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">7. Instruções pros agentes (MCP)</span>
+        <span class="adv-sub">Um "CLAUDE.md do Brain": orientações suas que TODO agente recebe no handshake</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Este texto é anexado às instruções que o servidor MCP anuncia no <strong>handshake</strong> — ou seja, TODO agente que conecta (Claude Code, Desktop, sistemas web, automações) recebe estas orientações automaticamente, sem você configurar cliente por cliente. Use pra regras globais tipo <em>"sempre responda em pt-BR"</em>, <em>"priorize o domínio X"</em> ou <em>"nunca crie task sem prazo"</em>.</p>
+          <form method="post" action="/app/config/owner-instructions">
+            <label for="owner-instructions-text">Instruções (texto puro/markdown leve, máx ${OWNER_INSTRUCTIONS_MAX_LEN} caracteres)</label>
+            <textarea id="owner-instructions-text" name="owner_instructions" rows="8" maxlength="${OWNER_INSTRUCTIONS_MAX_LEN}" class="prefs-textarea" data-charcount="owner-instructions-count" placeholder="Ex: Sempre responda em pt-BR. Antes de salvar nota, varra analogias em outros domínios.">${esc(ownerInstructions)}</textarea>
+            <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+              <button type="submit" class="btn-primary">Salvar</button>
+              <span id="owner-instructions-count" style="color:var(--text-dim);font-size:13px">${len}/${OWNER_INSTRUCTIONS_MAX_LEN}</span>
+            </div>
+          </form>
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Aparece pra qualquer credencial válida (login OAuth ou chave de API) no início da sessão do agente — deixe em branco e salve pra remover.<br>Não são segredo e vão pro handshake em texto puro: <strong>nunca coloque senhas, tokens ou chaves aqui</strong>.</p>
+        </div>
+      </div>
+    </details>`;
+}
+
 export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -304,6 +340,21 @@ export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Res
     .bind(PREFS_META_KEY, prompt)
     .run();
   return new Response(null, { status: 302, headers: { location: '/app/config?saved=prefs#prefs' } });
+}
+
+// POST /app/config/owner-instructions — "CLAUDE.md do Brain" (spec 50-console-v2/70).
+// Sessão obrigatória (mesmo padrão de /app/config/prefs). Texto vazio REMOVE a
+// chave `owner_instructions` (writeOwnerInstructions cuida do cap 4000 + sanitize).
+export async function handleConfigOwnerInstructionsPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+  const raw = String(form.get('owner_instructions') ?? '');
+  await writeOwnerInstructions(env, raw);
+  return new Response(null, {
+    status: 302,
+    headers: { location: '/app/config?saved=owner#owner-instructions' },
+  });
 }
 
 export async function handleConfigPage(req: Request, env: Env): Promise<Response> {
@@ -335,6 +386,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedProjects = url.searchParams.get('saved') === 'projects';
   // Idem pra taxonomia de áreas/kinds (?saved=taxonomy reabre "Áreas e tipos").
   const savedTaxonomy = url.searchParams.get('saved') === 'taxonomy';
+  // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
+  const savedOwner = url.searchParams.get('saved') === 'owner';
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const [kanbanColumns, kanbanCounts] = await Promise.all([
@@ -359,6 +412,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const taxonomySection = renderTaxonomySection(domainCounts, taxonomyConfig, savedTaxonomy);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
+  // Seção "Instruções pros agentes (MCP)" (spec 70): valor cru da meta (vazio
+  // quando a chave não existe) + estado do accordion.
+  const ownerInstructions = (await readOwnerInstructions(env)) ?? '';
+  const ownerInstructionsSection = renderOwnerInstructionsSection(ownerInstructions, savedOwner);
   const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
     ? new Date(stats.lastWrite).toLocaleString('pt-BR')
@@ -554,6 +611,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ${projectsSection}
 
     ${taxonomySection}
+
+    ${ownerInstructionsSection}
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;

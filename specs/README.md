@@ -199,6 +199,7 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/67-backup-export.md` | Backup: snapshot semanal D1→R2 + export manual + runbook de restore | P1 | M | ambos | nenhuma (adiantável) |
 | `50-console-v2/68-pwa-instalavel.md` | PWA (base já existe): share target de captura + shortcuts no manifest | P2 | S | expert-brain | `63` (suave: `65`) |
 | `50-console-v2/69-backup-offsite.md` | Backup off-site: rotina externa copia snapshots pra fora da Cloudflare (Drive + servidor) | P1 | M | ops | `50-console-v2/67` (deployada; dono no loop) |
+| `50-console-v2/70-instrucoes-do-dono.md` | Instruções do dono ("CLAUDE.md do Brain"): campo no console servido no handshake MCP | P1 | S | expert-brain | `10-backend/11` (done) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo
