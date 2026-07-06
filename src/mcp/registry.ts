@@ -1,5 +1,7 @@
 import type { Env, AuthContext } from '../env.js';
+import { hasScope } from '../auth/api-keys.js';
 import { registerSaveNote } from './tools/save-note.js';
+import { registerMarkPrivate } from './tools/mark-private.js';
 import { registerRecall } from './tools/recall.js';
 import { registerExpand } from './tools/expand.js';
 import { registerGetNote } from './tools/get-note.js';
@@ -47,23 +49,26 @@ function readOnlyGuard(server: any): any {
 }
 
 export function registerAllTools(server: any, env: Env, auth: AuthContext): void {
-  // Escopo ausente (sessões OAuth) = 'full' — comportamento histórico intacto.
-  const scope = auth.scopes ?? 'full';
-  // `reg` é o alvo dos register*: no escopo read é o guarda que dropa as tools de
-  // escrita; no full é o próprio server. Tools de escrita recebem `auth` pra gravar
-  // autoria (created_by/updated_by) — no read elas não são registradas de todo jeito.
-  const reg = scope === 'read' ? readOnlyGuard(server) : server;
+  // Escopo é um CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'.
+  // Ausente (sessões OAuth) = 'full'. A decisão read-only vem de hasScope(...,'read')
+  // — NÃO de igualdade `=== 'read'` (que quebraria com 'read,private'). `reg` é o alvo
+  // dos register*: no escopo read é o guarda que dropa as tools de escrita; no full é o
+  // próprio server. Tools de escrita recebem `auth` pra gravar autoria; tools de LEITURA
+  // recebem `auth` pra computar canSeePrivate (selo de privacidade).
+  const readOnly = hasScope(auth.scopes, 'read');
+  const reg = readOnly ? readOnlyGuard(server) : server;
 
   registerSaveNote(reg, env, auth);
   registerUpdateNote(reg, env, auth);
+  registerMarkPrivate(reg, env, auth);
   registerDeleteNote(reg, env, auth);
   registerRestoreNote(reg, env, auth);
-  registerRecall(reg, env);
-  registerExpand(reg, env);
-  registerGetNote(reg, env);
+  registerRecall(reg, env, auth);
+  registerExpand(reg, env, auth);
+  registerGetNote(reg, env, auth);
   registerLink(reg, env);
   registerDeleteLink(reg, env);
-  registerStats(reg, env);
+  registerStats(reg, env, auth);
   registerReembed(reg, env);
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
   registerSaveTask(reg, env, auth);

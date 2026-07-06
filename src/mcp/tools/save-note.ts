@@ -26,6 +26,9 @@ const inputSchema = {
   allow_new_domain: z.boolean().optional().describe(
     'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area; syntactic validation (kebab-case) still applies.'
   ),
+  private: z.boolean().optional().describe(
+    'Mark the note PRIVATE (default false). A private note is invisible via recall/get_note/expand/stats to any credential WITHOUT the `private` scope. One-way from tools: only the owner UI can make it public again.'
+  ),
 };
 
 const DESCRIPTION = `Saves an atomic note to the vault, optionally with edges to existing notes.
@@ -63,6 +66,7 @@ interface SaveNoteInput {
   tags?: string[];
   edges?: Array<{ to_id: string; relation_type: EdgeType; why: string }>;
   allow_new_domain?: boolean;
+  private?: boolean;
 }
 
 export function registerSaveNote(server: any, env: Env, auth: AuthContext): void {
@@ -126,6 +130,9 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         tldr: input.tldr,
         domains: JSON.stringify(input.domains),
         kind: input.kind,
+        // Selo de privacidade (spec 31): qualquer caller com a tool registrada pode
+        // CRIAR privada — marcar é barato e fail-safe (one-way).
+        private: input.private ? 1 : 0,
         created_at: now,
         updated_at: now,
       }, writeActor(auth));

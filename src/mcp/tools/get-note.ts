@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { getEdgesFrom, getEdgesTo, getNoteById, getTagsByNote } from '../../db/queries.js';
 
 const inputSchema = { id: z.string().min(1) };
@@ -13,7 +13,10 @@ IMPORTANT: the body can be long — cite the relevant passages in your reply, do
 
 Works for tasks (kind='task') too, but returns a note shape WITHOUT status/due/priority — use get_task to read a task's full state.`;
 
-export function registerGetNote(server: any, env: Env): void {
+export function registerGetNote(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 31): sem escopo, nota privada = mesmo "not found" de
+  // inexistente (não vaza que existe), e vizinhos privados somem dos edges.
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'get_note',
     {
@@ -22,7 +25,7 @@ export function registerGetNote(server: any, env: Env): void {
       annotations: { title: 'Get full note', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { id: string }) => {
-      const n = await getNoteById(env, input.id);
+      const n = await getNoteById(env, input.id, false, seePrivate);
       if (!n) {
         return toolError(
           `Note '${input.id}' not found. Call recall() to discover the correct id. Do NOT retry with this id.`
@@ -30,8 +33,8 @@ export function registerGetNote(server: any, env: Env): void {
       }
       const [tags, edgesOut, edgesIn] = await Promise.all([
         getTagsByNote(env, input.id),
-        getEdgesFrom(env, input.id),
-        getEdgesTo(env, input.id),
+        getEdgesFrom(env, input.id, seePrivate),
+        getEdgesTo(env, input.id, seePrivate),
       ]);
       return toolSuccess({
         id: n.id,

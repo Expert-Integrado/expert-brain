@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, writeActor } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor, canSeePrivate } from '../helpers.js';
 import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
@@ -17,6 +17,9 @@ const inputSchema = {
   tags: z.array(z.string()).optional(),
   allow_new_domain: z.boolean().optional().describe(
     'Escape hatch — set true to allow domains outside the 12 canonical ones. Default false. Only use when the user explicitly opens a new area.'
+  ),
+  private: z.boolean().optional().describe(
+    'Set true to MARK the note private (invisible via recall/get_note/expand/stats to any credential without the `private` scope). Passing false is REJECTED — un-marking a note as public is only possible in the logged-in owner UI. This is one-way from tools.'
   ),
 };
 
@@ -55,6 +58,7 @@ interface UpdateNoteInput {
   kind?: NoteKind;
   tags?: string[];
   allow_new_domain?: boolean;
+  private?: boolean;
 }
 
 export function registerUpdateNote(server: any, env: Env, auth: AuthContext): void {
@@ -73,16 +77,28 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
     },
     safeToolHandler(async (input: UpdateNoteInput) => {
       const { id, title, body, tldr, domains, kind, tags } = input;
+      // Selo de privacidade (spec 31): desmarcar (private: false) é PROIBIDO via tool —
+      // só a UI logada do dono (POST /app/notes/{id}/private) torna pública, pra um
+      // agente comprometido/enganado não des-privatizar em massa. Marcar (true) é ok.
+      if (input.private === false) {
+        return toolError(
+          `Cannot set a note back to public via update_note. Un-marking is only possible in the ` +
+          `logged-in owner UI at /app/notes/${id}. update_note can only MARK a note private (private: true).`
+        );
+      }
+      const setsPrivate = input.private === true;
       const touchesD1Columns = title !== undefined || body !== undefined || tldr !== undefined
-        || domains !== undefined || kind !== undefined;
+        || domains !== undefined || kind !== undefined || setsPrivate;
       if (!touchesD1Columns && tags === undefined) {
         return toolError(
           `update_note requires at least one field besides id to be provided. ` +
-          `Editable fields: title, body, tldr, domains, kind, tags.`
+          `Editable fields: title, body, tldr, domains, kind, tags, private (true only).`
         );
       }
 
-      const existing = await getNoteById(env, id);
+      // canSeePrivate: um caller sem escopo `private` não enxerga nota já privada
+      // (recebe "not found", como get_note) — mas ainda pode MARCAR uma nota pública.
+      const existing = await getNoteById(env, id, false, canSeePrivate(auth));
       if (!existing) {
         return toolError(
           `Note '${id}' not found in the vault. Call recall() or get_note() to confirm the id. Do NOT retry with this id.`
@@ -114,12 +130,15 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
 
       const now = Date.now();
       const fieldsChanged: string[] = [...colFieldsChanged];
+      if (setsPrivate) fieldsChanged.push('private');
 
       if (touchesD1Columns) {
         await updateNote(env, id, {
           title, body, tldr,
           domains: domains !== undefined ? JSON.stringify(domains) : undefined,
           kind,
+          // Marcar privada (spec 31): 1 só. `private: false` já foi barrado acima.
+          private: setsPrivate ? 1 : undefined,
           updated_at: now,
         }, undefined, actor);
       }
