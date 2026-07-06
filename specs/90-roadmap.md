@@ -165,7 +165,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [x] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão) — impl `feat/console-v2`, tsc + suíte verdes (58 arquivos, 465 testes + auth)
 - [x] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1 — impl `feat/console-v2`, tsc + suíte verdes (61 arquivos, 517 testes + auth)
 - [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
-- [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)
+- [x] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão) — impl `feat/console-v2` nos dois repos: kinds novos (meeting/email/message), `recordEvent` compartilhado (3 call-sites), endpoint paginado + proxy do Brain, `CONTACTS_WRITE_TOKEN` escopado (allowlist de 1 path), timeline+form nos dois clients. contacts: tsc + 210 testes verdes (19 arquivos); brain: tsc + 522 testes verdes (63 arquivos, incl. auth.test.ts)
 - [ ] 9. `50-console-v2/56` — página própria (ambos, Sonnet, padrão)
 - [ ] 10. `50-console-v2/60` — observações semânticas (contacts, Opus, padrão) — fecha C2: registrar G5-C2 (**parcial**: tree do contacts tem write-path/embedding editados sem commit; retomar por herança, não refazer)
 - [ ] 11. `10-backend/17` — escopos de credencial (brain, Opus, ultrathink) — C3

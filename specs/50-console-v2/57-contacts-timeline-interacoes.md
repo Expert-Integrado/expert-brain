@@ -1,6 +1,6 @@
 # Contacts: timeline completa de interações com paginação e registro manual pelo console
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (`expert-contacts` + proxy no `expert-brain`)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (`expert-contacts` + proxy no `expert-brain`)
 > **Depende de:** nenhuma bloqueante (a UI final mora na página da spec `50-console-v2/56`; até ela existir, a seção renderiza no detalhe atual). Integração automática WhatsApp↔contatos permanece na `30-features/35` (interface), fora daqui.
 > **Agente sugerido:** Sonnet
 
@@ -60,12 +60,12 @@ No contacts (`src/web/` — handler novo `events.ts` ou dentro do detail):
 
 ## Critérios de aceite
 
-- [ ] Endpoint paginado retorna `total` correto e pagina estável (fixture com 75 eventos: 3 páginas de 30/30/15, sem duplicar item entre páginas).
-- [ ] `log_event` MCP aceita `meeting`/`email`/`message`; `meeting` atualiza `last_contacted`, `email`/`message` NÃO (mesma regra do `saw_post`).
-- [ ] Registrar interação pelo console standalone (sessão) e pela página no Brain (rota proxy de escrita) grava evento idêntico ao REST `POST /event` — incluindo atualização de `last_contacted` (função compartilhada, teste triplo nos 3 call-sites).
-- [ ] `CONTACTS_WRITE_TOKEN`: autoriza SÓ `POST /app/entity/event`; em qualquer outro path retorna 401; `CONTACTS_PROXY_TOKEN` em path de escrita → 401 (teste explícito de não-regressão do design read-only).
-- [ ] Timeline renderiza kinds com labels PT, datas em BRT, "Carregar mais" funciona até esgotar.
-- [ ] Evento com kind inválido → 400 com lista dos válidos (mensagem honesta).
+- [x] Endpoint paginado retorna `total` correto e pagina estável (fixture com 75 eventos: 3 páginas de 30/30/15, sem duplicar item entre páginas). Teste: `expert-contacts/test/events.test.ts`.
+- [x] `log_event` MCP aceita `meeting`/`email`/`message`; `meeting` atualiza `last_contacted`, `email`/`message` NÃO (mesma regra do `saw_post`). Descrição da tool atualizada (`mcp/index.js`); enum via `mcp/canon.mjs` (anti-drift). Teste: `expert-contacts/test/events.test.ts`.
+- [x] Registrar interação pelo console standalone (sessão) e pela página no Brain (rota proxy de escrita) grava evento idêntico ao REST `POST /event` — incluindo atualização de `last_contacted` (função compartilhada, teste triplo nos 3 call-sites). Teste: `expert-contacts/test/events.test.ts` (describe "recordEvent compartilhado").
+- [x] `CONTACTS_WRITE_TOKEN`: autoriza SÓ `POST /app/entity/event`; em qualquer outro path retorna 401; `CONTACTS_PROXY_TOKEN` em path de escrita → 401 (teste explícito de não-regressão do design read-only). Teste: `expert-contacts/test/events.test.ts` (describe "Matriz de auth").
+- [x] Timeline renderiza kinds com labels PT, datas em BRT, "Carregar mais" funciona até esgotar. Implementado nos dois clients (`expert-contacts/src/web/client/detail.ts` e `expert-brain/src/web/client/graph.ts`, painel de contato — página própria da spec 56 ainda não existe, então a timeline vive no detalhe/painel atual conforme previsto no Design §4). Validação automática cobre a paginação subjacente; QA manual interativa (`wrangler dev` + clique) NÃO foi executada nesta sessão (ambiente não-interativo, sem browser).
+- [x] Evento com kind inválido → 400 com lista dos válidos (mensagem honesta). Teste: `expert-contacts/test/events.test.ts` + `expert-contacts/test/write-path.test.ts` (regressão do REST).
 
 ## Validação
 
