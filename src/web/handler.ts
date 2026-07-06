@@ -2,7 +2,9 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent } from './contacts-data.js';
+import { handleHomePage } from './home.js';
+import { handleJournalPage } from './journal.js';
 import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
@@ -22,12 +24,15 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   const path = url.pathname;
   if (!path.startsWith('/app')) return null;
 
-  if (path === '/app' || path === '/app/') {
-    return new Response(null, { status: 302, headers: { location: '/app/graph' } });
-  }
+  // Home "Hoje" (spec 50-console-v2/65): raiz do console logado. Antes redirecionava
+  // pro grafo — /app/graph continua existindo como antes, só deixou de ser o destino
+  // default. Nenhuma rota existente muda de comportamento (critério de aceite).
+  if ((path === '/app' || path === '/app/') && req.method === 'GET') return handleHomePage(req, env);
   if (path === '/app/login' && req.method === 'GET') return handleLoginGet(req);
   if (path === '/app/login' && req.method === 'POST') return handleLoginPost(req, env);
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
+  // Journal cronológico unificado (spec 65 §3): notas + tasks + interações de contato.
+  if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
   if (path === '/app/notes' && req.method === 'GET') return handleNotesList(req, env);
   if (path === '/app/search' && req.method === 'GET') return handleNoteSearch(req, env);
 
@@ -134,6 +139,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts/entity/mentions' && req.method === 'GET') return handleContactMentions(req, env);
   // Busca de contatos pro @autocomplete do editor de nota (spec 62 §2) — proxy read-only.
   if (path === '/app/contacts/search' && req.method === 'GET') return handleContactsSearch(req, env);
+  // Feed global de interações (spec 65 §1) — consumido pelo client da home (card
+  // "Últimas interações", async) e pelo journal (fonte "interações", SSR).
+  if (path === '/app/contacts/events/recent' && req.method === 'GET') return handleContactsEventsRecent(req, env);
   const contactsMediaMatch = path.match(/^\/app\/contacts\/media\/([0-9a-f]{64})$/i);
   if (contactsMediaMatch && req.method === 'GET') {
     return handleContactsMedia(req, env, contactsMediaMatch[1]);
@@ -206,6 +214,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   }
   if (path === '/app/contacts/contact-page.bundle.js' && req.method === 'GET') {
     return serveBundle('/contact-page.bundle.js');
+  }
+  if (path === '/app/home/bundle.js' && req.method === 'GET') {
+    return serveBundle('/home.bundle.js');
+  }
+  if (path === '/app/journal/bundle.js' && req.method === 'GET') {
+    return serveBundle('/journal.bundle.js');
   }
 
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);

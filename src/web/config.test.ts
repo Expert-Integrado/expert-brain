@@ -122,16 +122,29 @@ describe('/app/config', () => {
   });
 });
 
+// A raiz do console deixou de redirecionar pro grafo e passou a renderizar a home
+// "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md) — /app/graph continua
+// existindo como rota própria, só não é mais o destino default. Cobertura completa
+// da home vive em test/web/home.test.ts; aqui só a garantia de que a raiz não regride
+// pra um redirect fixo.
 describe('/app routing defaults', () => {
-  it('redirects /app to /app/graph', async () => {
+  it('/app sem sessão → 302 pro login (não redireciona mais fixo pro grafo)', async () => {
     const res = await SELF.fetch('https://x.test/app', { redirect: 'manual' });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/graph');
+    expect(res.headers.get('location')).toMatch(/^\/app\/login/);
   });
 
-  it('redirects /app/ to /app/graph', async () => {
-    const res = await SELF.fetch('https://x.test/app/', { redirect: 'manual' });
-    expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/graph');
+  it('/app com sessão → 200 renderizando a home (spec 65)', async () => {
+    const res = await SELF.fetch('https://x.test/app', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('id="home-events-list"');
+  });
+
+  it('/app/ com sessão → 200 renderizando a MESMA home', async () => {
+    const res = await SELF.fetch('https://x.test/app/', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('id="home-events-list"');
   });
 });

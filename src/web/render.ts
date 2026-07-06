@@ -14,6 +14,8 @@ export function sidebarCollapsedFromReq(req: Request): boolean {
 
 // Ícones do menu lateral — mesmos traços do bottom-nav (mobile) pra consistência.
 const SIDEBAR_ICONS = {
+  home:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>',
   graph:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>',
   notes:
@@ -63,7 +65,7 @@ const NAV_BADGE_CSS = `
 
 export async function renderShell(opts: {
   title: string;
-  active: 'notes' | 'graph' | 'tasks' | 'contacts' | 'inbox' | 'config' | 'api-keys';
+  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'inbox' | 'config' | 'api-keys';
   email: string;
   body: string;
   env: Env;
@@ -98,6 +100,7 @@ ${opts.extraHead ?? ''}
 <div class="shell${collapsed ? ' sidebar-collapsed' : ''}">
   <aside class="sidebar">
     <div class="logo"><span class="logo-text">Expert Brain</span></div>
+    <a class="nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" title="Início">${SIDEBAR_ICONS.home}<span class="nav-label">Início</span></a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" title="Grafo">${SIDEBAR_ICONS.graph}<span class="nav-label">Grafo</span></a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
@@ -113,6 +116,10 @@ ${opts.extraHead ?? ''}
   <main class="main">${opts.body}</main>
 </div>
 <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
+  <a class="bottom-nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" aria-label="Início">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+    <span>Início</span>
+  </a>
   <a class="bottom-nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" aria-label="Grafo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>
     <span>Grafo</span>

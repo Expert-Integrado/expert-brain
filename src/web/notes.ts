@@ -64,7 +64,9 @@ function formatDate(ts: number): string {
 // gravado pelo cron diário, nunca recomputa aqui (a query de grau em edges é cara
 // demais pro request path da lista de notas). Some sozinho quando o digest ainda
 // não rodou ou está vazio.
-function renderDigestCard(d: ResurfaceDigest): string {
+// Exportado: reusado pela home (spec 65 §2, card "Do seu cérebro") pra não duplicar
+// a marcação — a home lê o MESMO cache, nunca recomputa.
+export function renderDigestCard(d: ResurfaceDigest): string {
   const items: string[] = [];
   for (const q of d.open_questions) {
     items.push(`<li>❓ <a href="${esc(q.url)}">${esc(q.title)}</a> — sem resposta há ${q.age_days}d</li>`);
