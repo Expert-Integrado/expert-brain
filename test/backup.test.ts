@@ -87,7 +87,7 @@ const FIXTURE_COUNTS: Record<string, number> = {
   api_keys: 1,
   meta: 1,
   kanban_columns: 4,
-  _migrations: 9,
+  _migrations: 10,
 };
 
 beforeAll(async () => {
@@ -119,7 +119,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0009_kanban_columns');
+    expect(manifest.schema_version).toBe('0010_task_comments');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });
