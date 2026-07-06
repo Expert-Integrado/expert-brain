@@ -6,13 +6,15 @@ export const ASSET_HASHES: Record<string, string> = {
   "notes.bundle.js": "ca6128e2374f",
   "local-graph.bundle.js": "3cdb5aa70cae",
   "note-media.bundle.js": "24c52523002f",
-  "note-edit.bundle.js": "99e74995e864",
+  "note-edit.bundle.js": "b4d2ad648e44",
   "shell.bundle.js": "1f37422a38bc",
   "tasks.bundle.js": "580e76b9ccfc",
   "task-edit.bundle.js": "452e70d500ae",
-  "contact-page.bundle.js": "6d2448bd8b46",
+  "contact-page.bundle.js": "4545bd89b42b",
   "sim-worker.bundle.js": "3f1569f3df57",
-  "styles.css": "40287a80a5ea",
+  "home.bundle.js": "3e7c2a90d12b",
+  "journal.bundle.js": "6741a0a12767",
+  "styles.css": "832258a1189a",
   "config.bundle.js": "87488142d537"
 };
 

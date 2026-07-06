@@ -33,6 +33,11 @@ const bundles: Array<{ entry: string; out: string }> = [
   { entry: 'src/web/client/contact-page.ts', out: 'assets/contact-page.bundle.js' },
   // A.24 — Web Worker dedicado pra D3-force simulation
   { entry: 'src/web/client/sim-worker.ts', out: 'assets/sim-worker.bundle.js' },
+  // Home (/app): quick-complete do card "Hoje" + carregamento async das interações
+  // (spec 50-console-v2/65)
+  { entry: 'src/web/client/home.ts', out: 'assets/home.bundle.js' },
+  // Journal (/app/journal): filtros por tipo + "Carregar mais" via append (spec 65)
+  { entry: 'src/web/client/journal.ts', out: 'assets/journal.bundle.js' },
 ];
 
 for (const b of bundles) {
