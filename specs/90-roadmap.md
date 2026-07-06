@@ -162,7 +162,7 @@ Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sess
 - [x] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
 - [x] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
 - [x] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão) — impl `feat/console-v2` (retomada de working tree herdada, sem commit anterior), tsc+436 testes verdes (55 arquivos + auth.test.ts)
-- [ ] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão)
+- [x] 5. `50-console-v2/58` — projetos/pastas (brain, Opus, padrão) — impl `feat/console-v2`, tsc + suíte verdes (58 arquivos, 465 testes + auth)
 - [ ] 6. `50-console-v2/54` — taxonomia (brain, Sonnet, padrão) — fecha C1: registrar G5-C1
 - [x] 7. `50-console-v2/55` — cartela completa (contacts, Opus, padrão) — C2
 - [ ] 8. `50-console-v2/57` — timeline (ambos, Sonnet, padrão)

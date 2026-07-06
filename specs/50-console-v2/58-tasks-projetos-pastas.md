@@ -1,6 +1,6 @@
 # Tasks: projetos (pastas) — agrupamento first-class com filtro no board e no MCP
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** `50-console-v2/51` (render dinâmico do board) · suave: `50-console-v2/52` (anatomia do card — o chip de projeto entra no card desenhado lá)
 > **Agente sugerido:** Opus (schema + contrato MCP)
 
@@ -82,13 +82,13 @@ Seção "Projetos" em `/app/config` (`src/web/config.ts`, padrão `<details>` da
 
 ## Critérios de aceite
 
-- [ ] Migration aplicada via `/setup/provision` em banco provisionado: zero mudança em tasks existentes (`project_id` NULL = "Sem projeto").
-- [ ] `save_task` com `project: "Cliente ACME"` (inexistente) cria o projeto e vincula; segunda chamada com `project: "cliente acme"` REUSA o mesmo (case-insensitive, sem duplicar).
-- [ ] `list_tasks` com `project` (label ou id) retorna só as tasks do projeto; compõe com `status`/`tag`; `get_task`/`list_tasks` incluem `project {id,label}`; nenhuma chamada existente (sem `project`) muda de resultado.
-- [ ] `update_task` com `project: ""` desvincula; com label de projeto ARQUIVADO não vincula (erro orientando desarquivar) — mas `list_tasks` com projeto arquivado ainda lista o histórico.
-- [ ] Board: select de filtro funciona (Todos/Sem projeto/ativo/arquivado), sobrevive a reload (query param + localStorage); card mostra chip com a cor.
-- [ ] Config: criar, renomear, recolorir, reordenar, arquivar/desarquivar projeto; cap 64 aplicado também no auto-create do MCP.
-- [ ] Arquivar projeto com tasks: tasks continuam no board (chip esmaecido), nada é realocado.
+- [x] Migration aplicada via `/setup/provision` em banco provisionado: zero mudança em tasks existentes (`project_id` NULL = "Sem projeto"). (migration 0011; `test/task-projects-queries.test.ts`)
+- [x] `save_task` com `project: "Cliente ACME"` (inexistente) cria o projeto e vincula; segunda chamada com `project: "cliente acme"` REUSA o mesmo (case-insensitive, sem duplicar). (`test/tools/task-projects-mcp.test.ts`)
+- [x] `list_tasks` com `project` (label ou id) retorna só as tasks do projeto; compõe com `status`/`tag`; `get_task`/`list_tasks` incluem `project {id,label}`; nenhuma chamada existente (sem `project`) muda de resultado.
+- [x] `update_task` com `project: ""` desvincula; com label de projeto ARQUIVADO não vincula (erro orientando desarquivar) — mas `list_tasks` com projeto arquivado ainda lista o histórico.
+- [x] Board: select de filtro funciona (Todos/Sem projeto/ativo/arquivado), sobrevive a reload (query param + localStorage); card mostra chip com a cor. (SSR + payload em `test/task-projects-web.test.ts`; wiring do filtro no client `src/web/client/tasks.ts`)
+- [x] Config: criar, renomear, recolorir, reordenar, arquivar/desarquivar projeto; cap 64 aplicado também no auto-create do MCP.
+- [x] Arquivar projeto com tasks: tasks continuam no board (chip esmaecido), nada é realocado.
 
 ## Validação
 
