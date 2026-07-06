@@ -1,6 +1,6 @@
 # PWA: share target de captura + atalhos de app (o PWA base JÁ existe)
 
-> **Status:** ready · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** `63` (o share target aponta pro inbox) · suave: `65` (home como `start_url`)
 > **Agente sugerido:** Sonnet (assets + 1 rota) · **Esforço de execução:** padrão
 
@@ -54,15 +54,16 @@ O que NÃO existe no manifest: `share_target` (compartilhar de outro app → con
 
 ## Critérios de aceite
 
-- [ ] Android: compartilhar texto de outro app lista "Expert Brain"; escolher → quick-add pré-preenchido → salvar cria item no inbox com `source: 'pwa-share'`.
-- [ ] Long-press no ícone mostra os shortcuts e eles abrem as rotas certas.
-- [ ] Share sem sessão: login → volta pro quick-add com o conteúdo preservado.
-- [ ] Manifest continua válido (Lighthouse instalável); nada do PWA atual regride (SW, ícones, standalone).
-- [ ] `start_url` conforme o estado da 65 (home se existir; senão grafo, com TODO).
+- [x] Android: compartilhar texto de outro app lista "Expert Brain"; escolher → quick-add pré-preenchido → salvar cria item no inbox com `source: 'pwa-share'`. (manifest `share_target` + `/app/inbox` pré-preenche pelo GET e o hidden `source` do form grava `pwa-share`; ponta a ponta coberto por teste — validação real num Android fica pro dono antes do deploy, share target não roda em desktop.)
+- [x] Long-press no ícone mostra os shortcuts e eles abrem as rotas certas. (`shortcuts` no manifest: Capturar→`/app/inbox`, Tarefas→`/app/tasks`, Hoje→`/app`; validado por teste de estrutura do JSON — o long-press em si só é observável num Android real.)
+- [x] Share sem sessão: login → volta pro quick-add com o conteúdo preservado. (`requireSession` já incluía `pathname+search` no `next`; corrigido bug latente em `safeNextPath` que derrubava a query inteira quando o texto compartilhado continha `..` — coberto por teste de round-trip completo do login.)
+- [x] Manifest continua válido (Lighthouse instalável); nada do PWA atual regride (SW, ícones, standalone). (JSON validado por teste; `display`/`icons`/`name` intactos; SW com bump de versão pra invalidar cache antigo do manifest. Lighthouse em si é validação manual do dono.)
+- [x] `start_url` conforme o estado da 65 (home se existir; senão grafo, com TODO). (a `65` já rodou e setou `start_url: /app` — nada a fazer aqui.)
 
 ## Validação
 
-- `npm run typecheck` + `npm test` (o que for testável); validação real em 1 Android (Chrome) — share target não funciona em desktop.
+- `npm run typecheck` + `npm test` — verdes (730 testes no pool de Workers + 5 no pool node, incl. `test/manifest.test.ts` novo). Testes novos: prefill do quick-add a partir de `title`/`text`/`url`, hidden `source` (`console` vs `pwa-share`) com allowlist fechada no POST, round-trip completo do login preservando querystring com `..`, estrutura do `share_target`/`shortcuts`/campos existentes do manifest.
+- **Pendente (dono, antes do deploy):** validação real em 1 Android (Chrome) — share target e long-press de shortcuts não são observáveis em desktop nem em teste automatizado; Lighthouse "instalável".
 - **Gate de deploy:** `wrangler deploy` só com OK explícito do dono.
 
 ## Arquivos afetados
