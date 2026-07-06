@@ -4,9 +4,10 @@
 // the bundle boots — the server-rendered list is the no-JS fallback.
 
 import Fuse from 'fuse.js';
-import { DOMAIN_COLORS, domainColor } from '../domain-colors.js';
+import { DOMAIN_COLORS, resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from '../domain-colors.js';
 import { appFetch } from './http.js';
 import { loadMeta, type NoteMeta } from './meta-cache.js';
+import { loadTaxonomy } from './taxonomy-cache.js';
 
 type SortKey = 'updated_desc' | 'title_asc' | 'kind';
 type Layout = 'cards' | 'compact';
@@ -37,6 +38,9 @@ async function main() {
     console.error('notes: meta load failed', err);
     return; // SSR list stays — degraded mode
   }
+  // Taxonomia (spec 54): aditivo — se falhar, cai no fallback vazio (paleta
+  // compilada) sem derrubar a lista de notas.
+  const taxonomy: TaxonomyConfig = await loadTaxonomy();
 
   // O link SSR "Carregar mais" (no-JS fallback) é substituído pela janela de
   // render client-side + botão "Mostrar mais". Remove pra não duplicar.
@@ -174,6 +178,11 @@ async function main() {
     if (domainsEl) {
       const counts = new Map<string, number>();
       for (const n of notes) for (const d of n.domains) counts.set(d, (counts.get(d) ?? 0) + 1);
+      // spec 54 — áreas pré-criadas na taxonomia (0 notas ainda) aparecem no
+      // filtro assim que salvas, sem precisar de nenhuma nota usando o slug.
+      for (const slug of Object.keys(taxonomy.domains)) {
+        if (!counts.has(slug)) counts.set(slug, 0);
+      }
       const known = Object.keys(DOMAIN_COLORS);
       const sorted = [...counts.keys()].sort((a, b) => {
         const ai = known.indexOf(a), bi = known.indexOf(b);
@@ -183,14 +192,15 @@ async function main() {
         return ai - bi;
       });
       domainsEl.innerHTML = sorted
-        .map(
-          (d) => `
+        .map((d) => {
+          const meta = resolveDomainMeta(d, taxonomy);
+          return `
           <button class="notes-chip" data-filter="domain" data-value="${esc(d)}">
-            <span class="dot" style="background:${domainColor(d)}"></span>
-            <span>${esc(d)}</span>
+            <span class="dot" style="background:${meta.color}"></span>
+            <span>${esc(meta.label)}</span>
             <span class="count">${counts.get(d)}</span>
-          </button>`
-        )
+          </button>`;
+        })
         .join('');
     }
     if (kindsEl) {
@@ -198,13 +208,14 @@ async function main() {
       for (const n of notes) if (n.kind) counts.set(n.kind, (counts.get(n.kind) ?? 0) + 1);
       const sorted = [...counts.keys()].sort((a, b) => KIND_ORDER.indexOf(a) - KIND_ORDER.indexOf(b));
       kindsEl.innerHTML = sorted
-        .map(
-          (k) => `
+        .map((k) => {
+          const meta = resolveKindMeta(k, taxonomy);
+          return `
           <button class="notes-chip notes-chip-kind" data-filter="kind" data-value="${esc(k)}">
-            <span>${esc(k)}</span>
+            <span>${esc(meta.label)}</span>
             <span class="count">${counts.get(k)}</span>
-          </button>`
-        )
+          </button>`;
+        })
         .join('');
     }
   }
@@ -281,9 +292,17 @@ async function main() {
 
   function card(n: NoteMeta, layout: Layout): string {
     const domainBadges = n.domains
-      .map((d) => `<span class="badge" style="--chip:${domainColor(d)}">${esc(d)}</span>`)
+      .map((d) => {
+        const meta = resolveDomainMeta(d, taxonomy);
+        return `<span class="badge" style="--chip:${meta.color}">${esc(meta.label)}</span>`;
+      })
       .join('');
-    const kindBadge = n.kind ? `<span class="kind-badge">${esc(n.kind)}</span>` : '';
+    const kindBadge = n.kind
+      ? (() => {
+          const meta = resolveKindMeta(n.kind, taxonomy);
+          return `<span class="kind-badge" style="--chip:${meta.color}">${esc(meta.label)}</span>`;
+        })()
+      : '';
     const updated = n.updated_at ? formatDate(n.updated_at) : '';
 
     if (layout === 'compact') {

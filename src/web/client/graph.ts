@@ -2,8 +2,9 @@ import Graph from 'graphology';
 import Sigma from 'sigma';
 import { EdgeRectangleProgram } from 'sigma/rendering';
 import Fuse from 'fuse.js';
-import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted } from '../domain-colors.js';
+import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted, resolveDomainMeta, resolveKindMeta, EMPTY_TAXONOMY_CONFIG, type TaxonomyConfig } from '../domain-colors.js';
 import { loadMeta } from './meta-cache.js';
+import { loadTaxonomy } from './taxonomy-cache.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Payload shape (matches src/web/graph-data.ts server-side)
@@ -82,9 +83,14 @@ async function main() {
         .then((r) => (r.ok ? r.json() : []))
         .then((x: any): NoteMeta[] => (Array.isArray(x) ? x : Array.isArray(x?.list) ? x.list : []))
         .catch((err) => { console.warn('graph: meta load failed', err); return []; });
-  const [graphRes, metaList] = await Promise.all([
+  // Taxonomia configurável (spec 54): só faz sentido pro vault de NOTAS do Brain
+  // — contatos tem paleta própria (fora de escopo, ver spec 54 "Fora de escopo").
+  // Aditivo: falha vira config vazia (fallback = paleta compilada), nunca trava o boot.
+  const taxonomyP: Promise<TaxonomyConfig> = isBrainGraph ? loadTaxonomy() : Promise.resolve(EMPTY_TAXONOMY_CONFIG);
+  const [graphRes, metaList, taxonomy] = await Promise.all([
     fetch(`${graphSrc}/data`, { credentials: 'same-origin' }),
     metaListP,
+    taxonomyP,
   ]);
   if (!graphRes.ok) {
     setStatus('Falha ao carregar grafo');
@@ -123,7 +129,7 @@ async function main() {
       // A.9 — n.size já é o valor final do Obsidian (range 8-30). Usar direto.
       size: n.size,
       color: NEUTRAL_NODE_COLOR,
-      domainColor: domainColor(n.domain), // guardado pra toggle Cores
+      domainColor: resolveDomainMeta(n.domain, taxonomy).color, // guardado pra toggle Cores
       domain: n.domain,
       kind: n.kind ?? '',
     });
@@ -165,7 +171,7 @@ async function main() {
     ? `${payload.nodes.length} ${noun} · ${explicitCount} ligações`
     : `${payload.nodes.length} ${noun} · ${explicitCount} ligações explícitas · ${similarCount} semânticas`);
 
-  renderLegend(payload.nodes);
+  renderLegend(payload.nodes, taxonomy);
 
   // ────────────────────────────────────────────────────────────────────────
   // Sigma renderer — label thresholds deliberately conservative so labels
@@ -455,16 +461,6 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   // Reducers: apply filter + ego highlight + dynamic labels
   // ────────────────────────────────────────────────────────────────────────
-  // A.33 — paleta de cores por kind (alinhada a domain-colors mas distinta).
-  const KIND_COLORS: Record<string, string> = {
-    concept:    '#7dd3fc', // cyan-300
-    decision:   '#fbbf24', // amber-400
-    insight:    '#f472b6', // pink-400
-    fact:       '#94a3b8', // slate-400
-    pattern:    '#a78bfa', // violet-400
-    principle:  '#fb923c', // orange-400
-    question:   '#86efac', // green-300
-  };
   // Gradiente de degree: 0 conexões = cinza, +20 = vermelho saturado.
   function degreeColor(deg: number): string {
     const t = Math.min(1, deg / 20);
@@ -479,7 +475,7 @@ async function main() {
       case 'domain': return (attrs.domainColor as string) || NEUTRAL;
       case 'kind': {
         const k = (attrs.kind as string) || '';
-        return KIND_COLORS[k] || NEUTRAL;
+        return k ? resolveKindMeta(k, taxonomy).color : NEUTRAL;
       }
       case 'degree': return degreeColor(degreeById.get(id) ?? 0);
       case 'neutral':
@@ -1022,9 +1018,20 @@ async function main() {
     const m = meta.get(nodeId);
     const title = (node.label as string) ?? nodeId;
     const domainChips = m?.domains?.length
-      ? m.domains.map((d) => `<span class="panel-chip" style="--chip:${domainColor(d)}">${esc(d)}</span>`).join('')
-      : `<span class="panel-chip" style="--chip:${domainColor(node.domain as string)}">${esc(node.domain as string)}</span>`;
-    const kindBadge = m?.kind ? `<span class="panel-kind">${esc(m.kind)}</span>` : '';
+      ? m.domains.map((d) => {
+          const meta2 = resolveDomainMeta(d, taxonomy);
+          return `<span class="panel-chip" style="--chip:${meta2.color}">${esc(meta2.label)}</span>`;
+        }).join('')
+      : (() => {
+          const meta2 = resolveDomainMeta(node.domain as string, taxonomy);
+          return `<span class="panel-chip" style="--chip:${meta2.color}">${esc(meta2.label)}</span>`;
+        })();
+    const kindBadge = m?.kind
+      ? (() => {
+          const km = resolveKindMeta(m.kind, taxonomy);
+          return `<span class="panel-kind" style="--chip:${km.color}">${esc(km.label)}</span>`;
+        })()
+      : '';
     const tldrBlock = m?.tldr ? `<p class="panel-tldr">${esc(m.tldr)}</p>` : '';
 
     const neighbors = new Set<string>();
@@ -1220,13 +1227,15 @@ async function main() {
     }
     const hasSemantic = searchItems.some((it) => it.semantic);
     const rows = searchItems.map((it, i) => {
-      const chipLabel = isContacts ? (CONTACT_TYPE_LABELS[it.domain] ?? it.domain) : it.domain;
+      const domainMeta = resolveDomainMeta(it.domain, taxonomy);
+      const chipLabel = isContacts ? (CONTACT_TYPE_LABELS[it.domain] ?? it.domain) : domainMeta.label;
+      const dotColor = isContacts ? domainColor(it.domain) : domainMeta.color;
       const sem = it.semantic
         ? `<span class="graph-search-sem" title="Match semântico (empresa, cargo, notas ou similaridade)">≈</span>`
         : '';
       const tldr = !isContacts ? (meta.get(it.id)?.tldr ?? '') : '';
       return `<button type="button" class="graph-search-item${i === searchActiveIdx ? ' active' : ''}" role="option" aria-selected="${i === searchActiveIdx}" data-idx="${i}">
-        <span class="dot" style="background:${domainColor(it.domain)}"></span>
+        <span class="dot" style="background:${dotColor}"></span>
         <span class="graph-search-item-main"><span class="graph-search-item-label">${esc(it.label)}</span>${tldr ? `<span class="graph-search-item-tldr">${esc(tldr)}</span>` : ''}</span>
         ${sem}<span class="graph-search-item-chip">${esc(chipLabel)}</span>
       </button>`;
@@ -1301,7 +1310,7 @@ async function main() {
       getVisual: () => visual3d, // idem, pro perfil visual (node/line size)
       isNodeActive: (id: string) => isNodeActive(id),
       pickNodeColor: (id: string, node: GraphNode) =>
-        pickNodeColor(id, { color: '#b8b8c8', domainColor: domainColor(node.domain), kind: node.kind ?? '' }),
+        pickNodeColor(id, { color: '#b8b8c8', domainColor: resolveDomainMeta(node.domain, taxonomy).color, kind: node.kind ?? '' }),
       // Abre o mesmo painel de nota do clique 2D (visual, sem navegar pra fora).
       onNodeOpen: (id: string) => openPanel(id),
     };
@@ -1684,7 +1693,7 @@ async function main() {
     },
     // Toggle 2D/3D — troca o palco sem recarregar; lazy-load do bundle 3D na 1ª vez.
     onToggle3D: () => { void toggleMode(); },
-  }, payload.nodes);
+  }, payload.nodes, taxonomy);
 
   // Keyboard: Esc closes panel; / focuses search; Cmd/Ctrl+K opens palette.
   window.addEventListener('keydown', (e) => {
@@ -2093,12 +2102,17 @@ function drawDarkHover(
 // ──────────────────────────────────────────────────────────────────────────────
 // Legend — colors per domain with counts, clickable to toggle filter
 // ──────────────────────────────────────────────────────────────────────────────
-function renderLegend(nodes: GraphNode[]) {
+function renderLegend(nodes: GraphNode[], taxonomy: TaxonomyConfig) {
   const el = document.getElementById('graph-legend');
   if (!el) return;
 
   const counts = new Map<string, number>();
   for (const n of nodes) counts.set(n.domain, (counts.get(n.domain) ?? 0) + 1);
+  // spec 54 — áreas pré-criadas na taxonomia (0 notas ainda) aparecem na
+  // legenda/filtro assim que salvas, mesmo sem nenhum nó usando o slug.
+  for (const slug of Object.keys(taxonomy.domains)) {
+    if (!counts.has(slug)) counts.set(slug, 0);
+  }
 
   // Sort known domains first (in palette order), then unknowns alpha
   const known = Object.keys(DOMAIN_COLORS);
@@ -2111,14 +2125,15 @@ function renderLegend(nodes: GraphNode[]) {
   });
 
   el.innerHTML = sorted
-    .map(
-      (d) => `
+    .map((d) => {
+      const meta = resolveDomainMeta(d, taxonomy);
+      return `
       <button class="graph-chip" data-filter="domain" data-value="${esc(d)}">
-        <span class="dot" style="background:${domainColor(d)}"></span>
-        <span class="label">${esc(d)}</span>
+        <span class="dot" style="background:${meta.color}"></span>
+        <span class="label">${esc(meta.label)}</span>
         <span class="count">${counts.get(d)}</span>
-      </button>`
-    )
+      </button>`;
+    })
     .join('');
 }
 
@@ -2161,7 +2176,7 @@ interface ControlCallbacks {
   onToggle3D: () => void;
 }
 
-function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
+function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: TaxonomyConfig) {
   const search = document.getElementById('graph-search-input') as HTMLInputElement | null;
   if (search) {
     let t: number | null = null;
@@ -2274,13 +2289,14 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[]) {
     const order = ['concept', 'decision', 'insight', 'fact', 'pattern', 'principle', 'question'];
     const sorted = [...counts.keys()].sort((a, b) => order.indexOf(a) - order.indexOf(b));
     kindsEl.innerHTML = sorted
-      .map(
-        (k) => `
+      .map((k) => {
+        const label = resolveKindMeta(k, taxonomy).label;
+        return `
         <button class="graph-chip graph-chip-kind" data-filter="kind" data-value="${esc(k)}">
-          <span class="label">${esc(k)}</span>
+          <span class="label">${esc(label)}</span>
           <span class="count">${counts.get(k)}</span>
-        </button>`
-      )
+        </button>`;
+      })
       .join('');
   }
 }
