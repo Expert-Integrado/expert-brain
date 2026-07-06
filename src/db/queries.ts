@@ -452,6 +452,54 @@ export async function ftsSearch(
   return r.results ?? [];
 }
 
+// ─────────────────── RESURFACING DIGEST (spec 50-console-v2/64) ───────────────────
+// Duas leituras de CONHECIMENTO que alimentam o digest diário: perguntas abertas
+// esquecidas e a nota mais conectada que esfriou. Ambas SQL puro (zero Vectorize/
+// AI) — pensadas pra rodar 1x/dia no cron (src/digest/resurface.ts), nunca no
+// request path.
+
+export interface OpenQuestionRow { id: string; title: string; tldr: string; updated_at: number; }
+
+// Perguntas (`kind='question'`) que ninguém tocou há mais de `maxAgeDays` — o vault
+// "sabe" que a pergunta existe mas nunca a devolve sem ser perguntado. Ordena da
+// mais velha pra mais nova (a mais esquecida primeiro). Respeita o selo de
+// privacidade (spec 31) igual aos demais read paths de conhecimento.
+export async function getStaleOpenQuestions(
+  env: Env, beforeMs: number, limit: number, includePrivate = false
+): Promise<OpenQuestionRow[]> {
+  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const r = await env.DB.prepare(
+    `SELECT id, title, tldr, updated_at FROM notes
+     WHERE kind = 'question' AND deleted_at IS NULL AND updated_at < ?${priv}
+     ORDER BY updated_at ASC
+     LIMIT ?`
+  ).bind(beforeMs, limit).all<OpenQuestionRow>();
+  return r.results ?? [];
+}
+
+export interface CentralNoteCandidateRow { id: string; title: string; tldr: string; updated_at: number; degree: number; }
+
+// Pool de notas de CONHECIMENTO (NON_TASK_FILTER) mais conectadas (maior grau de
+// edges, de+para) que esfriaram (updated_at < beforeMs). `degree` via subquery
+// correlacionada — barata aqui porque só roda sobre o pool já filtrado por
+// updated_at/kind (LIMIT poolSize), não sobre o vault inteiro. Notas com grau 0
+// são descartadas (não seriam "centrais"). O caller (src/digest/resurface.ts)
+// sorteia `cap` dentre o pool pra dar variedade semanal sem aleatoriedade real.
+export async function getStaleCentralNoteCandidates(
+  env: Env, beforeMs: number, poolSize: number, includePrivate = false
+): Promise<CentralNoteCandidateRow[]> {
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
+  const r = await env.DB.prepare(
+    `SELECT n.id, n.title, n.tldr, n.updated_at,
+            (SELECT COUNT(*) FROM edges e WHERE e.from_id = n.id OR e.to_id = n.id) AS degree
+     FROM notes n
+     WHERE n.deleted_at IS NULL AND (n.kind IS NULL OR n.kind <> 'task') AND n.updated_at < ?${priv}
+     ORDER BY degree DESC, n.updated_at ASC
+     LIMIT ?`
+  ).bind(beforeMs, poolSize).all<CentralNoteCandidateRow>();
+  return (r.results ?? []).filter((row) => row.degree > 0);
+}
+
 // Conta quantas notas de CONHECIMENTO (NON_TASK_FILTER — task NUNCA entra aqui)
 // usam cada área. Usado pela seção "Áreas e tipos" de /app/config (spec 54) pra
 // mostrar a contagem por linha. `domains` é JSON-encoded (array de slugs); sem
@@ -1330,6 +1378,16 @@ export async function countPendingInbox(env: Env): Promise<number> {
   const r = await env.DB.prepare(
     `SELECT count(*) AS c FROM inbox_items WHERE triaged_at IS NULL`
   ).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+// Pendentes há mais de `beforeMs` (corte por IDADE, não o total). Usado pela seção
+// "inbox acumulando" do resurface digest (spec 64) — countPendingInbox (acima)
+// conta QUALQUER pendente; aqui o corte é "parado faz tempo" (>7 dias na spec).
+export async function countPendingInboxOlderThan(env: Env, beforeMs: number): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM inbox_items WHERE triaged_at IS NULL AND created_at < ?`
+  ).bind(beforeMs).first<{ c: number }>();
   return r?.c ?? 0;
 }
 
