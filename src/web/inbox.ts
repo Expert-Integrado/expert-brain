@@ -51,6 +51,21 @@ function firstLine(body: string, max: number): string {
   return line.slice(0, max);
 }
 
+// Fontes aceitas no POST /app/inbox/add — allowlist fechada; qualquer outro
+// valor (ou ausente) cai no default 'console'. 'pwa-share' vem do Web Share
+// Target (specs/50-console-v2/68-pwa-instalavel.md).
+const ADD_POST_SOURCES = new Set(['console', 'pwa-share']);
+
+// Params do Web Share Target (manifest `share_target`, GET /app/inbox?title=&text=&url=)
+// concatenados num rascunho único pro textarea do quick-add. Compartilhou → 1 toque
+// → capturado. Trunca no mesmo teto do body do inbox.
+function sharePrefillFromQuery(url: URL): string {
+  const parts = ['title', 'text', 'url']
+    .map((k) => url.searchParams.get(k)?.trim() || '')
+    .filter(Boolean);
+  return parts.join('\n\n').slice(0, INBOX_BODY_MAX);
+}
+
 const INBOX_CSS = `
 .inbox-quickadd { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; }
 .inbox-quickadd textarea {
@@ -89,6 +104,10 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
   const now = Date.now();
   const items = await listInboxItems(env, { pendingOnly: true, limit: 500 });
   const pending = items.length;
+
+  const url = new URL(req.url);
+  const sharePrefill = sharePrefillFromQuery(url);
+  const isShare = sharePrefill.length > 0;
 
   const emptyTitle = new Map<string, string>();
   const emptyIds = new Set<string>();
@@ -130,9 +149,10 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
     </div>
 
     <form class="inbox-quickadd" method="post" action="/app/inbox/add">
-      <textarea name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Captura rápida — uma ideia, um lembrete solto. Tria depois." aria-label="Captura rápida" required></textarea>
+      <textarea name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Captura rápida — uma ideia, um lembrete solto. Tria depois." aria-label="Captura rápida" required>${esc(sharePrefill)}</textarea>
+      <input type="hidden" name="source" value="${isShare ? 'pwa-share' : 'console'}" />
       <div class="inbox-quickadd-foot">
-        <button type="submit" class="inbox-btn primary">Capturar</button>
+        <button type="submit" class="inbox-btn primary"${isShare ? ' autofocus' : ''}>Capturar</button>
       </div>
     </form>
 
@@ -154,7 +174,10 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
   );
 }
 
-// POST /app/inbox/add — quick-add do console. source='console'. Form-encoded + redirect.
+// POST /app/inbox/add — quick-add do console. source='console' por default; o hidden
+// input do form manda 'pwa-share' quando a página chegou via Web Share Target (specs/
+// 50-console-v2/68-pwa-instalavel.md) — allowlist fechada (ADD_POST_SOURCES), qualquer
+// outro valor cai no default. Form-encoded + redirect.
 export async function handleInboxAddPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -164,11 +187,13 @@ export async function handleInboxAddPost(req: Request, env: Env): Promise<Respon
   // Vazio: no-op silencioso (volta pro inbox), não é erro do usuário.
   if (!text) return backToInbox();
   const body = text.slice(0, INBOX_BODY_MAX);
+  const rawSource = String(form.get('source') ?? '').trim();
+  const source = ADD_POST_SOURCES.has(rawSource) ? rawSource : 'console';
 
   await insertInboxItem(env, {
     id: `ibx_${newId()}`,
     body,
-    source: 'console',
+    source,
     created_at: Date.now(),
   });
   return backToInbox();

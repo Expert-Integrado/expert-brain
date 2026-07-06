@@ -70,6 +70,29 @@ describe('POST /app/inbox/add (quick-add do console)', () => {
     expect(res.status).toBe(302);
     expect(await countPendingInbox(E)).toBe(0);
   });
+
+  // spec 68 (PWA share target): hidden input do form manda source=pwa-share quando
+  // a página chegou via Web Share Target.
+  it('grava com source=pwa-share quando o form manda esse source', async () => {
+    const res = await handleInboxAddPost(
+      req('POST', '/app/inbox/add', { cookie: await cookie(), form: { text: 'compartilhado do outro app', source: 'pwa-share' } }),
+      E
+    );
+    expect(res.status).toBe(302);
+    const row = await E.DB.prepare('SELECT body, source FROM inbox_items').first();
+    expect(row.body).toBe('compartilhado do outro app');
+    expect(row.source).toBe('pwa-share');
+  });
+
+  it('source fora da allowlist cai no default console (sem spoof)', async () => {
+    const res = await handleInboxAddPost(
+      req('POST', '/app/inbox/add', { cookie: await cookie(), form: { text: 'x', source: 'telegram' } }),
+      E
+    );
+    expect(res.status).toBe(302);
+    const row = await E.DB.prepare('SELECT source FROM inbox_items').first();
+    expect(row.source).toBe('console');
+  });
 });
 
 describe('POST /app/inbox/resolve (descartar)', () => {
@@ -172,6 +195,51 @@ describe('página /app/inbox + badge na navegação', () => {
     expect(html).toContain('/app/inbox/add'); // quick-add form
     expect(html).toContain('/app/inbox/to-note');
     expect(html).toContain('/app/inbox/to-task');
+  });
+
+  // spec 68 (PWA share target): manifest `share_target` navega GET /app/inbox com
+  // title/text/url — a página pré-preenche o quick-add e marca source=pwa-share.
+  it('sem params de share: hidden source=console e sem autofocus no botão', async () => {
+    const res = await handleInboxPage(req('GET', '/app/inbox', { cookie: await cookie() }), E);
+    const html = await res.text();
+    expect(html).toContain('name="source" value="console"');
+    expect(html).not.toContain('autofocus');
+  });
+
+  it('sem sessão + params de share: 302 pro login preservando os params no next', async () => {
+    const res = await handleInboxPage(
+      req('GET', '/app/inbox?title=Ideia&text=liga%20pro%20fornecedor&url=https%3A%2F%2Fexemplo.com'),
+      E
+    );
+    expect(res.status).toBe(302);
+    const location = res.headers.get('location')!;
+    expect(location).toContain('/app/login?next=');
+    const next = decodeURIComponent(location.split('next=')[1]);
+    expect(next).toBe('/app/inbox?title=Ideia&text=liga%20pro%20fornecedor&url=https%3A%2F%2Fexemplo.com');
+  });
+
+  it('com sessão + params de share: textarea vem preenchido e source=pwa-share', async () => {
+    const res = await handleInboxPage(
+      req('GET', '/app/inbox?title=Ideia&text=liga%20pro%20fornecedor&url=https%3A%2F%2Fexemplo.com', { cookie: await cookie() }),
+      E
+    );
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Ideia');
+    expect(html).toContain('liga pro fornecedor');
+    expect(html).toContain('https://exemplo.com');
+    expect(html).toContain('name="source" value="pwa-share"');
+    expect(html).toContain('autofocus');
+  });
+
+  it('share só com um param (text): concatena só o que existe, sem linhas vazias sobrando', async () => {
+    const res = await handleInboxPage(
+      req('GET', '/app/inbox?text=so%20o%20texto', { cookie: await cookie() }),
+      E
+    );
+    const html = await res.text();
+    expect(html).toContain('so o texto');
+    expect(html).toContain('name="source" value="pwa-share"');
   });
 
   it('badge na nav mostra a contagem e some em zero', async () => {
