@@ -45,6 +45,30 @@ describe('validateDomains — canon (default behavior)', () => {
   });
 });
 
+describe('validateDomains — extraAllowed (spec 54: áreas pré-criadas via taxonomia)', () => {
+  it('aceita um slug fora do canon quando está em extraAllowed', () => {
+    expect(validateDomains(['vida-pessoal'], { extraAllowed: ['vida-pessoal'] })).toBeNull();
+  });
+
+  it('mistura canônico + extraAllowed no mesmo array', () => {
+    expect(validateDomains(['operations', 'vida-pessoal'], { extraAllowed: ['vida-pessoal'] })).toBeNull();
+  });
+
+  it('rejeita slug fora do canon E fora de extraAllowed', () => {
+    const err = validateDomains(['random-stuff'], { extraAllowed: ['vida-pessoal'] });
+    expect(err).not.toBeNull();
+    expect(err).toContain('random-stuff');
+  });
+
+  it('extraAllowed não relaxa a checagem sintática', () => {
+    expect(validateDomains(['Vida Pessoal'], { extraAllowed: ['Vida Pessoal'] })).not.toBeNull();
+  });
+
+  it('sem extraAllowed, comportamento idêntico ao anterior (fora do canon rejeita)', () => {
+    expect(validateDomains(['vida-pessoal'])).not.toBeNull();
+  });
+});
+
 describe('validateDomains — allowNewDomain escape hatch', () => {
   it('accepts non-canonical syntactically-valid slugs when allowNewDomain is true', () => {
     expect(validateDomains(['systems-thinking'], { allowNewDomain: true })).toBeNull();
