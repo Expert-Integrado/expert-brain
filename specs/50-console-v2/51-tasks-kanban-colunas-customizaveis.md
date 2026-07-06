@@ -1,6 +1,6 @@
 # Kanban de tarefas: colunas/estágios customizáveis pela UI, persistidos no banco
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** nenhuma (vizinhas sem overlap: `30-features/32` lifecycle/digest, `30-features/36` edição inline)
 > **Agente sugerido:** Opus (schema + compatibilidade MCP)
 
@@ -92,13 +92,13 @@ Nova seção "Quadro de tarefas" em `/app/config` (`src/web/config.ts`, padrão 
 
 ## Critérios de aceite
 
-- [ ] Migration `0009` aplicada via `/setup/provision` em banco já provisionado NÃO altera nenhuma task existente além de preencher `column_id` coerente com o `status`.
-- [ ] Board renderiza as colunas do banco (ordem/cor/label); array `COLS` não existe mais em `src/web/tasks.ts` nem em `src/web/client/tasks.ts`.
-- [ ] Arrastar card pra coluna custom persiste `column_id` e seta `status` = categoria da coluna; arrastar pra coluna de categoria `done` seta `completed_at`.
-- [ ] Criar, renomear, recolorir, reordenar, arquivar (com realocação das tasks) e desarquivar coluna pela UI de config funcionam e sobrevivem a reload.
-- [ ] `save_task`/`update_task`/`complete_task` alocam a coluna default correta; `list_tasks`/`get_task` retornam `column {id,label}`; NENHUM parâmetro existente das 5 tools mudou de contrato.
-- [ ] Task com `column_id` órfão aparece na coluna default da categoria do seu `status` (teste com DELETE manual da coluna).
-- [ ] `canceled` finalmente visível: desarquivar `col_cancelado` mostra as canceladas no board.
+- [x] Migration `0009` aplicada via `/setup/provision` em banco já provisionado NÃO altera nenhuma task existente além de preencher `column_id` coerente com o `status`. (número usado na execução: `0009_kanban_columns` — era o próximo livre)
+- [x] Board renderiza as colunas do banco (ordem/cor/label); array `COLS` não existe mais em `src/web/tasks.ts` nem em `src/web/client/tasks.ts`.
+- [x] Arrastar card pra coluna custom persiste `column_id` e seta `status` = categoria da coluna; arrastar pra coluna de categoria `done` seta `completed_at`.
+- [x] Criar, renomear, recolorir, reordenar, arquivar (com realocação das tasks) e desarquivar coluna pela UI de config funcionam e sobrevivem a reload.
+- [x] `save_task`/`update_task`/`complete_task` alocam a coluna default correta; `list_tasks`/`get_task` retornam `column {id,label}`; NENHUM parâmetro existente das 5 tools mudou de contrato.
+- [x] Task com `column_id` órfão aparece na coluna default da categoria do seu `status` (FK impede `column_id` inexistente; coberto via drift de categoria — mesma via de fallback).
+- [x] `canceled` finalmente visível: desarquivar `col_cancelado` mostra as canceladas no board.
 
 ## Validação
 
