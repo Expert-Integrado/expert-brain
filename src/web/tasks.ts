@@ -60,7 +60,7 @@ const json = (data: unknown, status = 200): Response =>
 // Auth: Bearer (VPS/Console) OU sessão de browser. Igual ao padrão das rotas
 // /app/graph/*. Retorna null quando autorizado, ou a Response de erro/redirect.
 async function authTask(req: Request, env: Env): Promise<Response | null> {
-  if (authorizeBearer(req, env)) return null;
+  if (await authorizeBearer(req, env, 'tasks')) return null;
   const session = await requireSession(req, env);
   return session.ok ? null : session.response;
 }

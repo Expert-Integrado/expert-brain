@@ -1,31 +1,16 @@
 import type { Env } from '../env.js';
 import type { NoteRow, EdgeRow } from '../db/queries.js';
 import { requireSession } from './session.js';
+import { authorizeBearer } from './bearer-auth.js';
 import { newId } from '../util/id.js';
 import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { explicitPairKey } from './similarity.js';
 import { getTopSimilarEdges } from '../db/queries.js';
 import { NON_TASK_FILTER } from '../db/queries.js';
 
-// Porta de auth ADITIVA pras rotas /app/graph/*: além da sessão de cookie do
-// browser, aceita `Authorization: Bearer <token>` quando o token bate com
-// env.GRAPH_EXPORT_TOKEN. Usado pelo Expert Console (adapter do vault brain) pra
-// ler/escrever o grafo via HTTP sem sessão. Se o secret não estiver setado ou o
-// header não bater, retorna false e o chamador cai no requireSession normal —
-// comportamento de browser fica intacto. Comparação de tamanho-constante pra não
-// vazar o token por timing.
-function authorizeGraphExport(req: Request, env: Env): boolean {
-  const expected = env.GRAPH_EXPORT_TOKEN;
-  if (!expected) return false;
-  const header = req.headers.get('authorization') || '';
-  const m = header.match(/^Bearer\s+(.+)$/i);
-  if (!m) return false;
-  const got = m[1].trim();
-  if (got.length !== expected.length) return false;
-  let diff = 0;
-  for (let i = 0; i < got.length; i++) diff |= got.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0;
-}
+// Auth das rotas /app/graph/*: escopo 'graph' (só GRAPH_EXPORT_TOKEN) via o helper
+// compartilhado authorizeBearer — a cópia local authorizeGraphExport foi removida
+// (spec 17), eliminando a duplicação e o early-return por tamanho de token.
 
 interface GraphNode { id: string; label: string; domain: string; size: number; x: number; y: number; }
 interface ExplicitGraphEdge { id: string; source: string; target: string; type: 'explicit'; why: string; relation_type: string; }
@@ -284,7 +269,7 @@ async function getPayload(env: Env): Promise<GraphPayload> {
 }
 
 export async function handleGraphData(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
@@ -367,7 +352,7 @@ export interface NoteMetaRow {
 // A.32 — POST /app/graph/link: cria edge explícita justificada (Latticework).
 // Aceita { source, target, why } e invalida cache.
 export async function handleGraphLink(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
@@ -400,7 +385,7 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
 }
 
 export async function handleGraphMeta(req: Request, env: Env): Promise<Response> {
-  if (!authorizeGraphExport(req, env)) {
+  if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
