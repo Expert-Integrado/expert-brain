@@ -1,6 +1,6 @@
 # Resurfacing: digest que devolve conhecimento sem ser perguntado
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain (+1 leitura proxy no contacts)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain (+1 leitura proxy no contacts)
 > **Depende de:** suave: `63` (contagem de inbox no digest), `57` (last_contacted confiável pra "negligenciados"). Coordena com `65` (a home consome este payload).
 > **Agente sugerido:** Opus (queries + cron existente) · **Esforço de execução:** padrão
 
@@ -49,13 +49,15 @@ Cada item do digest carrega ação de 1 clique no console: pergunta aberta → a
 
 ## Critérios de aceite
 
-- [ ] `buildResurfaceDigest` retorna as 4 seções com fixtures cobrindo: pergunta velha aparece / recente não; nota de grau alto e fria aparece / quente não; contato com `last_contacted` antigo aparece; inbox >7d conta.
-- [ ] Sorteio semanal determinístico: mesma semana → mesma seleção; semana seguinte → pode variar (teste com semana forjada).
-- [ ] Cron diário: notificação inclui o bloco "Do seu cérebro" quando há conteúdo; digest vazio → bloco omitido (sem notificação vazia).
-- [ ] Cache em `meta` com TTL: segunda chamada no mesmo dia não recomputa (spy nas queries).
-- [ ] Tool `digest` retorna o payload pro dono/PAT `full`; invisível pra PAT `read`.
-- [ ] Falha do proxy CONTACTS não derruba o digest (seção de contatos omitida com flag `degraded`).
-- [ ] Cada item rende link/ação válida no console.
+- [x] `buildResurfaceDigest` retorna as 4 seções com fixtures cobrindo: pergunta velha aparece / recente não; nota de grau alto e fria aparece / quente não; contato com `last_contacted` antigo aparece; inbox >7d conta. Teste: `test/digest/resurface.test.ts`.
+- [x] Sorteio semanal determinístico: mesma semana → mesma seleção; semana seguinte → pode variar (teste com semana forjada). Teste: `test/digest/resurface.test.ts` (`pickWeeklyCentralNotes`, hash FNV-1a — o hash polinomial ingênuo original preservava a ordem entre semanas, trocado).
+- [x] Cron diário: notificação inclui o bloco "Do seu cérebro" quando há conteúdo; digest vazio → bloco omitido (sem notificação vazia). Teste: `test/notify.test.ts` (`buildResurfaceBlock`) + `test/scheduled.test.ts`.
+- [x] Cache em `meta` com TTL: segunda chamada no mesmo dia não recomputa (spy nas queries). Teste: `test/digest/resurface.test.ts`.
+- [x] Tool `digest` retorna o payload pro dono/PAT `full`; invisível pra PAT `read`. Teste: `test/tools/digest.test.ts`. Adicional (não pedido explicitamente, mas consistente com o selo de privacidade da spec 31): PAT `full` SEM o escopo `private` computa fresco e nunca lê/grava o cache do dono — nunca vê nota/contato privado.
+- [x] Falha do proxy CONTACTS não derruba o digest (seção de contatos omitida com flag `degraded`). Teste: `test/digest/resurface.test.ts`.
+- [x] Cada item rende link/ação válida no console. Cada item do payload carrega `url` (nota/contato) ou `inbox_url`; card fallback em `/app/notes` (`src/web/notes.ts`) e bloco do Telegram (`src/notify.ts`) usam esses links. Teste: `test/web/notes-digest-card.test.ts`.
+
+**Limitação conhecida (documentada em `src/digest/resurface.ts`):** `GET /list_entities` do `expert-contacts` hoje não devolve `last_contacted` (só id/kind/name/phone/email/role/company/website/sector/source/category/avatar_r2_key) nem permite ordenar/filtrar por ele. O código do lado do Brain já lê esses campos de forma defensiva/opcional — o CONTRATO está testado com fixtures — mas em produção a seção "contatos esfriando" fica vazia (nunca quebra: `contacts_degraded` só liga em falha real do proxy) até uma extensão aditiva no `expert-contacts` incluir `last_contacted` na listagem. Fora do repo de trabalho designado para esta execução.
 
 ## Validação
 
