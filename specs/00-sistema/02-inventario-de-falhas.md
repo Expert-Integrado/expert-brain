@@ -151,7 +151,7 @@ O artefato é este próprio arquivo. Estrutura: uma tabela por severidade (colun
 
 | # | item | spec que cobre | status |
 |---|---|---|---|
-| 1 | Selo de privacidade | `30-features/31` (depende de `10-backend/17`) | aberto |
+| 1 | Selo de privacidade | `30-features/31` (depende de `10-backend/17`) | implementado 06/07/2026 (`feat/console-v2`) — deploy/validação do dono pendente |
 | 2 | Compartilhamento público `/s/<token>` | `30-features/33` | aberto |
 | 3 | `dedupe_key` no save_task | `10-backend/14` | aberto |
 | 4 | Parametrizar dono nas instructions | `10-backend/11` | aberto |
