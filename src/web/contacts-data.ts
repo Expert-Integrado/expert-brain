@@ -74,6 +74,51 @@ export function handleContactsEntityNeighbors(req: Request, env: Env): Promise<R
   return proxyToContacts(req, env, '/app/entity/neighbors');
 }
 
+// Feed global de interações (?offset=&limit=) — spec 50-console-v2/65 §1. Rota de
+// SESSÃO do Brain (padrão dos proxies 56/57): repassa pro contacts via service
+// binding com o MESMO CONTACTS_PROXY_TOKEN read-only. Consumida pelo client da
+// home/journal (browser fala só com o Brain, a credencial nunca sai pro cliente).
+export function handleContactsEventsRecent(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/events/recent');
+}
+
+export interface RecentContactEvent {
+  id: string;
+  entity_id: string;
+  entity_name: string;
+  kind: string;
+  ts: string;
+  context: string | null;
+}
+
+// Busca DIRETA (sem Request/sessão) do feed de interações — usada SERVER-SIDE pela
+// home (card "Últimas interações") e pelo journal (fonte "interações"), que já
+// rodaram requireSession antes de chamar isto. Degrada graciosamente: binding/token
+// ausente, resposta não-ok ou erro de rede viram `{ ok: false }` — nunca lança (spec
+// 65 critério "Falha do proxy de contatos: home e journal degradam, não quebram").
+export async function fetchContactEventsServerSide(
+  env: Env,
+  opts: { offset?: number; limit: number },
+): Promise<{ ok: true; total: number; events: RecentContactEvent[] } | { ok: false }> {
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) return { ok: false };
+  try {
+    const out = new URL('https://contacts/app/events/recent');
+    out.searchParams.set('offset', String(opts.offset ?? 0));
+    out.searchParams.set('limit', String(opts.limit));
+    const res = await env.CONTACTS.fetch(new Request(out.toString(), {
+      method: 'GET',
+      headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}`, 'x-include-private': '1' },
+    }));
+    if (!res.ok) return { ok: false };
+    const data: any = await res.json().catch(() => null);
+    if (!data || data.ok !== true || !Array.isArray(data.events)) return { ok: false };
+    return { ok: true, total: Number(data.total) || 0, events: data.events };
+  } catch (err) {
+    console.error('fetchContactEventsServerSide: falha ao consultar contacts (degradado)', err);
+    return { ok: false };
+  }
+}
+
 // Busca DIRETA do detalhe de um contato (sem passar por Request/sessão) — usada
 // no SSR de /app/contacts/<id> (spec 50-console-v2/56 §3) pra decidir 404 ANTES
 // de renderizar o shell. O client hidrata de novo via GET /app/contacts/entity
