@@ -156,7 +156,7 @@ Rodando tudo com Opus no modo autônomo é aceitável (a marcação Sonnet do ch
 
 Coluna Esforço: `ultrathink` = incluir a palavra "ultrathink" no prompt da sessão (specs de segurança/integridade de dados); `padrão` = prompt normal.
 
-- [ ] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0
+- [x] 1. `10-backend/21` — similaridade pré-computada (contacts, Opus, padrão) — C0 (impl `feat/console-v2` `fceecf3`, tsc+145 testes verdes; **gate G5-C0 pendente: validação do dono + provision/backfill/deploy**)
 - [ ] 2. `50-console-v2/51` — kanban colunas (brain, Opus, padrão) — C1
 - [ ] 3. `50-console-v2/53` — comentários (brain, Opus, padrão)
 - [ ] 4. `50-console-v2/52` — cards + share UI (brain, Sonnet, padrão)
@@ -266,7 +266,7 @@ Ao concluir uma fase, o agente executor registra aqui a data e a evidência do g
 | G2 | — | — |
 | G3 | — | — |
 | G4 | — | — |
-| G5-C0 | — | — |
+| G5-C0 | pendente (dono) | Código pronto: `expert-contacts` `feat/console-v2` `fceecf3` (spec `10-backend/21` done), `tsc --noEmit` limpo + `vitest` 145/145. FALTA (dono): validar grafo com arestas semânticas sem query Vectorize no load + `POST /setup/provision` (migration 0005) + `POST /setup/backfill-similar` em loop + deploy — tudo SÓ com OK explícito. |
 | G5-C1 | — | — |
 | G5-C2 | — | — |
 | G5-C3 | — | — |
