@@ -1,6 +1,6 @@
 # Captura sem fricção: inbox de rascunhos + fila de triagem no console
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (independente do resto da Fase 6; pode rodar a qualquer momento pós-C1)
 > **Agente sugerido:** Opus (schema + contrato MCP) · **Esforço de execução:** padrão
 

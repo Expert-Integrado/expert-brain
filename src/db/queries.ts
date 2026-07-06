@@ -1239,3 +1239,88 @@ export async function taskCountsByProject(env: Env): Promise<Map<string, number>
   for (const row of r.results ?? []) m.set(row.project_id, row.c);
   return m;
 }
+
+// ─────────────────────────── INBOX DE CAPTURA (spec 63) ───────────────────────────
+// Captura sem fricção: TUDO entra cru em `inbox_items` (migration 0014) e é triado
+// depois. Tabela PRÓPRIA (não é nota) — um rascunho NÃO embeda, NÃO entra em
+// recall/FTS/grafo/stats: fica invisível pra esses read paths POR CONSTRUÇÃO (zero
+// filtro por superfície). A triagem (resolve) só MARCA o desfecho; quem cria a
+// nota/task é o fluxo normal (save_note/save_task ou os endpoints do console).
+
+// Teto do corpo cru capturado (validado nas 3 entradas: tool capture, quick-add web,
+// e a spec fala em "≤4000 chars"). Constante única pra tool e web não divergirem.
+export const INBOX_BODY_MAX = 4000;
+
+// Ações de triagem possíveis (resolve_inbox). 'discard' NÃO apaga a linha (descarte é
+// barato e o item fica auditável); só marca triaged_at + triage_action.
+export const INBOX_ACTIONS = ['note', 'task', 'discard'] as const;
+export type InboxAction = typeof INBOX_ACTIONS[number];
+
+export interface InboxItem {
+  id: string;
+  body: string;
+  source: string;             // mcp | console | telegram | whatsapp (string livre informativa)
+  created_at: number;
+  triaged_at: number | null;  // NULL = pendente
+  triage_action: string | null;
+  result_id: string | null;
+}
+
+export async function insertInboxItem(
+  env: Env, item: { id: string; body: string; source: string; created_at: number }
+): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO inbox_items (id, body, source, created_at) VALUES (?, ?, ?, ?)`
+  ).bind(item.id, item.body, item.source, item.created_at).run();
+}
+
+// Lista itens do inbox. pendingOnly=true (default) usa o índice parcial idx_inbox_pending.
+// Ordem: created_at ASC (mais antigo primeiro) — ordem natural de triagem GTD (processa
+// o que está apodrecendo antes). Desempate determinístico por id.
+export async function listInboxItems(
+  env: Env, opts: { pendingOnly?: boolean; limit?: number } = {}
+): Promise<InboxItem[]> {
+  const pendingOnly = opts.pendingOnly ?? true;
+  const limit = opts.limit ?? 200;
+  const where = pendingOnly ? 'WHERE triaged_at IS NULL' : '';
+  const r = await env.DB.prepare(
+    `SELECT id, body, source, created_at, triaged_at, triage_action, result_id
+     FROM inbox_items ${where}
+     ORDER BY created_at ASC, id ASC
+     LIMIT ?`
+  ).bind(limit).all<InboxItem>();
+  return r.results ?? [];
+}
+
+export async function getInboxItem(env: Env, id: string): Promise<InboxItem | null> {
+  return env.DB.prepare(
+    `SELECT id, body, source, created_at, triaged_at, triage_action, result_id
+     FROM inbox_items WHERE id = ?`
+  ).bind(id).first<InboxItem>();
+}
+
+// Marca um item como triado. Idempotente e seguro contra corrida: o UPDATE só toca a
+// linha AINDA pendente (triaged_at IS NULL), então uma segunda triagem não sobrescreve
+// a primeira. Retorna:
+//   { ok: true,  alreadyTriaged: false } — triado agora
+//   { ok: false, alreadyTriaged: true  } — já estava triado (no-op)
+//   { ok: false, alreadyTriaged: false } — id inexistente
+export async function resolveInboxItem(
+  env: Env, id: string, action: InboxAction, resultId: string | null, triagedAt: number
+): Promise<{ ok: boolean; alreadyTriaged: boolean }> {
+  const res = await env.DB.prepare(
+    `UPDATE inbox_items SET triaged_at = ?, triage_action = ?, result_id = ?
+     WHERE id = ? AND triaged_at IS NULL`
+  ).bind(triagedAt, action, resultId, id).run();
+  if ((res.meta?.changes ?? 0) > 0) return { ok: true, alreadyTriaged: false };
+  const existing = await getInboxItem(env, id);
+  return { ok: false, alreadyTriaged: existing !== null };
+}
+
+// Contagem de pendentes (badge da navegação + retorno das tools). Usa o índice parcial.
+export async function countPendingInbox(env: Env): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM inbox_items WHERE triaged_at IS NULL`
+  ).first<{ c: number }>();
+  return r?.c ?? 0;
+}

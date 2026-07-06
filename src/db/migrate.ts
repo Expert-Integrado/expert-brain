@@ -293,6 +293,33 @@ const MIGRATION_0013_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_notes_private ON notes(private) WHERE private = 1`,
 ];
 
+// 0014 — INBOX DE CAPTURA (spec 50-console-v2/63). Alvo de baixa fricção pra
+// captura instantânea (GTD inbox): TUDO entra cru numa tabela PRÓPRIA e é triado
+// depois, em lote. Decisão de design (spec §Contexto): tabela SEPARADA de `notes` —
+// um rascunho NÃO é nota, logo NÃO vaza em NENHUM read path de conhecimento
+// (recall/FTS/grafo/stats) por CONSTRUÇÃO, sem precisar filtrar cada superfície
+// (mesma classe de risco que o soft-delete evitou). `body` cru ≤4000 chars (validado
+// em código). `source` é string livre informativa (mcp|console|telegram|whatsapp).
+// triaged_at NULL = pendente; triage_action + result_id registram o desfecho da
+// triagem (auditoria — o item descartado FICA na tabela). O índice é PARCIAL (WHERE
+// triaged_at IS NULL): custo desprezível, indexa só a fila pendente (o que o badge/
+// list_inbox contam). O número 0013 citado na spec era indicativo — o trilho já ia
+// até 0013_private_notes, então usou-se o próximo livre: 0014 (regra transversal em
+// specs/90-roadmap.md). Tudo aditivo: tabela nova + índice, não toca nenhuma linha
+// existente e zero acoplamento com `notes`.
+const MIGRATION_0014_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS inbox_items (
+    id             TEXT PRIMARY KEY,
+    body           TEXT NOT NULL,
+    source         TEXT NOT NULL DEFAULT 'mcp',
+    created_at     INTEGER NOT NULL,
+    triaged_at     INTEGER,
+    triage_action  TEXT,
+    result_id      TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_pending ON inbox_items (created_at) WHERE triaged_at IS NULL`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -307,6 +334,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0011_task_projects', stmts: MIGRATION_0011_STMTS },
   { id: '0012_api_key_scopes', stmts: MIGRATION_0012_STMTS },
   { id: '0013_private_notes', stmts: MIGRATION_0013_STMTS },
+  { id: '0014_inbox', stmts: MIGRATION_0014_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {
