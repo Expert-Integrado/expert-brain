@@ -1249,6 +1249,9 @@ export const TASKS_CSS = `
 .task-card.dragging { opacity: 0.35; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.7); border-color: var(--accent-lav); cursor: grabbing; }
 .task-card[data-status="done"], .task-card[data-status="canceled"] { opacity: 0.62; }
 .task-card[data-status="done"] .task-card-title { text-decoration: line-through; color: var(--text-dim); }
+/* Card focado via ?task=<id> (spec 66: paleta abre o board com o card em destaque) —
+   anel temporário, remove sozinho depois de scrollar até ele. */
+.task-card.task-card-focused { border-color: var(--accent-lav); box-shadow: 0 0 0 2px var(--accent-lav); }
 /* Linha meta superior: prioridade + tags + ícone de link (spec 52) */
 .task-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
 .task-card-head:empty { display: none; }

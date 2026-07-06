@@ -1,6 +1,6 @@
 # Busca unificada: estender a paleta Ctrl+K existente pra tasks, contatos e ações rápidas
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma dura. Suave: `63` (ação Capturar), `56` (navegar pra página do contato), `58` (nova task com projeto).
 > **Agente sugerido:** Sonnet (endpoint + extensão de client) · **Esforço de execução:** padrão
 
@@ -47,12 +47,12 @@
 
 ## Critérios de aceite
 
-- [ ] Paleta retorna os 3 grupos; termo que só existe numa task acha a task (primeira UI de busca de tasks); termo de contato acha o contato.
-- [ ] `> task comprar cabo` cria a task e navega pro board; `> capturar ...` grava no inbox quando a 63 existe e o comando some quando não existe.
-- [ ] Contacts fora do ar: notas/tasks seguem funcionando + aviso de degradado.
-- [ ] `/app/search/all` recusa sem sessão; `/app/search` antigo intocado (página de Notas e fallback não regridem).
-- [ ] Comportamentos atuais preservados: focus-guard, setas/Enter/Esc, atalhos Ctrl+G/N/T/B, fallback Fuse pra notas.
-- [ ] Estado zero mostra recentes + comandos.
+- [x] Paleta retorna os 3 grupos; termo que só existe numa task acha a task (primeira UI de busca de tasks); termo de contato acha o contato.
+- [x] `> task comprar cabo` cria a task e navega pro board; `> capturar ...` grava no inbox quando a 63 existe e o comando some quando não existe.
+- [x] Contacts fora do ar: notas/tasks seguem funcionando + aviso de degradado.
+- [x] `/app/search/all` recusa sem sessão; `/app/search` antigo intocado (página de Notas e fallback não regridem).
+- [x] Comportamentos atuais preservados: focus-guard, setas/Enter/Esc, atalhos Ctrl+G/N/T/B, fallback Fuse pra notas.
+- [x] Estado zero mostra recentes + comandos.
 
 ## Validação
 
@@ -62,9 +62,12 @@
 ## Arquivos afetados
 
 - `src/web/search.ts` (handler `/app/search/all`), `src/web/handler.ts` (rota)
-- `src/web/client/shell.ts` (grupos + comandos novos) + rebuild do bundle (`scripts/build-bundles.ts` — entry já existe)
-- `src/web/tasks.ts`/client (focar card por query param, se ainda não suportado)
-- `test/` (agregador)
+- `src/web/graph-data.ts` (`firstDomain` exportado), `src/web/contacts-data.ts` (`fetchContactsSearchServerSide`)
+- `src/web/client/shell.ts` (grupos + ações rápidas + recentes) + `src/web/styles.ts` (`.cmd-group-header`/`.cmd-empty-inline`)
+- `src/web/tasks.ts` (`.task-card-focused`), `src/web/client/tasks.ts` (`focusTaskFromQuery`, `?task=<id>`)
+- `src/web/client/contact-page.ts` (`#registrar-interacao` expande o form + foca o textarea)
+- `assets/shell.bundle.js`, `assets/tasks.bundle.js`, `assets/contact-page.bundle.js` (rebuild via `scripts/build-bundles.ts`), `src/web/asset-version.ts`
+- `test/search-all.test.ts` (agregador)
 
 ## Riscos e reversão
 

@@ -353,6 +353,18 @@ function initTimeline(entityId: string, container: HTMLElement): void {
         submitBtn.textContent = 'Registrar';
       });
   });
+
+  // Ação rápida "> interação" da paleta (spec 66): chegar aqui com
+  // #registrar-interacao já expande o <details> e foca o textarea de contexto —
+  // sem isso o formulário fica escondido atrás do <summary> "Registrar interação".
+  if (location.hash === '#registrar-interacao') {
+    const details = container.querySelector<HTMLDetailsElement>('.panel-addconn');
+    if (details) {
+      details.open = true;
+      details.scrollIntoView({ block: 'center' });
+      ctxArea.focus();
+    }
+  }
 }
 
 async function main(): Promise<void> {

@@ -81,9 +81,39 @@ async function load() {
     board = (await res.json()) as BoardData;
     projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
     render();
+    focusTaskFromQuery();
   } catch (err) {
     console.warn('tasks: load failed', err);
   }
+}
+
+// Card focado via ?task=<id> (spec 66: a paleta de comando abre o board com o card
+// em destaque em vez de navegar pra um detalhe separado). Roda UMA vez (guardado por
+// focusQueryHandled) — chamadas seguintes de load() (drag/drop, criar, completar)
+// não re-disparam o scroll/destaque. Coluna recolhida (spec 52) é expandida primeiro
+// pra revelar o card; id inexistente/filtrado desiste silenciosamente.
+let focusQueryHandled = false;
+function focusTaskFromQuery() {
+  if (focusQueryHandled) return;
+  const id = new URLSearchParams(location.search).get('task');
+  if (!id) { focusQueryHandled = true; return; }
+
+  let card = document.querySelector<HTMLElement>(`.task-card[data-id="${CSS.escape(id)}"]`);
+  if (card) {
+    const col = card.closest<HTMLElement>('.task-col');
+    if (col?.classList.contains('collapsed') && col.dataset.col) {
+      const map = loadCollapsed();
+      delete map[col.dataset.col];
+      saveCollapsed(map);
+      render();
+      card = document.querySelector<HTMLElement>(`.task-card[data-id="${CSS.escape(id)}"]`);
+    }
+  }
+  focusQueryHandled = true;
+  if (!card) return;
+  card.classList.add('task-card-focused');
+  card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(() => card.classList.remove('task-card-focused'), 2400);
 }
 
 // Fim do dia calendário corrente em America/Sao_Paulo, em epoch ms (spec 28).

@@ -1762,12 +1762,31 @@ select.panel-form-input { cursor: pointer; }
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   text-transform: lowercase;
 }
+/* Grupos da busca unificada (spec 66): Notas / Tarefas / Contatos, sempre que a
+   query não estiver vazia; ou Recentes / Comandos no estado zero. Não-selecionável
+   (role="presentation") — a navegação por setas pula direto pros .cmd-row. */
+.cmd-group-header {
+  padding: 10px 18px 4px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cmd-group-header:first-child { padding-top: 6px; }
 .cmd-empty {
   padding: 20px 18px;
   color: var(--text-faint);
   text-align: center;
   font-size: 13px;
   font-style: italic;
+}
+/* Aviso inline por grupo (ex.: "contatos indisponíveis") — mesma linguagem visual
+   do .cmd-empty geral, mas dentro de uma seção específica em vez da lista toda. */
+.cmd-empty-inline {
+  padding: 6px 18px 10px;
+  text-align: left;
+  font-size: 12px;
 }
 .cmd-help {
   display: flex;

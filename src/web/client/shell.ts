@@ -1,10 +1,13 @@
 // Shell-level client: unified command palette (Ctrl/Cmd+K) with:
-//   - Plain query  → fuzzy-searches all notes (title + tldr), Enter navigates
+//   - Plain query  → fuzzy-searches notes (title + tldr, instant) + tasks + contacts
+//                    (server-side, grouped) — Enter navigates.
 //   - `> query`    → fuzzy-searches commands (Go to graph, Go to notes, Log out, ...)
+//                    OR a quick action (`task <título>`, `capturar <texto>`,
+//                    `interação <nome>`) when the text matches one of those prefixes.
 // Plus global keyboard shortcuts on every page: Ctrl+G, Ctrl+N, Ctrl+,.
 //
-// Backed by /app/graph/meta — same payload used by graph and notes pages so
-// we piggyback the fetch rather than adding another endpoint.
+// Backed by /app/graph/meta (notes metadata, piggybacked with graph/notes pages) +
+// /app/search/all (spec 50-console-v2/66: agregador notas+tasks+contatos).
 
 import Fuse from 'fuse.js';
 import { appFetch } from './http.js';
@@ -54,15 +57,28 @@ function submitLogout() {
 }
 
 let notes: NoteMeta[] = [];
-let notesById = new Map<string, NoteMeta>();
+// Resultado da busca de notas mostrado na paleta: instantâneo (Fuse local, título +
+// tldr) e depois ampliado pelos hits do agregador server-side (/app/search/all —
+// título + resumo + CORPO via FTS5). NoteHit é o subconjunto de NoteMeta usado no
+// render (id/title/kind) — NoteMeta[] é atribuível aqui sem cast.
+interface NoteHit { id: string; title: string; kind: string | null; }
+let noteHits: NoteHit[] = [];
 let fuseNotes: Fuse<NoteMeta> | null = null;
-// Resultado da última busca de notas no servidor (FTS5: título + resumo + corpo).
-let noteHits: NoteMeta[] = [];
 const fuseCommands = new Fuse(COMMANDS, {
   keys: ['label'],
   threshold: 0.4,
   ignoreLocation: true,
 });
+
+// Tasks e contatos (spec 66) não têm índice local — só existem depois do round-trip
+// pro agregador. `contactsDegraded` espelha o `degraded: ['contacts']` da resposta
+// (grupo permanece visível com aviso, em vez de sumir — critério "contatos fora do
+// ar não quebra os demais grupos").
+interface TaskHit { id: string; title: string; status: string | null; due_brt: string | null; }
+interface ContactHit { id: string; name: string; category: string | null; }
+let taskHits: TaskHit[] = [];
+let contactHits: ContactHit[] = [];
+let contactsDegraded = false;
 
 // Carga LAZY do meta (spec 23): não roda mais no boot de toda página. Só é
 // disparada quando a palette (Ctrl+K) abre — páginas sem busca visível (tasks,
@@ -75,7 +91,6 @@ async function ensureNotesLoaded() {
   notesLoading = true;
   try {
     notes = await loadMeta();
-    notesById = new Map(notes.map((n) => [n.id, n]));
     fuseNotes = new Fuse(notes, {
       keys: [
         { name: 'title', weight: 0.7 },
@@ -87,7 +102,7 @@ async function ensureNotesLoaded() {
     });
     notesLoaded = true;
     // Se a palette já está aberta esperando, re-renderiza agora que os dados chegaram
-    // (o empty-state "Notas ainda carregando" cobre a janela de latência).
+    // (com query digitada, a busca local instantânea de notas passa a funcionar).
     const root = document.getElementById('cmd-palette');
     if (open && root) {
       const input = root.querySelector('.cmd-input') as HTMLInputElement | null;
@@ -124,7 +139,7 @@ function ensurePalette(): { root: HTMLElement; input: HTMLInputElement; list: HT
         <span class="cmd-input-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
         </span>
-        <input class="cmd-input" type="text" placeholder="Buscar notas — digite &gt; pra comandos" autocomplete="off" spellcheck="false" aria-label="Paleta de comandos" />
+        <input class="cmd-input" type="text" placeholder="Buscar notas, tarefas e contatos — digite &gt; pra comandos" autocomplete="off" spellcheck="false" aria-label="Paleta de comandos" />
         <kbd class="cmd-esc">Esc</kbd>
       </div>
       <ul class="cmd-list" role="listbox" aria-live="polite"></ul>
@@ -147,68 +162,244 @@ function ensurePalette(): { root: HTMLElement; input: HTMLInputElement; list: HT
 }
 
 interface ResultItem {
-  kind: 'note' | 'command';
+  kind: 'note' | 'task' | 'contact' | 'command' | 'action';
   id: string;
   label: string;
   hint?: string;
   action: () => void;
 }
 
+interface Section {
+  header: string;
+  items: ResultItem[];
+  message?: string; // linha não-selecionável (ex.: "contatos indisponíveis")
+}
+
 let lastResults: ResultItem[] = [];
 let cursor = 0;
+
+// ── Recentes (spec 66): últimos itens ABERTOS pela paleta (nota/task/contato — não
+// comandos de navegação/ação), persistidos em localStorage. Mostrados no estado zero
+// (input vazio) junto com a lista de comandos.
+interface RecentItem { kind: 'note' | 'task' | 'contact'; id: string; label: string; hint?: string; href: string; }
+const RECENT_KEY = 'eb_cmd_recent';
+const RECENT_MAX = 5;
+
+function loadRecent(): RecentItem[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushRecent(item: RecentItem): void {
+  try {
+    const cur = loadRecent().filter((r) => !(r.kind === item.kind && r.id === item.id));
+    cur.unshift(item);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(cur.slice(0, RECENT_MAX)));
+  } catch {
+    /* privado/quota: ignora — recentes são cosméticos, nunca bloqueiam a navegação */
+  }
+}
+
+// Abre um resultado (nota/task/contato): grava em recentes e navega. Único ponto de
+// navegação pros 3 tipos — mantém pushRecent + href sempre em sincronia.
+function openItem(kind: 'note' | 'task' | 'contact', id: string, label: string, hint: string | undefined, href: string): void {
+  pushRecent({ kind, id, label, hint, href });
+  window.location.href = href;
+}
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  open: 'aberta', in_progress: 'em andamento', done: 'concluída', canceled: 'cancelada',
+};
+function taskStatusLabel(status: string | null): string | undefined {
+  if (!status) return undefined;
+  return TASK_STATUS_LABELS[status] ?? status;
+}
+
+function kindIcon(kind: ResultItem['kind']): string {
+  switch (kind) {
+    case 'command': return '⌘';
+    case 'task': return '✅';
+    case 'contact': return '👤';
+    case 'action': return '⚡';
+    case 'note':
+    default: return '📝';
+  }
+}
+
+// ── Ações rápidas (spec 66 §2): estendem o sistema de comandos `>` que já existe.
+// Reconhecidas por PREFIXO + argumento não-vazio; sem argumento (ex.: usuário ainda
+// digitando "task") cai no fuzzy search normal de COMMANDS (que já casa "Tarefas").
+function parseQuickAction(q: string): ResultItem | null {
+  const taskMatch = /^task\s+(.+)$/i.exec(q);
+  if (taskMatch) {
+    const title = taskMatch[1].trim();
+    if (!title) return null;
+    return {
+      kind: 'action', id: 'action-task', label: `Criar tarefa: "${title}"`, hint: 'Enter',
+      action: () => void createTaskAndNavigate(title),
+    };
+  }
+  const capturarMatch = /^capturar\s+(.+)$/i.exec(q);
+  if (capturarMatch) {
+    const text = capturarMatch[1].trim();
+    if (!text) return null;
+    return {
+      kind: 'action', id: 'action-capturar', label: `Capturar: "${text}"`, hint: 'Enter',
+      action: () => void captureAndNavigate(text),
+    };
+  }
+  const interacaoMatch = /^intera[cç][aã]o\s+(.+)$/i.exec(q);
+  if (interacaoMatch) {
+    const term = interacaoMatch[1].trim();
+    if (!term) return null;
+    return {
+      kind: 'action', id: 'action-interacao', label: `Registrar interação com "${term}"`, hint: 'Enter',
+      action: () => void findContactAndOpenInteraction(term),
+    };
+  }
+  return null;
+}
+
+// `> task <título>` → POST /app/tasks/create (endpoint existente da UI, spec 36) e
+// navega pro board já com o card focado (?task=<id> — ver src/web/client/tasks.ts).
+async function createTaskAndNavigate(title: string): Promise<void> {
+  try {
+    const res = await appFetch('/app/tasks/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+    if (!res.ok) throw new Error('create ' + res.status);
+    const data = (await res.json()) as { id: string };
+    pushRecent({ kind: 'task', id: data.id, label: title, href: `/app/tasks?task=${data.id}` });
+    window.location.href = `/app/tasks?task=${encodeURIComponent(data.id)}`;
+  } catch (err) {
+    console.warn('palette: criação de tarefa falhou', err);
+  }
+}
+
+// `> capturar <texto>` → POST /app/inbox/add (spec 63; form-encoded + redirect, é a
+// MESMA rota do quick-add da página de inbox). appFetch segue o 302 e devolve a
+// página final — res.ok (200) confirma que a captura foi gravada.
+async function captureAndNavigate(text: string): Promise<void> {
+  try {
+    const form = new FormData();
+    form.set('text', text);
+    const res = await appFetch('/app/inbox/add', { method: 'POST', body: form });
+    if (!res.ok) throw new Error('capture ' + res.status);
+    window.location.href = '/app/inbox';
+  } catch (err) {
+    console.warn('palette: captura pro inbox falhou', err);
+  }
+}
+
+// `> interação <nome>` → resolve o contato via /app/contacts/search (spec 62, já
+// existente) e navega pra página dele com o form de "Registrar interação" (spec 57)
+// já expandido e focado (ver src/web/client/contact-page.ts, hash #registrar-interacao).
+async function findContactAndOpenInteraction(term: string): Promise<void> {
+  try {
+    const res = await appFetch('/app/contacts/search?q=' + encodeURIComponent(term));
+    if (!res.ok) throw new Error('contacts/search ' + res.status);
+    const data = (await res.json()) as { ok?: boolean; results?: Array<{ id: string }> };
+    const first = data.results?.[0];
+    if (!first) {
+      console.warn('palette: nenhum contato encontrado para', term);
+      return;
+    }
+    window.location.href = `/app/contacts/${encodeURIComponent(first.id)}#registrar-interacao`;
+  } catch (err) {
+    console.warn('palette: busca de contato pra interação falhou', err);
+  }
+}
 
 function render(query: string, list: HTMLElement) {
   const isCommand = query.trim().startsWith('>');
   const q = isCommand ? query.trim().slice(1).trim() : query.trim();
 
-  let items: ResultItem[] = [];
+  const sections: Section[] = [];
+
   if (isCommand) {
-    const pool = q ? fuseCommands.search(q).map((r) => r.item) : COMMANDS;
-    items = pool.slice(0, 10).map((c) => ({
-      kind: 'command',
-      id: c.id,
-      label: c.label,
-      hint: c.hint,
-      action: c.action,
-    }));
-  } else {
-    if (!q) {
-      items = notes.slice(0, 10).map((n) => ({
-        kind: 'note',
-        id: n.id,
-        label: n.title,
-        hint: n.kind || undefined,
-        action: () => (window.location.href = `/app/notes/${encodeURIComponent(n.id)}`),
-      }));
+    const quick = parseQuickAction(q);
+    if (quick) {
+      sections.push({ header: 'Ação rápida', items: [quick] });
     } else {
-      // noteHits é preenchido pela busca server-side (FTS5) no listener de input.
-      items = noteHits.slice(0, 12).map((n) => ({
-        kind: 'note',
-        id: n.id,
-        label: n.title,
-        hint: n.kind || undefined,
-        action: () => (window.location.href = `/app/notes/${encodeURIComponent(n.id)}`),
+      const pool = q ? fuseCommands.search(q).map((r) => r.item) : COMMANDS;
+      sections.push({
+        header: 'Comandos',
+        items: pool.slice(0, 10).map((c) => ({ kind: 'command', id: c.id, label: c.label, hint: c.hint, action: c.action })),
+      });
+    }
+  } else if (!q) {
+    // Estado zero (spec 66 §2): últimos itens abertos pela paleta + comandos
+    // disponíveis — em vez da lista bruta das 10 primeiras notas de antes.
+    const recentItems: ResultItem[] = loadRecent().map((r) => ({
+      kind: r.kind, id: r.id, label: r.label, hint: r.hint,
+      action: () => (window.location.href = r.href),
+    }));
+    if (recentItems.length) sections.push({ header: 'Recentes', items: recentItems });
+    sections.push({
+      header: 'Comandos',
+      items: COMMANDS.map((c) => ({ kind: 'command', id: c.id, label: c.label, hint: c.hint, action: c.action })),
+    });
+  } else {
+    const noteItems: ResultItem[] = noteHits.slice(0, 12).map((n) => ({
+      kind: 'note', id: n.id, label: n.title, hint: n.kind || undefined,
+      action: () => openItem('note', n.id, n.title, n.kind || undefined, `/app/notes/${encodeURIComponent(n.id)}`),
+    }));
+    if (noteItems.length) sections.push({ header: 'Notas', items: noteItems });
+
+    const taskItems: ResultItem[] = taskHits.slice(0, 6).map((t) => ({
+      kind: 'task', id: t.id, label: t.title, hint: t.due_brt || taskStatusLabel(t.status),
+      action: () => openItem('task', t.id, t.title, t.due_brt || undefined, `/app/tasks?task=${encodeURIComponent(t.id)}`),
+    }));
+    if (taskItems.length) sections.push({ header: 'Tarefas', items: taskItems });
+
+    if (contactsDegraded) {
+      // Critério "contacts fora do ar": grupo permanece visível com aviso — notas e
+      // tarefas acima continuam funcionando normalmente.
+      sections.push({ header: 'Contatos', items: [], message: 'contatos indisponíveis' });
+    } else {
+      const contactItems: ResultItem[] = contactHits.slice(0, 6).map((c) => ({
+        kind: 'contact', id: c.id, label: c.name, hint: c.category || undefined,
+        action: () => openItem('contact', c.id, c.name, c.category || undefined, `/app/contacts/${encodeURIComponent(c.id)}`),
       }));
+      if (contactItems.length) sections.push({ header: 'Contatos', items: contactItems });
     }
   }
 
-  lastResults = items;
+  lastResults = sections.flatMap((s) => s.items);
   cursor = 0;
 
-  if (items.length === 0) {
-    list.innerHTML = `<li class="cmd-empty">${q ? 'Nada encontrado' : 'Notas ainda carregando'}</li>`;
+  if (lastResults.length === 0 && !sections.some((s) => s.message)) {
+    list.innerHTML = `<li class="cmd-empty">Nada encontrado</li>`;
     return;
   }
 
-  list.innerHTML = items
-    .map(
-      (it, i) => `
-      <li class="cmd-row ${i === 0 ? 'active' : ''}" role="option" data-index="${i}">
-        <span class="cmd-kind cmd-kind-${it.kind}">${it.kind === 'command' ? '⌘' : '📝'}</span>
-        <span class="cmd-label">${escText(it.label)}</span>
-        ${it.hint ? `<span class="cmd-hint">${escText(it.hint)}</span>` : ''}
-      </li>`
-    )
+  let idx = 0;
+  list.innerHTML = sections
+    .map((s) => {
+      const headerHtml = `<li class="cmd-group-header" role="presentation">${escText(s.header)}</li>`;
+      if (s.items.length === 0) {
+        return s.message ? `${headerHtml}<li class="cmd-empty cmd-empty-inline">${escText(s.message)}</li>` : '';
+      }
+      const rows = s.items
+        .map((it) => {
+          const i = idx++;
+          return `
+          <li class="cmd-row ${i === 0 ? 'active' : ''}" role="option" data-index="${i}">
+            <span class="cmd-kind cmd-kind-${it.kind}">${kindIcon(it.kind)}</span>
+            <span class="cmd-label">${escText(it.label)}</span>
+            ${it.hint ? `<span class="cmd-hint">${escText(it.hint)}</span>` : ''}
+          </li>`;
+        })
+        .join('');
+      return headerHtml + rows;
+    })
     .join('');
 }
 
@@ -248,17 +439,26 @@ function close() {
   root.classList.remove('open');
 }
 
-// Busca full-text de notas no servidor (FTS5: título + resumo + corpo). Resolve
-// os ids nos metadados já carregados. Fallback pro Fuse local em caso de erro.
-async function searchNotes(q: string): Promise<NoteMeta[]> {
+// Busca unificada da paleta (spec 66): notas + tasks + contatos num request só via
+// /app/search/all. Notas aqui só AMPLIAM o Fuse local instantâneo (mesmo racional do
+// searchNotes antigo — full-text no CORPO, que o Fuse local não cobre); tasks e
+// contatos não têm índice local, então só aparecem depois deste round-trip.
+interface ServerNoteHit { id: string; title: string; kind: string | null; domain: string; }
+interface SearchAllResponse {
+  notes: ServerNoteHit[];
+  tasks: TaskHit[];
+  contacts: ContactHit[];
+  degraded?: string[];
+}
+
+async function searchAll(q: string): Promise<SearchAllResponse | null> {
   try {
-    const res = await appFetch('/app/search?q=' + encodeURIComponent(q));
-    if (!res.ok) throw new Error('search ' + res.status);
-    const ids = (await res.json()) as string[];
-    return ids.map((id) => notesById.get(id)).filter(Boolean).slice(0, 12) as NoteMeta[];
+    const res = await appFetch('/app/search/all?q=' + encodeURIComponent(q));
+    if (!res.ok) throw new Error('search/all ' + res.status);
+    return (await res.json()) as SearchAllResponse;
   } catch (err) {
-    console.warn('palette: busca server-side falhou, usando Fuse', err);
-    return fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [];
+    console.warn('palette: busca unificada falhou (notas caem no Fuse local; tasks/contatos ficam vazios)', err);
+    return null;
   }
 }
 
@@ -274,19 +474,32 @@ function wire() {
       return;
     }
     const q = val.trim();
-    // Instantâneo: Fuse local (título + resumo) — sem esperar a rede.
+    // Instantâneo: Fuse local (título + resumo) — sem esperar a rede. Tasks/contatos
+    // ficam com o valor da busca anterior até o debounce resolver (evita "piscar"
+    // vazio a cada tecla — mesmo racional do antigo searchNotes pro corpo das notas).
     noteHits = fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [];
     render(val, list);
-    // Background: amplia com matches do CORPO (server FTS), unindo aos locais.
+    // Background: amplia notas com matches do CORPO (server FTS) e busca tasks/contatos.
     if (searchT) window.clearTimeout(searchT);
     searchT = window.setTimeout(async () => {
       const mySeq = ++searchSeq;
-      const serverHits = await searchNotes(q);
-      if (mySeq !== searchSeq || serverHits.length === 0) return;
-      const seen = new Set(serverHits.map((n) => n.id));
-      const localExtra = (fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [])
-        .filter((n) => !seen.has(n.id));
-      noteHits = [...serverHits, ...localExtra].slice(0, 12);
+      const serverAll = await searchAll(q);
+      if (mySeq !== searchSeq) return;
+      if (serverAll) {
+        const seen = new Set(serverAll.notes.map((n) => n.id));
+        const localExtra = (fuseNotes ? fuseNotes.search(q, { limit: 12 }).map((r) => r.item) : [])
+          .filter((n) => !seen.has(n.id));
+        noteHits = [...serverAll.notes, ...localExtra].slice(0, 12);
+        taskHits = serverAll.tasks;
+        contactHits = serverAll.contacts;
+        contactsDegraded = !!serverAll.degraded?.includes('contacts');
+      } else {
+        // Falha de rede no agregador inteiro (raro): notas seguem no Fuse local já
+        // atribuído acima; tasks/contatos não têm fallback local, então esvaziam.
+        taskHits = [];
+        contactHits = [];
+        contactsDegraded = false;
+      }
       render(val, list);
     }, 130);
   });
