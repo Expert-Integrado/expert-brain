@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor } from '../helpers.js';
 import { getNoteById, restoreNote } from '../../db/queries.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
 import { refreshSimilarEdges } from '../../web/similarity.js';
@@ -19,7 +19,7 @@ Pass the note id (the same id delete_note reported). If the note is not in the t
 
 interface RestoreNoteInput { id: string; }
 
-export function registerRestoreNote(server: any, env: Env): void {
+export function registerRestoreNote(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'restore_note',
     {
@@ -50,7 +50,7 @@ export function registerRestoreNote(server: any, env: Env): void {
       }
 
       // Tira da lixeira e re-embed o vetor (delete_note tinha removido do Vectorize).
-      await restoreNote(env, input.id);
+      await restoreNote(env, input.id, writeActor(auth));
       const vec = await embed(env, note.tldr);
       await upsertNoteVector(env, input.id, vec, {
         domains: JSON.parse(note.domains) as string[],

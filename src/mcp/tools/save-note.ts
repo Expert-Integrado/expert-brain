@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
+import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
 import { EDGE_TYPES, KNOWLEDGE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { embed, upsertNoteVector } from '../../vector/index.js';
@@ -65,7 +65,7 @@ interface SaveNoteInput {
   allow_new_domain?: boolean;
 }
 
-export function registerSaveNote(server: any, env: Env): void {
+export function registerSaveNote(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'save_note',
     {
@@ -128,7 +128,7 @@ export function registerSaveNote(server: any, env: Env): void {
         kind: input.kind,
         created_at: now,
         updated_at: now,
-      });
+      }, writeActor(auth));
       if (input.tags?.length) await insertTags(env, id, input.tags);
 
       let edgesCreated = 0;

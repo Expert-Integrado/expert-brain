@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, writeActor } from '../helpers.js';
 import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
@@ -57,7 +57,8 @@ interface UpdateNoteInput {
   allow_new_domain?: boolean;
 }
 
-export function registerUpdateNote(server: any, env: Env): void {
+export function registerUpdateNote(server: any, env: Env, auth: AuthContext): void {
+  const actor = writeActor(auth);
   server.registerTool(
     'update_note',
     {
@@ -120,7 +121,7 @@ export function registerUpdateNote(server: any, env: Env): void {
           domains: domains !== undefined ? JSON.stringify(domains) : undefined,
           kind,
           updated_at: now,
-        });
+        }, undefined, actor);
       }
 
       if (tags !== undefined) {
@@ -128,7 +129,7 @@ export function registerUpdateNote(server: any, env: Env): void {
         // Ensure updated_at advances even when only tags changed — downstream
         // code treats notes.updated_at as the "this note was edited" signal.
         if (!touchesD1Columns) {
-          await updateNote(env, id, { updated_at: now });
+          await updateNote(env, id, { updated_at: now }, undefined, actor);
         }
         fieldsChanged.push('tags');
       }

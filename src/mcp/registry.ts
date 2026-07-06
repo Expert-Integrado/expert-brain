@@ -1,4 +1,4 @@
-import type { Env } from '../env.js';
+import type { Env, AuthContext } from '../env.js';
 import { registerSaveNote } from './tools/save-note.js';
 import { registerRecall } from './tools/recall.js';
 import { registerExpand } from './tools/expand.js';
@@ -24,38 +24,68 @@ import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
 import { registerContactsTools } from './tools/contacts.js';
 
-export function registerAllTools(server: any, env: Env): void {
-  registerSaveNote(server, env);
-  registerUpdateNote(server, env);
-  registerDeleteNote(server, env);
-  registerRestoreNote(server, env);
-  registerRecall(server, env);
-  registerExpand(server, env);
-  registerGetNote(server, env);
-  registerLink(server, env);
-  registerDeleteLink(server, env);
-  registerStats(server, env);
-  registerReembed(server, env);
+// Gate de escopo (spec 17): num PAT com scopes='read', envolve o server num Proxy
+// que só deixa passar `registerTool` de tools com `annotations.readOnlyHint === true`.
+// As tools de escrita nem chegam a ser registradas — o cliente não as vê no
+// tools/list e não há como chamá-las. Robusto: a decisão vem da annotation da própria
+// tool (readOnlyHint), não de uma lista paralela que sairia do sincronismo.
+function readOnlyGuard(server: any): any {
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop === 'registerTool') {
+        return (name: string, config: any, handler: any) => {
+          if (config?.annotations?.readOnlyHint === true) {
+            return server.registerTool(name, config, handler);
+          }
+          return undefined; // tool de escrita suprimida no escopo read
+        };
+      }
+      const v = Reflect.get(target, prop, receiver);
+      return typeof v === 'function' ? v.bind(target) : v;
+    },
+  });
+}
+
+export function registerAllTools(server: any, env: Env, auth: AuthContext): void {
+  // Escopo ausente (sessões OAuth) = 'full' — comportamento histórico intacto.
+  const scope = auth.scopes ?? 'full';
+  // `reg` é o alvo dos register*: no escopo read é o guarda que dropa as tools de
+  // escrita; no full é o próprio server. Tools de escrita recebem `auth` pra gravar
+  // autoria (created_by/updated_by) — no read elas não são registradas de todo jeito.
+  const reg = scope === 'read' ? readOnlyGuard(server) : server;
+
+  registerSaveNote(reg, env, auth);
+  registerUpdateNote(reg, env, auth);
+  registerDeleteNote(reg, env, auth);
+  registerRestoreNote(reg, env, auth);
+  registerRecall(reg, env);
+  registerExpand(reg, env);
+  registerGetNote(reg, env);
+  registerLink(reg, env);
+  registerDeleteLink(reg, env);
+  registerStats(reg, env);
+  registerReembed(reg, env);
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.
-  registerSaveTask(server, env);
-  registerListTasksDueToday(server, env);
-  registerListTasks(server, env);
-  registerCompleteTask(server, env);
-  registerUpdateTask(server, env);
-  registerGetTask(server, env);
+  registerSaveTask(reg, env, auth);
+  registerListTasksDueToday(reg, env);
+  registerListTasks(reg, env);
+  registerCompleteTask(reg, env, auth);
+  registerUpdateTask(reg, env, auth);
+  registerGetTask(reg, env);
   // Comentários em task (thread): agente anota progresso sem sobrescrever o body.
-  registerCommentTask(server, env);
+  registerCommentTask(reg, env);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
-  registerShareTask(server, env);
-  registerUnshareTask(server, env);
+  registerShareTask(reg, env);
+  registerUnshareTask(reg, env);
   // Mídia das notas (R2 + dedup SHA-256). Binding opcional: instalação sem R2
   // habilitado (conta free sem billing) sobe sem as tools de mídia — o setup
   // remove o [[r2_buckets]] do wrangler.toml nesse caso.
   if (env.MEDIA) {
-    registerAttachMedia(server, env);
-    registerGetNoteMedia(server, env);
-    registerDeleteNoteMedia(server, env);
+    registerAttachMedia(reg, env);
+    registerGetNoteMedia(reg, env);
+    registerDeleteNoteMedia(reg, env);
   }
-  // Contatos (leitura) — mesmo MCP do Brain lê o vault de Contacts via service binding.
-  registerContactsTools(server, env);
+  // Contatos (leitura, todas readOnlyHint:true) — o MCP do Brain lê o vault de
+  // Contacts via service binding. Passam pelo guarda read sem serem suprimidas.
+  registerContactsTools(reg, env);
 }

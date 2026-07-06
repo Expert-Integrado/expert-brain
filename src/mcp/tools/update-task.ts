@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
 import { TASK_STATUSES, type TaskStatus, type TaskPatch, updateTask, getTaskById, getProjectById } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
@@ -60,7 +60,7 @@ interface UpdateTaskInput {
   allow_new_domain?: boolean;
 }
 
-export function registerUpdateTask(server: any, env: Env): void {
+export function registerUpdateTask(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'update_task',
     {
@@ -132,7 +132,7 @@ export function registerUpdateTask(server: any, env: Env): void {
         }
       }
 
-      const result = await updateTask(env, input.id, patch, now, input.expected_updated_at);
+      const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
       if (result === 'not-found') {
         return toolError(
           `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`

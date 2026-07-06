@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
+import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
 import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskByTag, findSimilarActiveTasksByTitle } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
@@ -58,7 +58,7 @@ interface SaveTaskInput {
   allow_new_domain?: boolean;
 }
 
-export function registerSaveTask(server: any, env: Env): void {
+export function registerSaveTask(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
     'save_task',
     {
@@ -179,7 +179,7 @@ export function registerSaveTask(server: any, env: Env): void {
         project_id: projectId,
         created_at: now,
         updated_at: now,
-      });
+      }, writeActor(auth));
 
       const allTags = [...(input.tags ?? [])];
       if (dedupeTag) allTags.push(dedupeTag);

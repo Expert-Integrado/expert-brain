@@ -1,4 +1,11 @@
-import type { Env } from '../env.js';
+import type { Env, AuthContext } from '../env.js';
+
+// Autoria de escrita (spec 17): id do PAT que autenticou (created_by/updated_by),
+// ou `oauth:<email>` numa sessão OAuth (sem keyId). É o valor gravado nas colunas
+// de autoria das tools de escrita. `auth` é sempre presente no registro das tools.
+export function writeActor(auth: AuthContext): string {
+  return auth.keyId ?? `oauth:${auth.email}`;
+}
 
 export function noteUrl(env: Env, id: string): string {
   const base = env.WORKER_URL?.replace(/\/$/, '') ?? '';

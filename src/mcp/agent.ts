@@ -35,6 +35,8 @@ export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthCon
         }),
       }
     );
-    registerAllTools(this.server, this.env);
+    // Repassa o AuthContext (spec 17): o registry gateia por escopo (read → só
+    // tools readOnlyHint:true) e as tools de escrita gravam autoria.
+    registerAllTools(this.server, this.env, auth);
   }
 }
