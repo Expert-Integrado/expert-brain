@@ -1099,21 +1099,164 @@ async function main() {
                 ${c.why ? `<span class="panel-conn-why">${esc(String(c.why))}</span>` : ''}
               </button>`).join('')}</div>`
           : '';
-        const events = Array.isArray(d.events) && d.events.length
-          ? `<div class="panel-section-title">Eventos</div><ul class="panel-events">${d.events.slice(0, 8).map((ev: any) => `
-              <li><span class="panel-event-kind">${esc(String(ev.kind ?? ''))}</span><span class="panel-event-ts">${esc(String(ev.ts ?? '').slice(0, 10))}</span>${
-                ev.context ? `<div class="panel-event-ctx">${esc(String(ev.context))}</div>` : ''
-              }</li>`).join('')}</ul>`
-          : '';
-        body.innerHTML = `${avatar}${fields}${conns}${events}`;
+        // Timeline (spec 50-console-v2/57): substitui a lista estática dos 8
+        // eventos do payload por um bloco vivo, paginado (endpoint dedicado
+        // /app/contacts/entity/events) + form "Registrar interação". Montado à
+        // parte porque é assíncrono/interativo — não entra no innerHTML acima.
+        body.innerHTML = `${avatar}${fields}${conns}`;
+        const timelineWrap = document.createElement('div');
+        timelineWrap.className = 'panel-timeline-wrap';
+        body.appendChild(timelineWrap);
         body.querySelectorAll('.panel-conn').forEach((el) => {
           el.addEventListener('click', () => {
             const id = (el as HTMLElement).dataset.focus;
             if (id && graph.hasNode(id)) focusNode(id);
           });
         });
+        initContactTimeline(nodeId, timelineWrap, () => mySeq === contactPanelSeq);
       })
       .catch(() => { /* aditivo: o esqueleto do painel já está de pé */ });
+  }
+
+  // Timeline PAGINADA de interações + form "Registrar interação" (spec
+  // 50-console-v2/57). Proxy do Brain: GET /app/contacts/entity/events (leitura,
+  // CONTACTS_PROXY_TOKEN read-only do lado do contacts) e POST
+  // /app/contacts/entity/event (escrita, CONTACTS_WRITE_TOKEN escopado). `stillActive`
+  // evita atualizar um painel que já foi trocado por outro contato (mesmo guard de
+  // seq do hidrata acima).
+  function initContactTimeline(entityId: string, container: HTMLElement, stillActive: () => boolean): void {
+    const state = { offset: 0, total: 0, loading: false };
+
+    container.innerHTML = `
+      <div class="panel-section-title">Interações</div>
+      <ul class="panel-events" data-timeline-list></ul>
+      <button type="button" class="panel-timeline-more" data-timeline-more style="display:none">Carregar mais</button>
+      <details class="panel-addconn">
+        <summary class="panel-addconn-summary">Registrar interação</summary>
+        <form class="panel-form" data-timeline-form>
+          <div class="panel-form-field">
+            <label class="panel-form-label">Tipo</label>
+            <select class="panel-form-input" data-timeline-kind>
+              ${MANUAL_EVENT_KINDS.map((o) => `<option value="${o.value}">${esc(o.label)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="panel-form-field">
+            <label class="panel-form-label">Contexto (opcional)</label>
+            <textarea class="panel-form-textarea" rows="3" maxlength="2000" data-timeline-context placeholder="Sobre o que foi..."></textarea>
+          </div>
+          <div class="panel-form-field">
+            <label class="panel-form-label">Quando (opcional, padrão agora)</label>
+            <input type="datetime-local" class="panel-form-input" data-timeline-when />
+          </div>
+          <div class="panel-form-feedback" role="status" data-timeline-feedback></div>
+          <button type="submit" class="panel-form-submit" data-timeline-submit>Registrar</button>
+        </form>
+      </details>
+    `;
+
+    const list = container.querySelector('[data-timeline-list]') as HTMLUListElement;
+    const moreBtn = container.querySelector('[data-timeline-more]') as HTMLButtonElement;
+    const form = container.querySelector('[data-timeline-form]') as HTMLFormElement;
+    const kindSel = container.querySelector('[data-timeline-kind]') as HTMLSelectElement;
+    const ctxArea = container.querySelector('[data-timeline-context]') as HTMLTextAreaElement;
+    const whenInput = container.querySelector('[data-timeline-when]') as HTMLInputElement;
+    const feedback = container.querySelector('[data-timeline-feedback]') as HTMLElement;
+    const submitBtn = container.querySelector('[data-timeline-submit]') as HTMLButtonElement;
+
+    function renderItem(ev: { kind: string; ts: string; context?: string | null }): string {
+      return `<li>
+        <span class="panel-event-kind">${esc(EVENT_KIND_LABELS[ev.kind] ?? ev.kind)}</span>
+        <span class="panel-event-ts">${esc(formatContactEventTs(ev.ts))}</span>
+        ${ev.context ? `<div class="panel-event-ctx">${esc(ev.context)}</div>` : ''}
+      </li>`;
+    }
+
+    async function loadPage(): Promise<void> {
+      if (state.loading || !stillActive()) return;
+      state.loading = true;
+      moreBtn.disabled = true;
+      moreBtn.textContent = 'Carregando...';
+      try {
+        const res = await fetch(
+          `/app/contacts/entity/events?id=${encodeURIComponent(entityId)}&offset=${state.offset}&limit=${CONTACT_EVENTS_PAGE_SIZE}`,
+          { credentials: 'same-origin' },
+        );
+        if (!stillActive()) return;
+        const d: any = res.ok ? await res.json() : null;
+        if (!d || d.ok === false) {
+          moreBtn.style.display = 'none';
+          if (state.offset === 0) list.innerHTML = '<li class="panel-empty">Erro ao carregar interações.</li>';
+          return;
+        }
+        state.total = d.total ?? 0;
+        const events = Array.isArray(d.events) ? d.events : [];
+        if (state.offset === 0 && events.length === 0) {
+          list.innerHTML = '<li class="panel-empty">Nenhuma interação registrada ainda.</li>';
+        } else {
+          list.insertAdjacentHTML('beforeend', events.map(renderItem).join(''));
+        }
+        state.offset += events.length;
+        moreBtn.style.display = state.offset < state.total ? '' : 'none';
+        moreBtn.textContent = 'Carregar mais';
+      } catch {
+        moreBtn.style.display = 'none';
+      } finally {
+        moreBtn.disabled = false;
+        state.loading = false;
+      }
+    }
+
+    moreBtn.addEventListener('click', () => void loadPage());
+    void loadPage();
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      feedback.textContent = '';
+      feedback.classList.remove('error', 'ok');
+      const ctxVal = ctxArea.value.trim();
+      const body: { entity_id: string; kind: string; context?: string; ts?: string } = {
+        entity_id: entityId,
+        kind: kindSel.value,
+      };
+      if (ctxVal) body.context = ctxVal;
+      if (whenInput.value) {
+        const dt = new Date(whenInput.value);
+        if (!Number.isNaN(dt.getTime())) body.ts = contactEventToSqliteUtc(dt);
+      }
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Registrando...';
+      void fetch('/app/contacts/entity/event', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+        .then(async (res) => {
+          const data: any = await res.json().catch(() => ({}));
+          if (!res.ok || !data.ok) throw new Error(data.error || `falha ${res.status}`);
+          const emptyMsg = list.querySelector('.panel-empty');
+          if (emptyMsg) emptyMsg.remove();
+          list.insertAdjacentHTML('afterbegin', renderItem({
+            kind: kindSel.value,
+            ts: body.ts || contactEventToSqliteUtc(new Date()),
+            context: ctxVal || null,
+          }));
+          state.total += 1;
+          state.offset += 1;
+          ctxArea.value = '';
+          whenInput.value = '';
+          feedback.classList.add('ok');
+          feedback.textContent = 'Registrado.';
+        })
+        .catch((err) => {
+          feedback.classList.add('error');
+          feedback.textContent = `Erro: ${String(err?.message || err)}`;
+        })
+        .finally(() => {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Registrar';
+        });
+    });
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -2034,6 +2177,50 @@ function esc(s: string): string {
     }
     return c;
   });
+}
+
+// Timeline de interações do contato (spec 50-console-v2/57) — labels PT-BR,
+// cópia inline porque este bundle não importa o TS do worker de contatos (mesmo
+// padrão de CONTACT_TYPE_LABELS acima, pro tipo de ENTIDADE).
+const EVENT_KIND_LABELS: Record<string, string> = {
+  met: 'Encontro', talked: 'Conversa', meeting: 'Reunião', email: 'E-mail', message: 'Mensagem',
+  note: 'Nota', saw_post: 'Vi post', recommended: 'Indicação', birthday_reminder: 'Aniversário',
+  mentioned_in_brain: 'Citado no Brain',
+};
+// Kinds MANUAIS oferecidos no form "Registrar interação" (spec 57 §4).
+const MANUAL_EVENT_KINDS: Array<{ value: string; label: string }> = [
+  { value: 'met', label: 'Encontro' },
+  { value: 'talked', label: 'Conversa' },
+  { value: 'meeting', label: 'Reunião' },
+  { value: 'email', label: 'E-mail' },
+  { value: 'message', label: 'Mensagem' },
+  { value: 'note', label: 'Nota' },
+];
+const CONTACT_EVENTS_PAGE_SIZE = 20;
+
+// Timestamp de evento → data/hora BRT curta. A coluna events.ts do contacts é UTC
+// "YYYY-MM-DD HH:MM:SS" (datetime('now') do SQLite); normaliza pra ISO antes do
+// Date() pra não depender de parsing ambíguo entre browsers.
+function formatContactEventTs(ts: string): string {
+  if (!ts) return '';
+  const iso = ts.includes('T') ? ts : `${ts.replace(' ', 'T')}Z`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return ts.slice(0, 16);
+  try {
+    return d.toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return ts.slice(0, 16);
+  }
+}
+
+// Converte um Date (valor de <input type="datetime-local">, já em hora LOCAL do
+// browser) pro MESMO formato UTC "YYYY-MM-DD HH:MM:SS" que datetime('now') grava —
+// mistura de formatos quebraria a ordenação lexicográfica ORDER BY ts DESC.
+function contactEventToSqliteUtc(d: Date): string {
+  return d.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 function setStatus(text: string) {

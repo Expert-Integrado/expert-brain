@@ -887,6 +887,108 @@ a:hover { color: var(--text); }
 .panel-event-kind { font-weight: 600; color: var(--text); }
 .panel-event-ts { color: var(--text-faint); margin-left: 6px; font-size: 10.5px; }
 .panel-event-ctx { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.panel-empty { color: var(--text-dim); font-size: 13px; margin: 0; list-style: none; }
+.panel-timeline-wrap { margin-top: 16px; }
+
+/* Botão "Carregar mais" da timeline paginada (spec 50-console-v2/57) */
+.panel-timeline-more {
+  margin-top: 8px;
+  padding: 7px 12px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 160ms var(--ease), border-color 160ms var(--ease);
+}
+.panel-timeline-more:hover { background: rgba(167, 139, 250, 0.1); border-color: var(--border-strong); }
+.panel-timeline-more:disabled { opacity: 0.55; cursor: progress; }
+
+/* Disclosure "Registrar interação" (spec 50-console-v2/57) — mesmo padrão visual
+   do form de adicionar conexão do console standalone de contatos. */
+.panel-addconn {
+  margin-top: 12px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.panel-addconn[open] { border-color: var(--border-strong); }
+.panel-addconn-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-lav);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 160ms var(--ease);
+}
+.panel-addconn-summary::-webkit-details-marker { display: none; }
+.panel-addconn-summary::before {
+  content: "+";
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent-lav);
+  transition: transform 200ms var(--ease);
+}
+.panel-addconn[open] .panel-addconn-summary::before { transform: rotate(45deg); }
+.panel-addconn-summary:hover { background: rgba(167, 139, 250, 0.08); }
+
+.panel-form { display: flex; flex-direction: column; gap: 12px; padding: 4px 14px 16px; }
+.panel-form-field { display: flex; flex-direction: column; gap: 5px; }
+.panel-form-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.panel-form-input,
+.panel-form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.panel-form-textarea { resize: vertical; line-height: 1.5; }
+.panel-form-input:focus,
+.panel-form-textarea:focus { border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.05); }
+select.panel-form-input { cursor: pointer; }
+
+.panel-form-feedback { font-size: 12.5px; line-height: 1.45; min-height: 0; }
+.panel-form-feedback.error { color: var(--danger); }
+.panel-form-feedback.ok { color: var(--accent-cyan); }
+.panel-form-feedback:empty { display: none; }
+
+.panel-form-submit {
+  padding: 10px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
+  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
+  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease), opacity 150ms var(--ease);
+}
+.panel-form-submit:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
+.panel-form-submit:active { transform: translateY(0); }
+.panel-form-submit:disabled { opacity: 0.55; cursor: progress; transform: none; box-shadow: none; }
 
 .graph-status {
   font-size: 11.5px;
