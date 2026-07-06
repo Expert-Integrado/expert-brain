@@ -1,6 +1,6 @@
 # Home "Hoje" + Journal: o eixo temporal cross-módulo do console
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + 1 endpoint no expert-contacts)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + 1 endpoint no expert-contacts)
 > **Depende de:** `63` (card de inbox), `64` (bloco de digest). Coordena com `61` (filtro de privado no feed) e `57` (events como fonte do journal).
 > **Agente sugerido:** Sonnet (UI/SSR + 1 endpoint) · **Esforço de execução:** padrão
 
@@ -59,12 +59,12 @@ Home e journal são superfícies de SESSÃO (dono) — veem privados com badge (
 
 ## Critérios de aceite
 
-- [ ] `/app` logado renderiza a home com os 4 cards; cards de specs não-rodadas são omitidos sem erro.
-- [ ] Quick-complete na home conclui a task (mesma semântica do board) e o card atualiza.
-- [ ] `/app/journal`: fixture com notas+tasks+eventos intercalados renderiza em ordem cronológica com agrupamento por dia; "Carregar mais" pagina sem duplicar nem pular item (teste do merge de cursores).
-- [ ] `GET /app/events/recent` no contacts: pagina, respeita cap, Bearer read-only funciona, path fora da allowlist segue 401; com a 61 aplicada, privados fora (e fora do total) sem include-private.
-- [ ] Falha do proxy de contatos: home e journal degradam (card/fonte omitidos com aviso), não quebram.
-- [ ] Navegação do shell ganha "Início"; nenhuma rota existente muda de comportamento.
+- [x] `/app` logado renderiza a home com os 4 cards; cards de specs não-rodadas são omitidos sem erro.
+- [x] Quick-complete na home conclui a task (mesma semântica do board) e o card atualiza.
+- [x] `/app/journal`: fixture com notas+tasks+eventos intercalados renderiza em ordem cronológica com agrupamento por dia; "Carregar mais" pagina sem duplicar nem pular item (teste do merge de cursores).
+- [x] `GET /app/events/recent` no contacts: pagina, respeita cap, Bearer read-only funciona, path fora da allowlist segue 401; com a 61 aplicada, privados fora (e fora do total) sem include-private.
+- [x] Falha do proxy de contatos: home e journal degradam (card/fonte omitidos com aviso), não quebram.
+- [x] Navegação do shell ganha "Início"; nenhuma rota existente muda de comportamento.
 
 ## Validação
 
