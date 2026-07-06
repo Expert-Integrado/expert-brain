@@ -23,9 +23,10 @@ const TRICKY_BODY = "linha 1 com 'aspas'\nlinha 2: função, ação; -- não é 
 
 async function wipeData(): Promise<void> {
   // filho → pai por causa das FKs (o CASCADE de notes também limparia, mas a
-  // ordem explícita documenta a dependência). kanban_columns vem DEPOIS de notes
-  // (notes.column_id referencia kanban_columns) — spec 51.
-  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'notes', 'api_keys', 'meta', 'kanban_columns']) {
+  // ordem explícita documenta a dependência). kanban_columns e task_projects vêm
+  // DEPOIS de notes (notes.column_id → kanban_columns spec 51; notes.project_id →
+  // task_projects spec 58).
+  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'notes', 'api_keys', 'meta', 'kanban_columns', 'task_projects']) {
     await E.DB.exec(`DELETE FROM ${t}`);
   }
 }
@@ -87,7 +88,8 @@ const FIXTURE_COUNTS: Record<string, number> = {
   api_keys: 1,
   meta: 1,
   kanban_columns: 4,
-  _migrations: 10,
+  task_projects: 0,
+  _migrations: 11,
 };
 
 beforeAll(async () => {
@@ -119,7 +121,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0010_task_comments');
+    expect(manifest.schema_version).toBe('0011_task_projects');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });
