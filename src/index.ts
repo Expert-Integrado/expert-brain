@@ -26,14 +26,21 @@ export default {
       const auth = req.headers.get('Authorization') || '';
       if (auth.startsWith('Bearer eb_pat_')) {
         const plainKey = auth.slice('Bearer '.length).trim();
-        const ownerEmail = await validateApiKey(env, plainKey);
-        if (!ownerEmail) {
+        // ctx repassado pra o last_used_at ir por ctx.waitUntil (sem promise
+        // flutuante). validated traz email + escopo + id do PAT (spec 17).
+        const validated = await validateApiKey(env, plainKey, ctx);
+        if (!validated) {
           return new Response(
             JSON.stringify({ jsonrpc: '2.0', error: { code: -32001, message: 'Invalid or revoked API key' }, id: null }),
             { status: 401, headers: { 'content-type': 'application/json' } }
           );
         }
-        (ctx as any).props = { email: ownerEmail, loggedInAt: Date.now() };
+        (ctx as any).props = {
+          email: validated.email,
+          loggedInAt: Date.now(),
+          scopes: validated.scopes,
+          keyId: validated.keyId,
+        };
         return (mcpHandler as any).fetch(req, env, ctx);
       }
     }

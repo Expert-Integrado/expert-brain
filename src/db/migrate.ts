@@ -264,6 +264,20 @@ const MIGRATION_0011_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_notes_project ON notes (project_id) WHERE kind = 'task'`,
 ];
 
+// 0012 — ESCOPO DE PAT + AUTORIA DE ESCRITA (spec 10-backend/17). ADD COLUMN é
+// seguro (não recria as tabelas api_keys/notes, que cascateariam edges/tags via FK).
+// scopes DEFAULT 'full' preserva o comportamento de TODAS as chaves existentes ('full'
+// = CRUD completo do vault); o único outro valor é 'read' (somente leitura). string
+// simples — se um dia virar lista, migra pra CSV/JSON sem quebrar. created_by/updated_by
+// guardam o id da api key (api_keys.id) ou 'oauth:<email>' pra sessões OAuth — nullable,
+// notas antigas ficam NULL (zero linha tocada). Fundação de auditoria: aqui SÓ grava,
+// sem UI/relatório. Tudo aditivo. Ver spec 10-backend/17.
+const MIGRATION_0012_STMTS: string[] = [
+  `ALTER TABLE api_keys ADD COLUMN scopes TEXT NOT NULL DEFAULT 'full'`,
+  `ALTER TABLE notes ADD COLUMN created_by TEXT`,
+  `ALTER TABLE notes ADD COLUMN updated_by TEXT`,
+];
+
 const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -276,6 +290,7 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0009_kanban_columns', stmts: MIGRATION_0009_STMTS },
   { id: '0010_task_comments', stmts: MIGRATION_0010_STMTS },
   { id: '0011_task_projects', stmts: MIGRATION_0011_STMTS },
+  { id: '0012_api_key_scopes', stmts: MIGRATION_0012_STMTS },
 ];
 
 export async function runMigrations(env: Env): Promise<void> {

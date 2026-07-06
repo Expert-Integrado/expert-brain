@@ -69,11 +69,14 @@ export interface EdgeRow {
 
 export interface SimilarEdgeRow { from_id: string; to_id: string; score: number; }
 
-export async function insertNote(env: Env, n: NoteRow): Promise<void> {
+// `actor` (opt-in, spec 17) grava a autoria da escrita: id do PAT que criou a nota,
+// ou `oauth:<email>` numa sessão OAuth. Ausente → NULL (chamadas web/legadas), zero
+// mudança de comportamento. Numa nota recém-criada created_by == updated_by == actor.
+export async function insertNote(env: Env, n: NoteRow, actor?: string | null): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
-     VALUES (?,?,?,?,?,?,?,?)`
-  ).bind(n.id, n.title, n.body, n.tldr, n.domains, n.kind, n.created_at, n.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  ).bind(n.id, n.title, n.body, n.tldr, n.domains, n.kind, actor ?? null, actor ?? null, n.created_at, n.updated_at).run();
 }
 
 // Retorna true se a edge foi inserida; false se já existia (INSERT OR IGNORE na
@@ -192,7 +195,7 @@ export type NoteUpdateResult = 'ok' | 'conflict';
 // anterior (retrocompatível — as chamadas existentes seguem funcionando e sempre
 // recebem 'ok'). Espelha o padrão já validado em updateTask.
 export async function updateNote(
-  env: Env, id: string, patch: NotePatch, expectedUpdatedAt?: number
+  env: Env, id: string, patch: NotePatch, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<NoteUpdateResult> {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -202,6 +205,9 @@ export async function updateNote(
   if (patch.domains !== undefined) { fields.push('domains = ?'); values.push(patch.domains); }
   if (patch.kind !== undefined) { fields.push('kind = ?'); values.push(patch.kind); }
   fields.push('updated_at = ?'); values.push(patch.updated_at);
+  // Autoria (spec 17): COALESCE preserva o updated_by anterior quando o caller não
+  // passa actor (edições web/legadas) — bind null vira no-op, zero mudança.
+  fields.push('updated_by = COALESCE(?, updated_by)'); values.push(actor ?? null);
 
   let where = `id = ?`;
   values.push(id);
@@ -224,14 +230,14 @@ export async function updateNote(
 // os read paths (que filtram deleted_at IS NULL) mas o conteudo + as edges
 // continuam no D1, recuperaveis via restoreNote. `AND deleted_at IS NULL` evita
 // sobrescrever o timestamp original num delete duplicado.
-export async function deleteNote(env: Env, id: string): Promise<void> {
-  await env.DB.prepare(`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`)
-    .bind(Date.now(), id).run();
+export async function deleteNote(env: Env, id: string, actor?: string | null): Promise<void> {
+  await env.DB.prepare(`UPDATE notes SET deleted_at = ?, updated_by = COALESCE(?, updated_by) WHERE id = ? AND deleted_at IS NULL`)
+    .bind(Date.now(), actor ?? null, id).run();
 }
 
 // Restaura uma nota soft-deletada (re-embed do vetor fica a cargo do caller).
-export async function restoreNote(env: Env, id: string): Promise<void> {
-  await env.DB.prepare(`UPDATE notes SET deleted_at = NULL WHERE id = ?`).bind(id).run();
+export async function restoreNote(env: Env, id: string, actor?: string | null): Promise<void> {
+  await env.DB.prepare(`UPDATE notes SET deleted_at = NULL, updated_by = COALESCE(?, updated_by) WHERE id = ?`).bind(actor ?? null, id).run();
 }
 
 export async function replaceTags(env: Env, noteId: string, tags: string[]): Promise<void> {
@@ -455,16 +461,18 @@ export async function ftsSearchTasks(env: Env, query: string, limit: number): Pr
 // upsertNoteVector no save_note. Aqui não há vetor de propósito. Aloca a coluna
 // default da categoria do status quando `column_id` não vier explícito (spec 51),
 // pra a task já nascer coerente com o Kanban.
-export async function insertTask(env: Env, t: InsertTaskInput): Promise<void> {
+export async function insertTask(env: Env, t: InsertTaskInput, actor?: string | null): Promise<void> {
   let columnId = t.column_id ?? null;
   if (columnId === null) {
     const col = await defaultColumnForCategory(env, t.status);
     columnId = col?.id ?? null;
   }
+  // `actor` (spec 17): autoria da escrita — mesma semântica de insertNote (tasks
+  // moram na tabela notes). Ausente → NULL.
   await env.DB.prepare(
-    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,created_at,updated_at)
-     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?)`
-  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.created_at, t.updated_at).run();
+    `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,created_by,updated_by,created_at,updated_at)
+     VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?)`
+  ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -587,7 +595,7 @@ export type UpdateResult = TaskRow | 'not-found' | 'conflict';
 // segundo complete afeta 0 linhas e cai em 'already-done'. `expectedUpdatedAt`
 // (opt-in) adiciona If-Match: só escreve se updated_at ainda for o lido.
 export async function completeTask(
-  env: Env, id: string, now: number, outcome?: string, expectedUpdatedAt?: number
+  env: Env, id: string, now: number, outcome?: string, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<CompleteResult> {
   const before = await getTaskById(env, id);
   if (!before) return 'not-found';
@@ -609,12 +617,13 @@ export async function completeTask(
          column_id = ?,
          completed_at = ?,
          updated_at = ?,
+         updated_by = COALESCE(?, updated_by),
          body = CASE WHEN ? IS NULL THEN body
                      ELSE body || char(10) || char(10) || '**Resultado:** ' || ? END
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL
        AND status <> 'done'
        AND (? IS NULL OR updated_at = ?)`
-  ).bind(doneColId, now, now, trimmed, trimmed, id, expectedUpdatedAt ?? null, expectedUpdatedAt ?? null).run();
+  ).bind(doneColId, now, now, actor ?? null, trimmed, trimmed, id, expectedUpdatedAt ?? null, expectedUpdatedAt ?? null).run();
 
   if ((res.meta?.changes ?? 0) === 0) {
     // Alguém venceu a corrida ou a versão não bateu. Reler pra decidir o sentinel.
@@ -656,7 +665,7 @@ export interface TaskPatch {
 // 'conflict' (escrita concorrente detectada). Sem o parâmetro, comportamento
 // last-write-wins idêntico ao anterior (retrocompatível).
 export async function updateTask(
-  env: Env, id: string, patch: TaskPatch, now: number, expectedUpdatedAt?: number
+  env: Env, id: string, patch: TaskPatch, now: number, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<UpdateResult> {
   const task = await getTaskById(env, id);
   if (!task) return 'not-found';
@@ -683,6 +692,8 @@ export async function updateTask(
     if (closing) binds.push(now);
   }
   sets.push('updated_at = ?'); binds.push(now);
+  // Autoria (spec 17): COALESCE mantém o updated_by anterior quando não há actor.
+  sets.push('updated_by = COALESCE(?, updated_by)'); binds.push(actor ?? null);
 
   let where = `id = ? AND kind = 'task' AND deleted_at IS NULL`;
   binds.push(id);
