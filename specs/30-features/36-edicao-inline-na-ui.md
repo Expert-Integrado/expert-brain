@@ -1,7 +1,9 @@
 # Edição inline na UI: tasks, notas e contatos editáveis direto na interface
 
-> **Status:** in-progress · **Prioridade:** P2 · **Esforço:** L · **Repo:** ambos
+> **Status:** done (07/07/2026) · **Prioridade:** P2 · **Esforço:** L · **Repo:** ambos
 > **Depende de:** nenhuma
+>
+> **Fechamento (07/07/2026, onda E13):** auditoria confirmou que a fase 2 (nota) JÁ estava implementada e testada — só os checkboxes estavam defasados. Evidências: `POST /app/notes/update` (`handleNoteUpdatePost`, `src/web/notes.ts`) + bundle `src/web/client/note-edit.ts` (título/corpo+preview/tldr/domínios/kind, save-queue anti-409); `updateNote` com `expectedUpdatedAt` opcional e sentinela de conflito (`src/db/queries.ts:213`); reembed extraído pra `reembedNoteIfNeeded` (`src/db/note-write.ts`) consumido pela tool MCP E pelo endpoint HTTP; `kind='task'` → 404 na rota de nota; 13 testes em `test/notes-update-web.test.ts` (409, validações, reembed mockado) — suites 791+5 verdes em 07/07.
 
 ## Contexto
 
@@ -110,11 +112,11 @@ Em todos os casos: **a UI sempre lê o `updated_at` atual junto com o registro (
 - [x] `npm run typecheck` e `npm test` passam no `expert-brain` após a mudança.
 
 **Nota (fase 2 — expert-brain):**
-- [ ] Em `/app/notes/<id>`, título, corpo (com preview de markdown), tldr, domínios e kind são editáveis; salvar grava via `POST /app/notes/update`, que chama `updateNote` de `src/db/queries.ts` (função compartilhada com `update_note` MCP).
-- [ ] `updateNote` em `src/db/queries.ts` aceita `expected_updated_at` opcional, seguindo o mesmo padrão de `updateTask` (retorno sentinela `'conflict'`), de forma retrocompatível (chamadas existentes sem o parâmetro continuam funcionando).
-- [ ] Editar tldr, domínios ou kind pela UI dispara o mesmo fluxo de reembed (Workers AI + `refreshSimilarEdges`) que `update_note` MCP já dispara — via função compartilhada extraída, não reimplementada.
-- [ ] Tentar editar uma nota com `kind='task'` pela rota `/app/notes/update` falha com erro claro (mesma regra de `update_note` MCP) — o editor de nota nunca edita task.
-- [ ] `npm run typecheck` e `npm test` passam no `expert-brain` após a mudança.
+- [x] Em `/app/notes/<id>`, título, corpo (com preview de markdown), tldr, domínios e kind são editáveis; salvar grava via `POST /app/notes/update`, que chama `updateNote` de `src/db/queries.ts` (função compartilhada com `update_note` MCP).
+- [x] `updateNote` em `src/db/queries.ts` aceita `expected_updated_at` opcional, seguindo o mesmo padrão de `updateTask` (retorno sentinela `'conflict'`), de forma retrocompatível (chamadas existentes sem o parâmetro continuam funcionando).
+- [x] Editar tldr, domínios ou kind pela UI dispara o mesmo fluxo de reembed (Workers AI + `refreshSimilarEdges`) que `update_note` MCP já dispara — via função compartilhada extraída, não reimplementada.
+- [x] Tentar editar uma nota com `kind='task'` pela rota `/app/notes/update` falha com erro claro (mesma regra de `update_note` MCP) — o editor de nota nunca edita task.
+- [x] `npm run typecheck` e `npm test` passam no `expert-brain` após a mudança. (791+5 verdes em 07/07/2026.)
 
 **Contato (fase 3 — expert-contacts, spec de interface):**
 - [x] No Console do `expert-contacts`, o painel de detalhe de uma pessoa permite editar nome, telefone, email, role, empresa (texto), aniversário, `last_contacted` e categoria, salvando via novo endpoint de sessão que reusa a lógica de `handleSaveEntity`/`updateEntityFields`. (`POST /app/entity/update` em `src/web/entity-update.ts`; `updateEntityFields`/`normalizeCategory`/`reembedEntity` extraídos p/ `src/entity-write.ts`, helpers de embedding p/ `src/embedding.ts`; painel editável em `src/web/client/detail.ts`.)
