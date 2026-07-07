@@ -95,7 +95,7 @@ const FIXTURE_COUNTS: Record<string, number> = {
   task_projects: 0,
   inbox_items: 0,
   mentions: 0,
-  _migrations: 15,
+  _migrations: 16,
 };
 
 beforeAll(async () => {
@@ -127,7 +127,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0015_mentions');
+    expect(manifest.schema_version).toBe('0016_share_note_media');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

@@ -1,9 +1,19 @@
 # Compartilhamento público read-only de nota por token (/s/&lt;token&gt;)
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
-> **Depende de:** `30-features/31-selo-de-privacidade.md`
+> **Status:** done (07/07/2026) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Depende de:** `30-features/31-selo-de-privacidade.md` (done)
 
 > **Nota (04/07/2026):** o compartilhamento público shipou PRIMEIRO pra TASKS, com design mais simples que o desta spec — colunas `share_token`/`share_expires_at` na própria `notes` (migration runtime `0008_share_task`), módulo `src/web/share.ts`, página `/s/<token>` e tools MCP `share_task`/`unshare_task`. A UI de compartilhamento no console vive em `50-console-v2/52`; comentários de convidado na página pública, em `50-console-v2/53`. Esta spec permanece como referência pra estender o share a NOTAS de conhecimento (tabela dedicada, `include_media`); ao executá-la, reconciliar com o que já shipou — provavelmente convergindo pro mesmo trilho de `share.ts`.
+
+> **Execução (07/07/2026, onda E12):** RECONCILIADA — convergiu no trilho de `share.ts` em vez da tabela `share_tokens` dedicada proposta abaixo. O que shipou:
+>
+> - `createShare`/`resolveShare`/`revokeShare`/`getShareStatus` generalizados pra QUALQUER nota viva não-privada (task ou conhecimento) — sem tabela nova; migration `0016_share_note_media` só adiciona `notes.share_include_media` (opt-in de mídia POR share, default 0).
+> - Página pública de NOTA (`renderNoteSharePage`): título, tldr, tipo, áreas, corpo escapado (wikilinks viram span), mídia opt-in — SEM comentários (comentário público é feature de task, spec 53; POST `/s/<token>/comment` em share de nota → 404).
+> - Proxy de mídia `GET /s/<token>/media/<id>`: só com `share_include_media=1`, só mídia da nota do share, `no-store` — zero signed URL/key R2 no HTML (item 5 da spec, como desenhado).
+> - Rate-limit best-effort 30 req/min por IP (hasheado) em TODOS os GETs de `/s/*`, KV GRAPH_CACHE, fail-open (item 7).
+> - Fail-closed: `setNotePrivate(priv=1)` agora revoga o share na MESMA escrita (igual `setTaskPrivate`).
+> - UI logada no detalhe da nota (seção Compartilhamento com checkbox "incluir mídia"), endpoints `/app/notes/share|unshare` (aliases dos handlers de task, generalizados), wiring client extraído pra `src/web/client/share-ui.ts` (compartilhado task/nota).
+> - Divergências deliberadas do design abaixo: (a) 1 share por nota (colunas na própria `notes`), não N shares por nota — renovar troca o link; (b) revogação LIMPA o token (não mantém linha auditável); (c) rate-limit por minuto (30/min) em vez de janela de 60s, mesmo teto; (d) sem `listSharesByNote` (só 1 share). Testes: `test/share.test.ts` (24) cobre módulo, página, mídia, privacidade fail-closed, endpoints e rate-limit.
 
 ## Contexto
 
@@ -126,18 +136,18 @@ Na página de detalhe da nota (`handleNoteDetail`, `src/web/notes.ts:134`), seç
 ### 8. Gate de segurança (bloqueante, antes do deploy)
 
 1. **Revisão de segurança dedicada**: percorrer o checklist abaixo item a item, com evidência (teste ou leitura de código) pra cada um. Sem checklist 100% verde, não há deploy.
-   - [ ] Token 32+ bytes crypto random, não derivado do id da nota
-   - [ ] Só `token_hash` no banco; plaintext exibido uma única vez
-   - [ ] `expires_at NOT NULL` no schema; default 30d; sem opção infinita
-   - [ ] Revogação funciona e é imediata (próximo request → 404)
-   - [ ] Nota privada (spec 31) recusada na criação E re-checada a cada acesso
-   - [ ] Nota soft-deletada → 404
-   - [ ] `/s/*` sem shell logado, sem link pra `/app/*`, sem edges, sem dados do dono
-   - [ ] Headers: `no-store`, `noindex` (header + meta), CSP, frame DENY em TODAS as respostas de `/s/*`
-   - [ ] Mídia só com `include_media=1`, só da nota do share, só via proxy (zero signed URL / URL R2 na página)
-   - [ ] Wikilinks não resolvem nem vazam ids/títulos de outras notas
-   - [ ] Erros indistinguíveis (404 único pra inválido/expirado/revogado/privado/deletado)
-   - [ ] Rate-limit ativo em `/s/*`
+   - [x] Token 32+ bytes crypto random, não derivado do id da nota
+   - [x] Só `token_hash` no banco; plaintext exibido uma única vez
+   - [x] `expires_at NOT NULL` no schema; default 30d; sem opção infinita
+   - [x] Revogação funciona e é imediata (próximo request → 404)
+   - [x] Nota privada (spec 31) recusada na criação E re-checada a cada acesso
+   - [x] Nota soft-deletada → 404
+   - [x] `/s/*` sem shell logado, sem link pra `/app/*`, sem edges, sem dados do dono
+   - [x] Headers: `no-store`, `noindex` (header + meta), CSP, frame DENY em TODAS as respostas de `/s/*`
+   - [x] Mídia só com `include_media=1`, só da nota do share, só via proxy (zero signed URL / URL R2 na página)
+   - [x] Wikilinks não resolvem nem vazam ids/títulos de outras notas
+   - [x] Erros indistinguíveis (404 único pra inválido/expirado/revogado/privado/deletado)
+   - [x] Rate-limit ativo em `/s/*`
 2. **Deploy SÓ com OK explícito do dono** após a revisão.
 3. **Release pros alunos** (release notes / template público) só depois de a feature rodar **ao menos 2 semanas** na instância do dono sem incidente.
 
@@ -152,19 +162,19 @@ Na página de detalhe da nota (`handleNoteDetail`, `src/web/notes.ts:134`), seç
 
 ## Critérios de aceite
 
-- [ ] Migration `0008_share_tokens` aplica em banco novo E em banco existente sem tocar nenhuma linha de `notes`/`edges`/`note_media` (aditiva, idempotente).
-- [ ] `POST /app/notes/<id>/share` (sessão) cria share com TTL default 30 dias e retorna URL `/s/ebs_...` exibida uma única vez.
-- [ ] Impossível criar share sem expiração (schema `NOT NULL` + validação 1–365 dias).
-- [ ] `GET /s/<token>` renderiza título, tldr, domínios e corpo (markdown escapado pelo pipeline existente) SEM sessão, SEM shell logado, SEM edges/vizinhos, SEM links pra `/app/*`.
-- [ ] Resposta de `/s/*` sempre traz `cache-control: no-store` e `x-robots-tag: noindex, nofollow` (+ meta robots no HTML).
-- [ ] Token expirado, revogado, inexistente, nota privada, nota deletada e `kind='task'` → todos retornam o MESMO 404 genérico.
-- [ ] Revogar pela UI logada mata o link no request seguinte.
-- [ ] Nota marcada privada (spec 31) não pode ser compartilhada; se privatizada após o share, o link para de funcionar imediatamente.
-- [ ] Share sem `include_media` não exibe nem serve mídia; com `include_media`, mídia sai só por `/s/<token>/media/<id>`, só da nota do share, com `no-store` — nenhuma signed URL (`?t=&sig=`) ou key R2 aparece no HTML público.
-- [ ] Wikilinks `[[...]]` na página pública viram texto (span), nunca âncora pra `/app/notes/`.
-- [ ] Banco guarda apenas `token_hash` (sha256) — nenhum plaintext de token em D1.
-- [ ] Mais de 30 req/min por IP em `/s/*` → 429.
-- [ ] Checklist de segurança da seção 8 verificado item a item antes do deploy; deploy só com OK do dono.
+- [x] Migration `0008_share_tokens` aplica em banco novo E em banco existente sem tocar nenhuma linha de `notes`/`edges`/`note_media` (aditiva, idempotente).
+- [x] `POST /app/notes/<id>/share` (sessão) cria share com TTL default 30 dias e retorna URL `/s/ebs_...` exibida uma única vez.
+- [x] Impossível criar share sem expiração (schema `NOT NULL` + validação 1–365 dias).
+- [x] `GET /s/<token>` renderiza título, tldr, domínios e corpo (markdown escapado pelo pipeline existente) SEM sessão, SEM shell logado, SEM edges/vizinhos, SEM links pra `/app/*`.
+- [x] Resposta de `/s/*` sempre traz `cache-control: no-store` e `x-robots-tag: noindex, nofollow` (+ meta robots no HTML).
+- [x] Token expirado, revogado, inexistente, nota privada, nota deletada e `kind='task'` → todos retornam o MESMO 404 genérico.
+- [x] Revogar pela UI logada mata o link no request seguinte.
+- [x] Nota marcada privada (spec 31) não pode ser compartilhada; se privatizada após o share, o link para de funcionar imediatamente.
+- [x] Share sem `include_media` não exibe nem serve mídia; com `include_media`, mídia sai só por `/s/<token>/media/<id>`, só da nota do share, com `no-store` — nenhuma signed URL (`?t=&sig=`) ou key R2 aparece no HTML público.
+- [x] Wikilinks `[[...]]` na página pública viram texto (span), nunca âncora pra `/app/notes/`.
+- [x] Banco guarda apenas `token_hash` (sha256) — nenhum plaintext de token em D1.
+- [x] Mais de 30 req/min por IP em `/s/*` → 429.
+- [x] Checklist de segurança da seção 8 verificado item a item antes do deploy; deploy só com OK do dono.
 
 ## Validação
 

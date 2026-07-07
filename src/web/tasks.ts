@@ -592,17 +592,20 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
 
 // ─────────────────── Compartilhamento público (spec 33) ───────────────────
 // POST /app/tasks/share e /app/tasks/unshare reusam a MESMA lógica das tools
-// share_task/unshare_task (src/web/share.ts). SÓ sessão de browser (sem Bearer):
-// gerar/revogar link público é ação de UI logada, não de cron/Console.
+// share_task/unshare_task (src/web/share.ts). Desde a reconciliação da spec 33 o
+// createShare/revokeShare aceitam QUALQUER nota viva — estes handlers servem também
+// as rotas /app/notes/share e /app/notes/unshare (alias no web/handler.ts). SÓ sessão
+// de browser (sem Bearer): gerar/revogar link público é ação de UI logada.
 
-// POST /app/tasks/share — { id, expires_days?, renew? }. Cria/renova o link e devolve
-// { url, expires_at, expires_brt } (o url só aparece aqui, uma vez). already_shared
-// sem renew → 200 com { already_shared: true } (o link antigo segue valendo).
+// POST /app/tasks/share — { id, expires_days?, renew?, include_media? }. Cria/renova
+// o link e devolve { url, expires_at, expires_brt } (o url só aparece aqui, uma vez).
+// already_shared sem renew → 200 com { already_shared: true } (o link antigo segue
+// valendo). include_media (default false) liga a mídia na página pública (só notas).
 export async function handleTaskSharePost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
-  let body: { id?: unknown; expires_days?: unknown; renew?: unknown };
+  let body: { id?: unknown; expires_days?: unknown; renew?: unknown; include_media?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
 
   const id = typeof body.id === 'string' ? body.id.trim() : '';
@@ -617,13 +620,14 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
     expiresDays = body.expires_days;
   }
   const renew = body.renew === true;
+  const includeMedia = body.include_media === true;
 
-  const result = await createShare(env, id, { expiresDays, renew }, Date.now());
+  const result = await createShare(env, id, { expiresDays, renew, includeMedia }, Date.now());
   if (!result.ok) {
     if (result.reason === 'not-found') return json({ error: 'not found' }, 404);
-    // Selo de privacidade (spec 59): task privada não pode ter link público.
+    // Selo de privacidade (spec 31/59): nota/task privada não pode ter link público.
     if (result.reason === 'private') {
-      return json({ error: 'private', message: 'Task privada não pode ter link público. Torne-a pública primeiro.' }, 409);
+      return json({ error: 'private', message: 'Nota privada não pode ter link público. Torne-a pública primeiro.' }, 409);
     }
     // already-shared (sem renew): não é erro — devolve a expiração atual.
     return json({
@@ -680,6 +684,7 @@ export async function handleTaskPrivatePost(req: Request, env: Env): Promise<Res
 }
 
 // POST /app/tasks/unshare — { id }. Revoga o link (limpa o token). Idempotente.
+// Aceita qualquer nota viva (task ou conhecimento) — mesmo trilho da criação.
 export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -689,8 +694,10 @@ export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Res
   const id = typeof body.id === 'string' ? body.id.trim() : '';
   if (!id) return json({ error: 'id required' }, 400);
 
-  const task = await getTaskById(env, id);
-  if (!task) return json({ error: 'not found' }, 404);
+  const note = await env.DB.prepare(
+    `SELECT id FROM notes WHERE id = ? AND deleted_at IS NULL`
+  ).bind(id).first<{ id: string }>();
+  if (!note) return json({ error: 'not found' }, 404);
   const revoked = await revokeShare(env, id);
   return json({ ok: true, revoked });
 }

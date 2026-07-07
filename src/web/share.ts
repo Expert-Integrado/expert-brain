@@ -1,8 +1,9 @@
-// Compartilhamento público read-only de TASK por token (/s/<token>).
+// Compartilhamento público read-only por token (/s/<token>) — TASK e NOTA de
+// conhecimento no MESMO trilho (specs/30-features/33, reconciliada em 07/07/2026).
 //
 // Segurança (requisitos NÃO-negociáveis, ver specs/30-features/33-...):
 // - Token = 32 bytes de crypto.getRandomValues, base64url, prefixo `ebs_`. NUNCA
-//   derivado do id da task (ids são nanoids curtos, enumeráveis).
+//   derivado do id da nota (ids são nanoids curtos, enumeráveis).
 // - O banco guarda SOMENTE sha256Hex(token) na coluna notes.share_token. O plaintext
 //   aparece UMA vez, na resposta de criação. Vazamento do D1 não vaza links válidos.
 // - Lookup por hash via índice UNIQUE parcial (idx_notes_share_token) — sem comparação
@@ -10,21 +11,26 @@
 //   por igualdade de HASH no D1, que é um lookup de índice, não um scan constante em JS.)
 // - Rota pública renderiza standalone (sem shell logado, sem /app/*, sem edges, sem
 //   dados do dono). Token inválido/expirado/revogado → MESMO 404 genérico.
-//
-// Escopo desta onda: SÓ task (kind='task'). Nota de conhecimento fica pra depois.
+// - Nota/task privada (spec 31/59) NUNCA é compartilhável: recusa na criação, re-checa
+//   a cada acesso, e marcar privada revoga o share na mesma escrita (fail-closed).
+// - Mídia é opt-in POR share (share_include_media, migration 0016), servida SÓ pelo
+//   proxy /s/<token>/media/<id> (nunca signed URL de sessão nem key R2 no HTML).
+// - Comentário de convidado existe SÓ em share de task (spec 53); página de NOTA é
+//   read-only puro.
 
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { NEBULA_CSS, FONT_LINKS } from './styles.js';
 import { renderMarkdown } from './markdown.js';
 import {
-  getTaskById,
   addTaskComment,
   listTaskComments,
   countTaskComments,
   type TaskRow,
   type TaskComment,
 } from '../db/queries.js';
+import { listMediaByNote, type MediaRow } from '../db/media-queries.js';
+import { fetchBlob, getMediaById } from '../media/store.js';
 import { formatBrtDateTime } from '../util/time.js';
 import { PRIORITIES } from '../util/priority.js';
 import { newId } from '../util/id.js';
@@ -86,36 +92,41 @@ export type CreateShareResult =
   | { ok: false; reason: 'private' }
   | { ok: false; reason: 'already-shared'; expires_at: number; expires_brt: string };
 
-// Cria (ou renova) o share de uma task. Valida kind='task' + não-deletada.
+// Cria (ou renova) o share de uma nota viva de QUALQUER kind — task ou nota de
+// conhecimento (spec 33 reconciliada: mesmo trilho pros dois).
 // - Se já há um share VIVO (token presente e não expirado) e renew !== true → devolve
 //   'already-shared' com a expiração atual, sem rotacionar (não invalida o link já
 //   enviado). O plaintext não pode ser reconstruído (só guardamos o hash), então
 //   pra reobter a URL o dono renova (renew:true) — o link antigo é substituído.
 // - renew:true (ou sem share vivo) → gera token novo, grava hash + expiração, devolve
 //   a URL absoluta uma única vez.
+// - includeMedia (default false): opt-in de anexos na página pública. Persiste POR
+//   share e é resetado na revogação.
 export async function createShare(
   env: Env,
-  taskId: string,
-  opts: { expiresDays?: number; renew?: boolean },
+  noteId: string,
+  opts: { expiresDays?: number; renew?: boolean; includeMedia?: boolean },
   now: number
 ): Promise<CreateShareResult> {
-  // includePrivate=true: enxerga a task pra poder BLOQUEAR a privada com erro claro
-  // (spec 59) em vez de devolver "not found". Task privada NUNCA tem link público.
-  const task = await getTaskById(env, taskId, true);
-  if (!task) return { ok: false, reason: 'not-found' };
-  if (task.private === 1) return { ok: false, reason: 'private' };
+  // Enxerga a privada de propósito, pra BLOQUEÁ-LA com erro claro (spec 31/59) em vez
+  // de devolver "not found". Nota privada NUNCA tem link público.
+  const note = await env.DB.prepare(
+    `SELECT id, private, share_token, share_expires_at FROM notes WHERE id = ? AND deleted_at IS NULL`
+  ).bind(noteId).first<{ id: string; private: number | null; share_token: string | null; share_expires_at: number | null }>();
+  if (!note) return { ok: false, reason: 'not-found' };
+  if (note.private === 1) return { ok: false, reason: 'private' };
 
   const alreadyLive =
-    task.share_token != null &&
-    task.share_expires_at != null &&
-    task.share_expires_at > now;
+    note.share_token != null &&
+    note.share_expires_at != null &&
+    note.share_expires_at > now;
 
   if (alreadyLive && !opts.renew) {
     return {
       ok: false,
       reason: 'already-shared',
-      expires_at: task.share_expires_at!,
-      expires_brt: formatBrtDateTime(task.share_expires_at!),
+      expires_at: note.share_expires_at!,
+      expires_brt: formatBrtDateTime(note.share_expires_at!),
     };
   }
 
@@ -124,11 +135,12 @@ export async function createShare(
   const token = generateToken();
   const tokenHash = await sha256Hex(token);
 
-  // Guarda o HASH (nunca o plaintext) + expiração. WHERE kind='task' é defesa em
-  // profundidade — o getTaskById acima já garantiu, mas o UPDATE reafirma o escopo.
+  // Guarda o HASH (nunca o plaintext) + expiração + opt-in de mídia. `private = 0` no
+  // WHERE é defesa em profundidade — o SELECT acima já recusou, mas o UPDATE reafirma.
   await env.DB.prepare(
-    `UPDATE notes SET share_token = ?, share_expires_at = ? WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
-  ).bind(tokenHash, expiresAt, taskId).run();
+    `UPDATE notes SET share_token = ?, share_expires_at = ?, share_include_media = ?
+     WHERE id = ? AND deleted_at IS NULL AND (private IS NULL OR private = 0)`
+  ).bind(tokenHash, expiresAt, opts.includeMedia === true ? 1 : 0, noteId).run();
 
   return {
     ok: true,
@@ -147,52 +159,62 @@ function clampDays(raw?: number): number {
   return n;
 }
 
-// Revogação REAL: limpa token + expiração. O próximo request na rota pública não
-// encontra hash → 404. Retorna true se havia um share pra limpar.
-export async function revokeShare(env: Env, taskId: string): Promise<boolean> {
+// Revogação REAL: limpa token + expiração + opt-in de mídia. O próximo request na
+// rota pública não encontra hash → 404. Retorna true se havia um share pra limpar.
+export async function revokeShare(env: Env, noteId: string): Promise<boolean> {
   const res = await env.DB.prepare(
-    `UPDATE notes SET share_token = NULL, share_expires_at = NULL
-     WHERE id = ? AND kind = 'task' AND share_token IS NOT NULL`
-  ).bind(taskId).run();
+    `UPDATE notes SET share_token = NULL, share_expires_at = NULL, share_include_media = 0
+     WHERE id = ? AND share_token IS NOT NULL`
+  ).bind(noteId).run();
   return (res.meta?.changes ?? 0) > 0;
 }
 
-// Estado do share de uma task pra UI logada (nunca expõe token plaintext).
+// Estado do share de uma nota (task ou conhecimento) pra UI logada (nunca expõe o
+// token plaintext — só existência/expiração/opt-in de mídia).
 export interface ShareStatus {
   shared: boolean;
   expires_at: number | null;
   expires_brt: string | null;
   expired: boolean;
+  include_media: boolean;
 }
-export async function getShareStatus(env: Env, taskId: string, now: number): Promise<ShareStatus | null> {
-  const task = await getTaskById(env, taskId);
-  if (!task) return null;
-  const shared = task.share_token != null;
-  const expiresAt = task.share_expires_at ?? null;
+export async function getShareStatus(env: Env, noteId: string, now: number): Promise<ShareStatus | null> {
+  const note = await env.DB.prepare(
+    `SELECT share_token, share_expires_at, share_include_media FROM notes WHERE id = ? AND deleted_at IS NULL`
+  ).bind(noteId).first<{ share_token: string | null; share_expires_at: number | null; share_include_media: number | null }>();
+  if (!note) return null;
+  const shared = note.share_token != null;
+  const expiresAt = note.share_expires_at ?? null;
   return {
     shared,
     expires_at: expiresAt,
     expires_brt: expiresAt != null ? formatBrtDateTime(expiresAt) : null,
     expired: shared && expiresAt != null && expiresAt <= now,
+    include_media: (note.share_include_media ?? 0) === 1,
   };
 }
 
-// Resolve um token público → a task, SÓ se: hash bate, share não expirou, task é
-// kind='task', viva (deleted_at IS NULL). Re-checa TUDO a cada acesso (revogar/expirar/
-// deletar mata o link no request seguinte). Retorna null pra QUALQUER motivo de falha
-// (o caller responde o mesmo 404 genérico, sem distinguir a causa).
-export async function resolveShare(env: Env, token: string, now: number): Promise<TaskRow | null> {
+// Linha resolvida por um token público — TaskRow + o opt-in de mídia do share.
+// Pra nota de conhecimento os campos de task (status/due/priority) vêm NULL.
+export type SharedNoteRow = TaskRow & { share_include_media: number };
+
+// Resolve um token público → a nota (task OU conhecimento), SÓ se: hash bate, share
+// não expirou, nota viva (deleted_at IS NULL) e NÃO privada. Re-checa TUDO a cada
+// acesso (revogar/expirar/deletar/privatizar mata o link no request seguinte).
+// Retorna null pra QUALQUER motivo de falha (o caller responde o mesmo 404 genérico,
+// sem distinguir a causa).
+export async function resolveShare(env: Env, token: string, now: number): Promise<SharedNoteRow | null> {
   if (!SHARE_TOKEN_RE.test(token)) return null;
   const tokenHash = await sha256Hex(token);
   const row = await env.DB.prepare(
-    // `AND private = 0` (spec 59): defesa em profundidade — mesmo que um estado proibido
-    // (privada + token) surja (escrita manual no banco), a rota pública responde 404.
-    // setTaskPrivate já revoga o token ao marcar privada, então normalmente nem chega aqui.
+    // `AND private = 0` (spec 31/59): defesa em profundidade — mesmo que um estado
+    // proibido (privada + token) surja (escrita manual no banco), a rota pública
+    // responde 404. setNotePrivate/setTaskPrivate já revogam o token ao marcar privada.
     `SELECT id, title, body, tldr, domains, kind, status, due_at, priority, completed_at,
-            created_at, updated_at, share_token, share_expires_at
+            created_at, updated_at, share_token, share_expires_at, share_include_media
      FROM notes
-     WHERE share_token = ? AND kind = 'task' AND deleted_at IS NULL AND private = 0`
-  ).bind(tokenHash).first<TaskRow>();
+     WHERE share_token = ? AND deleted_at IS NULL AND (private IS NULL OR private = 0)`
+  ).bind(tokenHash).first<SharedNoteRow>();
   if (!row) return null;
   if (row.share_expires_at == null || row.share_expires_at <= now) return null;
   return row;
@@ -448,14 +470,133 @@ const SHARE_CSS = `
 .cmt-submit:hover { filter: brightness(1.08); }
 `;
 
+// ─────────────── Rate-limit dos GETs públicos (spec 33 item 7) ───────────────
+// Best-effort em KV (GRAPH_CACHE, janela por minuto): 30 req/min por IP em /s/*
+// (página + mídia). Defesa em profundidade contra scraping — a entropia do token
+// (32 bytes) é o que torna enumeração inviável; isto só freia abuso barato.
+// KV indisponível → fail-open (a página continua servindo).
+const PUBLIC_RL_MAX_PER_MIN = 30;
+
+async function publicRateLimited(req: Request, env: Env): Promise<boolean> {
+  const ip = req.headers.get('CF-Connecting-IP')?.trim() || '';
+  if (!ip) return false;
+  try {
+    const key = `rl:shr:${await sha256Hex(ip)}:${Math.floor(Date.now() / 60_000)}`;
+    const raw = await env.GRAPH_CACHE.get(key);
+    const n = raw ? parseInt(raw, 10) : 0;
+    const count = Number.isFinite(n) && n > 0 ? n : 0;
+    if (count >= PUBLIC_RL_MAX_PER_MIN) return true;
+    await env.GRAPH_CACHE.put(key, String(count + 1), { expirationTtl: 120 });
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function tooManyRequests(): Response {
+  return new Response('Muitas requisições. Tente novamente em instantes.', {
+    status: 429,
+    headers: { 'retry-after': '60', 'cache-control': 'no-store', 'x-robots-tag': 'noindex, nofollow' },
+  });
+}
+
 // Handler da rota pública GET /s/<token>. Zero auth. Token inválido/expirado/
-// revogado/inexistente → MESMO 404 genérico (não confirma existência de task).
-// Carrega a thread de comentários (últimos 200, ordem cronológica) pra render.
-export async function handleSharePage(_req: Request, env: Env, token: string): Promise<Response> {
-  const task = await resolveShare(env, token, Date.now());
-  if (!task) return shareNotFound();
-  const comments = await listTaskComments(env, task.id, 200, 0);
-  return renderSharePage(task, comments, token);
+// revogado/inexistente → MESMO 404 genérico (não confirma existência da nota).
+// Task → página com thread de comentários (spec 53); nota de conhecimento →
+// página read-only pura (sem comentários), com mídia se o share optou por incluir.
+export async function handleSharePage(req: Request, env: Env, token: string): Promise<Response> {
+  if (await publicRateLimited(req, env)) return tooManyRequests();
+  const note = await resolveShare(env, token, Date.now());
+  if (!note) return shareNotFound();
+  if (note.kind === 'task') {
+    const comments = await listTaskComments(env, note.id, 200, 0);
+    return renderSharePage(note, comments, token);
+  }
+  const media = note.share_include_media === 1 ? await listMediaByNote(env, note.id) : [];
+  return renderNoteSharePage(note, media, token);
+}
+
+// ─────────────── Página pública de NOTA de conhecimento (spec 33) ───────────────
+// Read-only puro: título, tldr, áreas, corpo (mesmo pipeline de escaping, wikilinks
+// viram span quebrado — resolver vazio) e mídia opt-in. SEM comentários, SEM edges,
+// SEM links pra /app/*, SEM dados do dono.
+function renderNoteSharePage(note: SharedNoteRow, media: MediaRow[], token: string): Response {
+  const bodyHtml = note.body?.trim()
+    ? renderMarkdown(note.body, { titleIndex: new Map(), idSet: new Set(), currentId: note.id })
+    : '<p class="share-empty">Sem conteúdo.</p>';
+
+  const metaRows = [
+    note.tldr?.trim()
+      ? `<div class="share-meta-row"><span class="share-meta-lbl">Resumo</span><span class="share-value">${esc(note.tldr ?? '')}</span></div>`
+      : '',
+    `<div class="share-meta-row"><span class="share-meta-lbl">Tipo</span><span class="share-badge">${esc(note.kind ?? 'nota')}</span></div>`,
+    note.domains && note.domains !== '[]'
+      ? `<div class="share-meta-row"><span class="share-meta-lbl">Áreas</span><span class="share-domains">${domainsToBadges(note.domains)}</span></div>`
+      : '',
+  ].filter(Boolean).join('');
+
+  // Mídia SEMPRE pela rota pública proxy (/s/<token>/media/<id>) — nunca signed URL
+  // de sessão (TTL 1h < TTL do share) nem key R2. Imagem inline; resto vira link.
+  const mediaHtml = media.length > 0
+    ? `<section class="share-media"><h2 class="share-media-h2">Anexos</h2><div class="share-media-grid">${media.map((m) => {
+        const href = `/s/${esc(token)}/media/${esc(m.id)}`;
+        const label = esc(m.original_filename || m.id);
+        return m.kind === 'image'
+          ? `<a href="${href}" target="_blank" rel="noopener"><img src="${href}" alt="${label}" loading="lazy" /></a>`
+          : `<a class="share-media-file" href="${href}" target="_blank" rel="noopener">${label}</a>`;
+      }).join('')}</div></section>`
+    : '';
+
+  const html = `<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#070a13">
+<title>${esc(note.title)}</title>
+${FONT_LINKS}
+<style>${NEBULA_CSS}${SHARE_CSS}${NOTE_SHARE_CSS}</style>
+</head><body>
+<main class="share-wrap">
+  <article class="share-card">
+    <span class="share-tag">Nota compartilhada · somente leitura</span>
+    <h1 class="share-title">${esc(note.title)}</h1>
+    <div class="share-meta">${metaRows}</div>
+    <div class="share-body note-body">${bodyHtml}</div>
+  </article>
+  ${mediaHtml}
+  <footer class="share-footer">compartilhado via Expert Brain</footer>
+</main>
+</body></html>`;
+
+  return new Response(html, { status: 200, headers: shareHeaders() });
+}
+
+const NOTE_SHARE_CSS = `
+.share-media { margin-top: 26px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 26px 30px 28px; }
+.share-media-h2 { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+.share-media-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+.share-media-grid img { max-width: 100%; max-height: 320px; border-radius: var(--radius); border: 1px solid var(--border); display: block; }
+.share-media-file { display: inline-block; padding: 8px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--accent-lav); font-size: 13.5px; text-decoration: none; background: var(--bg-accent); }
+.share-media-file:hover { border-color: var(--accent-lav); }
+`;
+
+// GET /s/<token>/media/<mediaId> — proxy público de mídia (spec 33 item 5). Só serve
+// se: token resolve (mesmas regras da página), o share optou por incluir mídia E o
+// anexo pertence à NOTA do share (um token nunca serve mídia de outra nota). Qualquer
+// falha → mesmo 404 genérico. `no-store` sobrescreve o cache default do fetchBlob.
+export async function handleShareMedia(req: Request, env: Env, token: string, mediaId: string): Promise<Response> {
+  if (await publicRateLimited(req, env)) return tooManyRequests();
+  const note = await resolveShare(env, token, Date.now());
+  if (!note || note.share_include_media !== 1) return shareNotFound();
+  const media = await getMediaById(env, mediaId);
+  if (!media || media.note_id !== note.id) return shareNotFound();
+  const blob = await fetchBlob(env, media);
+  if (!blob) return shareNotFound();
+  const headers = new Headers(blob.headers);
+  headers.set('cache-control', 'no-store');
+  headers.set('x-robots-tag', 'noindex, nofollow');
+  headers.set('x-content-type-options', 'nosniff');
+  return new Response(blob.body, { status: 200, headers });
 }
 
 // ─────────────── Comentário de convidado (POST /s/<token>/comment) ───────────────
@@ -485,7 +626,9 @@ export async function handleShareCommentPost(req: Request, env: Env, token: stri
   const now = Date.now();
   const task = await resolveShare(env, token, now);
   // Share inexistente/expirado/revogado/deletado → MESMO 404 do GET (não vaza).
-  if (!task) return shareNotFound();
+  // Comentário público é feature de TASK (spec 53); share de NOTA de conhecimento é
+  // read-only puro — POST em token de nota cai no mesmo 404 genérico.
+  if (!task || task.kind !== 'task') return shareNotFound();
 
   let form: FormData;
   try {

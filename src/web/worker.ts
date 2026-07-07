@@ -6,7 +6,7 @@
  */
 import type { Env } from '../env.js';
 import { handleApp } from './handler.js';
-import { handleSharePage, handleShareCommentPost, shareNotFound, SHARE_TOKEN_RE } from './share.js';
+import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from './share.js';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -17,6 +17,13 @@ export default {
         const token = rest.slice(0, -'/comment'.length);
         if (req.method === 'POST' && SHARE_TOKEN_RE.test(token)) {
           return handleShareCommentPost(req, env, token);
+        }
+        return shareNotFound();
+      }
+      const mediaMatch = rest.match(/^([^/]+)\/media\/([^/]+)$/);
+      if (mediaMatch) {
+        if (req.method === 'GET' && SHARE_TOKEN_RE.test(mediaMatch[1])) {
+          return handleShareMedia(req, env, mediaMatch[1], mediaMatch[2]);
         }
         return shareNotFound();
       }

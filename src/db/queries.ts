@@ -257,17 +257,22 @@ export async function restoreNote(env: Env, id: string, actor?: string | null): 
   await env.DB.prepare(`UPDATE notes SET deleted_at = NULL, updated_by = COALESCE(?, updated_by) WHERE id = ?`).bind(actor ?? null, id).run();
 }
 
-// Marca/desmarca `private` numa NOTA de conhecimento viva (spec 31). SÓ toca a coluna
-// private + updated_at (+ autoria) — NÃO re-embeda (private não altera tldr/domains/kind,
-// então não muda o vetor) nem toca similar_edges. `kind <> 'task'` exclui tasks (read
-// paths de task são gateados pela spec 59, não aqui). Advancing updated_at invalida o
-// cache do grafo (sourceHash inclui MAX(updated_at)), pra o badge/anel de privada
-// aparecer/sumir. Retorna true se alterou uma nota (viva, de conhecimento).
+// Marca/desmarca `private` numa NOTA de conhecimento viva (spec 31). Marcar privada
+// (priv=1) revoga QUALQUER share público na MESMA escrita (limpa share_token/
+// share_expires_at/share_include_media) — fail-closed, igual setTaskPrivate: nunca
+// existe o estado (privada + link público vivo). NÃO re-embeda (private não altera
+// tldr/domains/kind, então não muda o vetor) nem toca similar_edges. `kind <> 'task'`
+// exclui tasks (read paths de task são gateados pela spec 59, não aqui). Advancing
+// updated_at invalida o cache do grafo (sourceHash inclui MAX(updated_at)), pra o
+// badge/anel de privada aparecer/sumir. Retorna true se alterou uma nota viva.
 export async function setNotePrivate(
   env: Env, id: string, priv: 0 | 1, now: number, actor?: string | null
 ): Promise<boolean> {
+  const shareCols = priv === 1
+    ? `, share_token = NULL, share_expires_at = NULL, share_include_media = 0`
+    : '';
   const res = await env.DB.prepare(
-    `UPDATE notes SET private = ?, updated_at = ?, updated_by = COALESCE(?, updated_by)
+    `UPDATE notes SET private = ?, updated_at = ?, updated_by = COALESCE(?, updated_by)${shareCols}
      WHERE id = ? AND deleted_at IS NULL AND ${NON_TASK_FILTER}`
   ).bind(priv, now, actor ?? null, id).run();
   return (res.meta?.changes ?? 0) > 0;

@@ -350,6 +350,15 @@ const MIGRATION_0015_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_notes_origin ON notes (origin_note_id) WHERE kind = 'task'`,
 ];
 
+// 0016 (specs/30-features/33) — share de NOTA de conhecimento converge no MESMO
+// trilho do share de task (0008): colunas share_token/share_expires_at em `notes`.
+// A única coisa nova é o opt-in de mídia POR share: default 0, só share criado
+// explicitamente com "incluir mídia" serve anexos pela rota pública /s/<token>/media/<id>.
+// ADD COLUMN com DEFAULT é aditivo (não recria `notes`, que cascatearia edges/tags via FK).
+const MIGRATION_0016_STMTS: string[] = [
+  `ALTER TABLE notes ADD COLUMN share_include_media INTEGER NOT NULL DEFAULT 0`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -366,6 +375,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0013_private_notes', stmts: MIGRATION_0013_STMTS },
   { id: '0014_inbox', stmts: MIGRATION_0014_STMTS },
   { id: '0015_mentions', stmts: MIGRATION_0015_STMTS },
+  { id: '0016_share_note_media', stmts: MIGRATION_0016_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

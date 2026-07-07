@@ -3,6 +3,7 @@ import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
 import { createShare, resolveShare, revokeShare, getShareStatus, SHARE_TOKEN_RE } from '../src/web/share.js';
+import { setNotePrivate } from '../src/db/queries.js';
 
 const E = env as any;
 
@@ -22,7 +23,7 @@ async function seedNote(id: string) {
   await E.DB.prepare(
     `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at)
      VALUES (?,?,?,?,?, 'concept', 1000, 1000, NULL)`
-  ).bind(id, `Nota ${id}`, 'corpo', `Nota ${id}`, '["operations"]').run();
+  ).bind(id, `Nota ${id}`, 'Corpo **markdown** com [[wikilink quebrado]].', `Resumo da nota ${id}`, '["operations"]').run();
 }
 
 function post(path: string, body: unknown, cookie?: string): Promise<Response> {
@@ -53,11 +54,11 @@ describe('share de task (spec 33) — módulo', () => {
     expect(row?.share_token).not.toContain(r.token);
   });
 
-  it('createShare recusa nota de conhecimento (só task)', async () => {
+  it('createShare aceita nota de conhecimento (spec 33 reconciliada — mesmo trilho)', async () => {
     await seedNote('n1');
     const r = await createShare(E, 'n1', {}, Date.now());
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe('not-found');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(SHARE_TOKEN_RE.test(r.token)).toBe(true);
   });
 
   it('createShare recusa task inexistente/deletada', async () => {
@@ -264,5 +265,145 @@ describe('endpoints de sessão /app/tasks/share e /unshare', () => {
     const cookie = await sessionCookieHeader();
     expect((await post('/app/tasks/share', { id: 't1', expires_days: 9999 }, cookie)).status).toBe(400);
     expect((await post('/app/tasks/share', { id: 'ghost' }, cookie)).status).toBe(404);
+  });
+});
+
+// ─────────────── Share de NOTA de conhecimento (spec 33 reconciliada) ───────────────
+// A spec original previa tabela dedicada; a execução convergiu no MESMO trilho do
+// share de task (colunas em `notes` + share_include_media, migration 0016).
+
+describe('share de NOTA de conhecimento (spec 33)', () => {
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM notes');
+  });
+
+  it('página pública renderiza a nota read-only, SEM comentários e SEM /app/*', async () => {
+    await seedNote('n1');
+    const r = await createShare(E, 'n1', {}, Date.now());
+    if (!r.ok) throw new Error('setup');
+    const res = await SELF.fetch(`https://x/s/${r.token}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+    expect(res.headers.get('content-security-policy')).toContain("script-src 'none'");
+    const html = await res.text();
+    expect(html).toContain('Nota n1');
+    expect(html).toContain('Resumo da nota n1');
+    expect(html).toContain('Nota compartilhada');
+    // Nota de conhecimento NÃO tem thread/form de comentário (só task, spec 53).
+    // ('Comentários' aparece num comentário do CSS compartilhado — o que importa é
+    // não haver FORM nem action de comment no markup.)
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain('/s/' + r.token + '/comment');
+    // Zero superfície logada; wikilink vira span quebrado, nunca âncora.
+    expect(html).not.toContain('/app/');
+    expect(html).toContain('wikilink broken');
+    expect(html).not.toContain('href="/app/notes');
+  });
+
+  it('POST /s/<token>/comment em share de NOTA → 404 e nada gravado', async () => {
+    await seedNote('n1');
+    const r = await createShare(E, 'n1', {}, Date.now());
+    if (!r.ok) throw new Error('setup');
+    const form = new FormData();
+    form.set('name', 'Convidado');
+    form.set('body', 'tentativa');
+    const res = await SELF.fetch(`https://x/s/${r.token}/comment`, { method: 'POST', body: form });
+    expect(res.status).toBe(404);
+    const n = await E.DB.prepare(`SELECT COUNT(*) AS c FROM task_comments`).first();
+    expect(n?.c).toBe(0);
+  });
+
+  it('nota privada: recusa na criação E privatizar depois mata o link (fail-closed)', async () => {
+    await seedNote('n1');
+    await E.DB.prepare(`UPDATE notes SET private = 1 WHERE id = 'n1'`).run();
+    const refused = await createShare(E, 'n1', {}, Date.now());
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.reason).toBe('private');
+
+    await seedNote('n2');
+    const r = await createShare(E, 'n2', {}, Date.now());
+    if (!r.ok) throw new Error('setup');
+    expect((await SELF.fetch(`https://x/s/${r.token}`)).status).toBe(200);
+    // setNotePrivate revoga o share na MESMA escrita (spec 31 + 33).
+    const ok = await setNotePrivate(E, 'n2', 1, Date.now());
+    expect(ok).toBe(true);
+    const row = await E.DB.prepare(`SELECT share_token, share_include_media FROM notes WHERE id = 'n2'`).first();
+    expect(row?.share_token).toBeNull();
+    expect(row?.share_include_media).toBe(0);
+    expect((await SELF.fetch(`https://x/s/${r.token}`)).status).toBe(404);
+  });
+
+  it('mídia: só com include_media, só da nota do share, com no-store', async () => {
+    await seedNote('n1');
+    await seedNote('n2');
+    // Anexo da n1 e anexo da n2 direto no D1 + R2 (sem passar pelo upload).
+    await E.MEDIA.put('blob/m1', new Uint8Array([1, 2, 3]));
+    await E.MEDIA.put('blob/m2', new Uint8Array([9, 9]));
+    const insert = (id: string, noteId: string, key: string) =>
+      E.DB.prepare(
+        `INSERT INTO note_media (id, note_id, kind, r2_key, content_hash, mime_type, size_bytes, original_filename, created_at)
+         VALUES (?, ?, 'image', ?, ?, 'image/png', 3, 'foto.png', 1000)`
+      ).bind(id, noteId, key, 'hash-' + id).run();
+    await insert('m1', 'n1', 'blob/m1');
+    await insert('m2', 'n2', 'blob/m2');
+
+    // Share SEM mídia: página não lista anexos e a rota de mídia dá 404.
+    const semMidia = await createShare(E, 'n1', {}, Date.now());
+    if (!semMidia.ok) throw new Error('setup');
+    expect(await (await SELF.fetch(`https://x/s/${semMidia.token}`)).text()).not.toContain('Anexos');
+    expect((await SELF.fetch(`https://x/s/${semMidia.token}/media/m1`)).status).toBe(404);
+
+    // Share COM mídia: página lista, rota serve com no-store; mídia de OUTRA nota → 404.
+    const comMidia = await createShare(E, 'n1', { renew: true, includeMedia: true }, Date.now());
+    if (!comMidia.ok) throw new Error('setup');
+    const page = await SELF.fetch(`https://x/s/${comMidia.token}`);
+    const html = await page.text();
+    expect(html).toContain('Anexos');
+    expect(html).toContain(`/s/${comMidia.token}/media/m1`);
+    // Nenhuma signed URL de sessão nem key R2 no HTML público.
+    expect(html).not.toContain('?t=');
+    expect(html).not.toContain('blob/m1');
+    const media = await SELF.fetch(`https://x/s/${comMidia.token}/media/m1`);
+    expect(media.status).toBe(200);
+    expect(media.headers.get('cache-control')).toBe('no-store');
+    expect(new Uint8Array(await media.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect((await SELF.fetch(`https://x/s/${comMidia.token}/media/m2`)).status).toBe(404);
+    expect((await SELF.fetch(`https://x/s/${comMidia.token}/media/ghost`)).status).toBe(404);
+  });
+
+  it('endpoints /app/notes/share e /app/notes/unshare funcionam com sessão', async () => {
+    await seedNote('n1');
+    const cookie = await sessionCookieHeader();
+    const create = await post('/app/notes/share', { id: 'n1', expires_days: 7, include_media: true }, cookie);
+    expect(create.status).toBe(201);
+    const data = (await create.json()) as any;
+    const token = data.url.split('/s/')[1];
+    expect((await SELF.fetch(`https://x/s/${token}`)).status).toBe(200);
+    const flag = await E.DB.prepare(`SELECT share_include_media FROM notes WHERE id = 'n1'`).first();
+    expect(flag?.share_include_media).toBe(1);
+    const unshare = await post('/app/notes/unshare', { id: 'n1' }, cookie);
+    expect(unshare.status).toBe(200);
+    expect((await SELF.fetch(`https://x/s/${token}`)).status).toBe(404);
+  });
+
+  it('rate-limit público: mesmo IP estoura em 30 req/min → 429 com retry-after', async () => {
+    await seedNote('n1');
+    const r = await createShare(E, 'n1', {}, Date.now());
+    if (!r.ok) throw new Error('setup');
+    const headers = { 'CF-Connecting-IP': '10.77.0.42' };
+    let got429: Response | null = null;
+    // 30 permitidas por janela de minuto; a janela pode rolar no meio, então itera
+    // com folga e para no primeiro 429 (determinístico sem depender do relógio).
+    for (let i = 0; i < 70; i++) {
+      const res = await SELF.fetch(`https://x/s/${r.token}`, { headers });
+      if (res.status === 429) { got429 = res; break; }
+      expect(res.status).toBe(200);
+    }
+    expect(got429).not.toBeNull();
+    expect(Number(got429!.headers.get('retry-after'))).toBeGreaterThan(0);
+    // Sem o header de IP (ex.: tráfego interno de teste) não limita.
+    expect((await SELF.fetch(`https://x/s/${r.token}`)).status).toBe(200);
   });
 });

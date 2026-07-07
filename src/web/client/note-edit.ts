@@ -12,6 +12,7 @@
 
 import { appFetch } from './http.js';
 import { createSaveQueue, type SaveResult } from './save-queue.js';
+import { initShareUi } from './share-ui.js';
 
 const root = document.querySelector<HTMLElement>('.note-edit');
 
@@ -353,5 +354,9 @@ if (createTaskBtn) {
       });
   });
 }
+
+// ── Compartilhamento público de nota (spec 33) ── endpoint /app/notes via
+// data-share-endpoint; wiring compartilhado com o detalhe de task (share-ui.ts).
+initShareUi();
 
 export {};

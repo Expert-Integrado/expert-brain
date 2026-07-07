@@ -399,6 +399,44 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   }).join('');
   const tldrLen = (note.tldr ?? '').trim().length;
 
+  // Compartilhamento público de NOTA (spec 33, reconciliada): mesma seção do detalhe
+  // de task (classes .task-share*, wiring em client/share-ui.ts), com o opt-in de
+  // mídia a mais. Nota privada não compartilha (o servidor recusa; a UI nem oferece).
+  const noteShareStatus = isPrivate ? null : await getShareStatus(env, note.id, Date.now());
+  const noteShared = noteShareStatus?.shared ?? false;
+  const noteShareExpired = noteShareStatus?.expired ?? false;
+  const noteShareStateHtml = noteShared
+    ? (noteShareExpired
+        ? `Havia um link público, mas <strong>expirou</strong> em ${esc(noteShareStatus?.expires_brt ?? '')}. Gere um novo abaixo.`
+        : `Esta nota tem um link público ativo, válido até <strong>${esc(noteShareStatus?.expires_brt ?? '')}</strong>. O link só aparece no momento em que é gerado (o banco guarda só o hash). Gere de novo pra revê-lo (isso troca o link), ou revogue.`)
+    : 'Esta nota não está compartilhada. Gere um link público read-only pra enviar a alguém sem conta.';
+  const noteShareSection = isPrivate
+    ? `<section class="task-share note-share-wrap" data-note-id="${esc(note.id)}" data-share-endpoint="/app/notes" data-shared="0" data-private="1">
+      <h2>Compartilhamento</h2>
+      <p class="task-share-state" data-share-state>Nota <strong>privada</strong>: não pode ter link público. Torne-a pública (acima) pra compartilhar.</p>
+    </section>`
+    : `<section class="task-share note-share-wrap" data-note-id="${esc(note.id)}" data-share-endpoint="/app/notes" data-shared="${noteShared ? '1' : '0'}">
+      <h2>Compartilhamento</h2>
+      <p class="task-share-state" data-share-state>${noteShareStateHtml}</p>
+      <div class="task-share-controls">
+        <label class="task-share-ttl">
+          <span>Validade (dias)</span>
+          <input type="number" min="1" max="365" value="30" data-share-days aria-label="Validade em dias" />
+        </label>
+        <label class="note-share-media-opt">
+          <input type="checkbox" data-share-media ${noteShareStatus?.include_media ? 'checked' : ''} />
+          <span>Incluir mídia</span>
+        </label>
+        <button type="button" class="task-d-btn task-share-btn" data-share-generate>${noteShared && !noteShareExpired ? 'Gerar novo link' : 'Compartilhar'}</button>
+        <button type="button" class="task-d-btn task-share-revoke" data-share-revoke ${noteShared ? '' : 'hidden'}>Revogar</button>
+      </div>
+      <div class="task-share-link" data-share-link hidden>
+        <input type="text" readonly data-share-url aria-label="Link público" />
+        <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
+      </div>
+      <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
+    </section>`;
+
   const body = `
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
       <div class="note-edit-titlerow">
@@ -469,6 +507,8 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       </label>
     </section>
 
+    ${noteShareSection}
+
     ${mentionsHtml}
     ${tasksFromNoteHtml}
 
@@ -481,7 +521,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   `;
 
   return htmlResponse(
-    await renderShell({ title: note.title, active: 'notes', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}${MENTIONS_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: note.title, active: 'notes', email: session.email, env, body, extraHead: `<style>${NOTE_MEDIA_CSS}${NOTE_EDIT_CSS}${MENTIONS_CSS}${SHARE_SECTION_CSS}${NOTE_SHARE_WRAP_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 
@@ -1062,6 +1102,51 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
 // CSS do detalhe de task — re-diagramado tipo ClickUp (spec 36 fase 2): título
 // grande borderless, linha de metadados alinhada em grid, ações agrupadas à
 // direita do banner, descrição com label + botão à direita, prévia separada.
+// Complemento da seção de share NO DETALHE DE NOTA: o layout base (.task-d-btn) vem
+// do TASK_DETAIL_CSS, que a página de nota não carrega — repõe só o necessário, mais
+// o espaçamento da seção e o checkbox "incluir mídia" (exclusivo de nota).
+const NOTE_SHARE_WRAP_CSS = `
+.note-share-wrap { margin: 32px 0 8px; }
+.note-share-wrap .task-d-btn { font-size:13px; padding:7px 14px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; transition:border-color 160ms var(--ease), background 160ms var(--ease); white-space:nowrap; }
+.note-share-wrap .task-d-btn:hover { border-color:var(--border-strong); }
+.note-share-media-opt { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text-dim); cursor:pointer; padding-bottom:8px; }
+.note-share-media-opt input { accent-color: var(--accent-lav); }
+`;
+
+// CSS da seção "Compartilhamento público" (spec 33) — usada no detalhe de TASK
+// e no detalhe de NOTA (mesmas classes .task-share*, wiring em client/share-ui.ts).
+const SHARE_SECTION_CSS = `
+/* Compartilhamento público (spec 33) — vive na sidebar (spec 52), espaçamento
+   vem do gap do flex column ao redor, não de margin própria */
+.task-share h2 { font-size:15px; margin-bottom:10px; }
+.task-share-state { color:var(--text-dim); font-size:13px; line-height:1.5; margin-bottom:14px; }
+.task-share-state strong { color:var(--text); }
+.task-share-controls { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.task-share-ttl { display:flex; flex-direction:column; gap:6px; }
+.task-share-ttl span { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.task-share-ttl input {
+  width:96px; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
+  border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; font-family:inherit;
+}
+.task-share-ttl input:focus { outline:none; border-color:var(--accent-lav); }
+.task-share-btn { border-color:rgba(167,139,250,0.4); color:var(--accent-lav); }
+.task-share-btn:hover { background:rgba(167,139,250,0.12); }
+.task-share-revoke { border-color:rgba(239,68,68,0.4); color:#fca5a5; }
+.task-share-revoke:hover { background:rgba(239,68,68,0.12); }
+.task-share-revoke[hidden] { display:none; }
+.task-share-link { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+.task-share-link[hidden] { display:none; }
+.task-share-link input {
+  flex:1; min-width:0; background:var(--bg-accent); border:1px solid var(--border-strong); color:var(--text);
+  border-radius:var(--radius-sm); padding:8px 12px; font-size:13px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.task-share-link input:focus { outline:none; border-color:var(--accent-lav); }
+.task-share-status { font-size:13px; min-height:18px; }
+.task-share-status.ok { color:#86efac; }
+.task-share-status.err { color:#fca5a5; }
+.task-share-status.saving { color:var(--text-dim); }
+`;
+
 const TASK_DETAIL_CSS = `
 /* Banner: breadcrumb + tag à esquerda, ações agrupadas à direita (1 canto só) */
 .task-d-banner { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
@@ -1169,35 +1254,7 @@ const TASK_DETAIL_CSS = `
 .task-edit-status.err { color:#fca5a5; }
 .task-edit-save.dirty { border-color:var(--accent-lav); color:var(--accent-lav); }
 
-/* Compartilhamento público (spec 33) — vive na sidebar (spec 52), espaçamento
-   vem do gap do flex column ao redor, não de margin própria */
-.task-share h2 { font-size:15px; margin-bottom:10px; }
-.task-share-state { color:var(--text-dim); font-size:13px; line-height:1.5; margin-bottom:14px; }
-.task-share-state strong { color:var(--text); }
-.task-share-controls { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-.task-share-ttl { display:flex; flex-direction:column; gap:6px; }
-.task-share-ttl span { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
-.task-share-ttl input {
-  width:96px; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
-  border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; font-family:inherit;
-}
-.task-share-ttl input:focus { outline:none; border-color:var(--accent-lav); }
-.task-share-btn { border-color:rgba(167,139,250,0.4); color:var(--accent-lav); }
-.task-share-btn:hover { background:rgba(167,139,250,0.12); }
-.task-share-revoke { border-color:rgba(239,68,68,0.4); color:#fca5a5; }
-.task-share-revoke:hover { background:rgba(239,68,68,0.12); }
-.task-share-revoke[hidden] { display:none; }
-.task-share-link { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
-.task-share-link[hidden] { display:none; }
-.task-share-link input {
-  flex:1; min-width:0; background:var(--bg-accent); border:1px solid var(--border-strong); color:var(--text);
-  border-radius:var(--radius-sm); padding:8px 12px; font-size:13px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-.task-share-link input:focus { outline:none; border-color:var(--accent-lav); }
-.task-share-status { font-size:13px; min-height:18px; }
-.task-share-status.ok { color:#86efac; }
-.task-share-status.err { color:#fca5a5; }
-.task-share-status.saving { color:var(--text-dim); }
+${SHARE_SECTION_CSS}
 
 /* Atividade — thread de comentários (spec 53) no console do dono */
 .task-activity { margin:32px 0 8px; }

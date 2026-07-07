@@ -6,7 +6,7 @@ import { FONT_LINKS } from '../web/styles.js';
 import { assetVersion } from '../web/asset-version.js';
 import { esc } from '../util/html.js';
 import { handleApp } from '../web/handler.js';
-import { handleSharePage, handleShareCommentPost, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
+import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
 
 export const authHandler = {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -17,16 +17,25 @@ export const authHandler = {
       if (res) return res;
     }
 
-    // Rota PÚBLICA read-only de task compartilhada (SEM auth). Vive fora de /app, então
-    // entra ANTES do fallback 404 abaixo e nunca é interceptada pelo handleApp. GET
-    // renderiza a task + thread; POST /s/<token>/comment grava comentário de convidado
-    // (spec 53). Token fora do formato ou método errado → mesmo 404 genérico.
+    // Rota PÚBLICA read-only de nota/task compartilhada (SEM auth). Vive fora de /app,
+    // então entra ANTES do fallback 404 abaixo e nunca é interceptada pelo handleApp.
+    // GET renderiza a nota (task → com thread de comentários); POST /s/<token>/comment
+    // grava comentário de convidado (spec 53, só task); GET /s/<token>/media/<id> serve
+    // anexo de share com mídia opt-in (spec 33). Token fora do formato ou método
+    // errado → mesmo 404 genérico.
     if (url.pathname.startsWith('/s/')) {
       const rest = url.pathname.slice('/s/'.length);
       if (rest.endsWith('/comment')) {
         const token = rest.slice(0, -'/comment'.length);
         if (req.method === 'POST' && SHARE_TOKEN_RE.test(token)) {
           return handleShareCommentPost(req, env, token);
+        }
+        return shareNotFound();
+      }
+      const mediaMatch = rest.match(/^([^/]+)\/media\/([^/]+)$/);
+      if (mediaMatch) {
+        if (req.method === 'GET' && SHARE_TOKEN_RE.test(mediaMatch[1])) {
+          return handleShareMedia(req, env, mediaMatch[1], mediaMatch[2]);
         }
         return shareNotFound();
       }

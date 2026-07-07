@@ -96,10 +96,14 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/update' && req.method === 'POST') return handleTaskUpdatePost(req, env);
   // Criação de task pela UI (spec 36 fase 2): title obrigatório + body/priority/due opcionais.
   if (path === '/app/tasks/create' && req.method === 'POST') return handleTaskCreatePost(req, env);
-  // Compartilhamento público read-only de task (spec 33): gera/renova e revoga o link
+  // Compartilhamento público read-only (spec 33): gera/renova e revoga o link
   // /s/<token>. Reusa a MESMA lógica da tool share_task/unshare_task (src/web/share.ts).
+  // /app/notes/share|unshare são ALIASES dos mesmos handlers — desde a reconciliação
+  // da spec 33 o createShare/revokeShare aceitam qualquer nota viva (task ou conhecimento).
   if (path === '/app/tasks/share' && req.method === 'POST') return handleTaskSharePost(req, env);
   if (path === '/app/tasks/unshare' && req.method === 'POST') return handleTaskUnsharePost(req, env);
+  if (path === '/app/notes/share' && req.method === 'POST') return handleTaskSharePost(req, env);
+  if (path === '/app/notes/unshare' && req.method === 'POST') return handleTaskUnsharePost(req, env);
   // Selo de privacidade de task (spec 59): toggle privada/pública. ÚNICA superfície que
   // desmarca; sessão de browser só (requireSession no handler). Marcar privada revoga o
   // link público na mesma escrita. Path exato, vem ANTES do taskMatch (GET).
