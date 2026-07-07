@@ -262,7 +262,7 @@ Triagem feita em 07/07/2026 direto na sessão (subagentes indisponíveis — org
 | E3 | `10-backend/24` | contacts | DONE 07/07 (25386fa; rotacao adiada pelo dono). Era: compare de token com `===` em `src/index.ts:79,83` |
 | E4 | `10-backend/18` | brain | DONE 07/07 (deploy a8a5f591; smoke: provision/backfill sem auth → 401, provision via wrapper com Bearer → 200). Era: endpoints `/setup/*` sem auth dedicada; login sem rate-limit; `SETUP_TOKEN` não existia |
 | E5 | `10-backend/22` | contacts | DONE 07/07 (94d1512, deploy fd39776d; backlog de 5 dias drenado em producao, last_run 07/07). Era: `pdGet` passa `api_token` em query string (`src/index.ts:773`) |
-| E6 | `20-frontend/24` | contacts | PARCIAL — rota `/app/media` (avatar) ausente; parte brain-cache já shipou via spec 26 |
+| E6 | `20-frontend/24` | contacts | DONE 07/07 (rota espelho `/app/media/:hash` + rewrite no client; 6 testes novos, 303 verdes). Era: rota `/app/media` (avatar) ausente; parte brain-cache já tinha shipado via spec 26 |
 | E7 | `30-features/34` | contacts | VIVA P2 — delete/merge de entidades; dependências satisfeitas |
 | E8 | `30-features/32` | brain | VIVA P2 — `notify.ts` sem caps de digest nem flag stale |
 | E9 | `10-backend/23` | brain | VIVA P2 — mensagens de erro MCP |

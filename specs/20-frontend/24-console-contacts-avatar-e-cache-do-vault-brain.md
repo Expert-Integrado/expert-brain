@@ -1,6 +1,6 @@
 # Console contacts: consertar avatares 401 e cache do meta/grafo do vault brain
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** S · **Repo:** expert-contacts
+> **Status:** done (07/07/2026 — Parte A shipada: espelho GET /app/media/:hash atrás da sessão + rewrite no client; DESVIO: o payload segue emitindo /media/<hash> canônico e cada UI reescreve — o client do Brain já dependia do prefixo /media/. Partes B/C: mitigadas pela spec 20-frontend/26 (cache/escala no servidor do Brain); o console standalone é secundário ao Console v2 do Brain — staleness de até 1h no vault brain de lá aceita e registrada) · **Prioridade:** P1 · **Esforço:** S · **Repo:** expert-contacts
 > **Depende de:** nenhuma
 
 ## Contexto
