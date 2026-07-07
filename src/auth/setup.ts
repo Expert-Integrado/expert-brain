@@ -72,7 +72,23 @@ export async function handleStatus(env: Env): Promise<Response> {
     });
   }
   const status = await getVaultStatus(env);
-  return new Response(JSON.stringify({ configured: true, ...status }), {
+  // Bloco cron (spec 40-ops/43): expõe o contador de falhas do scheduled pro
+  // health-check externo. Aditivo — nenhum campo existente muda; falha de KV
+  // degrada pro default em vez de derrubar o /status.
+  let cron: { consecutive_failures: number; last_error: string | null } = {
+    consecutive_failures: 0,
+    last_error: null,
+  };
+  try {
+    const [cf, le] = await Promise.all([
+      env.GRAPH_CACHE.get('cron:consecutive_failures'),
+      env.GRAPH_CACHE.get('cron:last_error'),
+    ]);
+    cron = { consecutive_failures: parseInt(cf ?? '0', 10) || 0, last_error: le };
+  } catch {
+    // KV transiente: /status responde mesmo assim, com o default.
+  }
+  return new Response(JSON.stringify({ configured: true, ...status, cron }), {
     headers: { 'content-type': 'application/json' },
   });
 }

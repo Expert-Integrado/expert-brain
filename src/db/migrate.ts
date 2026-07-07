@@ -350,7 +350,7 @@ const MIGRATION_0015_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_notes_origin ON notes (origin_note_id) WHERE kind = 'task'`,
 ];
 
-const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
+export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
   { id: '0003_api_keys', stmts: MIGRATION_0003_STMTS },
@@ -368,6 +368,34 @@ const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0015_mentions', stmts: MIGRATION_0015_STMTS },
 ];
 
+// SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor
+// (pré-batch) morreu no meio de uma migration, colunas podem já existir sem a
+// migration constar em _migrations. Filtra os ALTER ... ADD COLUMN cuja coluna
+// já está na tabela, pra que o re-run complete em vez de explodir com
+// "duplicate column name". Pré-check via PRAGMA (e não try/catch) porque um
+// erro dentro do batch aborta o batch inteiro — não dá pra pular só um statement.
+const ADD_COLUMN_RE = /^ALTER TABLE\s+(\w+)\s+ADD COLUMN\s+(\w+)/i;
+
+async function filterAlreadyAppliedAlters(env: Env, stmts: string[]): Promise<string[]> {
+  const out: string[] = [];
+  const colsByTable = new Map<string, Set<string>>();
+  for (const stmt of stmts) {
+    const m = ADD_COLUMN_RE.exec(stmt.trim());
+    if (!m) {
+      out.push(stmt);
+      continue;
+    }
+    const [, table, column] = m;
+    if (!colsByTable.has(table)) {
+      // Nome da tabela vem dos NOSSOS arrays de migration, não de input externo.
+      const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+      colsByTable.set(table, new Set((info.results ?? []).map((r) => r.name)));
+    }
+    if (!colsByTable.get(table)!.has(column)) out.push(stmt);
+  }
+  return out;
+}
+
 export async function runMigrations(env: Env): Promise<void> {
   await env.DB.prepare(
     `CREATE TABLE IF NOT EXISTS _migrations (id TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)`
@@ -376,11 +404,12 @@ export async function runMigrations(env: Env): Promise<void> {
   const appliedIds = new Set((applied.results ?? []).map((r) => r.id));
   for (const m of MIGRATIONS) {
     if (appliedIds.has(m.id)) continue;
-    for (const stmt of m.stmts) {
-      await env.DB.prepare(stmt).run();
-    }
-    await env.DB.prepare(`INSERT INTO _migrations (id, applied_at) VALUES (?, ?)`)
-      .bind(m.id, Date.now())
-      .run();
+    const stmts = await filterAlreadyAppliedAlters(env, m.stmts);
+    // batch é autocommit transacional no D1: ou a migration inteira aplica E
+    // registra em _migrations, ou nada aplica — nunca fica "meio aplicada".
+    await env.DB.batch([
+      ...stmts.map((s) => env.DB.prepare(s)),
+      env.DB.prepare(`INSERT INTO _migrations (id, applied_at) VALUES (?, ?)`).bind(m.id, Date.now()),
+    ]);
   }
 }

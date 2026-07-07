@@ -10,7 +10,7 @@
     "setup": "node scripts/setup.mjs",
     "dev": "wrangler dev",
     "build:bundles": "tsx scripts/build-bundles.ts",
-    "deploy": "npm run build:bundles && wrangler deploy",
+    "deploy": "npm run build:bundles && node scripts/deploy.mjs",
     "backfill-similar": "node scripts/backfill-similar.mjs",
     "test": "vitest run && vitest run --config vitest.auth.config.ts",
     "test:watch": "vitest",

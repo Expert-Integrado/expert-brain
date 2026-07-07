@@ -1,6 +1,6 @@
 # Migrations idempotentes + provision no deploy + espelho .sql saneado
 
-> **Status:** draft · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -130,15 +130,15 @@ O espelho fica como **referência de leitura**, nunca como caminho de aplicaçã
 
 ## Critérios de aceite
 
-- [ ] Cada migration pendente aplica seus statements + o registro em `_migrations` num único `env.DB.batch` (transacional).
-- [ ] `runMigrations` rodado 2x seguidas num D1 limpo termina sem erro e com as 7 linhas em `_migrations` (teste automatizado).
-- [ ] Falha simulada no meio da `0006` (colunas `status`/`due_at` já existentes em `notes`, sem linha `0006_task_fields` em `_migrations`) seguida de `runMigrations` termina sem erro, com TODAS as colunas da 0006 presentes, os índices parciais criados e `0006_task_fields` registrada (teste automatizado em `test/migrate.test.ts`).
-- [ ] Mesmo cenário pra `0004` (`deleted_at` pré-existente) passa (teste automatizado).
-- [ ] `npm run deploy` executa `wrangler deploy` e, em caso de sucesso, faz `POST /setup/provision` na URL do worker; falha do provision resulta em exit code != 0 com mensagem acionável.
-- [ ] `wrangler.toml` e `wrangler.example.toml` não contêm mais `migrations_dir` (e o bloco `[[migrations]]` de Durable Object permanece intacto).
-- [ ] `src/db/migrations/README.md` existe e explica que os `.sql` são referência e que `wrangler d1 migrations apply` não deve ser usado.
-- [ ] Suíte existente continua verde (em especial `test/db.test.ts`, que já cobre idempotência básica em `is idempotent`).
-- [ ] Nenhuma migration nova foi adicionada e nenhum dado é modificado — só o executor, tooling e docs mudam.
+- [x] Cada migration pendente aplica seus statements + o registro em `_migrations` num único `env.DB.batch` (transacional).
+- [x] `runMigrations` rodado 2x seguidas num D1 limpo termina sem erro e com as 7 linhas em `_migrations` (teste automatizado).
+- [x] Falha simulada no meio da `0006` (colunas `status`/`due_at` já existentes em `notes`, sem linha `0006_task_fields` em `_migrations`) seguida de `runMigrations` termina sem erro, com TODAS as colunas da 0006 presentes, os índices parciais criados e `0006_task_fields` registrada (teste automatizado em `test/migrate.test.ts`).
+- [x] Mesmo cenário pra `0004` (`deleted_at` pré-existente) passa (teste automatizado).
+- [x] `npm run deploy` executa `wrangler deploy` e, em caso de sucesso, faz `POST /setup/provision` na URL do worker; falha do provision resulta em exit code != 0 com mensagem acionável.
+- [x] `wrangler.toml` e `wrangler.example.toml` não contêm mais `migrations_dir` (e o bloco `[[migrations]]` de Durable Object permanece intacto).
+- [x] `src/db/migrations/README.md` existe e explica que os `.sql` são referência e que `wrangler d1 migrations apply` não deve ser usado.
+- [x] Suíte existente continua verde (em especial `test/db.test.ts`, que já cobre idempotência básica em `is idempotent`).
+- [x] Nenhuma migration nova foi adicionada e nenhum dado é modificado — só o executor, tooling e docs mudam.
 
 ## Validação
 

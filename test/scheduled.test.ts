@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { env } from 'cloudflare:test';
 import { runMigrations } from '../src/db/migrate.js';
-import { runScheduled, BACKUP_CRON } from '../src/scheduled.js';
+import { runScheduled, BACKUP_CRON, trackCronOutcome } from '../src/scheduled.js';
 import { LAST_BACKUP_META_KEY } from '../src/backup/snapshot.js';
 import { RESURFACE_DIGEST_META_KEY } from '../src/digest/resurface.js';
 
@@ -79,5 +79,79 @@ describe('runScheduled — dispatch por cron (spec 67)', () => {
     runScheduled('*/5 * * * *', E, ctx);
     await settle();
     expect(await lastBackupValue()).toBeNull();
+  });
+});
+
+describe('trackCronOutcome — contador de falhas + alerta (spec 40-ops/43)', () => {
+  beforeEach(async () => {
+    await E.GRAPH_CACHE.delete('cron:consecutive_failures');
+    await E.GRAPH_CACHE.delete('cron:last_error');
+  });
+
+  it('sucesso zera o contador', async () => {
+    await E.GRAPH_CACHE.put('cron:consecutive_failures', '3');
+    await trackCronOutcome(E, true);
+    expect(await E.GRAPH_CACHE.get('cron:consecutive_failures')).toBe('0');
+  });
+
+  it('falha incrementa e grava last_error', async () => {
+    await trackCronOutcome(E, false, 'boom');
+    expect(await E.GRAPH_CACHE.get('cron:consecutive_failures')).toBe('1');
+    const le = JSON.parse((await E.GRAPH_CACHE.get('cron:last_error'))!);
+    expect(le.message).toBe('boom');
+    expect(le.at).toBeTruthy();
+  });
+
+  it('2a falha consecutiva dispara o Telegram (fetch mockado)', async () => {
+    const calls: string[] = [];
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any, init?: any) => {
+      calls.push(String(input));
+      return new Response('{"ok":true}', { status: 200 });
+    }) as typeof fetch;
+    const envTg = { ...E, TELEGRAM_BOT_TOKEN: 'tok-fake', TELEGRAM_CHAT_ID: '1' };
+    try {
+      await trackCronOutcome(envTg, false, 'primeira');
+      expect(calls.length).toBe(0); // 1a falha: só contabiliza
+      await trackCronOutcome(envTg, false, 'segunda');
+      expect(calls.length).toBe(1); // 2a falha: alerta
+      expect(calls[0]).toContain('api.telegram.org');
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+    expect(await E.GRAPH_CACHE.get('cron:consecutive_failures')).toBe('2');
+  });
+
+  it('sem secrets de Telegram, 2+ falhas sao no-op sem erro', async () => {
+    await trackCronOutcome(E, false, 'a');
+    await trackCronOutcome(E, false, 'b');
+    expect(await E.GRAPH_CACHE.get('cron:consecutive_failures')).toBe('2');
+  });
+
+  it('handleStatus expõe o bloco cron sem remover campos existentes', async () => {
+    // SELF aqui serve o worker do console (src/web/worker.ts), que não roteia
+    // /status — o handler é chamado direto, como faz o roteador de src/auth/handler.ts.
+    const { handleStatus } = await import('../src/auth/setup.js');
+    await E.GRAPH_CACHE.put('cron:consecutive_failures', '1');
+    await E.GRAPH_CACHE.put('cron:last_error', JSON.stringify({ at: 'x', message: 'boom' }));
+    const res = await handleStatus(E);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.configured).toBe(true);
+    expect(typeof body.notes).toBe('number'); // campo pré-existente segue
+    expect(body.cron.consecutive_failures).toBe(1);
+    expect(JSON.parse(body.cron.last_error).message).toBe('boom');
+  });
+
+  it('erro do KV nao propaga (alerting nunca derruba o cron)', async () => {
+    const broken = {
+      ...E,
+      GRAPH_CACHE: {
+        get: async () => { throw new Error('kv down'); },
+        put: async () => { throw new Error('kv down'); },
+      },
+    };
+    await expect(trackCronOutcome(broken, false, 'x')).resolves.toBeUndefined();
+    await expect(trackCronOutcome(broken, true)).resolves.toBeUndefined();
   });
 });

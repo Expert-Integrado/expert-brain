@@ -24,11 +24,19 @@ account_id = "REPLACE_ME_ACCOUNT_ID"
 [triggers]
 crons = ["0 11 * * *", "0 5 * * 1"]
 
+# Workers Logs (spec 40-ops/43): persiste logs de request/cron no dashboard
+# (Workers & Pages > seu worker > Logs) — sem isso, qualquer diagnóstico
+# pós-incidente começa sem histórico nenhum (console.log só existe no
+# `wrangler tail` ao vivo). head_sampling_rate = 1 grava 100% das invocações;
+# o volume de um vault pessoal cabe com folga no free tier de Workers Logs.
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [[d1_databases]]
 binding = "DB"
 database_name = "expert-brain"
 database_id = "REPLACE_ME_D1_ID"
-migrations_dir = "src/db/migrations"
 
 [[vectorize]]
 binding = "VECTORIZE"

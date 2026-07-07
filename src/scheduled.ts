@@ -1,5 +1,5 @@
 import type { Env } from './env.js';
-import { runDueReminder } from './notify.js';
+import { runDueReminder, sendTelegram } from './notify.js';
 import { runSnapshot } from './backup/snapshot.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
@@ -11,6 +11,33 @@ import { runSnapshot } from './backup/snapshot.js';
 // original (digest de tasks) — mudar o horário do digest no toml sem tocar aqui
 // não mata o lembrete; só a expressão EXATA do backup dispara o snapshot.
 export const BACKUP_CRON = '0 5 * * 1'; // segunda 05:00 UTC = 02:00 BRT
+
+// Contador de falhas consecutivas do cron diário em KV (spec 40-ops/43): sem
+// isso, o `console.error` do scheduled evapora e o dono só descobre que o
+// digest parou quando sente falta dele. Sucesso zera; 2+ falhas seguidas
+// alertam via Telegram (no-op seguro sem os secrets). O GET /status expõe os
+// mesmos valores pro health-check externo. Falha do PRÓPRIO alerting nunca
+// propaga — um KV transiente não pode derrubar o cron.
+export async function trackCronOutcome(env: Env, ok: boolean, message?: string): Promise<void> {
+  try {
+    if (ok) {
+      await env.GRAPH_CACHE.put('cron:consecutive_failures', '0');
+      return;
+    }
+    const prev = parseInt((await env.GRAPH_CACHE.get('cron:consecutive_failures')) ?? '0', 10) || 0;
+    const n = prev + 1;
+    await env.GRAPH_CACHE.put('cron:consecutive_failures', String(n));
+    await env.GRAPH_CACHE.put(
+      'cron:last_error',
+      JSON.stringify({ at: new Date().toISOString(), message: message ?? 'unknown' })
+    );
+    if (n >= 2) {
+      await sendTelegram(env, `⚠️ expert-brain: cron do digest falhou ${n} vezes seguidas — ${message ?? 'sem detalhe'}`);
+    }
+  } catch (e) {
+    console.error('cron alerting failed (ignorado, cron segue)', e);
+  }
+}
 
 export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): void {
   if (cron === BACKUP_CRON) {
@@ -30,7 +57,13 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
   }
   ctx.waitUntil(
     runDueReminder(env, Date.now())
-      .then((r) => console.log('due-reminder', JSON.stringify(r)))
-      .catch((e) => console.error('due-reminder failed', e))
+      .then(async (r) => {
+        console.log('due-reminder', JSON.stringify(r));
+        await trackCronOutcome(env, true);
+      })
+      .catch(async (e) => {
+        console.error('due-reminder failed', e);
+        await trackCronOutcome(env, false, String((e as Error)?.message ?? e));
+      })
   );
 }
