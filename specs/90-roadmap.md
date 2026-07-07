@@ -257,9 +257,9 @@ Triagem feita em 07/07/2026 direto na sessão (subagentes indisponíveis — org
 
 | Onda | Spec | Repo | Veredito da triagem (evidência 07/07) |
 |---|---|---|---|
-| E1 | `10-backend/13` | brain | VIVA P0 — `src/db/migrate.ts` sem nenhum uso de `batch` (migrations não transacionais) |
-| E2 | `40-ops/43` | ambos | VIVA P1 — nenhum bloco `[observability]` nos dois `wrangler.toml` |
-| E3 | `10-backend/24` | contacts | VIVA P2/segurança — compare de token com `===` em `src/index.ts:79,83` |
+| E1 | `10-backend/13` | brain | DONE 07/07 (f16aef4; deploy+provision validados em producao). Era: `src/db/migrate.ts` sem nenhum uso de `batch` (migrations não transacionais) |
+| E2 | `40-ops/43` | ambos | DONE 07/07 lado repo (brain f16aef4, contacts 25386fa); Notifications+monitor externo = dono. Era: nenhum bloco `[observability]` nos dois `wrangler.toml` |
+| E3 | `10-backend/24` | contacts | DONE 07/07 (25386fa; rotacao adiada pelo dono). Era: compare de token com `===` em `src/index.ts:79,83` |
 | E4 | `10-backend/18` | brain | VIVA P1 — endpoints `/setup/*` sem auth dedicada; login sem rate-limit; `SETUP_TOKEN` não existe |
 | E5 | `10-backend/22` | contacts | VIVA P1 — `pdGet` passa `api_token` em query string (`src/index.ts:773`) |
 | E6 | `20-frontend/24` | contacts | PARCIAL — rota `/app/media` (avatar) ausente; parte brain-cache já shipou via spec 26 |
