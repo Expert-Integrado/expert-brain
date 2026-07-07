@@ -253,16 +253,51 @@ async function buildDeployProvision() {
   if (wuResult.status !== 0) log.warn(`wrangler secret put WORKER_URL falhou (nao critico): ${wuResult.stderr}`);
   else log.ok('WORKER_URL OK.');
 
-  log.info(`POST ${workerUrl}/setup/provision`);
-  try {
-    const res = await fetch(`${workerUrl}/setup/provision`, { method: 'POST' });
-    const body = await res.text();
-    if (!res.ok) die(`/setup/provision retornou ${res.status}: ${body}`);
-    log.ok(`Migrations aplicadas: ${body}`);
-  } catch (err) {
-    die(`Nao consegui chamar /setup/provision: ${err.message}`);
-  }
+  const setupToken = await ensureSetupToken();
+  await provisionWorker(workerUrl, setupToken);
   return workerUrl;
+}
+
+// SETUP_TOKEN (spec 10-backend/18): vault configurado exige Bearer nos /setup/*.
+// Gera um token novo e grava como secret no Worker; o valor fica so em memoria
+// deste processo (nunca em arquivo/log). Regenerar a cada setup e inofensivo —
+// o unico consumidor persistente e o proprio provision desta execucao; deploys
+// futuros usam GRAPH_EXPORT_TOKEN ou BRAIN_SETUP_TOKEN do ambiente.
+async function ensureSetupToken() {
+  log.info('Setando SETUP_TOKEN (auth dos /setup/*)...');
+  const token = randomBytes(32).toString('hex');
+  const r = runWrangler(['secret', 'put', 'SETUP_TOKEN'], { input: token, allowFail: true });
+  if (r.status !== 0) {
+    log.warn(`wrangler secret put SETUP_TOKEN falhou (nao critico): ${r.stderr}`);
+    return null;
+  }
+  log.ok('SETUP_TOKEN OK.');
+  return token;
+}
+
+// POST /setup/provision com Bearer + retry (cobre propagation delay do deploy
+// e do secret put). Vault ainda nao configurado aceita sem auth; configurado
+// exige o Bearer que acabamos de gravar.
+async function provisionWorker(workerUrl, setupToken) {
+  log.info(`POST ${workerUrl}/setup/provision`);
+  const headers = setupToken ? { authorization: `Bearer ${setupToken}` } : undefined;
+  let lastErr = '';
+  for (const delay of [0, 3000, 8000]) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    try {
+      const res = await fetch(`${workerUrl}/setup/provision`, { method: 'POST', headers });
+      const body = await res.text();
+      if (res.ok) {
+        log.ok(`Migrations aplicadas: ${body}`);
+        return;
+      }
+      lastErr = `HTTP ${res.status}: ${body.slice(0, 300)}`;
+    } catch (err) {
+      lastErr = err.message;
+    }
+    log.warn(`provision falhou (${lastErr}) — tentando de novo...`);
+  }
+  die(`/setup/provision falhou apos 3 tentativas: ${lastErr}`);
 }
 
 async function main() {
@@ -517,17 +552,11 @@ ${updHooksOk
     log.ok('WORKER_URL OK.');
   }
 
-  // 9. aplica migrations via /setup/provision
+  // 9. aplica migrations via /setup/provision (com Bearer — os OWNER_* ja foram
+  // setados no passo 7, entao o vault ja esta "configurado" e o gate exige auth)
   log.step(9, 'Aplicando schema do D1');
-  log.info(`POST ${workerUrl}/setup/provision`);
-  try {
-    const res = await fetch(`${workerUrl}/setup/provision`, { method: 'POST' });
-    const body = await res.text();
-    if (!res.ok) die(`/setup/provision retornou ${res.status}: ${body}`);
-    log.ok(`Migrations aplicadas: ${body}`);
-  } catch (err) {
-    die(`Nao consegui chamar /setup/provision: ${err.message}`);
-  }
+  const setupToken = await ensureSetupToken();
+  await provisionWorker(workerUrl, setupToken);
 
   // 10. instala a camada cliente (hooks do Claude Code) — captura proativa
   log.step(10, 'Ativando captura automatica (hooks do Claude Code)');

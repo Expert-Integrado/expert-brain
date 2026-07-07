@@ -24,6 +24,13 @@ async function digestMatches(got: string, expected?: string): Promise<boolean> {
   return diff === 0;
 }
 
+// Comparação genérica token-vs-segredo em tempo constante (hash-then-compare).
+// Exportada pros gates de setup (spec 10-backend/18) — mesma primitiva usada
+// pelos escopos abaixo.
+export async function tokenMatches(got: string, expected?: string): Promise<boolean> {
+  return digestMatches(got, expected);
+}
+
 // Auth Bearer ADITIVA e ESCOPADA POR ROTA: aceita `Authorization: Bearer <token>`
 // só quando o token bate com o(s) segredo(s) permitido(s) NAQUELE escopo. Se nenhum
 // segredo do escopo estiver setado ou o header não bater, retorna false e o chamador

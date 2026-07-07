@@ -72,3 +72,10 @@ id = "REPLACE_ME_OAUTH_KV_ID"
 [[kv_namespaces]]
 binding = "GRAPH_CACHE"
 id = "REPLACE_ME_GRAPH_CACHE_ID"
+
+# Rate limiting de borda (spec 10-backend/18, recomendacao): o login ja tem
+# rate limit em KV dentro do Worker (POST /authorize e /app/login), mas quem
+# usa dominio proprio numa zona Cloudflare pode somar uma WAF rate limiting
+# rule na borda (ex.: >20 POSTs/min por IP em /authorize ou /app/login ->
+# block 10min). Corta o flood ANTES de invocar o Worker (economiza requests
+# pagos). Em *.workers.dev nao ha zona propria - a defesa em KV basta.

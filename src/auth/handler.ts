@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { handleRoot, handleProvision, handleStatus, handleBackfillSimilar, isSetup } from './setup.js';
 import { verifyPassword } from './password.js';
+import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from './rate-limit.js';
 import { FONT_LINKS } from '../web/styles.js';
 import { assetVersion } from '../web/asset-version.js';
 import { esc } from '../util/html.js';
@@ -37,7 +38,7 @@ export const authHandler = {
 
     if (url.pathname === '/') return handleRoot(req, env);
     if (url.pathname === '/status') return handleStatus(env);
-    if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(env);
+    if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(req, env);
     if (url.pathname === '/setup/backfill-similar' && req.method === 'POST') return handleBackfillSimilar(req, env);
 
     if (url.pathname === '/authorize') {
@@ -47,9 +48,21 @@ export const authHandler = {
         const form = await req.formData();
         const email = String(form.get('email') ?? '');
         const password = String(form.get('password') ?? '');
-        if (email !== env.OWNER_EMAIL) return renderLogin('Credenciais inválidas.', url.search);
-        const ok = await verifyPassword(password, env.OWNER_PASSWORD_HASH!);
-        if (!ok) return renderLogin('Credenciais inválidas.', url.search);
+        // Rate limit ANTES de tocar no PBKDF2 (spec 10-backend/18). E-mail errado
+        // também conta falha — senão o check de e-mail vira oráculo grátis.
+        const ip = clientIp(req);
+        const gate = await checkLoginAllowed(env, ip, email);
+        if (!gate.allowed) {
+          return renderLogin('Muitas tentativas. Aguarde alguns minutos.', url.search, 429, gate.retryAfterS);
+        }
+        const emailOk = email === env.OWNER_EMAIL;
+        const ok = emailOk && (await verifyPassword(password, env.OWNER_PASSWORD_HASH!));
+        if (!ok) {
+          const fails = await registerLoginFailure(env, ip, email);
+          console.warn('authorize: failed login', JSON.stringify({ ip, fails }));
+          return renderLogin('Credenciais inválidas.', url.search);
+        }
+        await clearLoginFailures(env, ip, email);
         // parseAuthRequest expects the original GET request; reconstruct it from the query string
         const authReq = await provider.parseAuthRequest(new Request(url.toString(), { method: 'GET' }));
         const result = await provider.completeAuthorization({
@@ -68,7 +81,7 @@ export const authHandler = {
   },
 };
 
-function renderLogin(error: string | null, qs: string): Response {
+function renderLogin(error: string | null, qs: string, status = 200, retryAfterS?: number): Response {
   return new Response(
     `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -85,8 +98,10 @@ ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <button type="submit">Autorizar</button>
 </form></div></body></html>`,
     {
+      status,
       headers: {
         'content-type': 'text/html; charset=utf-8',
+        ...(retryAfterS ? { 'retry-after': String(retryAfterS) } : {}),
         // Same reasoning as web/render.ts htmlResponse: HTML must never be
         // heuristically cached by the browser, or a stale page can linger post-deploy.
         'cache-control': 'no-store',

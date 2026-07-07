@@ -39,17 +39,29 @@ if (!base) {
 }
 
 // 3. POST /setup/provision com retry (cobre o propagation delay do deploy).
+// Vault configurado exige Bearer (spec 10-backend/18): BRAIN_SETUP_TOKEN,
+// SETUP_TOKEN ou GRAPH_EXPORT_TOKEN do ambiente — nunca hardcoded aqui.
 const url = `${base}/setup/provision`;
+const bearer =
+  process.env.BRAIN_SETUP_TOKEN || process.env.SETUP_TOKEN || process.env.GRAPH_EXPORT_TOKEN;
+const headers = bearer ? { authorization: `Bearer ${bearer}` } : undefined;
 const delays = [0, 2000, 5000];
 let lastErr = '';
 for (const delay of delays) {
   if (delay) await new Promise((r) => setTimeout(r, delay));
   try {
-    const resp = await fetch(url, { method: 'POST' });
+    const resp = await fetch(url, { method: 'POST', headers });
     const body = await resp.text();
     if (resp.ok) {
       console.log(`[deploy] provision ok (${resp.status}): ${body.slice(0, 200)}`);
       process.exit(0);
+    }
+    if (resp.status === 401) {
+      fail(
+        `provision retornou 401 — o worker exige credencial nos /setup/*.\n` +
+          `Sete BRAIN_SETUP_TOKEN (ou SETUP_TOKEN/GRAPH_EXPORT_TOKEN) no ambiente com o valor do secret SETUP_TOKEN do worker e rode de novo.\n` +
+          `O código novo JÁ está no ar; só as migrations não rodaram.`
+      );
     }
     lastErr = `HTTP ${resp.status}: ${body.slice(0, 500)}`;
   } catch (e) {

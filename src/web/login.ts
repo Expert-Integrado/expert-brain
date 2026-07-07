@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { verifyPassword } from '../auth/password.js';
+import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from '../auth/rate-limit.js';
 import { signSession, sessionCookie } from './session.js';
 import { FONT_LINKS } from './styles.js';
 import { htmlResponse } from './render.js';
@@ -65,11 +66,24 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   const password = String(form.get('password') ?? '');
   const next = String(form.get('next') ?? '/app/graph');
 
+  // Mesmo rate limit (e mesmo bucket IP+e-mail) do POST /authorize — é a mesma
+  // senha, então as falhas dos dois endpoints somam (spec 10-backend/18).
+  const ip = clientIp(req);
+  const gate = await checkLoginAllowed(env, ip, email);
+  if (!gate.allowed) {
+    const res = htmlResponse(renderLoginPage('Muitas tentativas. Aguarde alguns minutos.', next), 429);
+    if (gate.retryAfterS) res.headers.set('retry-after', String(gate.retryAfterS));
+    return res;
+  }
+
   const emailMatch = email === env.OWNER_EMAIL;
   const passwordOk = emailMatch && (await verifyPassword(password, env.OWNER_PASSWORD_HASH));
   if (!emailMatch || !passwordOk) {
+    const fails = await registerLoginFailure(env, ip, email);
+    console.warn('app/login: failed login', JSON.stringify({ ip, fails }));
     return htmlResponse(renderLoginPage('Credenciais inválidas.', next), 401);
   }
+  await clearLoginFailures(env, ip, email);
 
   const token = await signSession(env.OWNER_EMAIL, env.SESSION_SECRET, Math.floor(Date.now() / 1000));
   const safeNext = safeNextPath(next);

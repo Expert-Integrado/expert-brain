@@ -22,6 +22,8 @@ export default defineConfig({
           // Token de export do grafo (auth Bearer aditiva de /app/graph/*) — usado
           // pelos testes de ETag do meta (spec 23) via header Authorization.
           GRAPH_EXPORT_TOKEN: 'tok',
+          // Bearer dos /setup/* quando o vault esta configurado (spec 10-backend/18).
+          SETUP_TOKEN: 'setup-tok',
         },
       },
       isolatedStorage: false,

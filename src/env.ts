@@ -21,6 +21,11 @@ export interface Env {
   // Separado do GRAPH_EXPORT_TOKEN de propósito: o cron tem sua própria credencial,
   // então rotacionar/revogar uma não afeta a outra (Expert Console x lembrete).
   TASK_REMINDER_TOKEN?: string;
+  // Bearer que autoriza os endpoints /setup/* quando o vault JÁ está configurado
+  // (spec 10-backend/18). Gerado pelo scripts/setup.mjs e enviado pelo
+  // scripts/deploy.mjs no provision pós-deploy. Ausente → /setup/* aceita só
+  // GRAPH_EXPORT_TOKEN/TASK_REMINDER_TOKEN ou sessão do dono.
+  SETUP_TOKEN?: string;
   // Segredo HMAC compartilhado com o Worker do Expert Contacts pro SSO do nav:
   // /app/contacts-sso assina um handoff curto que o /app/sso do Console valida.
   // MESMO valor nos dois Workers. Ausente → o link cai no Console com login normal.

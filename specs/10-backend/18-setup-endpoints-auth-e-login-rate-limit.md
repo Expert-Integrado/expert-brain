@@ -1,6 +1,6 @@
 # Autenticar /setup/backfill-similar e rate-limit no /authorize
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026 — deploy a8a5f591; smoke em producao: provision/backfill sem auth 401, provision autenticado via deploy wrapper 200; testes em test/setup-auth.test.ts) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (mas coordenar com a spec 13 — o passo de provision pós-deploy dela precisa continuar funcionando com o gate novo)
 
 ## Contexto

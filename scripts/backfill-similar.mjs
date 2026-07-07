@@ -16,11 +16,26 @@ if (!url) {
   process.exit(1);
 }
 
+// O endpoint exige Bearer (spec 10-backend/18) — cada lote custa ate 41 subrequests
+// + writes reais. Token vem do ambiente, nunca de argumento (some do history).
+const bearer = process.env.GRAPH_EXPORT_TOKEN || process.env.BRAIN_SETUP_TOKEN;
+if (!bearer) {
+  console.error(
+    'Faltou credencial: sete GRAPH_EXPORT_TOKEN (ou BRAIN_SETUP_TOKEN) no ambiente com o Bearer do Worker.\n' +
+      'Ex.: GRAPH_EXPORT_TOKEN=... node scripts/backfill-similar.mjs <worker-url>'
+  );
+  process.exit(1);
+}
+const AUTH_HEADERS = { authorization: `Bearer ${bearer}` };
+
 async function sweep(passLabel) {
   let cursor = '';
   let totals = { processed: 0, edges: 0, missing: 0, failed: 0, calls: 0 };
   for (;;) {
-    const res = await fetch(`${url}/setup/backfill-similar?after=${encodeURIComponent(cursor)}`, { method: 'POST' });
+    const res = await fetch(`${url}/setup/backfill-similar?after=${encodeURIComponent(cursor)}`, {
+      method: 'POST',
+      headers: AUTH_HEADERS,
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       throw new Error(`HTTP ${res.status} no lote (cursor='${cursor}'): ${body.slice(0, 200)}`);

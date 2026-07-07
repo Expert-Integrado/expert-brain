@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { runMigrations } from '../db/migrate.js';
 import { renderNotConfigured } from '../static/wizard.js';
 import { refreshSimilarEdges, SIMILARITY_TOP_K, SIMILARITY_MIN_SCORE } from '../web/similarity.js';
+import { isAuthorizedForSetup } from './setup-auth.js';
 
 export function isSetup(env: Env): boolean {
   return Boolean(env.OWNER_EMAIL && env.OWNER_PASSWORD_HASH && env.SESSION_SECRET);
@@ -107,6 +108,13 @@ export async function handleBackfillSimilar(req: Request, env: Env): Promise<Res
       status: 503, headers: { 'content-type': 'application/json' },
     });
   }
+  // Gate (spec 10-backend/18): cada lote custa até 41 subrequests + writes reais
+  // em similar_edges — sem auth, qualquer IP queimava a quota Vectorize/D1 do dono.
+  if (!(await isAuthorizedForSetup(req, env))) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401, headers: { 'content-type': 'application/json' },
+    });
+  }
   const url = new URL(req.url);
   const after = url.searchParams.get('after') ?? '';
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 20, 1), 20);
@@ -153,15 +161,26 @@ export async function handleBackfillSimilar(req: Request, env: Env): Promise<Res
   }), { headers: { 'content-type': 'application/json' } });
 }
 
-export async function handleProvision(env: Env): Promise<Response> {
+export async function handleProvision(req: Request, env: Env): Promise<Response> {
+  // Gate (spec 10-backend/18): vault NÃO configurado → aberto (bootstrap de
+  // instalação nova — o aluno ainda não tem secrets e não há nada de valor no
+  // banco). Vault configurado → exige Bearer (SETUP_TOKEN/GRAPH_EXPORT_TOKEN/
+  // TASK_REMINDER_TOKEN) ou sessão do dono; o wizard e o scripts/deploy.mjs
+  // enviam o header.
+  if (isSetup(env) && !(await isAuthorizedForSetup(req, env))) {
+    return new Response(JSON.stringify({ error: 'unauthorized' }), {
+      status: 401,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
   // SEMPRE roda as migrations. Elas são idempotentes — runMigrations registra
   // cada uma em _migrations e pula as já aplicadas, então rodar de novo é no-op.
   // Isto é CRÍTICO pro caminho de ATUALIZAÇÃO: uma instalação já existente que
   // sobe uma versão nova aplica as migrations novas (ex: 0004 soft-delete) por
   // aqui. O gate anterior ("Already provisioned" 409 quando _migrations tinha
   // linhas) pulava as migrations num update e quebrava o código novo (coluna
-  // deleted_at inexistente). Endpoint não-autenticado, mas re-rodar é inofensivo
-  // (no máximo alguns SELECTs em _migrations).
+  // deleted_at inexistente). Re-rodar é inofensivo (no máximo alguns SELECTs em
+  // _migrations).
   await runMigrations(env);
   return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
 }
