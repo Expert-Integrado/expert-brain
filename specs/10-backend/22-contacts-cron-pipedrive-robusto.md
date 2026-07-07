@@ -1,6 +1,6 @@
 # Contacts: cron Pipedrive com checkpoint incremental, falha visível e janela sem buraco
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
 > **Depende de:** 40-ops/42-contacts-testes-typecheck-ci.md
 
 ## Contexto
@@ -134,15 +134,15 @@ Criar `test/maintenance-sync.test.ts` (vitest + mocks de `fetch`, `env.CACHE` e 
 
 ## Critérios de aceite
 
-- [ ] `pdGet` retorna `{ ok, status }`/`{ ok, data }` e envia o token via header `x-api-token`; `grep api_token src/index.ts` retorna vazio.
-- [ ] Run com erro HTTP (401/5xx/rede) em qualquer página termina com `ok: false` e **não** grava `maint:last_run`.
-- [ ] Run com sucesso completo grava `maint:last_run` com o timestamp de **início** do run (janela sobrepõe, nunca fura).
-- [ ] Existe teto de persons por invocação (default 500); ao atingi-lo o run grava `maint:cursor` (`since`, `run_started_at`, `next_start`) e retorna `partial: true`.
-- [ ] Run seguinte com cursor pendente retoma do `next_start` e, ao drenar a janela, apaga o cursor e grava `last_run = run_started_at` do cursor.
-- [ ] `maint:consecutive_failures` incrementa em falha, zera em sucesso completo, e `>= 2` produz log `maint_sync_failing` + chave `maint:alert`.
-- [ ] `GET /health` expõe `maint: { last_run, consecutive_failures, cursor_pending }`.
-- [ ] Testes de `test/maintenance-sync.test.ts` passam, incluindo o gate de token inválido (janela não avança).
-- [ ] Nenhuma mudança de schema D1; nenhum comportamento de escrita em `entities` alterado além do que já existia.
+- [x] `pdGet` retorna `{ ok, status }`/`{ ok, data }` e envia o token via header `x-api-token`; `grep api_token src/index.ts` retorna vazio.
+- [x] Run com erro HTTP (401/5xx/rede) em qualquer página termina com `ok: false` e **não** grava `maint:last_run`.
+- [x] Run com sucesso completo grava `maint:last_run` com o timestamp de **início** do run (janela sobrepõe, nunca fura).
+- [x] Existe teto de persons por invocação (default 500); ao atingi-lo o run grava `maint:cursor` (`since`, `run_started_at`, `next_start`) e retorna `partial: true`.
+- [x] Run seguinte com cursor pendente retoma do `next_start` e, ao drenar a janela, apaga o cursor e grava `last_run = run_started_at` do cursor.
+- [x] `maint:consecutive_failures` incrementa em falha, zera em sucesso completo, e `>= 2` produz log `maint_sync_failing` + chave `maint:alert`.
+- [x] `GET /health` expõe `maint: { last_run, consecutive_failures, cursor_pending }`.
+- [x] Testes de `test/maintenance-sync.test.ts` passam, incluindo o gate de token inválido (janela não avança).
+- [x] Nenhuma mudança de schema D1; nenhum comportamento de escrita em `entities` alterado além do que já existia.
 
 ## Validação
 
