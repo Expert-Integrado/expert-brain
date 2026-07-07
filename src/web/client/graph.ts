@@ -113,6 +113,12 @@ async function main() {
   // Compute degree up front — used for node fade on zoom-out, label priority.
   const degreeById = new Map<string, number>();
   const bumpDegree = (id: string) => degreeById.set(id, (degreeById.get(id) ?? 0) + 1);
+  // Grau só de links EXPLÍCITOS — é este que define "órfã" (nota isolada) pro
+  // toggle Esconder isoladas e pro enquadramento. degreeById (acima) soma
+  // explícitos + semânticos e serve pra fade/label; misturar os dois fazia o
+  // toggle ignorar notas que só têm vizinho semântico (contradizia o rótulo).
+  const explicitDegreeById = new Map<string, number>();
+  const bumpExplicitDegree = (id: string) => explicitDegreeById.set(id, (explicitDegreeById.get(id) ?? 0) + 1);
 
   // Phase A.6 — Obsidian-faithful: nodes default cinza-claro neutro
   // (equivalente a --text-muted do Obsidian dark theme). Cor por domínio
@@ -142,6 +148,7 @@ async function main() {
     if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
     bumpDegree(e.source); bumpDegree(e.target);
     if (e.type === 'explicit') {
+      bumpExplicitDegree(e.source); bumpExplicitDegree(e.target);
       explicitCount++;
       graph.addEdgeWithKey(e.id, e.source, e.target, {
         // A.36 — fio fino discreto (Obsidian): base size 0.8 + cinza-escuro
@@ -532,12 +539,21 @@ async function main() {
       const k = graph.getNodeAttribute(id, 'kind') as string;
       if (!state.kindFilter.has(k)) return false;
     }
-    // A.22 — hide orphans: nó sem nenhuma edge explícita é considerado órfão.
-    if (state.hideOrphans) {
-      const deg = degreeById.get(id) ?? 0;
-      if (deg === 0) return false;
-    }
+    // A.22 — hide orphans: nó sem nenhuma edge EXPLÍCITA é considerado órfão
+    // (explicitDegreeById; o degreeById geral inclui semânticas e mentiria aqui).
+    if (isOrphanConcealed(id)) return false;
     return true;
+  }
+
+  // Órfã que deve sumir com "Esconder isoladas" ativo. Exceções: match da busca,
+  // nó selecionado (painel aberto / ?focus=) e hover continuam visíveis E ativos —
+  // senão buscar/focar uma isolada vira beco morto (câmera voa até o nó, painel
+  // abre, e nada aparece no canvas). Condição ÚNICA compartilhada entre
+  // isNodeActive (dim/glow/linhas) e o nodeReducer (hidden de verdade).
+  function isOrphanConcealed(id: string): boolean {
+    if (!state.hideOrphans) return false;
+    if ((explicitDegreeById.get(id) ?? 0) > 0) return false;
+    return !state.searchMatches.has(id) && state.selectedNodeId !== id && state.hoveredNode !== id;
   }
 
   renderer.setSetting('nodeReducer', (n, attrs) => {
@@ -554,7 +570,16 @@ async function main() {
     // mobileNodeScale aplica escala extra em viewports <768px sem mexer no slider.
     const baseSize = (attrs.size as number) * v2('nodeSizeMult') * state.mobileNodeScale;
 
-    // Filter out: heavy dim, no label
+    // Esconder isoladas = esconder DE VERDADE (hidden), não só apagar a cor:
+    // com ~40% do vault órfão, o dim cosmético deixava milhares de fantasmas
+    // ocupando tela e bbox — o toggle parecia não fazer nada. Exceções (busca/
+    // seleção/hover) vivem em isOrphanConcealed — a órfã excetuada segue ATIVA
+    // (isNodeActive true) e cai nos branches normais de busca/hover/default.
+    if (isOrphanConcealed(n)) {
+      return { ...attrs, hidden: true, label: '' };
+    }
+
+    // Filter out (domínio/kind): heavy dim, no label
     if (!active) {
       return { ...attrs, color: 'rgba(70, 70, 90, 0.12)', label: '', size: baseSize * 0.6 };
     }
@@ -819,10 +844,23 @@ async function main() {
 
   // Bounding box robusta do núcleo: ignora ~2% de outliers em cada extremo de
   // cada eixo, pra os poucos nós isolados/distantes não desenquadrarem o miolo.
+  // O percentil de 2% assume POUCOS outliers; num vault com fração grande de
+  // órfãs (>25%, caso real a 4k notas) elas dominam a distribuição e esticam a
+  // bbox — o miolo conectado encolhe no centro. Nesse regime, o enquadramento
+  // passa a considerar só os nós CONECTADOS (grau explícito > 0); as órfãs
+  // continuam visíveis, apenas não mandam na moldura inicial.
+  // NUNCA no vault de contatos: lá os ~6,5k isolados são carregados de
+  // propósito (all=1, decisão de produto) e a fração de órfãs é sempre alta —
+  // o connectedOnly cortaria a maioria dos contatos da moldura inicial E do
+  // botão "Ajustar à tela" (mesma função), sem rota de recuperação na UI.
   function applyCoreBBox() {
+    const total = graph.order;
+    const orphanShare = total > 0 ? (total - explicitDegreeById.size) / total : 0;
+    const connectedOnly = !isContacts && orphanShare > 0.25;
     const xs: number[] = [];
     const ys: number[] = [];
-    graph.forEachNode((_id, attr) => {
+    graph.forEachNode((id, attr) => {
+      if (connectedOnly && (explicitDegreeById.get(id) ?? 0) === 0) return;
       if (isFinite(attr.x) && isFinite(attr.y)) { xs.push(attr.x); ys.push(attr.y); }
     });
     if (xs.length < 8) { renderer.setCustomBBox(null); return; }
@@ -908,7 +946,8 @@ async function main() {
   function runPhysics(_ms?: number) {
     worker.postMessage({ type: 'reheat', alpha: 0.5 });
   }
-  // Inicial reveal já roda automático com alpha=1 do init. Não precisa burst extra.
+  // Refino inicial já roda automático com o alpha=0.25 do init (ajuste suave
+  // sobre o layout do servidor). Não precisa burst extra.
   void runPhysics;
 
   // ────────────────────────────────────────────────────────────────────────
@@ -1064,6 +1103,9 @@ async function main() {
   const panel = ensurePanel();
   function openPanel(nodeId: string) {
     state.selectedNodeId = nodeId;
+    // Reavalia o nodeReducer: nó selecionado escapa do hidden de "Esconder
+    // isoladas" (senão focar numa órfã escondida não mostra nada no canvas).
+    renderer.refresh();
     const node = graph.getNodeAttributes(nodeId);
     // Contato tem painel próprio: telefone/empresa/conexões/eventos via proxy —
     // o template de NOTA (kind/tldr/"Abrir nota completa") não se aplica.
@@ -1107,6 +1149,7 @@ async function main() {
   function closePanel() {
     state.selectedNodeId = null;
     panel.classList.remove('open');
+    renderer.refresh(); // re-esconde a órfã que estava visível só por seleção
   }
 
   // Painel de CONTATO: esqueleto imediato (nome/tipo/grau) + hidratação com o

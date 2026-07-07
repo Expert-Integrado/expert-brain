@@ -77,6 +77,14 @@ const DEFAULTS: Forces = { center: 0.1, repel: 1000, link: 1, distance: 250 };
 // Se conflitar com o modelo Obsidian (grafo "quadrado" demais), baixar pra 0.02.
 const DOMAIN_GRAVITY = 0.03;
 
+// Fix órfãs (espelho do ORPHAN_GRAVITY_3D do graph3d.ts): nó de grau 0 não tem
+// forceLink segurando, então o repel sem cap (1000, Obsidian-fiel) o expulsava
+// pra periferia — a 4k notas isso virava um halo de "anéis fósseis" acumulado
+// nas bordas do quadro. Órfã recebe 4x a gravidade de domínio → assenta num
+// anel PRÓXIMO ao cluster do seu domínio em vez de fugir. Conectados seguem em
+// DOMAIN_GRAVITY (mesma sensação de agrupamento temático de antes).
+const ORPHAN_GRAVITY = DOMAIN_GRAVITY * 4; // 0.12 — mesmo valor do 3D
+
 let nodes: SimNode[] = [];
 let links: SimLink[] = [];
 let sim: Simulation<SimNode, SimLink> | null = null;
@@ -158,6 +166,9 @@ function recomputeDomainCentroids() {
 // Alvo X/Y da gravidade de domínio pra cada nó (fallback 0 = centro global).
 const domainTargetX = (d: SimNode) => domainCentroid.get(d.domain || '_')?.x ?? 0;
 const domainTargetY = (d: SimNode) => domainCentroid.get(d.domain || '_')?.y ?? 0;
+// Strength por nó: órfã (grau 0 em links explícitos) usa ORPHAN_GRAVITY.
+// degreeById é recomputado no init (antes do rebuild), então a closure lê valor atual.
+const domainGravityStrength = (d: SimNode) => ((degreeById.get(d.id) ?? 0) === 0 ? ORPHAN_GRAVITY : DOMAIN_GRAVITY);
 
 function rebuildSimulation(initialAlpha = 1) {
   if (sim) sim.stop();
@@ -205,8 +216,8 @@ function rebuildSimulation(initialAlpha = 1) {
     // A.37 — GRAVIDADE POR DOMÍNIO (nossa, fora do Obsidian): forceX/forceY
     // fracos puxando cada nó pro centróide do seu domínio. Agrupa os clusters
     // temáticos num vault denso. DOMAIN_GRAVITY calibra (0 desliga).
-    .force('domainX', forceX<SimNode>(domainTargetX).strength(DOMAIN_GRAVITY))
-    .force('domainY', forceY<SimNode>(domainTargetY).strength(DOMAIN_GRAVITY))
+    .force('domainX', forceX<SimNode>(domainTargetX).strength(domainGravityStrength))
+    .force('domainY', forceY<SimNode>(domainTargetY).strength(domainGravityStrength))
     // A.38 — collide baseline Obsidian (raio flat 60 / strength 0.5, sempre on,
     // igual ao asar). Raio/intensidade/iterações sobem no modo "não sobrepor".
     .force('collide', forceCollide<SimNode>().radius(collideRadius).strength(collideStrength()).iterations(collideIterations()))

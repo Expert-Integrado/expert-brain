@@ -45,7 +45,11 @@ export interface GraphPayload {
 // 'mention' (camada opt-in nota↔contato, servida em /app/graph/data?mentions=1). O SHAPE
 // do JSON base é o mesmo pro grafo de conhecimento (a camada de menção só entra sob o
 // query param), mas o bump garante rebuild limpo do payload cacheado no deploy.
-const CACHE_KEY = 'graph:v12';
+// v13: acompanha o bump do LAYOUT_KEY v3→v4 (re-seed pós-fix de órfãs). As posições
+// x/y vão DENTRO do payload cacheado; sem este bump, o payload v12 (posições v3)
+// continuaria servido até a próxima mutação de dado mudar o sourceHash — o re-seed
+// precisa valer já no primeiro load pós-deploy.
+const CACHE_KEY = 'graph:v13';
 
 // Orçamento de payload do /app/graph/data. Gate anti-regressão (spec 26): o teste
 // sintético N=5k falha se o JSON servido estourar este teto. Bem abaixo do limite
@@ -81,7 +85,13 @@ export async function invalidateGraphCache(_env: Env): Promise<void> {
 // v3 (A.37): re-seed pra física Obsidian-fiel (repel sem cap de distanceMax +
 // gravidade por domínio) — sem o bump o layout novo herdaria as posições da
 // física v2 (repel castrado por distanceMax=250) e o efeito não apareceria.
-const LAYOUT_KEY = 'graph-layout:v3';
+// v4: re-seed pós-fix de gravidade de órfãs no sim-worker. As posições v3
+// acumularam "anéis fósseis": cada época de crescimento semeava nós novos num
+// raio R=40*sqrt(n) cada vez maior (clusteredSeed) e as posições ficavam
+// eternas aqui — a 4k notas isso virou halos de bolinhas soltas nas bordas.
+// Sem o bump, a física nova (órfã gravitando pro cluster do domínio) partiria
+// do layout fóssil e levaria muitos ticks pra desfazer o artefato.
+const LAYOUT_KEY = 'graph-layout:v4';
 type StoredLayout = Record<string, { x: number; y: number }>;
 
 async function computeSourceHash(env: Env): Promise<string> {
