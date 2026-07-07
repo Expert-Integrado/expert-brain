@@ -1,12 +1,12 @@
 name: CI
 
-# Gate obrigatorio de push/PR pra master: typecheck + testes + build reprodutivel.
+# Gate obrigatorio de push/PR pra main: typecheck + testes + build reprodutivel.
 # G0 do roadmap de specs (specs/40-ops/41-ci-typecheck-e-testes-criticos-brain.md) —
 # nenhuma outra spec de codigo deveria rodar antes deste workflow ficar verde.
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
 
 concurrency:
