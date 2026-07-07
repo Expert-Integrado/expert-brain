@@ -266,7 +266,7 @@ Triagem feita em 07/07/2026 direto na sessão (subagentes indisponíveis — org
 | E7 | `30-features/34` | contacts | DONE 07/07 (a59f646, deploy c85f0a98; 10 testes, 313 verdes; smoke 400/401 ok). Gate pendente do dono: backup D1 antes do 1o uso real. Era: delete/merge de entidades inexistentes |
 | E8 | `30-features/32` | brain | DONE 07/07 (caps 15/secao + teto 4000 + fosseis 14d+ agregados; LIMIT 200; `stale` no list_tasks; auto-cancel opt-in via `TASK_AUTOCANCEL_AFTER_DAYS`, RETURNING pra contagem por causa dos triggers FTS; 775 verdes). Era: `notify.ts` sem caps de digest nem flag stale |
 | E9 | `10-backend/23` | brain | DONE 07/07 (msg Workers AI honesta pro update_note; contactsError 404/503/5xx; category z.enum; ingest URL com teto real via reader incremental; versao MCP do package.json; 12 testes novos, 787 verdes). Era: mensagens de erro MCP |
-| E10 | `20-frontend/25` | brain | VIVA P2 — interação do grafo (client) |
+| E10 | `20-frontend/25` | brain | DONE 07/07 (itens 2 e 5 ja tinham shipado via specs anteriores; entregues: overlay pointer-events:none sempre + hit-test no clickStage; culling 100px + cache viewport/frame + batching por alpha nas 2 camadas; modal com why>=20, select analogous_to/same_mechanism_as, contador e erro inline; server valida relation_type contra EDGE_TYPES; 3 testes novos, 790 verdes; fps: medida manual DevTools fica pro dono). Era: interação do grafo (client) |
 | E11 | `20-frontend/27` | contacts | VIVA P2 — rate-limit no login do console standalone |
 | E12 | `30-features/33` | brain | VIVA P2 — share de nota; reconciliar com trilho existente de `share.ts` |
 | E13 | `30-features/36` | ambos | IN-PROGRESS L — edição inline; auditar o que falta antes de codar |

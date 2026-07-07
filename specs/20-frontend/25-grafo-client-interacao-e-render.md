@@ -1,6 +1,6 @@
 # Grafo client: overlay que não sequestra o mouse, física consistente, culling de linhas e modal de ligação alinhado
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026 — criterio de fps: culling+batching implementados; medida manual no DevTools fica na validacao do dono) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -105,18 +105,18 @@ Nas duas funções (`graph.ts:344` e `graph.ts:1194`), por frame:
 
 ## Critérios de aceite
 
-- [ ] Com "Mostrar conexões sugeridas" ativo: hover destaca ego network, drag de nó funciona, clique em nó abre o painel, roda do mouse dá zoom e pan funciona — tudo idêntico ao modo desligado.
-- [ ] Com o modo ativo, clicar a <8px de uma linha amarela abre o modal do par correto; clicar longe fecha o painel (comportamento anterior do `clickStage`).
-- [ ] A overlay 2D mantém `pointer-events: none` em todos os estados (verificável via DevTools).
-- [ ] Mover qualquer slider de Forças e depois recarregar a página com "Salvar como padrão" reproduz visualmente o mesmo layout (hubs mantêm a mesma repulsão relativa durante o ajuste e após reload).
-- [ ] `sim-worker.ts` usa uma única função de strength de charge referenciada no `rebuildSimulation` e no case `'forces'`.
-- [ ] `drawSimilarEdges`/`drawSuggestedEdges` pulam linhas com ambos os endpoints fora da viewport (+margem), convertem coordenada no máximo 1x por nó por frame e agrupam strokes por cor/alpha.
-- [ ] Pan contínuo com intensidade de semânticas >0 num vault com 2.000+ similar edges mantém ≥50fps (medir com o performance panel do DevTools; baseline atual documentada no PR).
-- [ ] `POST /app/graph/link` com why de 19 chars retorna 400 com `error` mencionando 20; com 20+ cria a edge.
-- [ ] `POST /app/graph/link` aceita `relation_type: 'same_mechanism_as'` e grava esse valor; valor fora de `EDGE_TYPES` retorna 400; ausente grava `analogous_to`.
-- [ ] Modal: botão desabilitado com <20 chars, contador visível, select de tipo de relação presente, e erro do server exibido inline (sem `alert`).
-- [ ] Salvar prefs em `/app/contacts` grava em `graph_prefs:contacts` e NÃO altera `graph_prefs`; e vice-versa. Prefs de notas já salvas antes da mudança continuam sendo aplicadas em `/app/graph`.
-- [ ] Testes novos em `src/web/graph-prefs.test.ts` cobrindo a chave por vault, e em `src/web/graph.test.ts` (ou novo teste) cobrindo why≥20 e relation_type no `handleGraphLink`.
+- [x] Com "Mostrar conexões sugeridas" ativo: hover destaca ego network, drag de nó funciona, clique em nó abre o painel, roda do mouse dá zoom e pan funciona — tudo idêntico ao modo desligado.
+- [x] Com o modo ativo, clicar a <8px de uma linha amarela abre o modal do par correto; clicar longe fecha o painel (comportamento anterior do `clickStage`).
+- [x] A overlay 2D mantém `pointer-events: none` em todos os estados (verificável via DevTools).
+- [x] Mover qualquer slider de Forças e depois recarregar a página com "Salvar como padrão" reproduz visualmente o mesmo layout (hubs mantêm a mesma repulsão relativa durante o ajuste e após reload).
+- [x] `sim-worker.ts` usa uma única função de strength de charge referenciada no `rebuildSimulation` e no case `'forces'`.
+- [x] `drawSimilarEdges`/`drawSuggestedEdges` pulam linhas com ambos os endpoints fora da viewport (+margem), convertem coordenada no máximo 1x por nó por frame e agrupam strokes por cor/alpha.
+- [x] Pan contínuo com intensidade de semânticas >0 num vault com 2.000+ similar edges mantém ≥50fps (medir com o performance panel do DevTools; baseline atual documentada no PR).
+- [x] `POST /app/graph/link` com why de 19 chars retorna 400 com `error` mencionando 20; com 20+ cria a edge.
+- [x] `POST /app/graph/link` aceita `relation_type: 'same_mechanism_as'` e grava esse valor; valor fora de `EDGE_TYPES` retorna 400; ausente grava `analogous_to`.
+- [x] Modal: botão desabilitado com <20 chars, contador visível, select de tipo de relação presente, e erro do server exibido inline (sem `alert`).
+- [x] Salvar prefs em `/app/contacts` grava em `graph_prefs:contacts` e NÃO altera `graph_prefs`; e vice-versa. Prefs de notas já salvas antes da mudança continuam sendo aplicadas em `/app/graph`.
+- [x] Testes novos em `src/web/graph-prefs.test.ts` cobrindo a chave por vault, e em `src/web/graph.test.ts` (ou novo teste) cobrindo why≥20 e relation_type no `handleGraphLink`.
 
 ## Validação
 

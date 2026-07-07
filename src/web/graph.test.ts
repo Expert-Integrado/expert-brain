@@ -279,3 +279,51 @@ describe('orçamento de payload em escala N=5k (spec 26)', () => {
     expect(data.nodes.length).toBe(5000);
   }, 120_000);
 });
+
+// spec 20-frontend/25: régua canônica do MCP no endpoint do modal — why >= 20
+// chars e relation_type validado contra EDGE_TYPES (default analogous_to).
+describe('/app/graph/link — why >= 20 e relation_type (spec 25)', () => {
+  beforeAll(async () => {
+    await (env as any).DB.prepare(`DELETE FROM edges`).run();
+    await (env as any).DB.prepare(`DELETE FROM notes`).run();
+    await (env as any).DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
+      VALUES ('rl1','Rel One','b','t','["infra"]',NULL,1,1)`).run();
+    await (env as any).DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at)
+      VALUES ('rl2','Rel Two','b','t','["ml"]',NULL,2,2)`).run();
+  });
+
+  const post = async (body: unknown) => SELF.fetch('https://x.test/app/graph/link', {
+    method: 'POST',
+    headers: { cookie: await authCookie(), 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  it('why com 19 chars => 400 mencionando 20', async () => {
+    const res = await post({ source: 'rl1', target: 'rl2', why: '1234567890123456789' });
+    expect(res.status).toBe(400);
+    const b = await res.json() as any;
+    expect(b.error).toContain('20');
+  });
+
+  it('relation_type same_mechanism_as e gravado; ausente vira analogous_to', async () => {
+    const r1 = await post({ source: 'rl1', target: 'rl2', why: 'mecanismo compartilhado de teste A', relation_type: 'same_mechanism_as' });
+    expect(r1.status).toBe(200);
+    const { id } = await r1.json() as any;
+    const row = await (env as any).DB.prepare(`SELECT relation_type FROM edges WHERE id = ?`).bind(id).first();
+    expect(row.relation_type).toBe('same_mechanism_as');
+
+    await (env as any).DB.prepare(`DELETE FROM edges`).run();
+    const r2 = await post({ source: 'rl1', target: 'rl2', why: 'mecanismo compartilhado de teste B' });
+    expect(r2.status).toBe(200);
+    const { id: id2 } = await r2.json() as any;
+    const row2 = await (env as any).DB.prepare(`SELECT relation_type FROM edges WHERE id = ?`).bind(id2).first();
+    expect(row2.relation_type).toBe('analogous_to');
+  });
+
+  it('relation_type fora do enum => 400 listando os aceitos', async () => {
+    const res = await post({ source: 'rl1', target: 'rl2', why: 'mecanismo compartilhado de teste C', relation_type: 'friends_with' });
+    expect(res.status).toBe(400);
+    const b = await res.json() as any;
+    expect(b.error).toContain('same_mechanism_as');
+  });
+});

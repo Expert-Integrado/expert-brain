@@ -5,7 +5,7 @@ import { authorizeBearer } from './bearer-auth.js';
 import { newId } from '../util/id.js';
 import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { explicitPairKey } from './similarity.js';
-import { getTopSimilarEdges, listAllMentions } from '../db/queries.js';
+import { getTopSimilarEdges, listAllMentions, EDGE_TYPES } from '../db/queries.js';
 import { NON_TASK_FILTER } from '../db/queries.js';
 
 // Auth das rotas /app/graph/*: escopo 'graph' (só GRAPH_EXPORT_TOKEN) via o helper
@@ -410,13 +410,13 @@ export interface NoteMetaRow {
 // Kept out of the main graph payload so GRAPH_CACHE stays compact and this can
 // be refreshed independently without invalidating layout positions.
 // A.32 — POST /app/graph/link: cria edge explícita justificada (Latticework).
-// Aceita { source, target, why } e invalida cache.
+// Aceita { source, target, why, relation_type? } e invalida cache.
 export async function handleGraphLink(req: Request, env: Env): Promise<Response> {
   if (!(await authorizeBearer(req, env, 'graph'))) {
     const session = await requireSession(req, env);
     if (!session.ok) return session.response;
   }
-  let body: { source?: string; target?: string; why?: string };
+  let body: { source?: string; target?: string; why?: string; relation_type?: string };
   try { body = await req.json(); } catch {
     return new Response(JSON.stringify({ error: 'invalid json' }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
@@ -426,8 +426,15 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
   if (!source || !target || source === target) {
     return new Response(JSON.stringify({ error: 'source and target required and must differ' }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
-  if (why.length < 8) {
-    return new Response(JSON.stringify({ error: 'why minimum 8 characters' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  // Mesma régua do MCP (src/mcp/tools/link.ts): why nomeia o MECANISMO, mínimo 20.
+  if (why.length < 20) {
+    return new Response(JSON.stringify({ error: 'why minimum 20 characters — nomeie o mecanismo compartilhado' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  }
+  // relation_type opcional (spec 20-frontend/25); default preserva clients antigos
+  // (Expert Console usa este endpoint via Bearer sem mandar o campo).
+  const relationType = (body.relation_type || 'analogous_to').trim();
+  if (!(EDGE_TYPES as readonly string[]).includes(relationType)) {
+    return new Response(JSON.stringify({ error: `relation_type must be one of: ${EDGE_TYPES.join(', ')}` }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
   // Verifica que ambas notas existem
   const exists = await env.DB.prepare(`SELECT id FROM notes WHERE id IN (?, ?) AND deleted_at IS NULL`).bind(source, target).all<{ id: string }>();
@@ -438,7 +445,7 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
   await env.DB.prepare(
     `INSERT OR IGNORE INTO edges (id, from_id, to_id, relation_type, why, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`
-  ).bind(id, source, target, 'analogous_to', why, Date.now()).run();
+  ).bind(id, source, target, relationType, why, Date.now()).run();
   // Invalida cache do graph (mesmo helper usado pela tool delete_link).
   await invalidateGraphCache(env);
   return new Response(JSON.stringify({ ok: true, id }), { headers: { 'content-type': 'application/json' } });

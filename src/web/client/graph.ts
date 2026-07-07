@@ -404,18 +404,48 @@ async function main() {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  // Spec 20-frontend/25 (perf): cache de conversão graph→viewport POR FRAME.
+  // graphToViewport roda no máximo 1x por nó por frame (não 2x por linha) — as
+  // duas camadas de linha (semânticas + sugeridas) compartilham o cache; o
+  // afterRender limpa antes de desenhar.
+  const viewportCache = new Map<string, { x: number; y: number }>();
+  function nodeViewport(id: string): { x: number; y: number } {
+    let v = viewportCache.get(id);
+    if (!v) {
+      v = renderer.graphToViewport({
+        x: graph.getNodeAttribute(id, 'x') as number,
+        y: graph.getNodeAttribute(id, 'y') as number,
+      });
+      viewportCache.set(id, v);
+    }
+    return v;
+  }
+  // Culling: pula a linha quando AMBOS os endpoints estão fora da viewport
+  // expandida por 100px. Linha que cruza a tela com os dois endpoints fora da
+  // margem some — aceitável pro caso de uso (o fallback seria interseção
+  // segmento×retângulo, mais caro; documentado na spec 25).
+  const CULL_MARGIN = 100;
+  function outOfView(v: { x: number; y: number }, w: number, h: number): boolean {
+    return v.x < -CULL_MARGIN || v.x > w + CULL_MARGIN || v.y < -CULL_MARGIN || v.y > h + CULL_MARGIN;
+  }
+
   function drawSimilarEdges() {
     octx.clearRect(0, 0, overlay.width, overlay.height);
     if (state.hideSimilar || state.similarOpacity <= 0 || similarEdges.length === 0) return;
 
-    octx.save();
-    octx.lineWidth = 1.1;
-    octx.setLineDash([6, 5]);
-    octx.lineCap = 'round';
-
+    const w = overlay.width / dpr;
+    const h = overlay.height / dpr;
+    // Batching por alpha: os alphas possíveis num frame são poucos (base, boost
+    // de search/hover, dim) — acumula segmentos por bucket e faz 1 stroke por
+    // bucket em vez de beginPath/stroke por linha.
+    const buckets = new Map<number, Array<{ ax: number; ay: number; bx: number; by: number }>>();
     for (const e of similarEdges) {
       if (!graph.hasNode(e.source) || !graph.hasNode(e.target)) continue;
       if (!isNodeActive(e.source) || !isNodeActive(e.target)) continue;
+
+      const a = nodeViewport(e.source);
+      const b = nodeViewport(e.target);
+      if (outOfView(a, w, h) && outOfView(b, w, h)) continue;
 
       // When hovering a node, boost similar edges touching its ego network
       // and dim the rest so the local structure reads without hiding context.
@@ -429,18 +459,23 @@ async function main() {
         alpha = inEgo ? Math.max(0.55, state.similarOpacity) : state.similarOpacity * 0.25;
       }
 
+      let bucket = buckets.get(alpha);
+      if (!bucket) { bucket = []; buckets.set(alpha, bucket); }
+      bucket.push({ ax: a.x, ay: a.y, bx: b.x, by: b.y });
+    }
+    if (buckets.size === 0) return;
+
+    octx.save();
+    octx.lineWidth = 1.1;
+    octx.setLineDash([6, 5]);
+    octx.lineCap = 'round';
+    for (const [alpha, lines] of buckets) {
       octx.strokeStyle = `rgba(140, 200, 255, ${alpha})`;
-      const a = renderer.graphToViewport({
-        x: graph.getNodeAttribute(e.source, 'x') as number,
-        y: graph.getNodeAttribute(e.source, 'y') as number,
-      });
-      const b = renderer.graphToViewport({
-        x: graph.getNodeAttribute(e.target, 'x') as number,
-        y: graph.getNodeAttribute(e.target, 'y') as number,
-      });
       octx.beginPath();
-      octx.moveTo(a.x, a.y);
-      octx.lineTo(b.x, b.y);
+      for (const l of lines) {
+        octx.moveTo(l.ax, l.ay);
+        octx.lineTo(l.bx, l.by);
+      }
       octx.stroke();
     }
     octx.restore();
@@ -451,9 +486,10 @@ async function main() {
   // links). Reduz overhead de event dispatch e mantém ordem determinística.
   renderer.on('afterRender', () => {
     // P2 (perf) — durante o reveal da simulação (cameraSettled=false) as linhas
-    // semânticas/sugeridas são caras (loop em todas + 2 conversões de coordenada
-    // por linha) e seriam redesenhadas a cada frame do settle. Só desenha depois
+    // semânticas/sugeridas são caras (loop em todas + conversões de coordenada)
+    // e seriam redesenhadas a cada frame do settle. Só desenha depois
     // que assenta. O hover ring é barato e não acontece durante o load.
+    viewportCache.clear(); // posições/câmera mudaram — cache vale só neste frame
     if (cameraSettled) {
       drawSimilarEdges();
       drawSuggestedEdges();
@@ -959,7 +995,15 @@ async function main() {
     if (didDrag) { didDrag = false; return; }
     openPanel(node);
   });
-  renderer.on('clickStage', () => {
+  renderer.on('clickStage', ({ event }: { event: { x: number; y: number } }) => {
+    // Spec 20-frontend/25: com sugeridas ativas, o hit-test das linhas roda AQUI
+    // (a overlay 2D fica pointer-events:none SEMPRE — deixá-la 'auto' sequestrava
+    // hover/drag/zoom/pan do Sigma). O clickStage já resolve nó-vs-stage e ignora
+    // cliques que foram drag.
+    if (suggestedActive) {
+      const hit = hitTestSuggested(event.x, event.y);
+      if (hit) { openSuggestModal(hit.source, hit.target); return; }
+    }
     closePanel();
   });
 
@@ -1984,27 +2028,25 @@ async function main() {
 
   function drawSuggestedEdges() {
     if (!suggestedActive) return;
+    // Cor única → um path só (spec 25); mesmo cache/culling das semânticas.
+    const w = overlay.width / dpr;
+    const h = overlay.height / dpr;
     octx.save();
     octx.lineWidth = 1.4;
     octx.setLineDash([4, 4]);
     octx.lineCap = 'round';
     octx.strokeStyle = 'rgba(255, 200, 100, 0.55)';
+    octx.beginPath();
     for (const p of suggestedPairs) {
       if (!graph.hasNode(p.source) || !graph.hasNode(p.target)) continue;
       if (!isNodeActive(p.source) || !isNodeActive(p.target)) continue;
-      const a = renderer.graphToViewport({
-        x: graph.getNodeAttribute(p.source, 'x') as number,
-        y: graph.getNodeAttribute(p.source, 'y') as number,
-      });
-      const b = renderer.graphToViewport({
-        x: graph.getNodeAttribute(p.target, 'x') as number,
-        y: graph.getNodeAttribute(p.target, 'y') as number,
-      });
-      octx.beginPath();
+      const a = nodeViewport(p.source);
+      const b = nodeViewport(p.target);
+      if (outOfView(a, w, h) && outOfView(b, w, h)) continue;
       octx.moveTo(a.x, a.y);
       octx.lineTo(b.x, b.y);
-      octx.stroke();
     }
+    octx.stroke();
     octx.restore();
   }
   // afterRender unificado em um único listener (ver acima).
@@ -2019,12 +2061,10 @@ async function main() {
     renderer.refresh();
   }
 
-  // Click em edge sugerida (canvas overlay): detecta proximidade do mouse com cada par
-  overlay.addEventListener('click', (e) => {
-    if (!suggestedActive) return;
-    const rect = overlay.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+  // Hit-test das linhas sugeridas em coordenadas de viewport — chamado pelo
+  // clickStage do Sigma (spec 25), NUNCA por listener na overlay (que permanece
+  // pointer-events:none em todos os estados).
+  function hitTestSuggested(mx: number, my: number): { source: string; target: string } | null {
     let best: { p: typeof suggestedPairs[0]; d: number } | null = null;
     for (const p of suggestedPairs) {
       if (!graph.hasNode(p.source) || !graph.hasNode(p.target)) continue;
@@ -2039,15 +2079,7 @@ async function main() {
       const d = pointToSegmentDistance(mx, my, a.x, a.y, b.x, b.y);
       if (!best || d < best.d) best = { p, d };
     }
-    if (best && best.d < 8) {
-      openSuggestModal(best.p.source, best.p.target);
-    }
-  });
-  // Pra que o overlay receba pointer events ao clicar (default é none pra não bloquear hover do Sigma).
-  // Solução: só ativa pointer-events quando suggestedActive E mouse não está em hover de nó.
-  // Implementação simples: overlay só vira clicável quando suggested está ON.
-  function syncOverlayPointer() {
-    overlay.style.pointerEvents = suggestedActive ? 'auto' : 'none';
+    return best && best.d < 8 ? { source: best.p.source, target: best.p.target } : null;
   }
 
   function pointToSegmentDistance(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
@@ -2060,6 +2092,27 @@ async function main() {
     return Math.hypot(px - xx, py - yy);
   }
 
+  // Regra canônica do MCP (link.ts): why nomeia o mecanismo, mínimo 20 chars.
+  const WHY_MIN = 20;
+  function suggestErrorEl(): HTMLElement | null { return document.getElementById('suggest-error'); }
+  function showSuggestError(msg: string) {
+    const el = suggestErrorEl();
+    if (el) { el.textContent = msg; el.style.display = 'block'; }
+  }
+  function clearSuggestError() {
+    const el = suggestErrorEl();
+    if (el) { el.textContent = ''; el.style.display = 'none'; }
+  }
+  function syncWhyCounter() {
+    const ta = document.getElementById('suggest-why') as HTMLTextAreaElement | null;
+    const count = document.getElementById('suggest-why-count');
+    const btn = document.getElementById('suggest-create-btn') as HTMLButtonElement | null;
+    const len = (ta?.value || '').trim().length;
+    if (count) count.textContent = `${len}/${WHY_MIN} mín`;
+    if (btn) btn.disabled = len < WHY_MIN;
+  }
+  document.getElementById('suggest-why')?.addEventListener('input', () => { clearSuggestError(); syncWhyCounter(); });
+
   function openSuggestModal(sourceId: string, targetId: string) {
     const bd = document.getElementById('graph-suggest-modal-backdrop');
     const fromEl = document.getElementById('suggest-from');
@@ -2069,6 +2122,10 @@ async function main() {
     fromEl.textContent = graph.getNodeAttribute(sourceId, 'label') as string;
     toEl.textContent = graph.getNodeAttribute(targetId, 'label') as string;
     ta.value = '';
+    const rel = document.getElementById('suggest-relation') as HTMLSelectElement | null;
+    if (rel) rel.value = 'analogous_to';
+    clearSuggestError();
+    syncWhyCounter();
     suggestModalState = { source: sourceId, target: targetId };
     bd.classList.add('open');
     setTimeout(() => ta.focus(), 0);
@@ -2082,11 +2139,13 @@ async function main() {
     if (!suggestModalState) return;
     const ta = document.getElementById('suggest-why') as HTMLTextAreaElement | null;
     const why = (ta?.value || '').trim();
-    if (!why) {
-      alert('Escreva uma justificativa pra ligação (POR QUÊ se conectam) — princípio Latticework.');
+    if (why.length < WHY_MIN) {
+      showSuggestError(`Justificativa com no mínimo ${WHY_MIN} caracteres — nomeie o mecanismo compartilhado (princípio Latticework).`);
       ta?.focus();
       return;
     }
+    const relSel = document.getElementById('suggest-relation') as HTMLSelectElement | null;
+    const relationType = relSel?.value === 'same_mechanism_as' ? 'same_mechanism_as' : 'analogous_to';
     const btn = document.getElementById('suggest-create-btn') as HTMLButtonElement | null;
     if (btn) { btn.disabled = true; btn.textContent = 'Criando...'; }
     try {
@@ -2098,9 +2157,19 @@ async function main() {
           source: suggestModalState.source,
           target: suggestModalState.target,
           why,
+          relation_type: relationType,
         }),
       });
-      if (!res.ok) throw new Error(`status ${res.status}`);
+      if (!res.ok) {
+        // Mostra o erro REAL do server inline (mantém o modal aberto pra corrigir).
+        let serverMsg = `Erro ao criar ligação (HTTP ${res.status}).`;
+        try {
+          const body = await res.json() as { error?: string };
+          if (body?.error) serverMsg = body.error;
+        } catch { /* corpo não-JSON: fica a mensagem genérica */ }
+        showSuggestError(serverMsg);
+        return;
+      }
       // Adiciona edge no graph local sem precisar reload
       const id = `manual_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       try {
@@ -2123,9 +2192,9 @@ async function main() {
       renderer.refresh();
     } catch (err) {
       console.error('createSuggestedLink failed', err);
-      alert('Erro ao criar ligação. Veja console.');
+      showSuggestError('Erro de rede ao criar ligação — tente de novo.');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Criar ligação'; }
+      if (btn) { btn.textContent = 'Criar ligação'; syncWhyCounter(); }
     }
   }
 
@@ -2137,7 +2206,7 @@ async function main() {
     const btn = target.closest('[data-graph-action]') as HTMLElement | null;
     if (!btn) return;
     const action = btn.dataset.graphAction;
-    if (action === 'toggle-suggested') { toggleSuggestedLinks(); syncOverlayPointer(); }
+    if (action === 'toggle-suggested') toggleSuggestedLinks();
     if (action === 'suggest-cancel') closeSuggestModal();
     if (action === 'suggest-create') void createSuggestedLink();
   });

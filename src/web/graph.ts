@@ -696,12 +696,21 @@ async function renderGraphLikePage(
             <span id="suggest-to"></span>
           </div>
           <label style="font-size:11px; color:rgba(255,255,255,0.65); display:block;">
-            Por que se conectam?
+            Tipo de relação
+            <select id="suggest-relation" style="width:100%; margin-top:4px; padding:6px 8px; background:rgba(255,255,255,0.05); color:inherit; border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:12px;">
+              <option value="analogous_to" selected>análogo a</option>
+              <option value="same_mechanism_as">mesmo mecanismo que</option>
+            </select>
+          </label>
+          <label style="font-size:11px; color:rgba(255,255,255,0.65); display:block;">
+            Por que se conectam? (nomeie o mecanismo — mín. 20 caracteres)
             <textarea id="suggest-why" placeholder="Ex: ambas tratam de filtros mentais que distorcem decisão"></textarea>
           </label>
+          <p id="suggest-why-count" style="font-size:11px; color:rgba(255,255,255,0.45); margin:2px 0 0; text-align:right;">0/20 mín</p>
+          <p id="suggest-error" class="suggest-error" style="display:none; font-size:12px; color:rgba(255,120,120,0.9); margin:6px 0 0;"></p>
           <div class="graph-suggest-modal-actions">
             <button data-graph-action="suggest-cancel" type="button">Cancelar</button>
-            <button id="suggest-create-btn" data-graph-action="suggest-create" class="primary" type="button">Criar ligação</button>
+            <button id="suggest-create-btn" data-graph-action="suggest-create" class="primary" type="button" disabled>Criar ligação</button>
           </div>
         </div>
       </div>
