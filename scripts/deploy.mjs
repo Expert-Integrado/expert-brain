@@ -8,7 +8,7 @@
 //
 // Fallback de URL (custom domain / output inesperado): env BRAIN_URL.
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 
 const isWin = process.platform === 'win32';
 
@@ -42,8 +42,21 @@ if (!base) {
 // Vault configurado exige Bearer (spec 10-backend/18): BRAIN_SETUP_TOKEN,
 // SETUP_TOKEN ou GRAPH_EXPORT_TOKEN do ambiente — nunca hardcoded aqui.
 const url = `${base}/setup/provision`;
+// Fallback win32: token persistido via `setx` só chega em shells NOVAS — uma shell
+// aberta antes do setx não o herda. Ler HKCU\Environment cobre esse caso sem
+// nunca imprimir o valor.
+function userEnvFromRegistry(name) {
+  if (process.platform !== 'win32') return undefined;
+  try {
+    const out = execSync(`reg query HKCU\\Environment /v ${name}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return /REG_(?:EXPAND_)?SZ\s+(\S+)/.exec(out)?.[1];
+  } catch {
+    return undefined;
+  }
+}
 const bearer =
-  process.env.BRAIN_SETUP_TOKEN || process.env.SETUP_TOKEN || process.env.GRAPH_EXPORT_TOKEN;
+  process.env.BRAIN_SETUP_TOKEN || process.env.SETUP_TOKEN || process.env.GRAPH_EXPORT_TOKEN ||
+  userEnvFromRegistry('BRAIN_SETUP_TOKEN');
 const headers = bearer ? { authorization: `Bearer ${bearer}` } : undefined;
 const delays = [0, 2000, 5000];
 let lastErr = '';
