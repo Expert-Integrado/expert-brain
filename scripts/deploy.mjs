@@ -58,7 +58,14 @@ const bearer =
   process.env.BRAIN_SETUP_TOKEN || process.env.SETUP_TOKEN || process.env.GRAPH_EXPORT_TOKEN ||
   userEnvFromRegistry('BRAIN_SETUP_TOKEN');
 const headers = bearer ? { authorization: `Bearer ${bearer}` } : undefined;
-const delays = [0, 2000, 5000];
+// DOUBLE-TAP contra o propagation delay do deploy (caso real, 07/07/2026): o POST
+// imediatamente após o `wrangler deploy` pode cair na versão ANTIGA do worker —
+// ela roda as migrations antigas, responde 200 e a migration nova NÃO aplica
+// (runMigrations é da versão que atendeu o request). Como o provision é idempotente,
+// a cura é exigir DOIS 200 espaçados: o segundo (15s depois) quase certamente já
+// atinge a versão nova. Falha de rede/5xx entre os taps só re-tenta.
+const delays = [0, 15000, 10000, 10000];
+let okCount = 0;
 let lastErr = '';
 for (const delay of delays) {
   if (delay) await new Promise((r) => setTimeout(r, delay));
@@ -66,8 +73,10 @@ for (const delay of delays) {
     const resp = await fetch(url, { method: 'POST', headers });
     const body = await resp.text();
     if (resp.ok) {
-      console.log(`[deploy] provision ok (${resp.status}): ${body.slice(0, 200)}`);
-      process.exit(0);
+      okCount++;
+      console.log(`[deploy] provision ok ${okCount}/2 (${resp.status}): ${body.slice(0, 200)}`);
+      if (okCount >= 2) process.exit(0);
+      continue;
     }
     if (resp.status === 401) {
       fail(
@@ -82,4 +91,4 @@ for (const delay of delays) {
   }
   console.error(`[deploy] provision falhou (${lastErr}) — tentando de novo...`);
 }
-fail(`provision falhou após ${delays.length} tentativas em ${url}.\nÚltimo erro: ${lastErr}`);
+fail(`provision não conseguiu 2 respostas ok (${okCount}/2) em ${url}.\nÚltimo erro: ${lastErr}`);
