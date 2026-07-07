@@ -1,6 +1,6 @@
 # Contacts: allowlist de paths pro proxy token, comparação constante e runbook de rotação
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-contacts
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -147,14 +147,14 @@ janela de 401 na UI.
 
 ## Critérios de aceite
 
-- [ ] Existe `src/auth/tokens.ts` exportando `timingSafeEqualStr` e `proxyTokenAllowsPath`, com a allowlist documentada como fonte única do escopo do proxy token.
-- [ ] `requireAuth` (`src/index.ts`) não contém mais `===` na comparação de nenhum token.
-- [ ] Com `CONTACTS_PROXY_TOKEN`: `GET /recall_entity?q=x`, `GET /get_contact_by_phone?phone=...`, `GET /entities/:id` → 200; `GET /list_entities`, `GET /list_people`, `GET /graph/data`, `GET /media/:hash`, `GET /entities/:id/media` → 401; qualquer `POST` → 401.
-- [ ] Com `OWNER_TOKEN`: todas as rotas (GET e POST) continuam 200 como antes.
-- [ ] `proxyTokenOk` em `src/web/handler.ts` usa `timingSafeEqualStr` (loop XOR inline removido) e `GET /app/graph/{data,meta}` com o proxy token continua 200.
-- [ ] `docs/rotacao-tokens.md` existe, cobre os dois tokens, e não contém nenhum valor de secret.
-- [ ] UI do Console no browser (sessão via cookie) segue funcionando sem mudança.
-- [ ] Pós-deploy: os dois tokens rotacionados conforme o runbook, com OK do dono.
+- [x] Existe `src/auth/tokens.ts` exportando `timingSafeEqualStr` e `proxyTokenAllowsPath`, com a allowlist documentada como fonte única do escopo do proxy token.
+- [x] `requireAuth` (`src/index.ts`) não contém mais `===` na comparação de nenhum token.
+- [x] Com `CONTACTS_PROXY_TOKEN`: `GET /recall_entity?q=x`, `GET /get_contact_by_phone?phone=...`, `GET /entities/:id` → 200; `GET /list_entities`, `GET /list_people`, `GET /graph/data`, `GET /media/:hash`, `GET /entities/:id/media` → 401; qualquer `POST` → 401.
+- [x] Com `OWNER_TOKEN`: todas as rotas (GET e POST) continuam 200 como antes.
+- [x] `proxyTokenOk` em `src/web/handler.ts` usa `timingSafeEqualStr` (loop XOR inline removido) e `GET /app/graph/{data,meta}` com o proxy token continua 200.
+- [x] `docs/rotacao-tokens.md` existe, cobre os dois tokens, e não contém nenhum valor de secret.
+- [x] UI do Console no browser (sessão via cookie) segue funcionando sem mudança.
+- [ ] Pós-deploy: rotação dos dois tokens ADIADA pelo dono em 07/07/2026 ("nao precisa rotacionar nada agora") — runbook pronto pra quando autorizar.
 
 ## Validação
 

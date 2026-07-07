@@ -1,6 +1,7 @@
 # Observabilidade mínima nos 2 Workers: logs persistidos + alerta de erro + health-check externo
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** S · **Repo:** ambos
+> **Status:** done · **Prioridade:** P1 · **Esforço:** S · **Repo:** ambos
+> Nota 07/07/2026: lado repo 100% entregue e deployado; os 2 critérios restantes (Notifications na conta Cloudflare e monitor externo) são ações do dono fora dos repos — runbook em docs/observability.md.
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -106,14 +107,14 @@ Hoje o `catch` dos dois `scheduled` só loga. Passa a também persistir um conta
 
 ## Critérios de aceite
 
-- [ ] `wrangler.toml` do brain tem `[observability]` com `enabled = true` e `head_sampling_rate = 1`.
-- [ ] `wrangler.example.toml` do brain tem o mesmo bloco, com comentário explicando o porquê (alunos herdam).
-- [ ] `docs/observability.md` existe nos 2 repos com: passo a passo de Notifications (dashboard + API com placeholders), contrato do health-check externo (tabela endpoint/expectativa/frequência) e onde ver os logs persistidos — sem nenhum account_id, token, e-mail, webhook ou nome de cliente.
-- [ ] Brain: falha em `runDueReminder` incrementa `cron:consecutive_failures` e grava `cron:last_error` no `GRAPH_CACHE`; sucesso zera o contador.
-- [ ] Brain: 2+ falhas consecutivas disparam `sendTelegram` (verificado com mock de fetch); sem secrets de Telegram, é no-op sem erro.
-- [ ] Brain: `GET /status` (instância configurada) responde com bloco `cron: { consecutive_failures, last_error }` além dos campos atuais — nenhum campo existente removido/renomeado.
-- [ ] Contacts: falha no `scheduled` incrementa `maint:consecutive_failures` e grava `maint:alert`; sucesso zera; `GET /health` expõe o bloco `maint` (chaves idênticas às da spec `10-backend/22`).
-- [ ] Falha em qualquer chamada de KV/Telegram dentro do caminho de alerting não propaga exceção pro `scheduled` (try/catch próprio, verificado por teste).
+- [x] `wrangler.toml` do brain tem `[observability]` com `enabled = true` e `head_sampling_rate = 1`.
+- [x] `wrangler.example.toml` do brain tem o mesmo bloco, com comentário explicando o porquê (alunos herdam).
+- [x] `docs/observability.md` existe nos 2 repos com: passo a passo de Notifications (dashboard + API com placeholders), contrato do health-check externo (tabela endpoint/expectativa/frequência) e onde ver os logs persistidos — sem nenhum account_id, token, e-mail, webhook ou nome de cliente.
+- [x] Brain: falha em `runDueReminder` incrementa `cron:consecutive_failures` e grava `cron:last_error` no `GRAPH_CACHE`; sucesso zera o contador.
+- [x] Brain: 2+ falhas consecutivas disparam `sendTelegram` (verificado com mock de fetch); sem secrets de Telegram, é no-op sem erro.
+- [x] Brain: `GET /status` (instância configurada) responde com bloco `cron: { consecutive_failures, last_error }` além dos campos atuais — nenhum campo existente removido/renomeado.
+- [x] Contacts: falha no `scheduled` incrementa `maint:consecutive_failures` e grava `maint:alert`; sucesso zera; `GET /health` expõe o bloco `maint` (chaves idênticas às da spec `10-backend/22`).
+- [x] Falha em qualquer chamada de KV/Telegram dentro do caminho de alerting não propaga exceção pro `scheduled` (try/catch próprio, verificado por teste).
 - [ ] Notifications criadas na conta Cloudflare pros 2 Workers (error-rate + CPU limit) — executado via dashboard/API **com OK explícito do dono**, seguindo o runbook.
 - [ ] Monitor externo do dono batendo `GET /health` e `GET /status` conforme o contrato (confirmação do dono; o script não é auditável pelos repos).
 

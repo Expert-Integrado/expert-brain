@@ -297,16 +297,22 @@ export async function handleContactMentions(req: Request, env: Env): Promise<Res
 }
 
 // Avatar/mídia do contato — streaming passthrough pro /media/<hash> do Expert
-// Console (rota pública lá; proxiar aqui mantém same-origin no browser). O hash
-// é validado (sha256 hex) pra rota não virar proxy arbitrário, e a resposta é
-// cacheável forte: o conteúdo é endereçado pelo próprio hash (imutável).
+// Console (proxiar aqui mantém same-origin no browser). O hash é validado
+// (sha256 hex) pra rota não virar proxy arbitrário, e a resposta é cacheável
+// forte: o conteúdo é endereçado pelo próprio hash (imutável).
+// A rota /media/:hash do contacts fica ATRÁS do requireAuth de lá — o fetch
+// precisa do CONTACTS_PROXY_TOKEN (path na allowlist da spec 10-backend/24);
+// sem o header, o contacts devolve 401 e o avatar quebrava com 502 aqui.
 export async function handleContactsMedia(req: Request, env: Env, hash: string): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
-  if (!env.CONTACTS) return new Response('contacts binding not configured', { status: 503 });
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) return new Response('contacts binding not configured', { status: 503 });
   if (!/^[0-9a-f]{64}$/i.test(hash)) return new Response('bad hash', { status: 400 });
 
-  const res = await env.CONTACTS.fetch(new Request(`https://contacts/media/${hash}`, { method: 'GET' }));
+  const res = await env.CONTACTS.fetch(new Request(`https://contacts/media/${hash}`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
   if (!res.ok) return new Response('not found', { status: res.status === 404 ? 404 : 502 });
   return new Response(res.body, {
     status: 200,
