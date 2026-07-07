@@ -1,6 +1,6 @@
 # Contacts: DELETE de entidade/connection e merge de duplicatas
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done (07/07/2026 — deploy c85f0a98; itens 1-4 shipados + merge tambem move entity_channels (schema evoluiu apos a spec, UPDATE OR IGNORE + dedupe via CASCADE); item 5 (UI no Console) segue opcional/nao feito; GATE OPERACIONAL PENDENTE: backup do D1 com OK do dono ANTES do primeiro delete/merge real em producao) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-contacts
 > **Depende de:** `40-ops/42-contacts-testes-typecheck-ci.md` (gate: operações destrutivas não entram sem suíte de testes) · `10-backend/19-contacts-write-path-e-canon-unico.md` (previne NOVAS duplicatas; esta spec cura as existentes)
 
 ## Contexto
