@@ -1,5 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { McpAgent } from 'agents/mcp';
+// Versão real no handshake MCP (spec 10-backend/23): com forks de alunos e múltiplos
+// deploys, o initialize revela QUAL código responde. esbuild resolve JSON nativamente.
+import pkg from '../../package.json';
 import type { Env, AuthContext } from '../env.js';
 import { buildServerInstructions } from './instructions.js';
 import { registerAllTools } from './registry.js';
@@ -37,7 +40,7 @@ export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthCon
     }
 
     this.server = new McpServer(
-      { name: 'expert-brain', version: '0.1.0' },
+      { name: 'expert-brain', version: pkg.version },
       {
         instructions: buildServerInstructions(prompt, {
           hasMedia: Boolean(this.env.MEDIA),

@@ -147,3 +147,34 @@ describe('update_note', () => {
     expect(remaining.c).toBe(0);
   });
 });
+
+// spec 10-backend/23: update_note grava o D1 ANTES de embedar — quando o embed
+// estoura, a edição JÁ persistiu e a mensagem de erro não pode dizer o contrário.
+describe('update_note with embed failure (spec 23)', () => {
+  beforeEach(async () => {
+    E.AI = { run: vi.fn(async () => { throw new Error('AiError: Workers AI capacity exceeded'); }) };
+    E.VECTORIZE = { upsert: vi.fn(async () => ({})), query: vi.fn() };
+    await runMigrations(E);
+    await E.DB.prepare('DELETE FROM edges').run();
+    await E.DB.prepare('DELETE FROM tags').run();
+    await E.DB.prepare('DELETE FROM notes').run();
+  });
+
+  it('D1 keeps the new tldr and the error message never claims nothing persisted', async () => {
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`
+    ).bind('abc', 'Original Title', 'original body', 'the old tldr text here', '["biology"]', 'concept', 1000, 1000).run();
+
+    const r = await reg().update_note({ id: 'abc', tldr: 'a freshly rewritten tldr that qualifies' });
+    expect(r.isError).toBe(true);
+    const text = r.content[0].text as string;
+    // orienta verificar e reembedar, sem afirmar que nada foi salvo
+    expect(text).toContain('get_note');
+    expect(text).toContain('reembed');
+    expect(text).not.toContain('was NOT saved');
+    expect(text).not.toContain('there are no partial writes');
+    // e o D1 de fato ficou com o tldr novo (partial write é o comportamento normal)
+    const row = await E.DB.prepare('SELECT tldr FROM notes WHERE id = ?').bind('abc').first();
+    expect(row.tldr).toBe('a freshly rewritten tldr that qualifies');
+  });
+});

@@ -1,6 +1,33 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, canSeePrivate, type ToolResult } from '../helpers.js';
+
+// Valores canônicos que o worker de contatos aceita (spec 10-backend/23): enum no
+// schema em vez de string livre — typo ('clientes') vira erro de validação do SDK
+// listando os aceitos, em vez de count:0 silencioso que o agente lê como "não tem".
+const CONTACT_CATEGORIES = [
+  'cliente', 'lead', 'lead-perdido', 'aluno', 'parceiro', 'fornecedor',
+  'equipe', 'familia', 'pessoal', 'network', 'outro',
+] as const;
+
+// Diagnóstico por status (spec 10-backend/23): a mensagem é contrato com o agente —
+// 404 = não existe (não re-tentar), 503 = deploy sem o binding/token (avisar o
+// usuário, não é dado), 5xx = indisponibilidade transiente (1 retry vale).
+function contactsError(action: string, r: { status: number; data: any }): ToolResult {
+  if (r.status === 404) {
+    return toolError(`${action}: not found (HTTP 404). The contact does not exist in the Contacts vault — do not retry with the same id/phone.`);
+  }
+  if (r.status === 503) {
+    return toolError(
+      `${action}: the Contacts vault is not configured in this deploy (HTTP 503 — CONTACTS service binding or CONTACTS_PROXY_TOKEN missing). ` +
+      `This is a deployment issue, not a data issue. Contacts tools are unavailable here; tell the user instead of retrying.`
+    );
+  }
+  if (r.status >= 500) {
+    return toolError(`${action}: the Contacts service is temporarily unavailable (HTTP ${r.status}). Wait a few seconds and retry once. Details: ${JSON.stringify(r.data)}`);
+  }
+  return toolError(`${action} failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
+}
 
 // Leitura do vault de CONTATOS (Expert Contacts) DENTRO do MCP do Brain — um MCP
 // só pra notas + tasks + contatos. Vai pelo service binding CONTACTS + Bearer
@@ -34,7 +61,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
       description: `Lists contacts from the Contacts vault (people and companies). Optional filters: kind ('person' | 'company'), category (cliente|lead|lead-perdido|aluno|parceiro|fornecedor|equipe|familia|pessoal|network|outro), has_phone, limit (default 100, max 1000), offset (pagination). Raw imports (name = phone number, no letters) are HIDDEN by default — pass include_raw:true to see them (used by the audit/cleanup). Returns id, name, phone, email, role, company, sector, category. Read-only. To EXPORT all contacts, page with limit+offset (e.g. limit 1000, offset 0, 1000, 2000...). Use search_contacts for a semantic/name lookup; get_contact_by_phone for an EXACT phone match; get_contact for one contact's detail + connections.`,
       inputSchema: {
         kind: z.enum(['person', 'company']).optional(),
-        category: z.string().optional().describe('Segment filter: cliente|lead|lead-perdido|aluno|parceiro|fornecedor|equipe|familia|pessoal|network|outro.'),
+        category: z.enum(CONTACT_CATEGORIES).optional().describe('Segment filter.'),
         has_phone: z.boolean().optional().describe('Only contacts that have a phone.'),
         include_raw: z.boolean().optional().describe('Include raw imports (name = phone number, no letters). Default false — they are hidden.'),
         limit: z.number().int().min(1).max(1000).optional().describe('Default 100, max 1000.'),
@@ -51,7 +78,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
       qs.set('limit', String(input.limit ?? 100));
       if (typeof input.offset === 'number') qs.set('offset', String(input.offset));
       const r = await callContacts(env, `/list_entities?${qs.toString()}`, seePrivate);
-      if (!r.ok) return toolError(`Contacts read failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
+      if (!r.ok) return contactsError('Contacts read', r);
       return toolSuccess({ count: r.data.count, contacts: r.data.results });
     }) as any
   );
@@ -64,7 +91,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
       inputSchema: {
         query: z.string().min(1).describe('Name, company, role, or free-text.'),
         kind: z.enum(['person', 'company']).optional(),
-        category: z.string().optional().describe('Segment filter: cliente|lead|lead-perdido|aluno|parceiro|fornecedor|equipe|familia|pessoal|network|outro.'),
+        category: z.enum(CONTACT_CATEGORIES).optional().describe('Segment filter.'),
         include_raw: z.boolean().optional().describe('Include raw imports (name = phone number). Default false.'),
         limit: z.number().int().min(1).max(100).optional().describe('Default 20.'),
       },
@@ -76,7 +103,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
       if (input.category) qs.set('category', input.category);
       if (input.include_raw) qs.set('include_raw', 'true');
       const r = await callContacts(env, `/recall_entity?${qs.toString()}`, seePrivate);
-      if (!r.ok) return toolError(`Contacts search failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
+      if (!r.ok) return contactsError('Contacts search', r);
       return toolSuccess({ query: input.query, results: r.data.results ?? r.data });
     }) as any
   );
@@ -91,7 +118,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
     },
     safeToolHandler(async (input: { id: string }) => {
       const r = await callContacts(env, `/entities/${encodeURIComponent(input.id)}`, seePrivate);
-      if (!r.ok) return toolError(`Contact '${input.id}' not found (HTTP ${r.status}).`);
+      if (!r.ok) return contactsError(`Contact '${input.id}' lookup`, r);
       return toolSuccess(r.data);
     }) as any
   );
@@ -106,7 +133,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
     },
     safeToolHandler(async (input: { phone: string }) => {
       const r = await callContacts(env, `/get_contact_by_phone?phone=${encodeURIComponent(input.phone)}`, seePrivate);
-      if (!r.ok) return toolError(`Phone lookup failed (HTTP ${r.status}): ${JSON.stringify(r.data)}`);
+      if (!r.ok) return contactsError('Phone lookup', r);
       return toolSuccess(r.data);
     }) as any
   );

@@ -18,4 +18,21 @@ describe('helpers', () => {
     expect((r as any).isError).toBe(true);
     expect((r as any).content[0].text).toContain('vault database');
   });
+
+  // spec 10-backend/23: a mensagem do Workers AI não pode afirmar "nothing was
+  // saved" universalmente — update_note grava o D1 ANTES de embedar.
+  it('Workers AI error message instructs verify-then-reembed, never claims universal no-write', async () => {
+    const h = safeToolHandler(async () => { throw new Error('Workers AI: model overloaded'); });
+    const r = await h();
+    const text = (r as any).content[0].text as string;
+    expect((r as any).isError).toBe(true);
+    expect(text).toContain('get_note');
+    expect(text).toContain('reembed');
+    // continua comunicando que save_note é retry seguro (embeda antes de gravar)
+    expect(text).toContain('save_note embeds BEFORE writing');
+    expect(text).toContain('update_note writes to the database BEFORE embedding');
+    // a afirmação antiga (falsa pro update_note) não pode voltar
+    expect(text).not.toContain('was NOT saved');
+    expect(text).not.toContain('there are no partial writes');
+  });
 });

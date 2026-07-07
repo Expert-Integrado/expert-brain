@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test';
-import { beforeEach, describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { attachMedia, listMediaViews, removeMedia, getMediaById, verifyMediaToken, signedMediaPath } from '../src/media/store.js';
 
@@ -83,5 +83,76 @@ describe('note media', () => {
     expect(await verifyMediaToken(E, r.id, t, sig, 6000)).toBe(true);       // valid, not expired
     expect(await verifyMediaToken(E, r.id, t, sig, t + 1)).toBe(false);     // expired
     expect(await verifyMediaToken(E, r.id, t, 'deadbeef', 6000)).toBe(false); // tampered
+  });
+});
+
+// spec 10-backend/23: o caminho URL do ingest nunca pode bufferizar acima de
+// MAX_BYTES — content-length declarado grande rejeita sem ler; chunked/mentiroso
+// aborta o stream com 413; chunked pequeno continua funcionando byte a byte.
+describe('ingest by url with real byte cap (spec 23)', () => {
+
+  function streamOf(chunks: Uint8Array[], onPull?: () => void): ReadableStream<Uint8Array> {
+    let i = 0;
+    return new ReadableStream({
+      pull(controller) {
+        onPull?.();
+        if (i < chunks.length) controller.enqueue(chunks[i++]);
+        else controller.close();
+      },
+    });
+  }
+
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM note_media');
+    await E.DB.exec('DELETE FROM notes');
+    await note('n1');
+  });
+
+  it('content-length declarado > 50MB rejeita 413 pelo header, sem bufferizar o corpo', async () => {
+    // Nota: o runtime pode dar pull no stream ao construir a Response, então não dá
+    // pra assertar "zero reads" aqui — o contrato testável é o 413 vindo do check de
+    // header (mensagem "over the ... limit", não a de streaming abortado).
+    vi.stubGlobal('fetch', async () => new Response(streamOf([new Uint8Array(8)]), {
+      status: 200,
+      headers: { 'content-length': String(51 * 1024 * 1024), 'content-type': 'image/png' },
+    }));
+    try {
+      await expect(attachMedia(E, 'n1', { url: 'https://example.com/big.png' }, 1000)).rejects.toThrow(/over the/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('content-length ausente com corpo > 50MB aborta o stream com 413 (nunca bufferiza tudo)', async () => {
+    // Reusa o MESMO buffer de 8MB em 7 chunks (56MB "lidos", ~8MB reais de RAM):
+    // o contador do ingest aborta ao cruzar 50MB.
+    const chunk = new Uint8Array(8 * 1024 * 1024);
+    vi.stubGlobal('fetch', async () => new Response(streamOf(Array(7).fill(chunk)), {
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream' },
+    }));
+    try {
+      await expect(attachMedia(E, 'n1', { url: 'https://example.com/liar.bin' }, 1000)).rejects.toThrow(/exceeded.*while streaming/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('chunked pequeno sem content-length funciona com bytes identicos', async () => {
+    const parts = [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5]), new Uint8Array([6])];
+    vi.stubGlobal('fetch', async () => new Response(streamOf(parts), {
+      status: 200,
+      headers: { 'content-type': 'application/octet-stream' },
+    }));
+    try {
+      const r = await attachMedia(E, 'n1', { url: 'https://example.com/small.bin' }, 1000);
+      expect(r.size_bytes).toBe(6);
+      const obj = await E.MEDIA.get(r.r2_key);
+      const stored = new Uint8Array(await obj.arrayBuffer());
+      expect([...stored]).toEqual([1, 2, 3, 4, 5, 6]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

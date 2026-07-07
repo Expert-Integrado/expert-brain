@@ -1,6 +1,6 @@
 # Brain MCP: mensagens de erro honestas, proxy de contatos com diagnóstico correto e fetch de mídia com teto real
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -169,18 +169,18 @@ Requer `"resolveJsonModule": true` no `tsconfig.json` raiz (adicionar se ausente
 
 ## Critérios de aceite
 
-- [ ] Falha do Workers AI durante `update_note` produz mensagem que NÃO afirma "nothing was saved"; a mensagem instrui verificar via `get_note` e, se persistiu, rodar `reembed(id)`.
-- [ ] A mensagem do branch Workers AI continua correta pro `save_note` (retry seguro continua sendo comunicado como opção para o caminho embed-antes-de-gravar).
-- [ ] `get_contact` com binding `CONTACTS` ausente retorna mensagem contendo "not configured in this deploy" e NÃO contém "not found".
-- [ ] `get_contact` com resposta 404 do worker de contatos retorna "not found" e instrui a não re-tentar com o mesmo id.
-- [ ] Status 5xx (≠503 sintético) nas 4 tools de contatos retorna mensagem de indisponibilidade temporária sugerindo um retry.
-- [ ] `list_contacts`/`search_contacts` com `category` fora do cânon são rejeitados na validação do schema (erro lista os valores aceitos); `category` válida continua passando o mesmo valor no querystring.
-- [ ] `ingest` por URL com `content-length` acima de 50MB rejeita com `MediaError(413)` sem ler o corpo.
-- [ ] `ingest` por URL com corpo maior que 50MB e `content-length` ausente ou mentiroso aborta o stream e rejeita com `MediaError(413)` — nunca bufferiza mais que `MAX_BYTES`.
-- [ ] `ingest` por URL com corpo pequeno e sem `content-length` (chunked) continua funcionando (bytes idênticos ao download completo).
-- [ ] `McpServer` reporta `version` igual a `require('package.json').version` — sem literal `'0.1.0'` em `src/mcp/agent.ts`.
-- [ ] Testes unitários novos cobrem cada item acima (as mensagens são contrato com o agente — asserts no TEXTO, não só no `isError`).
-- [ ] `npm run typecheck` e `npm test` passam; nenhum teste existente quebrado.
+- [x] Falha do Workers AI durante `update_note` produz mensagem que NÃO afirma "nothing was saved"; a mensagem instrui verificar via `get_note` e, se persistiu, rodar `reembed(id)`.
+- [x] A mensagem do branch Workers AI continua correta pro `save_note` (retry seguro continua sendo comunicado como opção para o caminho embed-antes-de-gravar).
+- [x] `get_contact` com binding `CONTACTS` ausente retorna mensagem contendo "not configured in this deploy" e NÃO contém "not found".
+- [x] `get_contact` com resposta 404 do worker de contatos retorna "not found" e instrui a não re-tentar com o mesmo id.
+- [x] Status 5xx (≠503 sintético) nas 4 tools de contatos retorna mensagem de indisponibilidade temporária sugerindo um retry.
+- [x] `list_contacts`/`search_contacts` com `category` fora do cânon são rejeitados na validação do schema (erro lista os valores aceitos); `category` válida continua passando o mesmo valor no querystring.
+- [x] `ingest` por URL com `content-length` acima de 50MB rejeita com `MediaError(413)` sem ler o corpo.
+- [x] `ingest` por URL com corpo maior que 50MB e `content-length` ausente ou mentiroso aborta o stream e rejeita com `MediaError(413)` — nunca bufferiza mais que `MAX_BYTES`.
+- [x] `ingest` por URL com corpo pequeno e sem `content-length` (chunked) continua funcionando (bytes idênticos ao download completo).
+- [x] `McpServer` reporta `version` igual a `require('package.json').version` — sem literal `'0.1.0'` em `src/mcp/agent.ts`.
+- [x] Testes unitários novos cobrem cada item acima (as mensagens são contrato com o agente — asserts no TEXTO, não só no `isError`).
+- [x] `npm run typecheck` e `npm test` passam; nenhum teste existente quebrado.
 
 ## Validação
 

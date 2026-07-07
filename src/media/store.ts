@@ -108,9 +108,32 @@ async function ingest(input: AttachInput): Promise<IngestResult> {
       throw new MediaError(502, `fetch failed: ${e instanceof Error ? e.message : String(e)}`);
     }
     if (!res.ok) throw new MediaError(502, `source returned HTTP ${res.status}`);
+    // SSRF: o fetch roda no runtime Workers, que não alcança rede interna nem
+    // metadata endpoints como um servidor tradicional — allowlist de hosts fica
+    // intencionalmente fora de escopo (spec 10-backend/23).
+    // content-length declarado acima do teto: rejeita antes de ler 1 byte.
     const declared = Number(res.headers.get('content-length') || '0');
     if (declared > MAX_BYTES) throw new MediaError(413, `source is ${declared} bytes — over the ${MAX_BYTES} limit`);
-    const buf = new Uint8Array(await res.arrayBuffer());
+    // Leitura incremental: NUNCA bufferiza mais que MAX_BYTES, mesmo com
+    // content-length ausente (chunked) ou mentiroso. Passou do teto → aborta o
+    // stream e devolve 413 limpo em vez de OOM/1102 do isolate.
+    const reader = res.body?.getReader();
+    if (!reader) throw new MediaError(502, 'source returned no body');
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_BYTES) {
+        await reader.cancel();
+        throw new MediaError(413, `source exceeded the ${MAX_BYTES}-byte limit while streaming — download aborted`);
+      }
+      chunks.push(value);
+    }
+    const buf = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
     const mime = input.mime_type || (res.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim();
     const nameFromUrl = (() => {
       try { return decodeURIComponent(new URL(input.url!).pathname.split('/').pop() || '') || null; } catch { return null; }

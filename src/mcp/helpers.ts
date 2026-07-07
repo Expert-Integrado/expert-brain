@@ -62,10 +62,17 @@ export function safeToolHandler<A extends unknown[]>(
       }
       if (msg.includes('@cf/baai') || msg.includes('Workers AI') || msg.includes('AiError')) {
         console.error('ExpertBrain Workers AI error:', msg);
+        // Persistência depende da ORDEM de cada tool (spec 10-backend/23): save_note
+        // embeda ANTES de gravar (nada persistiu, retry seguro); update_note grava o
+        // D1 ANTES de embedar (a edição pode ter persistido com vetor stale). A
+        // mensagem NÃO pode afirmar "nothing was saved" universalmente.
         return toolError(
           `Workers AI (the embedding model) returned an error: ${msg}. ` +
-          `This is usually transient. The note was NOT saved because embedding failed before the database write (save_note validates inputs and generates the vector before committing). ` +
-          `Wait a few seconds and retry the exact same save_note call — it is safe, there are no partial writes.`
+          `This is usually transient. Whether data was persisted depends on the tool: ` +
+          `save_note embeds BEFORE writing (nothing saved — safe to retry the same call); ` +
+          `update_note writes to the database BEFORE embedding (the edit may have persisted with a stale vector). ` +
+          `Do NOT blindly retry a write. First call get_note(id) to check what persisted; ` +
+          `if the edit is there, call reembed(id) to fix the vector instead of repeating the update.`
         );
       }
       console.error('ExpertBrain tool error:', msg);
