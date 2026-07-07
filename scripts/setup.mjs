@@ -235,6 +235,29 @@ function ensureVectorize() {
 }
 
 // Build + deploy + WORKER_URL + migrations. Compartilhado por instalacao e atualizacao.
+// R2 (midia das notas) — opcional: em contas free sem billing o R2 nao esta
+// habilitado; nesse caso removemos o binding e o Brain sobe sem midia (tudo o
+// resto funciona). Sem isso o `wrangler deploy` falharia com bucket inexistente.
+// Roda nos DOIS modos (instalacao e atualizacao): um clone fresco em modo
+// atualizacao parte do wrangler.example.toml, que traz o binding — sem garantir
+// o bucket aqui, o deploy da atualizacao quebraria do mesmo jeito.
+function ensureMediaBucket(toml) {
+  if (!/\[\[r2_buckets\]\]/.test(toml)) return toml;
+  log.info('Garantindo bucket R2 "expert-brain-media" (midia das notas)...');
+  const r2 = runWrangler(['r2', 'bucket', 'create', 'expert-brain-media'], { allowFail: true });
+  const r2out = (r2.stdout || '') + (r2.stderr || '');
+  if (r2.status === 0 || /already exists/i.test(r2out)) {
+    log.ok('Bucket R2 pronto.');
+    return toml;
+  }
+  log.warn('Nao consegui criar o bucket R2 (conta sem R2 habilitado? requer billing na Cloudflare).');
+  log.warn('Seguindo SEM midia: removi o binding do wrangler.toml — anexos de nota ficam desativados.');
+  log.warn('Pra ligar depois: habilite R2 na Cloudflare, crie o bucket "expert-brain-media" e restaure o bloco [[r2_buckets]] do wrangler.example.toml.');
+  toml = toml.replace(/\n?\[\[r2_buckets\]\][\s\S]*?(?=\n\[|\n*$)/, '\n');
+  writeToml(toml);
+  return toml;
+}
+
 async function buildDeployProvision() {
   log.info('Buildando bundles...');
   const build = spawnSync('npm', ['run', 'build:bundles'], { stdio: 'inherit', shell: process.platform === 'win32' });
@@ -365,6 +388,7 @@ async function main() {
     console.log(`\n${CYAN}${BOLD}[atualizar]${RESET} ${BOLD}Instalacao existente detectada - modo ATUALIZACAO${RESET}`);
     log.info('Mantenho seus dados (D1/Vectorize), credenciais e login. So atualizo o codigo.');
     ensureVectorize();
+    toml = ensureMediaBucket(toml);
     if (toml.includes('REPLACE_ME_')) {
       die('Faltou resolver algum ID no wrangler.toml. Rode `npm run setup -- --reinstall` pra reprovisionar do zero.');
     }
@@ -480,23 +504,8 @@ ${updHooksOk
     }
   }
 
-  // 4.5 R2 (midia das notas) — opcional: em contas free sem billing o R2 nao esta
-  // habilitado; nesse caso removemos o binding e o Brain sobe sem midia (tudo o
-  // resto funciona). Sem isso o `wrangler deploy` falharia com bucket inexistente.
-  if (/\[\[r2_buckets\]\]/.test(toml)) {
-    log.info('Criando bucket R2 "expert-brain-media" (midia das notas)...');
-    const r2 = runWrangler(['r2', 'bucket', 'create', 'expert-brain-media'], { allowFail: true });
-    const r2out = (r2.stdout || '') + (r2.stderr || '');
-    if (r2.status === 0 || /already exists/i.test(r2out)) {
-      log.ok('Bucket R2 pronto.');
-    } else {
-      log.warn('Nao consegui criar o bucket R2 (conta sem R2 habilitado? requer billing na Cloudflare).');
-      log.warn('Seguindo SEM midia: removi o binding do wrangler.toml — anexos de nota ficam desativados.');
-      log.warn('Pra ligar depois: habilite R2 na Cloudflare, crie o bucket "expert-brain-media" e restaure o bloco [[r2_buckets]] do wrangler.example.toml.');
-      toml = toml.replace(/\n?\[\[r2_buckets\]\][\s\S]*?(?=\n\[|\n*$)/, '\n');
-      writeToml(toml);
-    }
-  }
+  // 4.5 R2 (midia das notas) — opcional; ver ensureMediaBucket.
+  toml = ensureMediaBucket(toml);
 
   // 5. confirma que nenhum placeholder sobrou
   log.step(5, 'Validando wrangler.toml');
