@@ -18,7 +18,7 @@ const DESCRIPTION = `Lists tasks regardless of due date — including tasks WITH
 
 This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks (ordered by due date then priority). Pass \`query\` for full-text search over tasks (title+body, all statuses), \`status\` to filter (asking for ['done']/['canceled'] auto-includes closed tasks — no include_closed needed, capped to the most recent by \`limit\`), \`tag\` to scope by a transversal label (multi), \`project\` to scope by a folder (single-valued, resolves active+archived), \`limit\` to cap. \`project\` and \`tag\` compose with \`status\`/\`query\`.
 
-Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, comment_count, url, updated_at. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
+Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, comment_count, url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; limit?: number; }
 
@@ -121,6 +121,9 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
           due_brt: t.due_at !== null ? formatBrtDateTime(t.due_at) : null,
           when: t.due_at !== null ? relativeDue(t.due_at, now) : null,
           overdue: t.due_at !== null && t.due_at < now && t.status !== 'done' && t.status !== 'canceled',
+          // spec 30-features/32: task ativa sem update há 60+ dias — o agente deve
+          // sugerir cancelar/repriorizar (nunca fechar sozinho).
+          stale: (t.status === 'open' || t.status === 'in_progress') && now - t.updated_at > 60 * 86_400_000,
           tags: tagsById.get(t.id) ?? [],
           column: col ? { id: col.id, label: col.label } : null,
           project: proj ? { id: proj.id, label: proj.label } : null,

@@ -55,6 +55,53 @@ describe('buildDueDigest', () => {
     expect(digest!).toContain('Sem link');
     expect(digest!).not.toContain('/app/tasks/x');
   });
+
+  // spec 30-features/32: caps anti alert-fatigue + teto duro de 4000 chars
+  // (a Bot API do Telegram rejeita > 4096 com HTTP 400 silencioso).
+  describe('caps (spec 32)', () => {
+    const DAY = 86_400_000;
+    const overdueRecent = (n: number) =>
+      Array.from({ length: n }, (_, i) => task({ id: `or${i}`, title: `Atrasada recente ${i}`, due_at: NOW - (i % 10 + 1) * DAY }));
+    const dueToday = (n: number) =>
+      Array.from({ length: n }, (_, i) => task({ id: `dt${i}`, title: `Hoje ${i}`, due_at: NOW + 1000 + i }));
+
+    it('100 atrasadas + 50 de hoje => max 15 linhas/secao, rodapes e length <= 4000', () => {
+      const digest = buildDueDigest([...overdueRecent(100), ...dueToday(50)], NOW, 'https://eb.test')!;
+      expect(digest.length).toBeLessThanOrEqual(4000);
+      // headers com TOTAL real
+      expect(digest).toContain('Atrasadas (100)');
+      expect(digest).toContain('Vence hoje (50)');
+      // cap por secao: 15 linhas + rodape com o excedente
+      expect((digest.match(/^• Atrasada recente /gm) ?? []).length).toBeLessThanOrEqual(15);
+      expect((digest.match(/^• Hoje /gm) ?? []).length).toBeLessThanOrEqual(15);
+      expect(digest).toContain('…e mais');
+      expect(digest).toContain('/app/tasks');
+    });
+
+    it('atrasada ha 14+ dias nao vira linha, so contagem agregada', () => {
+      const old = Array.from({ length: 5 }, (_, i) =>
+        task({ id: `old${i}`, title: `Fossil ${i}`, due_at: NOW - (20 + i) * DAY }));
+      const digest = buildDueDigest([...old, ...overdueRecent(2)], NOW, 'https://eb.test')!;
+      expect(digest).toContain('Atrasadas (7)'); // total real inclui as antigas
+      expect(digest).not.toContain('Fossil');
+      expect(digest).toContain('5 atrasada(s) há 14+ dias');
+      expect(digest).toContain('Atrasada recente 0');
+    });
+
+    it('teto duro: mesmo com titulos enormes, length <= maxChars', () => {
+      const huge = Array.from({ length: 40 }, (_, i) =>
+        task({ id: `h${i}`, title: `${'Titulo muito longo pra estourar o teto '.repeat(5)}${i}`, due_at: NOW - DAY }));
+      const digest = buildDueDigest(huge, NOW, 'https://eb.test', { maxChars: 1000 })!;
+      expect(digest.length).toBeLessThanOrEqual(1000);
+      expect(digest).toContain('Atrasadas (40)');
+    });
+
+    it('volume pequeno (<= 15 por secao) lista todas, sem rodape', () => {
+      const digest = buildDueDigest([...overdueRecent(3), ...dueToday(2)], NOW, 'https://eb.test')!;
+      expect((digest.match(/^• /gm) ?? []).length).toBe(5);
+      expect(digest).not.toContain('…e mais');
+    });
+  });
 });
 
 // specs/50-console-v2/64-resurfacing-digest.md, critério 3: bloco "Do seu cérebro"

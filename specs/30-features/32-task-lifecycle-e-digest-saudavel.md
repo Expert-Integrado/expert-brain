@@ -1,6 +1,6 @@
 # Lifecycle de tasks + digest Telegram com teto e snooze (anti alert-fatigue)
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -150,24 +150,24 @@ Preparar a escalada sem impor aos usuários do repo (open-source, alunos usam):
 
 ## Critérios de aceite
 
-- [ ] `buildDueDigest` com 100 tasks atrasadas + 50 de hoje produz digest com no máximo
+- [x] `buildDueDigest` com 100 tasks atrasadas + 50 de hoje produz digest com no máximo
       15 linhas por seção, rodapé "e mais X" em cada seção truncada e `length <= 4000`.
-- [ ] Atrasadas há mais de 14 dias não aparecem linha a linha — só na contagem agregada
+- [x] Atrasadas há mais de 14 dias não aparecem linha a linha — só na contagem agregada
       com link pra `/app/tasks`.
-- [ ] Contadores de cabeçalho (`Atrasadas (N)`, total) refletem o total real, não o
+- [x] Contadores de cabeçalho (`Atrasadas (N)`, total) refletem o total real, não o
       número de linhas exibidas.
-- [ ] Comportamento atual preservado pra volumes pequenos: com <= 15 tasks recentes por
+- [x] Comportamento atual preservado pra volumes pequenos: com <= 15 tasks recentes por
       seção, o digest lista todas (testes existentes de `test/notify.test.ts` seguem
       passando sem alteração de expectativa).
-- [ ] `listTasksDueBefore` tem `LIMIT` (default 200) e os callers existentes compilam
+- [x] `listTasksDueBefore` tem `LIMIT` (default 200) e os callers existentes compilam
       sem mudança.
-- [ ] `list_tasks` retorna `stale: true` para task open/in_progress com
+- [x] `list_tasks` retorna `stale: true` para task open/in_progress com
       `updated_at` > 60 dias atrás, `false` caso contrário; `DESCRIPTION` orienta o uso.
-- [ ] `runTaskAutocancel` sem `TASK_AUTOCANCEL_AFTER_DAYS` não executa nenhum UPDATE;
+- [x] `runTaskAutocancel` sem `TASK_AUTOCANCEL_AFTER_DAYS` não executa nenhum UPDATE;
       com a var setada, cancela só tasks vencidas E sem update há N dias, com nota
       automática no body mencionando reversibilidade.
-- [ ] Zero migration nova em `migrations/`.
-- [ ] Nenhum secret do Telegram setado; nenhum trigger novo de notificação ligado.
+- [x] Zero migration nova em `migrations/`.
+- [x] Nenhum secret do Telegram setado; nenhum trigger novo de notificação ligado.
 
 ## Validação
 

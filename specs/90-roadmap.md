@@ -264,7 +264,7 @@ Triagem feita em 07/07/2026 direto na sessão (subagentes indisponíveis — org
 | E5 | `10-backend/22` | contacts | DONE 07/07 (94d1512, deploy fd39776d; backlog de 5 dias drenado em producao, last_run 07/07). Era: `pdGet` passa `api_token` em query string (`src/index.ts:773`) |
 | E6 | `20-frontend/24` | contacts | DONE 07/07 (rota espelho `/app/media/:hash` + rewrite no client; 6 testes novos, 303 verdes). Era: rota `/app/media` (avatar) ausente; parte brain-cache já tinha shipado via spec 26 |
 | E7 | `30-features/34` | contacts | DONE 07/07 (a59f646, deploy c85f0a98; 10 testes, 313 verdes; smoke 400/401 ok). Gate pendente do dono: backup D1 antes do 1o uso real. Era: delete/merge de entidades inexistentes |
-| E8 | `30-features/32` | brain | VIVA P2 — `notify.ts` sem caps de digest nem flag stale |
+| E8 | `30-features/32` | brain | DONE 07/07 (caps 15/secao + teto 4000 + fosseis 14d+ agregados; LIMIT 200; `stale` no list_tasks; auto-cancel opt-in via `TASK_AUTOCANCEL_AFTER_DAYS`, RETURNING pra contagem por causa dos triggers FTS; 775 verdes). Era: `notify.ts` sem caps de digest nem flag stale |
 | E9 | `10-backend/23` | brain | VIVA P2 — mensagens de erro MCP |
 | E10 | `20-frontend/25` | brain | VIVA P2 — interação do grafo (client) |
 | E11 | `20-frontend/27` | contacts | VIVA P2 — rate-limit no login do console standalone |

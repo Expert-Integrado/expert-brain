@@ -9,13 +9,31 @@ import { getResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from './diges
 // atrasadas e manda pro Telegram. Cadência diária = re-avisar atrasada todo dia é
 // desejável (cutuca), então sem dedup, sem coluna nova, sem migration.
 
+// Caps do digest (spec 30-features/32): a Bot API do Telegram rejeita sendMessage
+// com text > 4096 chars (HTTP 400) — sem teto, justamente o dia com MAIS atrasadas
+// era o dia em que NENHUM digest chegava. Defaults conservadores; os testes passam
+// valores menores.
+export interface DigestOptions {
+  maxPerSection?: number; // linhas de task por seção
+  maxChars?: number; // teto duro do texto final
+  staleAfterMs?: number; // atrasada há mais que isto vira contagem agregada
+}
+const DIGEST_DEFAULTS = { maxPerSection: 15, maxChars: 4000, staleAfterMs: 14 * 86_400_000 };
+
 // Monta o texto do digest. Função PURA (testável): recebe as tasks já filtradas
 // (vencendo em <=24h ou vencidas) + o "agora", devolve o texto ou null se não há nada.
-export function buildDueDigest(tasks: TaskRow[], now: number, workerUrl?: string): string | null {
+// Garantia dura: retorno sempre <= maxChars (cap por seção + truncagem defensiva).
+export function buildDueDigest(tasks: TaskRow[], now: number, workerUrl?: string, opts?: DigestOptions): string | null {
   if (tasks.length === 0) return null;
+  const { maxPerSection, maxChars, staleAfterMs } = { ...DIGEST_DEFAULTS, ...opts };
   const base = (workerUrl ?? '').replace(/\/$/, '');
   const overdue = tasks.filter((t) => t.due_at !== null && t.due_at < now);
   const today = tasks.filter((t) => t.due_at !== null && t.due_at >= now);
+  // Snooze de atrasadas antigas: 14+ dias não viram linha (re-avisar todo dia é
+  // ruído puro — alert fatigue), só contagem agregada com link pro board.
+  const recent = overdue.filter((t) => now - (t.due_at as number) <= staleAfterMs);
+  const oldCount = overdue.length - recent.length;
+  const tasksUrl = base ? `${base}/app/tasks` : '/app/tasks';
 
   const line = (t: TaskRow): string => {
     const due = t.due_at !== null ? `${formatBrtShort(t.due_at)} · ${relativeDue(t.due_at, now)}` : '';
@@ -24,10 +42,34 @@ export function buildDueDigest(tasks: TaskRow[], now: number, workerUrl?: string
     return `• ${t.title}${prio} (${due})${link}`;
   };
 
-  const parts: string[] = [`📋 Tasks pra hoje — ${tasks.length}`];
-  if (overdue.length) parts.push('', `⚠️ Atrasadas (${overdue.length}):`, ...overdue.map(line));
-  if (today.length) parts.push('', `Vence hoje (${today.length}):`, ...today.map(line));
-  return parts.join('\n');
+  // Contadores de cabeçalho sempre refletem o TOTAL real, não as linhas exibidas.
+  const render = (nRecent: number, nToday: number): string => {
+    const parts: string[] = [`📋 Tasks pra hoje — ${tasks.length}`];
+    if (overdue.length) {
+      parts.push('', `⚠️ Atrasadas (${overdue.length}):`, ...recent.slice(0, nRecent).map(line));
+      const hidden = recent.length - nRecent;
+      if (hidden > 0) parts.push(`…e mais ${hidden} — ${tasksUrl}`);
+      if (oldCount > 0) parts.push(`…e mais ${oldCount} atrasada(s) há 14+ dias — revisar em ${tasksUrl}`);
+    }
+    if (today.length) {
+      parts.push('', `Vence hoje (${today.length}):`, ...today.slice(0, nToday).map(line));
+      const hidden = today.length - nToday;
+      if (hidden > 0) parts.push(`…e mais ${hidden} — ${tasksUrl}`);
+    }
+    return parts.join('\n');
+  };
+
+  let nRecent = Math.min(recent.length, maxPerSection);
+  let nToday = Math.min(today.length, maxPerSection);
+  let text = render(nRecent, nToday);
+  // Truncagem defensiva: remove linhas do FIM (seção "Vence hoje" primeiro, depois
+  // atrasadas), nunca corta no meio de linha; o rodapé "…e mais X" recalcula sozinho.
+  while (text.length > maxChars && nRecent + nToday > 0) {
+    if (nToday > 0) nToday--;
+    else nRecent--;
+    text = render(nRecent, nToday);
+  }
+  return text;
 }
 
 // Bloco "Do seu cérebro" (specs/50-console-v2/64-resurfacing-digest.md): anexado

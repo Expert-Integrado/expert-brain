@@ -710,18 +710,21 @@ export async function listRecentClosedTasks(env: Env, limit = 100, includePrivat
 // Tasks que vencem até `beforeMs` (inclui as já vencidas, pois due_at < now < beforeMs).
 // Só conta tasks com due_at definido e ainda abertas. Ordenadas por vencimento +
 // prioridade. Base do list_tasks_due_today e do lembrete da VPS.
-export async function listTasksDueBefore(env: Env, beforeMs: number, includePrivate = false): Promise<TaskRow[]> {
+export async function listTasksDueBefore(env: Env, beforeMs: number, includePrivate = false, limit = 200): Promise<TaskRow[]> {
   // Selo de privacidade (spec 59): default false esconde task privada. O digest do dono
   // (cron/bearer) e a visão "due" do board passam true; o list_tasks_due_today MCP passa
   // canSeePrivate do PAT.
+  // LIMIT defensivo (spec 30-features/32): o principal consumidor é o digest do
+  // Telegram (teto físico de 4096 chars) — leitura ilimitada não fazia sentido.
   const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
   const r = await env.DB.prepare(
     `SELECT ${TASK_COLS} FROM notes
      WHERE kind = 'task' AND deleted_at IS NULL
        AND status IN ('open','in_progress')
        AND due_at IS NOT NULL AND due_at <= ?${priv}
-     ORDER BY due_at ASC, COALESCE(priority, 9) ASC`
-  ).bind(beforeMs).all<TaskRow>();
+     ORDER BY due_at ASC, COALESCE(priority, 9) ASC
+     LIMIT ?`
+  ).bind(beforeMs, limit).all<TaskRow>();
   return r.results ?? [];
 }
 

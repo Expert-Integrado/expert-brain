@@ -39,6 +39,10 @@ export interface Env {
   // DIFERENTE do CONTACTS_PROXY_TOKEN (read-only) — o contacts autoriza esse token
   // SOMENTE nesse 1 path (allowlist do lado de lá). MESMO valor nos dois Workers.
   CONTACTS_WRITE_TOKEN?: string;
+  // Auto-cancel de tasks mortas (spec 30-features/32 §4). Ausente/vazia = DESLIGADO
+  // (default). Setada com N > 0: o cron diário cancela task open vencida há mais de
+  // N dias E sem update há mais de N dias (reversível via update_task).
+  TASK_AUTOCANCEL_AFTER_DAYS?: string;
   // Lembrete proativo de prazo (Fase 2): o cron do Worker (scheduled) manda um digest
   // diário das tasks que vencem hoje + atrasadas pro Telegram. Ausentes → o cron roda
   // mas NÃO envia (no-op seguro): fica dormente até os secrets serem setados.

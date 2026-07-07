@@ -115,6 +115,25 @@ describe('list_tasks', () => {
     expect(p.tasks.map((t: any) => t.id)).toContain('q1');
   });
 
+  it('marca stale: true so em task ativa sem update ha 60+ dias (spec 32)', async () => {
+    const now = Date.now();
+    const DAY = 86_400_000;
+    const mk = (id: string, status: string, updatedAt: number) =>
+      insertTask(E, {
+        id, title: id, body: id, tldr: id, domains: '["operations"]',
+        status: status as any, due_at: null, priority: null, created_at: updatedAt, updated_at: updatedAt,
+      });
+    await mk('velha-open', 'open', now - 90 * DAY);
+    await mk('velha-inprog', 'in_progress', now - 90 * DAY);
+    await mk('fresca', 'open', now - 5 * DAY);
+    const res = await reg().list_tasks({});
+    const p = JSON.parse(res.content[0].text);
+    const byId = Object.fromEntries(p.tasks.map((t: any) => [t.id, t.stale]));
+    expect(byId['velha-open']).toBe(true);
+    expect(byId['velha-inprog']).toBe(true);
+    expect(byId['fresca']).toBe(false);
+  });
+
   it('without a tag filter, getTagsForNotes is called only for sliced items', async () => {
     // Seed mais tasks que o limit; espia getTagsForNotes e confere que recebe só `limit` ids.
     for (let i = 0; i < 6; i++) await seedTask(`t${i}`, 'open');

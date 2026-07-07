@@ -1,6 +1,7 @@
 import type { Env } from './env.js';
 import { runDueReminder, sendTelegram } from './notify.js';
 import { runSnapshot } from './backup/snapshot.js';
+import { runTaskAutocancel } from './task-lifecycle.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
 // wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
@@ -55,6 +56,13 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
     );
     return;
   }
+  // Auto-cancel opcional (spec 30-features/32 §4): no-op sem a env var. Braço
+  // próprio de waitUntil — falha aqui não derruba o lembrete, e vice-versa.
+  ctx.waitUntil(
+    runTaskAutocancel(env, Date.now())
+      .then((r) => console.log('task-autocancel', JSON.stringify(r)))
+      .catch((e) => console.error('task-autocancel failed', e))
+  );
   ctx.waitUntil(
     runDueReminder(env, Date.now())
       .then(async (r) => {
