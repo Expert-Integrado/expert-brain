@@ -23,7 +23,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/d3-force": "^3.0.10",
     "3d-force-graph": "^1.80.0",
-    "agents": "^0.0.90",
+    "agents": "^0.17.3",
     "d3-force": "^3.0.0",
     "fuse.js": "^7.3.0",
     "graphology": "^0.26.0",
@@ -40,7 +40,8 @@
     "@types/node": "^22.0.0",
     "adm-zip": "^0.5.16",
     "esbuild": "^0.28.0",
-    "tsx": "^4.19.0",
+    "graphology-types": "^0.24.8",
+    "tsx": "^4.23.0",
     "typescript": "^5.6.0",
     "vitest": "^4.1.10",
     "wrangler": "^4.81.1"
