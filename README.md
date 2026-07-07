@@ -6,6 +6,8 @@
 [![npm](https://img.shields.io/npm/v/%40expertintegrado%2Fcreate-expert-brain)](https://www.npmjs.com/package/@expertintegrado/create-expert-brain)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+**[→ Como funciona o Expert Brain](https://expert-integrado.github.io/expert-brain/)** — a página do projeto, com o sistema explicado visualmente.
+
 Você conversa com o Claude sobre uma ideia. Ele chama `recall`, varre o vault atrás de analogias em outros domínios, e só então oferece salvar a nota — atomizada, com `tldr` de uma frase e edges que nomeiam o *mecanismo* compartilhado com o que você já tinha guardado. Não é um app de notas: é uma disciplina de pensamento cross-domain embrulhada num servidor MCP, com um dashboard web por cima.
 
 ## O que é
