@@ -7,6 +7,7 @@
 // Sem dependências externas (DnD nativo do HTML5).
 
 import { appFetch } from './http.js';
+import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
@@ -279,7 +280,7 @@ function render() {
         </div>
       </header>
       <div class="task-col-body" data-dropzone="${esc(col.id)}">
-        ${items.map(cardHTML).join('') || '<div class="task-col-empty">—</div>'}
+        ${items.map(cardHTML).join('') || '<div class="task-col-empty">Solte tarefas aqui</div>'}
       </div>
       <div class="task-col-inline-create">
         <input type="text" class="task-col-inline-input" data-inline-input="${esc(col.id)}" placeholder="+ Nova tarefa" maxlength="200" autocomplete="off" aria-label="Nova tarefa nesta coluna" />
@@ -341,8 +342,10 @@ function wireInlineCreate() {
           return; // load() já re-renderiza (novo input não fica desabilitado)
         }
         console.warn('tasks: inline create failed', res.status);
+        toast('Não foi possível criar a tarefa — tenta de novo.');
       } catch (err) {
         console.warn('tasks: inline create failed', err);
+        toast('Não foi possível criar a tarefa — tenta de novo.');
       }
       input.disabled = false;
       input.focus();
@@ -363,6 +366,7 @@ async function move(id: string, columnId: string) {
     if (!res.ok) throw new Error('move ' + res.status);
   } catch (err) {
     console.warn('tasks: move failed', err);
+    toast('Não foi possível mover a tarefa — o board foi recarregado.');
   }
   await load();
 }
@@ -377,6 +381,7 @@ async function complete(id: string) {
     if (!res.ok) throw new Error('complete ' + res.status);
   } catch (err) {
     console.warn('tasks: complete failed', err);
+    toast('Não foi possível concluir a tarefa — tenta de novo.');
   }
   await load();
 }

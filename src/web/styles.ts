@@ -637,6 +637,31 @@ a:hover { color: var(--text); }
 }
 .btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
 
+/* Coluna vazia do kanban (spec 72) — placeholder que dá alvo visual pro drop. */
+.task-col-empty {
+  margin: 4px 2px; padding: 18px 10px;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  color: var(--text-faint); font-size: 12px; text-align: center;
+  user-select: none;
+}
+
+/* Toast global dos bundles do /app (spec 72) — feedback de erro/sucesso de ações client. */
+.app-toast {
+  position: fixed; left: 50%; bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%) translateY(10px);
+  max-width: min(92vw, 480px);
+  padding: 10px 16px; border-radius: var(--radius-sm);
+  background: var(--bg-accent); color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: 13px; line-height: 1.4;
+  opacity: 0; pointer-events: none;
+  transition: opacity 180ms var(--ease), transform 180ms var(--ease);
+  z-index: 300;
+}
+.app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.app-toast[data-kind='error'] { border-color: rgba(255, 122, 144, 0.5); color: var(--danger); }
+.app-toast[data-kind='ok'] { border-color: rgba(94, 234, 212, 0.4); }
+
 /* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
 .tax-swatch {
   width: 40px; height: 30px; padding: 2px;

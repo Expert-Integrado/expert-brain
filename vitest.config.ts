@@ -32,5 +32,8 @@ export default defineConfig({
     // próprios *.test.ts com schemas possivelmente divergentes. Sem excluí-los, o
     // vitest da árvore principal globa e roda essas cópias, poluindo o resultado.
     exclude: ['**/node_modules/**', '**/.claude/**', '**/test/auth.test.ts', '**/test/manifest.test.ts'],
+    // Default de 5s flaka sob carga: os testes rodam DENTRO do workerd (import
+    // caro) e alguns fazem dezenas de writes D1 num loop. 20s é folga, não licença.
+    testTimeout: 20000,
   },
 });

@@ -46,6 +46,7 @@ describe('comentario publico do convidado (POST /s/<token>/comment)', () => {
     expect(html).toContain('Comentários');
     expect(html).toContain(`/s/${r.token}/comment`);
     expect(html).toContain('name="website"'); // honeypot presente
+    expect(html).toContain('caracteres.'); // hint estático de limite (spec 72; CSP sem script)
   });
 
   it('convidado comenta → 303 e o comentario aparece pro dono e na pagina publica', async () => {

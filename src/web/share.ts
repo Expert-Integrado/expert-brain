@@ -349,6 +349,7 @@ function renderShareComments(token: string, comments: TaskComment[], form: Share
           <span class="cmt-lbl">Comentário</span>
           <textarea name="body" rows="4" maxlength="${GUEST_MAX_BODY}" required
             placeholder="Escreva um comentário">${esc(form.body ?? '')}</textarea>
+          <span class="cmt-hint">Até ${GUEST_MAX_BODY.toLocaleString('pt-BR')} caracteres.</span>
         </label>
         <label class="cmt-hp" aria-hidden="true"><span>Não preencha este campo</span>
           <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
@@ -430,6 +431,7 @@ const SHARE_CSS = `
 .cmt-form { display: flex; flex-direction: column; gap: 12px; }
 .cmt-field { display: flex; flex-direction: column; gap: 6px; }
 .cmt-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 600; }
+.cmt-hint { font-size: 11px; color: var(--text-faint); }
 .cmt-form input[type=text], .cmt-form textarea {
   background: var(--bg-accent); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 9px 12px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box;
