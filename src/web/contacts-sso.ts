@@ -25,10 +25,14 @@ export async function handleContactsSso(req: Request, env: Env): Promise<Respons
     return new Response(null, { status: 302, headers: { location: `${CONSOLE_URL}/app` } });
   }
 
+  // Nonce single-use (spec 20-frontend/27): o Console marca cada nonce em KV e
+  // rejeita reuso — a URL do handoff (que vaza em history/log por ser query
+  // string) só cria sessão UMA vez.
   const exp = Date.now() + 60_000;
-  const sig = await hmacHex(env.SSO_SECRET, `sso:${exp}`);
+  const nonce = crypto.randomUUID();
+  const sig = await hmacHex(env.SSO_SECRET, `sso:${exp}:${nonce}`);
   return new Response(null, {
     status: 302,
-    headers: { location: `${CONSOLE_URL}/app/sso?exp=${exp}&sig=${sig}` },
+    headers: { location: `${CONSOLE_URL}/app/sso?exp=${exp}&nonce=${nonce}&sig=${sig}` },
   });
 }

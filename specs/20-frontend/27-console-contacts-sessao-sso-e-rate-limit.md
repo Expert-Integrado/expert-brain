@@ -1,6 +1,6 @@
 # Console contacts: rate-limit no login, SSO single-use e revogação de sessão
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done (07/07/2026 — nota: o modulo espelha o do Brain EXATO, entao a 6a falha registra o bloqueio e a 7a tentativa toma 429) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-contacts
 > **Depende de:** `40-ops/42-contacts-testes-typecheck-ci.md` (harness de vitest + typecheck — hoje o `package.json` do expert-contacts não tem script `test` nem `typecheck` e não existe pasta `test/`)
 
 ## Contexto
@@ -113,18 +113,18 @@ Sobre o harness criado pela spec `40-ops/42` (vitest pool workers / miniflare co
 
 ## Critérios de aceite
 
-- [ ] `POST /app/login`: 5 falhas seguidas (mesmo IP+e-mail) ainda respondem 401 com "Credenciais inválidas."; a 6ª responde **429** com `Retry-After`; o bloqueio cresce exponencialmente (15→30→60 min) com teto de 24h.
-- [ ] Falha de e-mail inexistente conta no bucket igual a falha de senha (sem oráculo de e-mail).
-- [ ] Login correto após falhas (antes do bloqueio) zera o bucket e cria sessão normalmente.
-- [ ] Tentativa falha gera `console.warn` com IP e contagem — sem senha nem e-mail em claro na key do KV (usar hash truncado).
-- [ ] `GET /app/sso` com URL assinada válida cria sessão UMA vez; a mesma URL na segunda chamada redireciona pro `/app/login` sem `set-cookie`.
-- [ ] `GET /app/sso` no formato antigo (sem `nonce`) redireciona pro login — e o Brain deployado junto já emite o formato novo (`sso:${exp}:${nonce}`).
-- [ ] `POST /app/logout` invalida TODAS as sessões emitidas (cookie de outro "dispositivo" simulado deixa de passar em `requireSession`), não só limpa o cookie local.
-- [ ] Trocar `OWNER_PASSWORD_HASH` invalida sessões antigas sem passo manual adicional.
-- [ ] Nenhuma migration D1 adicionada; nenhum dado existente alterado; ausência das chaves KV novas reproduz o comportamento default (epoch 0, bucket vazio).
-- [ ] Comentário/README com recomendação de Cloudflare Rate Limiting rule pra `/app/login` e `/app/sso`.
-- [ ] Módulo `src/web/rate-limit.ts` com constantes e esquema de key idênticos ao do Brain (spec `10-backend/18`) — padrão único entre os dois repos.
-- [ ] `npm run typecheck` e `npm test` verdes, incluindo `test/console-auth.test.ts`.
+- [x] `POST /app/login`: 5 falhas seguidas (mesmo IP+e-mail) ainda respondem 401 com "Credenciais inválidas."; a 6ª responde **429** com `Retry-After`; o bloqueio cresce exponencialmente (15→30→60 min) com teto de 24h.
+- [x] Falha de e-mail inexistente conta no bucket igual a falha de senha (sem oráculo de e-mail).
+- [x] Login correto após falhas (antes do bloqueio) zera o bucket e cria sessão normalmente.
+- [x] Tentativa falha gera `console.warn` com IP e contagem — sem senha nem e-mail em claro na key do KV (usar hash truncado).
+- [x] `GET /app/sso` com URL assinada válida cria sessão UMA vez; a mesma URL na segunda chamada redireciona pro `/app/login` sem `set-cookie`.
+- [x] `GET /app/sso` no formato antigo (sem `nonce`) redireciona pro login — e o Brain deployado junto já emite o formato novo (`sso:${exp}:${nonce}`).
+- [x] `POST /app/logout` invalida TODAS as sessões emitidas (cookie de outro "dispositivo" simulado deixa de passar em `requireSession`), não só limpa o cookie local.
+- [x] Trocar `OWNER_PASSWORD_HASH` invalida sessões antigas sem passo manual adicional.
+- [x] Nenhuma migration D1 adicionada; nenhum dado existente alterado; ausência das chaves KV novas reproduz o comportamento default (epoch 0, bucket vazio).
+- [x] Comentário/README com recomendação de Cloudflare Rate Limiting rule pra `/app/login` e `/app/sso`.
+- [x] Módulo `src/web/rate-limit.ts` com constantes e esquema de key idênticos ao do Brain (spec `10-backend/18`) — padrão único entre os dois repos.
+- [x] `npm run typecheck` e `npm test` verdes, incluindo `test/console-auth.test.ts`.
 
 ## Validação
 
