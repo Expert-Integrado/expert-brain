@@ -1,8 +1,8 @@
 # Backup e portabilidade: snapshot automático do D1 pro R2 + export manual do dono
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + expert-contacts, mesmo padrão nos dois)
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** ambos (expert-brain + expert-contacts, mesmo padrão nos dois)
 >
-> **Estado 05/07/2026 — IMPLEMENTADA nos dois repos, aguardando validação do dono:** brain em `feat/67-backup` (4 commits, topo `21ec142`, 357 testes verdes) e contacts em `feat/67-backup` (4 commits, topo `ac9923d`, 125 testes verdes). Falta: (1) validação manual `wrangler dev` (backup agora + inspecionar ZIP); (2) **adicionar `"0 5 * * 1"` ao `wrangler.toml` LOCAL do brain** (arquivo gitignored — o agente só pôde atualizar o `wrangler.example.toml`); (3) merge das branches; (4) deploy com OK do dono; (5) conferir 1º snapshot real contra `stats`. Desvios aceitos registrados nos relatórios: dispatch extraído pra `src/scheduled.ts` (brain), resultado em KV `backup:last` no contacts (repo não tem tabela meta), export ZIP bufferizado sem gravar no R2.
+> **Estado 06/07/2026 — CONCLUÍDA E EM PRODUÇÃO:** mergeada em master (brain) e main (contacts) e deployada com OK do dono; crons semanais ativos nos dois workers (seg 2h BRT), inclusive no `wrangler.toml` LOCAL do brain. Pendência operacional (fora da spec): 1º snapshot real acontece no próximo cron ou no clique do dono em "Fazer backup agora" — conferir contra `stats` na ocasião. Desvios aceitos registrados nos relatórios: dispatch extraído pra `src/scheduled.ts` (brain), resultado em KV `backup:last` no contacts (repo não tem tabela meta), export ZIP bufferizado sem gravar no R2.
 > **Depende de:** nenhuma (independente de todas as ondas; pode rodar a QUALQUER momento — quanto antes melhor)
 > **Agente sugerido:** Opus (dados + cron + runbook de restore) · **Esforço de execução:** ultrathink
 
@@ -56,12 +56,12 @@ Arquivo `docs/restore.md` em cada repo: passo a passo pra reconstruir do zero �
 
 ## Critérios de aceite
 
-- [ ] Snapshot gera 1 JSONL por tabela + manifest com contagens batendo (fixture com dados nos dois repos).
-- [ ] Retenção: com 8 snapshots existentes, o 9º remove o mais antigo SOMENTE após sucesso do novo; snapshot falho não apaga nada.
-- [ ] Cron: expressão nova dispara snapshot; a rotina diária existente segue intocada (teste com `controller.cron` forjado pros dois valores).
-- [ ] `/app/config` mostra último backup; "Fazer backup agora" funciona; "Baixar export" entrega ZIP válido cujo conteúdo reimporta limpo num D1 vazio (teste do script de restore contra o export).
-- [ ] `scripts/restore-from-snapshot.mjs` + `docs/restore.md`: seguindo o runbook num banco novo local, contagens finais = manifest.
-- [ ] Endpoints exigem sessão; nenhum caminho público novo.
+- [x] Snapshot gera 1 JSONL por tabela + manifest com contagens batendo (fixture com dados nos dois repos).
+- [x] Retenção: com 8 snapshots existentes, o 9º remove o mais antigo SOMENTE após sucesso do novo; snapshot falho não apaga nada.
+- [x] Cron: expressão nova dispara snapshot; a rotina diária existente segue intocada (teste com `controller.cron` forjado pros dois valores).
+- [x] `/app/config` mostra último backup; "Fazer backup agora" funciona; "Baixar export" entrega ZIP válido cujo conteúdo reimporta limpo num D1 vazio (teste do script de restore contra o export).
+- [x] `scripts/restore-from-snapshot.mjs` + `docs/restore.md`: seguindo o runbook num banco novo local, contagens finais = manifest.
+- [x] Endpoints exigem sessão; nenhum caminho público novo.
 
 ## Validação
 
