@@ -1,6 +1,6 @@
 # Contacts: suíte de testes do zero + typecheck + CI (hoje: nada)
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
 > **Depende de:** nenhuma
 
 ## Contexto

@@ -1,6 +1,6 @@
 # Brain: CI com gate de test/typecheck, fix do typecheck do client e testes do fluxo OAuth/PAT
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto

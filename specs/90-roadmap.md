@@ -251,6 +251,29 @@ Objetivo declarado do dono: "o Brain cuidando de TODO o processo — tarefa, con
 
 Leitura: `A ← B` significa "A depende de B". A dependência declarada no frontmatter da spec prevalece sempre sobre a ordem numérica.
 
+### Fase 7 — Esteira contínua 07/07/2026 (triagem inline das specs restantes)
+
+Triagem feita em 07/07/2026 direto na sessão (subagentes indisponíveis — org desabilitou acesso). Autorização vigente do dono: deploy dos dois workers COM testes verdes está pré-aprovado nesta esteira; DNS, schema destrutivo, rotação de token e envio externo continuam gateados. Ordem de execução (cada onda = implementar + typecheck + suíte + commit/push + deploy + smoke em produção):
+
+| Onda | Spec | Repo | Veredito da triagem (evidência 07/07) |
+|---|---|---|---|
+| E1 | `10-backend/13` | brain | VIVA P0 — `src/db/migrate.ts` sem nenhum uso de `batch` (migrations não transacionais) |
+| E2 | `40-ops/43` | ambos | VIVA P1 — nenhum bloco `[observability]` nos dois `wrangler.toml` |
+| E3 | `10-backend/24` | contacts | VIVA P2/segurança — compare de token com `===` em `src/index.ts:79,83` |
+| E4 | `10-backend/18` | brain | VIVA P1 — endpoints `/setup/*` sem auth dedicada; login sem rate-limit; `SETUP_TOKEN` não existe |
+| E5 | `10-backend/22` | contacts | VIVA P1 — `pdGet` passa `api_token` em query string (`src/index.ts:773`) |
+| E6 | `20-frontend/24` | contacts | PARCIAL — rota `/app/media` (avatar) ausente; parte brain-cache já shipou via spec 26 |
+| E7 | `30-features/34` | contacts | VIVA P2 — delete/merge de entidades; dependências satisfeitas |
+| E8 | `30-features/32` | brain | VIVA P2 — `notify.ts` sem caps de digest nem flag stale |
+| E9 | `10-backend/23` | brain | VIVA P2 — mensagens de erro MCP |
+| E10 | `20-frontend/25` | brain | VIVA P2 — interação do grafo (client) |
+| E11 | `20-frontend/27` | contacts | VIVA P2 — rate-limit no login do console standalone |
+| E12 | `30-features/33` | brain | VIVA P2 — share de nota; reconciliar com trilho existente de `share.ts` |
+| E13 | `30-features/36` | ambos | IN-PROGRESS L — edição inline; auditar o que falta antes de codar |
+| E14 | `40-ops/45` | contacts | IN-PROGRESS — Parte 1 aplicada (1.451 categorias); faltam scripts `apply-*-seeds.mjs` + `docs/categorias-fontes.md` |
+
+Fechadas na triagem: `40-ops/41` e `40-ops/42` → `done` (CI existe e verde nos dois repos em 07/07/2026). Fora da esteira (precisam do dono): `40-ops/46` (bot Telegram dedicado), `30-features/35` (contrato, depende da 45), `00-sistema/01`/`02` (docs P0 — exigem auditoria própria), `50-console-v2/69` (backup off-site).
+
 ### Regras de paralelização
 
 1. Dentro de uma fase, specs sem dependência entre si podem rodar em paralelo (agentes/sessões diferentes), DESDE que não compartilhem arquivos em "Arquivos afetados".
