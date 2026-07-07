@@ -1,8 +1,8 @@
 # Contacts: aplicar seeds de categoria completos com overwrite + 4ª fonte (categoria de chat WhatsApp por telefone)
 
-> **Status:** in-progress · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
+> **Status:** done (07/07/2026) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-contacts
 > **Parte 1 (aplicar category_seeds.json completo com overwrite):** done — 1451 categorias aplicadas em `entities.category` via batches UPDATE...WHERE id IN(...) no D1 remoto (`expert-contacts-db`); dist final bate com o seed (aluno 3, cliente 155, lead 364, lead-perdido 567, network 292, pessoal 70), 0 fora do canon, total de entidades inalterado (7587). Apenas `category` tocada (`source` NÃO alterado). Scripts `apply-category-seeds.mjs`/`apply-whatsapp-categories.mjs` HTTP-based e `docs/categorias-fontes.md` NÃO foram criados nesta onda.
-> **Parte 2 (4ª fonte WhatsApp) + scripts versionados + doc de proveniência:** pendente (fora desta onda).
+> **Parte 2 (4ª fonte WhatsApp) + scripts versionados + doc de proveniência:** done (07/07/2026, commit `611a49b` no expert-contacts) — canon ganhou EVENT_KIND `categorized` (fora de MANUAL/LAST_CONTACTED, não reembeda) + EVENT_SOURCE `seed` (espelhados em `mcp/canon.mjs`, drift test cobre); `scripts/apply-category-seeds.mjs` e `scripts/apply-whatsapp-categories.mjs` (dry-run default, `--apply`/`--overwrite`, PII mascarada nos relatórios, validação local contra `GET /canon`); `docs/categorias-fontes.md` (precedência manual > seed > whatsapp > pipedrive); `test/categorized-canon.test.ts` (6 invariantes). Deploy 81feebfa, smoke `GET /canon` servindo os enums novos. **Execução real dos scripts (dry-run + apply da 4ª fonte) segue gateada em OK do dono.**
 > **Depende de:** 10-backend/19-contacts-write-path-e-canon-unico.md (gate obrigatório — bugs de `category ""` e `source` sobrescrito corrompem exatamente este fluxo em massa) · 40-ops/44-contacts-migrations-tracking.md (somente SE a implementação optar por coluna nova; o design default desta spec não exige migration)
 
 ## Contexto
