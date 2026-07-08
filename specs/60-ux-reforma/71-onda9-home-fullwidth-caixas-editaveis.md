@@ -1,6 +1,8 @@
 # 71 — Onda 9: home em largura total, título no digest e caixas com altura editável
 
-- **Status:** done
+- **Status:** done — **modal "Ajustar caixas" SUPERADO pela spec 72** (manipulação
+  direta estilo ClickUp, feedback do dono no mesmo dia); persistência e limites
+  desta spec continuam valendo.
 - **Data:** 08/07/2026
 - **Origem:** feedback do dono após a v3.2.0 (Onda 8/spec 70): "as telas lateralizadas
   foram otimizadas (...) só que a tela de início ainda não tá lateralizada, ela tá

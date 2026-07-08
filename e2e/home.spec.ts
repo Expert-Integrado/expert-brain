@@ -26,30 +26,62 @@ test('navegação da shell leva ao board e às notas', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/notes/);
 });
 
-test('modal "Ajustar caixas" edita altura com preview ao vivo e persiste (Onda 9, spec 71)', async ({ page }) => {
+// Limpeza compartilhada dos specs de layout (Onda 9b): volta o layout salvo pro
+// default via endpoint (mais previsível que desfazer gesto a gesto).
+async function resetHomeLayout(page: import('@playwright/test').Page): Promise<void> {
+  await page.request.post('/app/home/prefs', {
+    data: { heights: {}, order: ['today', 'inbox', 'digest', 'activity'] },
+  });
+}
+
+test('arrastar caixa pelo título reordena e persiste (Onda 9b, spec 72)', async ({ page }) => {
   await page.goto('/app');
-  await page.click('#home-prefs-open');
-  await expect(page.locator('#home-prefs-modal')).toBeVisible();
+  const grid = page.locator('.home-grid');
+  await expect(grid.locator('[data-home-item]').first()).toHaveAttribute('data-home-item', 'today');
 
-  // slider muda a caixa NA HORA (preview via custom property)
-  await page.locator('#home-prefs-modal .home-prefs-range[data-box="today"]').fill('640');
-  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '640px');
-
-  // salvar persiste e a altura sobrevive ao reload
+  // drag real com mouse: pega o TÍTULO do card Hoje e solta sobre o card Inbox
+  const handle = page.locator('[data-home-item="today"] .home-box-handle');
+  const target = page.locator('[data-home-item="inbox"]');
+  const from = (await handle.boundingBox())!;
+  const to = (await target.boundingBox())!;
   const saved = page.waitForResponse((r) => r.url().includes('/app/home/prefs') && r.ok());
-  await page.click('#home-prefs-save');
+  await page.mouse.move(from.x + 10, from.y + from.height / 2);
+  await page.mouse.down();
+  // passos intermediários: primeiro vence o threshold de 6px, depois cruza o alvo
+  await page.mouse.move(from.x + 30, from.y + from.height / 2, { steps: 4 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+  await page.mouse.up();
   await saved;
-  await page.reload();
-  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '640px');
 
-  // limpeza: restaurar padrão + salvar (estado previsível pros outros specs/runs)
-  await page.click('#home-prefs-open');
-  await page.click('#home-prefs-reset');
-  const cleared = page.waitForResponse((r) => r.url().includes('/app/home/prefs') && r.ok());
-  await page.click('#home-prefs-save');
-  await cleared;
+  // ordem trocada ao vivo e persistida no reload
+  await expect(grid.locator('[data-home-item]').first()).toHaveAttribute('data-home-item', 'inbox');
   await page.reload();
-  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '420px');
+  await expect(grid.locator('[data-home-item]').first()).toHaveAttribute('data-home-item', 'inbox');
+
+  await resetHomeLayout(page);
+});
+
+test('puxar a borda de baixo redimensiona e persiste (Onda 9b, spec 72)', async ({ page }) => {
+  await page.goto('/app');
+  const box = page.locator('[data-home-box="today"]');
+  await expect(box).toHaveCSS('max-height', '420px');
+
+  const rz = page.locator('[data-home-item="today"] .home-resize');
+  const r = (await rz.boundingBox())!;
+  const saved = page.waitForResponse((r2) => r2.url().includes('/app/home/prefs') && r2.ok());
+  await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(r.x + r.width / 2, r.y + r.height / 2 + 120, { steps: 6 });
+  await page.mouse.up();
+  await saved;
+
+  await expect(box).toHaveCSS('max-height', '540px');
+  await page.reload();
+  await expect(box).toHaveCSS('max-height', '540px');
+
+  await resetHomeLayout(page);
+  await page.reload();
+  await expect(box).toHaveCSS('max-height', '420px');
 });
 
 test('Inbox saiu do menu; card da home captura e descarta inline (Onda 8, spec 70)', async ({ page }) => {

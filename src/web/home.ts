@@ -8,7 +8,7 @@ import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 import { JOURNAL_CSS } from './journal.js';
-import { getHomePrefs, HOME_BOX_DEFAULTS, HOME_BOX_MIN, HOME_BOX_MAX, type HomeBoxKey, type HomePrefs } from './home-prefs.js';
+import { getHomePrefs, HOME_BOX_DEFAULTS, HOME_BOX_KEYS, HOME_BOX_MIN, HOME_BOX_MAX, type HomeBoxKey, type HomePrefs, type HomePrefsState } from './home-prefs.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
 // um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
@@ -30,11 +30,15 @@ const INBOX_SCAN_LIMIT = 200;
 
 const HOME_CSS = `
 .home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; align-items: start; }
+/* min-width:auto (default de item de grid) deixa o conteúdo min-content INFLAR as
+   tracks — a Atividade (span total, chips nowrap no feed) estourava a página na
+   horizontal. Todo filho da grid pode encolher abaixo do conteúdo. */
+.home-grid > * { min-width: 0; }
 /* Caixas de tamanho previsível (Onda 8): altura capada + scroll interno SÓ no
    conteúdo (o título e o form de captura ficam fixos) — 26 tasks atrasadas não
    esticam mais a home inteira. Conteúdo curto NÃO estica a caixa (max-height).
-   Onda 9 (spec 71): a altura virou a custom property --home-card-h, ajustável por
-   caixa no modal "Ajustar caixas" (persistida em home_prefs) — o fallback aqui é
+   Onda 9b (spec 72): a altura é a custom property --home-card-h, ajustável
+   puxando a borda de baixo (persistida em home_prefs) — o fallback aqui é
    o default e DEVE bater com HOME_BOX_DEFAULTS (home-prefs.ts). */
 .home-card { max-height: var(--home-card-h, 420px); display: flex; flex-direction: column; overflow: hidden; }
 .home-card > :last-child { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
@@ -78,32 +82,58 @@ const HOME_CSS = `
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
 .home-error { color: var(--danger); }
 .home-private-badge { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
-/* Feed "Atividade" (spec 69) — o antigo Journal, embutido abaixo dos cards.
-   Onda 8: caixa FECHADA de altura fixa com scroll interno (o "Carregar mais" e o
-   aviso de degradação nascem dentro dela — o client insere ao redor do container). */
-.home-activity { margin-top: 28px; }
+/* Feed "Atividade" (spec 69) — o antigo Journal. Onda 9b (spec 72): a seção virou
+   FILHA da .home-grid (span total) pra entrar na reordenação junto com os cards.
+   Onda 8: caixa FECHADA de altura fixa com scroll interno. */
+.home-grid > .home-activity { grid-column: 1 / -1; }
 .home-activity-title { font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 14px; }
 .home-activity-box {
   max-height: var(--home-card-h, 560px); overflow-y: auto; scrollbar-width: thin;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 6px 18px 14px;
 }
-/* Botão + modal "Ajustar caixas" (Onda 9, spec 71) */
-#home-prefs-open { margin-left: auto; }
-.home-prefs-row { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; }
-.home-prefs-label { flex: none; width: 130px; font-size: 13px; color: var(--text); }
-.home-prefs-range { flex: 1; min-width: 0; accent-color: var(--accent-lav); }
-.home-prefs-val { flex: none; width: 56px; text-align: right; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.home-prefs-hint { font-size: 12px; color: var(--text-dim); margin: 0 0 16px; }
-.home-prefs-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+/* ── Manipulação direta das caixas (Onda 9b, spec 72 — "igual ao ClickUp") ──
+   Arrastar pelo TÍTULO reordena (ghost segue o ponteiro; as demais caixas
+   reorganizam ao vivo); puxar a BORDA DE BAIXO redimensiona. Persistência no
+   soltar (POST /app/home/prefs). Sem modal. */
+.home-arrange-hint { margin-left: auto; font-size: 12px; color: var(--text-subtle); }
+.home-box-handle { cursor: grab; touch-action: none; }
+.home-box-handle a { cursor: pointer; }
+html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-select: none !important; }
+.home-box-ghost {
+  position: fixed; z-index: 400; pointer-events: none; margin: 0; opacity: .92;
+  transform: scale(1.02); box-shadow: 0 18px 48px rgba(0, 0, 0, .5);
+}
+.home-box-dragging { opacity: .4; outline: 2px dashed var(--accent-lav); outline-offset: 2px; border-radius: var(--radius); }
+.home-card { position: relative; }
+.home-activity { position: relative; }
+.home-resize {
+  position: absolute; left: 12px; right: 12px; bottom: -2px; height: 14px; z-index: 2;
+  cursor: ns-resize; touch-action: none; display: flex; align-items: center; justify-content: center;
+}
+.home-resize::after {
+  content: ''; width: 44px; height: 4px; border-radius: 2px;
+  background: var(--border-strong); opacity: 0; transition: opacity 140ms var(--ease);
+}
+.home-card:hover .home-resize::after, .home-activity:hover .home-resize::after,
+.home-resize.active::after { opacity: .9; background: var(--accent-lav); }
 `;
 
-// style inline com a altura salva — ausente quando a caixa está no default (o CSS
-// resolve pelo fallback do var()). data-home-box é o alvo do preview ao vivo do modal.
+// Atributos do ALVO DE ALTURA (o elemento que recebe --home-card-h): identidade da
+// caixa + default + limites (o client lê daqui — número único com home-prefs.ts) +
+// style inline quando há altura salva (ausente = fallback do var() no CSS).
 function boxAttrs(box: HomeBoxKey, prefs: HomePrefs): string {
   const h = prefs[box];
-  return ` data-home-box="${box}"${h ? ` style="--home-card-h:${h}px"` : ''}`;
+  return ` data-home-box="${box}" data-home-default="${HOME_BOX_DEFAULTS[box]}" data-home-min="${HOME_BOX_MIN}" data-home-max="${HOME_BOX_MAX}"${h ? ` style="--home-card-h:${h}px"` : ''}`;
 }
+
+// Atributo do ITEM REORDENÁVEL (filho direto da .home-grid). Nos cards, item e
+// alvo de altura são o MESMO elemento; na Atividade o alvo é a caixa interna.
+const itemAttr = (box: HomeBoxKey): string => ` data-home-item="${box}"`;
+
+// Alça de redimensionamento (borda de baixo). aria-hidden: interação de ponteiro;
+// o teclado tem o fallback natural (o conteúdo rola de qualquer jeito).
+const resizeHandle = '<div class="home-resize" aria-hidden="true"></div>';
 
 function taskWhenHtml(t: TaskRow, now: number): string {
   if (t.due_at === null) return '';
@@ -116,8 +146,8 @@ function taskWhenHtml(t: TaskRow, now: number): string {
 // Exportado: testado isoladamente (sem D1/HTTP) em test/web/home.test.ts.
 export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}): string {
   if (tasks.length === 0) {
-    return `<section class="card home-card"${boxAttrs('today', prefs)}>
-      <h2>Hoje <a href="/app/tasks">board completo →</a></h2>
+    return `<section class="card home-card"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a></h2>
       <p class="home-empty">Nada vencendo nas próximas 24h.</p>
     </section>`;
   }
@@ -131,8 +161,8 @@ export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs 
       </li>`;
     })
     .join('');
-  return `<section class="card home-card"${boxAttrs('today', prefs)}>
-    <h2>Hoje <a href="/app/tasks">board completo →</a></h2>
+  return `<section class="card home-card"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a></h2>
     <ul class="home-list" id="home-today-list">${items}</ul>
   </section>`;
 }
@@ -155,8 +185,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
       <button type="submit" class="btn btn-sm">Capturar</button>
     </form>`;
   if (pending === 0) {
-    return `<section class="card home-card"${boxAttrs('inbox', prefs)}>
-      <h2>Inbox <a href="/app/inbox">ver tudo →</a></h2>
+    return `<section class="card home-card"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a></h2>
       ${capture}
       <p class="home-empty">Inbox vazio.</p>
     </section>`;
@@ -174,8 +204,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
       </span>
     </li>`)
     .join('');
-  return `<section class="card home-card"${boxAttrs('inbox', prefs)}>
-    <h2>Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a></h2>
+  return `<section class="card home-card"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a></h2>
     ${capture}
     <ul class="home-list home-inbox-list">${rows}</ul>
   </section>`;
@@ -187,8 +217,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
 // O card "Últimas interações" foi absorvido junto: o feed já traz as interações
 // (chip laranja + filtro próprio), então o card seria informação duplicada.
 function renderActivityFeedSection(prefs: HomePrefs = {}): string {
-  return `<section class="home-activity" id="atividade">
-    <h2 class="home-activity-title">Atividade</h2>
+  return `<section class="home-activity" id="atividade"${itemAttr('activity')}>${resizeHandle}
+    <h2 class="home-activity-title home-box-handle">Atividade</h2>
     <div class="journal-filters">
       <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
       <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
@@ -204,51 +234,10 @@ function renderActivityFeedSection(prefs: HomePrefs = {}): string {
 // Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
 // visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
 function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}): string {
-  return `<section class="card home-card"${box ? boxAttrs(box, prefs) : ''}>
-    <h2>${titleHtml}</h2>
+  return `<section class="card home-card"${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
+    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}</h2>
     <p class="error-state">${esc(msg)}</p>
   </section>`;
-}
-
-// Modal "Ajustar caixas" (Onda 9, spec 71): um slider por caixa presente na página,
-// preview ao vivo pelo client (home.bundle.js), persistência em POST /app/home/prefs.
-// Rótulos em sincronia com os títulos dos cards.
-const HOME_BOX_LABELS: Record<HomeBoxKey, string> = {
-  today: 'Hoje',
-  inbox: 'Inbox',
-  digest: 'Do seu cérebro',
-  activity: 'Atividade',
-};
-
-function renderHomePrefsModal(prefs: HomePrefs, boxes: HomeBoxKey[]): string {
-  const rows = boxes
-    .map((box) => {
-      const def = HOME_BOX_DEFAULTS[box];
-      const val = prefs[box] ?? def;
-      return `<label class="home-prefs-row">
-        <span class="home-prefs-label">${esc(HOME_BOX_LABELS[box])}</span>
-        <input type="range" class="home-prefs-range" data-box="${box}" data-default="${def}" min="${HOME_BOX_MIN}" max="${HOME_BOX_MAX}" step="20" value="${val}" aria-label="Altura da caixa ${esc(HOME_BOX_LABELS[box])}" />
-        <span class="home-prefs-val" data-val-for="${box}">${val}px</span>
-      </label>`;
-    })
-    .join('');
-  return `<div class="modal" id="home-prefs-modal" hidden>
-    <div class="modal-backdrop"></div>
-    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="home-prefs-title">
-      <div class="modal-head">
-        <strong id="home-prefs-title">Ajustar caixas</strong>
-        <button type="button" class="modal-x" aria-label="Fechar">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="home-prefs-hint">Arraste pra mudar a altura de cada caixa — o resultado aparece na hora. Salvar vale pra todas as suas máquinas.</p>
-        ${rows}
-        <div class="home-prefs-actions">
-          <button type="button" class="btn btn-sm" id="home-prefs-reset">Restaurar padrão</button>
-          <button type="button" class="btn btn-primary btn-sm" id="home-prefs-save">Salvar</button>
-        </div>
-      </div>
-    </div>
-  </div>`;
 }
 
 export async function handleHomePage(req: Request, env: Env): Promise<Response> {
@@ -257,11 +246,12 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
 
   const now = Date.now();
 
-  // Alturas salvas das caixas (Onda 9) — falha na leitura degrada pros defaults.
-  let prefs: HomePrefs = {};
-  try { prefs = await getHomePrefs(env); } catch (e) {
+  // Layout salvo das caixas (Onda 9b) — falha na leitura degrada pros defaults.
+  let prefsState: HomePrefsState = { heights: {}, order: null };
+  try { prefsState = await getHomePrefs(env); } catch (e) {
     console.error('home: falha ao ler home_prefs (defaults aplicados)', e);
   }
+  const prefs = prefsState.heights;
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
@@ -297,8 +287,8 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       // só a FALHA de leitura vira card de erro visível. Onda 9: o card ganhou o
       // MESMO h2 dos vizinhos (era o "card sem título" do feedback do dono) — o
       // renderDigestCard entra em modo bare (sem o <strong> interno duplicado).
-      digestCardHtml = `<section class="card home-card"${boxAttrs('digest', prefs)}>
-        <h2>Do seu cérebro <a href="/app/notes">notas →</a></h2>
+      digestCardHtml = `<section class="card home-card"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
+        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a></h2>
         ${renderDigestCard(digest, { bare: true })}
       </section>`;
       hasDigestBox = true;
@@ -309,19 +299,22 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     hasDigestBox = true;
   }
 
-  const modalBoxes: HomeBoxKey[] = hasDigestBox
-    ? ['today', 'inbox', 'digest', 'activity']
-    : ['today', 'inbox', 'activity'];
+  // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,
+  // renderizadas na ordem salva — arrastar pelo título reordena, puxar a borda
+  // redimensiona (padrão ClickUp, feedback do dono). Digest ausente é pulado.
+  const boxHtml: Record<HomeBoxKey, string> = {
+    today: todayCardHtml,
+    inbox: inboxCardHtml,
+    digest: hasDigestBox ? digestCardHtml : '',
+    activity: renderActivityFeedSection(prefs),
+  };
+  const gridHtml = (prefsState.order ?? [...HOME_BOX_KEYS]).map((box) => boxHtml[box]).join('\n      ');
 
   const body = `
-    <div class="page-header"><h1>Início</h1><button type="button" class="btn btn-ghost btn-sm" id="home-prefs-open">Ajustar caixas</button></div>
+    <div class="page-header"><h1>Início</h1><span class="home-arrange-hint">arraste pelo título pra reorganizar · puxe a borda de baixo pra redimensionar</span></div>
     <div class="home-grid">
-      ${todayCardHtml}
-      ${inboxCardHtml}
-      ${digestCardHtml}
+      ${gridHtml}
     </div>
-    ${renderActivityFeedSection(prefs)}
-    ${renderHomePrefsModal(prefs, modalBoxes)}
     <script src="/app/home/bundle.js?v=${assetVersion('home.bundle.js')}" defer></script>
     <script src="/app/journal/bundle.js?v=${assetVersion('journal.bundle.js')}" defer></script>
   `;
