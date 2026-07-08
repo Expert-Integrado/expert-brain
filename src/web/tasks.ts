@@ -87,6 +87,14 @@ interface TaskView {
   share_expires_brt: string | null; // "DD/MM" — tooltip do ícone quando shared=true
   project_id: string | null; // pasta/projeto (spec 58); null = "Sem projeto". Chip resolvido via board.projects
   private: boolean; // selo de privacidade (spec 59): badge 🔒 no card + detalhe
+  search_text: string; // título + descrição + tags, minúsculo e sem acento — busca client-side (Onda 8)
+}
+
+// Texto de busca do card (Onda 8): título + corpo (quando não é eco do título) +
+// tags, minúsculo e SEM acentos (fold) — o client só precisa foldar a query.
+// Cap de 800 chars segura o payload do board (corpo longo raramente importa além disso).
+export function foldSearchText(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 }
 
 // Tags reservadas (`dedupe:*`) são um detalhe interno de dedupe do save_task —
@@ -120,6 +128,9 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []):
     share_expires_brt: shared ? formatBrtShort(t.share_expires_at!) : null,
     project_id: t.project_id,
     private: t.private === 1,
+    search_text: foldSearchText(
+      `${t.title}\n${t.body && t.body !== t.title ? t.body : ''}\n${tags.join(' ')}`
+    ).slice(0, 800),
   };
 }
 
@@ -1083,6 +1094,22 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     ...PRIORITIES.map((m) => `<option value="${m.value}">${esc(m.label)}</option>`),
   ].join('');
 
+  // Filtro por prioridade (Onda 8): Todas | cada uma das 4 | Sem prioridade.
+  const prioFilterOptions = [
+    `<option value="all" selected>Todas as prioridades</option>`,
+    ...PRIORITIES.map((m) => `<option value="${m.value}">${esc(m.label)}</option>`),
+    `<option value="none">Sem prioridade</option>`,
+  ].join('');
+
+  // Filtro por tag (Onda 8): união das tags visíveis de todos os cards do board.
+  // O client re-popula o select a cada load() (tags mudam com edição inline).
+  const allTags = new Set<string>();
+  for (const col of columns) for (const t of col.tasks) for (const tag of t.tags) allTags.add(tag);
+  const tagFilterOptions = [
+    `<option value="all" selected>Todas as tags</option>`,
+    ...[...allTags].sort((a, b) => a.localeCompare(b)).map((t) => `<option value="${esc(t)}">${esc(t)}</option>`),
+  ].join('');
+
   const body = `
     <div class="page-header">
       <h1>Tarefas</h1>
@@ -1093,11 +1120,15 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     </div>
 
     <div class="task-toolbar" role="toolbar" aria-label="Filtros de tarefas">
+      <input type="search" class="task-search" id="task-search" placeholder="Buscar por título, descrição ou tag…"
+        aria-label="Buscar tarefas por título, descrição ou tag" autocomplete="off" />
       <button class="task-filter active" data-filter="all" type="button">Todas abertas</button>
       <button class="task-filter" data-filter="today" type="button">Vencem hoje</button>
       <button class="task-filter" data-filter="week" type="button">Esta semana</button>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
       <span class="task-toolbar-spacer"></span>
+      <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
+      <select class="task-project-filter" id="task-tag-filter" aria-label="Filtrar por tag">${tagFilterOptions}</select>
       ${renderProjectFilter(projects, initialProject)}
     </div>
 
@@ -1172,7 +1203,16 @@ export const TASKS_CSS = `
 .task-new-btn { margin-left: auto; }
 .task-new-plus { font-size: 17px; line-height: 1; font-weight: 400; }
 
-.task-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.task-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+/* Busca do board (Onda 8): título + descrição + tags, client-side sobre o payload */
+.task-search {
+  flex: 1 1 240px; min-width: 180px; max-width: 380px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 6px 14px; font-size: 13px; font-family: inherit;
+  transition: border-color 160ms var(--ease);
+}
+.task-search::placeholder { color: var(--text-subtle); }
+.task-search:focus { outline: none; border-color: var(--accent-lav); }
 .task-filter {
   background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer;
@@ -1421,5 +1461,6 @@ body.task-dragging .task-col-body { min-height: 90px; }
   .task-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
+  .task-search { flex-basis: 100%; max-width: none; }
 }
 `;

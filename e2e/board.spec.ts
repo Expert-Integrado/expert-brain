@@ -61,6 +61,20 @@ test('link do título do card navega pro detalhe', async ({ page }) => {
   await expect(page.locator('.task-detail-sidebar')).toBeVisible();
 });
 
+test('busca do toolbar filtra os cards por texto (Onda 8)', async ({ page }) => {
+  const title = (await page.locator('.task-card[data-id="seed-task-01"] .task-card-title').textContent())!.trim();
+  const term = title.split(/\s+/)[0];
+  await page.fill('#task-search', term);
+  await page.waitForTimeout(400); // debounce 120ms + re-render
+  await expect(page.locator('.task-card[data-id="seed-task-01"]')).toBeVisible();
+  await page.fill('#task-search', 'zzz-termo-que-nao-existe');
+  await page.waitForTimeout(400);
+  await expect(page.locator('.task-card')).toHaveCount(0);
+  await page.fill('#task-search', '');
+  await page.waitForTimeout(400);
+  await expect(page.locator('.task-card[data-id="seed-task-01"]')).toBeVisible();
+});
+
 test('botão concluir move a task pra coluna de concluídas sem navegar', async ({ page }) => {
   const done = page.waitForResponse((r) => r.url().includes('/app/tasks/complete') && r.ok());
   await page.click('.task-card[data-id="seed-task-03"] .task-complete');

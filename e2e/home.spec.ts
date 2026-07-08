@@ -25,3 +25,23 @@ test('navegação da shell leva ao board e às notas', async ({ page }) => {
   await page.click('a[href="/app/notes"]');
   await expect(page).toHaveURL(/\/app\/notes/);
 });
+
+test('Inbox saiu do menu; card da home captura e descarta inline (Onda 8, spec 70)', async ({ page }) => {
+  await page.goto('/app');
+  // sem item de menu (sidebar E bottom-nav)
+  await expect(page.locator('.sidebar a[href="/app/inbox"]')).toHaveCount(0);
+  await expect(page.locator('.bottom-nav a[href="/app/inbox"]')).toHaveCount(0);
+
+  // captura pela home volta pra home com o item no card
+  const text = `captura e2e ${Date.now()}`;
+  await page.fill('.home-inbox-capture input[name="text"]', text);
+  await page.click('.home-inbox-capture button[type="submit"]');
+  await expect(page).toHaveURL(/\/app$/);
+  const row = page.locator('.home-inbox-item', { hasText: text }).first();
+  await expect(row).toBeVisible();
+
+  // descartar inline volta pra home e some com o item
+  await row.locator('form[action="/app/inbox/resolve"] button').click();
+  await expect(page).toHaveURL(/\/app$/);
+  await expect(page.locator('.home-inbox-item', { hasText: text })).toHaveCount(0);
+});

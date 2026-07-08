@@ -69,13 +69,15 @@ describe('renderTodayCard (spec 65 §2, card "Hoje")', () => {
   });
 });
 
-describe('renderInboxCard (spec 65 §2, card "Inbox")', () => {
-  it('pending=0 → estado vazio', () => {
+describe('renderInboxCard (spec 65 §2 + Onda 8/spec 70: captura e triagem na home)', () => {
+  it('pending=0 → estado vazio, mas o form de captura SEMPRE aparece (inbox saiu do menu)', () => {
     const html = renderInboxCard(0, []);
     expect(html).toContain('Inbox vazio');
+    expect(html).toContain('action="/app/inbox/add"');
+    expect(html).toContain('name="next" value="/app"');
   });
 
-  it('mostra contagem e os 3 MAIS RECENTES (fim da lista ASC, invertidos)', () => {
+  it('mostra contagem, itens mais recentes primeiro e triagem inline por item', () => {
     const items = [
       fakeInboxItem({ id: 'i1', body: 'primeiro capturado' }),
       fakeInboxItem({ id: 'i2', body: 'segundo capturado' }),
@@ -84,12 +86,17 @@ describe('renderInboxCard (spec 65 §2, card "Inbox")', () => {
     ];
     const html = renderInboxCard(4, items);
     expect(html).toContain('4 pendentes');
-    expect(html).toContain('quarto capturado');
-    expect(html).toContain('terceiro capturado');
-    expect(html).toContain('segundo capturado');
-    expect(html).not.toContain('primeiro capturado');
-    // Mais recente (i4) aparece ANTES do i2 na ordem de exibição.
-    expect(html.indexOf('quarto capturado')).toBeLessThan(html.indexOf('segundo capturado'));
+    // Todos aparecem (cap de 20, Onda 8) — o scroll interno do card segura a altura.
+    for (const t of ['primeiro capturado', 'segundo capturado', 'terceiro capturado', 'quarto capturado']) {
+      expect(html).toContain(t);
+    }
+    // Mais recente (i4) aparece ANTES do i1 na ordem de exibição.
+    expect(html.indexOf('quarto capturado')).toBeLessThan(html.indexOf('primeiro capturado'));
+    // Triagem inline: nota / tarefa / descartar via endpoints do inbox, id no hidden.
+    expect(html).toContain('action="/app/inbox/to-note"');
+    expect(html).toContain('action="/app/inbox/to-task"');
+    expect(html).toContain('action="/app/inbox/resolve"');
+    expect(html).toContain('name="id" value="i4"');
   });
 
   it('trunca a primeira linha longa do corpo cru', () => {

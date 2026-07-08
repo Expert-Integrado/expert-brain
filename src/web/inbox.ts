@@ -33,6 +33,15 @@ function backToInbox(): Response {
   return new Response(null, { status: 302, headers: { location: '/app/inbox' } });
 }
 
+// Onda 8 (spec 70): o card Inbox da home usa os MESMOS endpoints — o hidden `next`
+// devolve o dono pra onde ele estava. Allowlist fechada: só '/app' (home) é aceito;
+// qualquer outro valor cai no default /app/inbox (nunca redirect arbitrário).
+function backTo(form: FormData): Response {
+  const next = String(form.get('next') ?? '').trim();
+  const location = next === '/app' ? '/app' : '/app/inbox';
+  return new Response(null, { status: 302, headers: { location } });
+}
+
 // Idade legível ("agora", "há 3h", "há 2d") — o card mostra o quão parado o item está.
 function ageLabel(createdAt: number, now: number): string {
   const ms = Math.max(0, now - createdAt);
@@ -145,6 +154,7 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
       <h1>Inbox</h1>
       <span class="count">${pending} ${pending === 1 ? 'pendente' : 'pendentes'}</span>
     </div>
+    <p class="config-subtitle"><a href="/app">← Início</a></p>
 
     <form class="inbox-quickadd" method="post" action="/app/inbox/add">
       <textarea name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Captura rápida — uma ideia, um lembrete solto. Tria depois." aria-label="Captura rápida" required>${esc(sharePrefill)}</textarea>
@@ -161,8 +171,10 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
 
   return htmlResponse(
     await renderShell({
+      // O Inbox saiu do menu (Onda 8): esta página é alcançada pelo card da home
+      // ("ver tudo") e pelo Web Share Target do PWA — na nav, Início fica ativo.
       title: 'Inbox',
-      active: 'inbox',
+      active: 'home',
       email: session.email,
       env,
       body,
@@ -182,8 +194,8 @@ export async function handleInboxAddPost(req: Request, env: Env): Promise<Respon
 
   const form = await req.formData();
   const text = String(form.get('text') ?? '').trim();
-  // Vazio: no-op silencioso (volta pro inbox), não é erro do usuário.
-  if (!text) return backToInbox();
+  // Vazio: no-op silencioso (volta pra origem), não é erro do usuário.
+  if (!text) return backTo(form);
   const body = text.slice(0, INBOX_BODY_MAX);
   const rawSource = String(form.get('source') ?? '').trim();
   const source = ADD_POST_SOURCES.has(rawSource) ? rawSource : 'console';
@@ -194,7 +206,7 @@ export async function handleInboxAddPost(req: Request, env: Env): Promise<Respon
     source,
     created_at: Date.now(),
   });
-  return backToInbox();
+  return backTo(form);
 }
 
 // POST /app/inbox/resolve — marca triado (usado pelo "Descartar"). Form-encoded + redirect.
@@ -211,7 +223,7 @@ export async function handleInboxResolvePost(req: Request, env: Env): Promise<Re
   }
   const resultId = String(form.get('result_id') ?? '').trim() || null;
   await resolveInboxItem(env, id, action, resultId, Date.now());
-  return backToInbox();
+  return backTo(form);
 }
 
 // POST /app/inbox/to-note — cria uma NOTA (fluxo normal: embed + insertNote + upsert

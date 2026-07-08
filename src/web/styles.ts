@@ -1913,6 +1913,9 @@ select.panel-form-input { cursor: pointer; }
    capados em 980px pra leitura). Cards viram grade responsiva: várias colunas
    que se ajustam, em vez de uma coluna única de cards gigantes. */
 .main:has(#notes-list) { max-width: none; }
+/* Board de tarefas idem (Onda 8): N colunas usam a tela toda — o scroll lateral
+   só aparece quando as colunas realmente não cabem, não por causa do cap de 980px. */
+.main:has(#task-board) { max-width: none; }
 #notes-list[data-layout="cards"] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));

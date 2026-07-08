@@ -22,6 +22,9 @@ const TOOL_NAMES = [
   'comment_task',
   'share_task',
   'unshare_task',
+  'capture',
+  'list_inbox',
+  'resolve_inbox',
   'attach_media_to_note',
   'get_note_media',
   'delete_note_media',
@@ -86,8 +89,9 @@ Fluxo recomendado:
 9. \`reembed\` re-gera o embedding de uma nota — usar depois de editar título/corpo de forma grande, quando o recall parecer desatualizado.
 10. \`stats\` dá um panorama do vault; use quando o usuário perguntar sobre composição ou crescimento.
 11. Tasks (kind='task') têm fluxo próprio: \`save_task\` cria, \`list_tasks_due_today\` lista o que vence/venceu (só tasks com prazo), \`list_tasks\` lista TODAS as tasks (inclui sem prazo; filtra por status/tag — use pra ver tudo e pra checar se a task já existe ANTES de criar/dedupe), \`update_task\` edita (patch parcial) e \`complete_task\` conclui (com outcome opcional). \`comment_task\` anota progresso na thread da task (autor 'agente'), sem sobrescrever o body — \`get_task\` traz a task com a thread e a contagem de comentários. \`update_note\` NÃO edita task — use \`update_task\`. Pra mandar UMA task a alguém sem conta (read-only, sem expor o vault): \`share_task\` gera um link público /s/<token> com expiração obrigatória (default 30 dias, max 365) — o link aparece UMA vez e o banco guarda só o hash; \`unshare_task\` revoga o link na hora (o /s/<token> passa a dar 404). Só tasks são compartilháveis; sem edges, sem outras notas, sem dados do dono na página pública.
-${hasMedia ? `12. Mídia: \`attach_media_to_note\` anexa arquivo (base64 ou URL) numa nota com dedup por SHA-256 no R2 e retorna URL assinada válida por ~1h; \`get_note_media\` lista a mídia de uma nota (URLs assinadas ~1h); \`delete_note_media\` remove um anexo.
-` : ''}${hasContacts ? `13. Contatos (read-only): \`list_contacts\`, \`search_contacts\`, \`get_contact\` e \`get_contact_by_phone\` leem o vault de contatos — use quando a pergunta é sobre UMA pessoa/empresa específica (telefone, e-mail, cargo, relações). Use \`recall\` quando a pergunta é sobre ideias/conceitos, não sobre uma entidade. \`get_contact_by_phone\` é match exato de telefone; \`search_contacts\` é busca por nome/semântica.
+12. Inbox de captura: quando o dono solta uma ideia/lembrete AVULSO no meio da conversa (sem pedir nota estruturada nem task com prazo), use \`capture\` — zero estrutura, o texto cru entra na fila de triagem e o dono decide DEPOIS se vira nota, task ou nada. Não force \`save_note\` (exige curadoria) nem \`save_task\` (exige compromisso) numa ideia solta; também não capture conversa comum — só ideia/lembrete explícito do dono. A triagem acontece no card Inbox da home do console (ou via \`list_inbox\` + \`resolve_inbox\` numa sessão: resolva apontando a nota/task criada, ou descarte). Em dúvida entre capture e save_task: se tem dono+prazo claros é task; se é semente de ideia, é capture.
+${hasMedia ? `13. Mídia: \`attach_media_to_note\` anexa arquivo (base64 ou URL) numa nota com dedup por SHA-256 no R2 e retorna URL assinada válida por ~1h; \`get_note_media\` lista a mídia de uma nota (URLs assinadas ~1h); \`delete_note_media\` remove um anexo.
+` : ''}${hasContacts ? `14. Contatos (read-only): \`list_contacts\`, \`search_contacts\`, \`get_contact\` e \`get_contact_by_phone\` leem o vault de contatos — use quando a pergunta é sobre UMA pessoa/empresa específica (telefone, e-mail, cargo, relações). Use \`recall\` quando a pergunta é sobre ideias/conceitos, não sobre uma entidade. \`get_contact_by_phone\` é match exato de telefone; \`search_contacts\` é busca por nome/semântica.
 ` : ''}
 Domínios canônicos do vault (TRAVA, não é sugestão):
 management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science

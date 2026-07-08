@@ -39,6 +39,7 @@ interface TaskView {
   share_expires_brt: string | null;
   project_id: string | null;
   private: boolean; // selo de privacidade (spec 59): badge 🔒 no card
+  search_text: string; // título + descrição + tags, minúsculo/sem acento (Onda 8) — vem pronto do server
 }
 
 interface BoardColumn {
@@ -70,8 +71,19 @@ let filter: Filter = 'all';
 // Filtro de projeto (spec 58): 'all' | 'none' | '<project_id>'. Persiste em
 // localStorage + query param (?project=). Aplica em TODAS as colunas.
 let projectFilter = 'all';
+// Busca + filtros de tag/prioridade (Onda 8): estado só em memória (por sessão de
+// página) — persistir busca entre visitas confundiria mais do que ajudaria.
+let searchQuery = '';
+let tagFilter = 'all';
+let prioFilter = 'all'; // 'all' | '1'..'4' | 'none'
 // Mapa project_id → BoardProject, reconstruído a cada load (pro chip do card).
 let projectsById = new Map<string, BoardProject>();
+
+// Fold da query igual ao do server (foldSearchText em src/web/tasks.ts): minúsculo
+// e sem acentos — "reuniao" acha "Reunião".
+function fold(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -84,6 +96,7 @@ async function load() {
     if (!res.ok) return;
     board = (await res.json()) as BoardData;
     projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
+    refreshTagFilterOptions();
     render();
     focusTaskFromQuery();
   } catch (err) {
@@ -240,11 +253,29 @@ function passesProject(t: TaskView): boolean {
   return t.project_id === projectFilter;
 }
 
+// Busca por texto (Onda 8): TODOS os termos da query (separados por espaço) precisam
+// aparecer no search_text do card (título + descrição + tags, já foldado no server).
+function passesSearch(t: TaskView): boolean {
+  if (!searchQuery) return true;
+  const hay = t.search_text || fold(t.title);
+  return searchQuery.split(/\s+/).every((term) => !term || hay.includes(term));
+}
+
+function passesTag(t: TaskView): boolean {
+  return tagFilter === 'all' || t.tags.includes(tagFilter);
+}
+
+function passesPrio(t: TaskView): boolean {
+  if (prioFilter === 'all') return true;
+  if (prioFilter === 'none') return t.priority === null;
+  return t.priority === Number(prioFilter);
+}
+
 // Filtro de vencimento só se aplica a colunas de categoria open/in_progress; done/
-// canceled mostram sempre o histórico recente, sem filtro. O filtro de projeto
-// aplica por cima em todas as colunas.
+// canceled mostram sempre o histórico recente, sem filtro. Busca + projeto + tag +
+// prioridade aplicam por cima em TODAS as colunas.
 function columnTasks(col: BoardColumn, now: number): TaskView[] {
-  let items = col.tasks.filter(passesProject);
+  let items = col.tasks.filter((t) => passesProject(t) && passesSearch(t) && passesTag(t) && passesPrio(t));
   if (col.category === 'open' || col.category === 'in_progress') {
     items = items.filter((t) => passesFilter(t, now));
   }
@@ -607,8 +638,61 @@ function wireProjectFilter() {
   });
 }
 
+// ── Busca + filtros de tag/prioridade (Onda 8) ──
+// Busca com debounce curto: re-render do board é barato, mas não a cada keystroke.
+function wireSearch() {
+  const input = document.getElementById('task-search') as HTMLInputElement | null;
+  if (!input) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      searchQuery = fold(input.value.trim());
+      render();
+    }, 120);
+  });
+}
+
+function wirePrioFilter() {
+  const sel = document.getElementById('task-prio-filter') as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    prioFilter = sel.value || 'all';
+    render();
+  });
+}
+
+function wireTagFilter() {
+  const sel = document.getElementById('task-tag-filter') as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    tagFilter = sel.value || 'all';
+    render();
+  });
+}
+
+// Re-popula as options do select de tag com a união das tags do board recém-carregado
+// (edição inline muda tags sem reload de página). Preserva a seleção quando a tag
+// ainda existe; senão volta pra 'all'.
+function refreshTagFilterOptions() {
+  const sel = document.getElementById('task-tag-filter') as HTMLSelectElement | null;
+  if (!sel || !board) return;
+  const tags = new Set<string>();
+  for (const col of board.columns) for (const t of col.tasks) for (const tag of t.tags) tags.add(tag);
+  const current = tagFilter;
+  sel.innerHTML = [
+    `<option value="all">Todas as tags</option>`,
+    ...[...tags].sort((a, b) => a.localeCompare(b)).map((t) => `<option value="${esc(t)}">${esc(t)}</option>`),
+  ].join('');
+  if (current !== 'all' && !tags.has(current)) tagFilter = 'all';
+  sel.value = tagFilter;
+}
+
 wireFilters();
 wireProjectFilter();
+wireSearch();
+wirePrioFilter();
+wireTagFilter();
 wireCreateModal();
 // DnD + card clicável (spec 65): delegado no container, wired UMA vez — os
 // re-renders trocam o innerHTML mas o listener fica no #task-board.

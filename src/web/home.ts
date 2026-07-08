@@ -3,7 +3,7 @@ import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
-import { listTasksDueBefore, listInboxItems, countPendingInbox, type TaskRow, type InboxItem } from '../db/queries.js';
+import { listTasksDueBefore, listInboxItems, countPendingInbox, INBOX_BODY_MAX, type TaskRow, type InboxItem } from '../db/queries.js';
 import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js';
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
@@ -21,15 +21,43 @@ import { JOURNAL_CSS } from './journal.js';
 // diário (src/notify.ts) e do filtro "hoje" do board de tasks (src/web/tasks.ts),
 // não um corte de calendário BRT à parte.
 const TODAY_HORIZON_MS = 24 * 60 * 60 * 1000;
-const INBOX_PREVIEW = 3;
+// O card Inbox é a superfície PRINCIPAL do inbox (Onda 8, spec 70): mostra até 20
+// itens (uma linha cada, com triagem inline) dentro da caixa rolável; acima disso o
+// "ver tudo" leva pra /app/inbox (triagem completa, com markdown).
+const INBOX_PREVIEW = 20;
 const INBOX_SCAN_LIMIT = 200;
 
 const HOME_CSS = `
 .home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; align-items: start; }
+/* Caixas de tamanho previsível (Onda 8): altura capada + scroll interno SÓ no
+   conteúdo (o título e o form de captura ficam fixos) — 26 tasks atrasadas não
+   esticam mais a home inteira. Conteúdo curto NÃO estica a caixa (max-height). */
+.home-card { max-height: 340px; display: flex; flex-direction: column; overflow: hidden; }
+.home-card > :last-child { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
 /* fonte/peso herdam do .card h2 (Onda 3) — aqui só o layout flex do link à direita */
-.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; }
+.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; flex: none; }
 .home-card h2 a { font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
 .home-card h2 a:hover { text-decoration: underline; }
+/* Captura rápida do inbox DENTRO do card (Onda 8): o inbox saiu do menu — cria por aqui */
+.home-inbox-capture { display: flex; gap: 8px; margin: 0 0 12px; flex: none; }
+.home-inbox-capture input[type="text"] {
+  flex: 1; min-width: 0; background: var(--bg-accent); border: 1px solid var(--border);
+  color: var(--text); border-radius: var(--radius-sm); padding: 7px 10px;
+  font-size: 13px; font-family: inherit; transition: border-color 160ms var(--ease);
+}
+.home-inbox-capture input[type="text"]::placeholder { color: var(--text-subtle); }
+.home-inbox-capture input[type="text"]:focus { outline: none; border-color: var(--accent-lav); }
+.home-inbox-item { display: flex; align-items: center; gap: 8px; }
+.home-inbox-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-inbox-actions { display: flex; gap: 4px; flex: none; }
+.home-inbox-actions form { margin: 0; display: inline-flex; }
+.home-inbox-btn {
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  border-radius: 6px; padding: 2px 8px; font-size: 11px; font-family: inherit; cursor: pointer;
+  transition: color 140ms var(--ease), border-color 140ms var(--ease);
+}
+.home-inbox-btn:hover { color: var(--text); border-color: var(--border-strong); }
+.home-inbox-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
 .home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .home-list li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; line-height: 1.4; }
 .home-list a { color: var(--text); text-decoration: none; }
@@ -46,9 +74,16 @@ const HOME_CSS = `
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
 .home-error { color: var(--danger); }
 .home-private-badge { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
-/* Feed "Atividade" (spec 69) — o antigo Journal, embutido abaixo dos cards */
+/* Feed "Atividade" (spec 69) — o antigo Journal, embutido abaixo dos cards.
+   Onda 8: caixa FECHADA de altura fixa com scroll interno (o "Carregar mais" e o
+   aviso de degradação nascem dentro dela — o client insere ao redor do container). */
 .home-activity { margin-top: 28px; }
 .home-activity-title { font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 14px; }
+.home-activity-box {
+  max-height: 460px; overflow-y: auto; scrollbar-width: thin;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 6px 18px 14px;
+}
 `;
 
 function taskWhenHtml(t: TaskRow, now: number): string {
@@ -89,22 +124,41 @@ function firstLine(body: string, max: number): string {
   return line.length > max ? `${line.slice(0, max)}…` : line;
 }
 
-// Card 2 — Inbox: contagem de pendentes + 3 mais recentes + link pro /app/inbox.
+// Card 2 — Inbox (Onda 8, spec 70): o inbox saiu do menu — este card é a superfície
+// principal: captura rápida (form nativo, CSP-safe) + até 20 pendentes com triagem
+// inline (nota / tarefa / descartar, mesmos endpoints do /app/inbox). O "ver tudo"
+// leva pra página completa (corpo em markdown, itens além do cap).
 // Exportado: testado isoladamente em test/web/home.test.ts.
 export function renderInboxCard(pending: number, items: InboxItem[]): string {
+  const capture = `<form class="home-inbox-capture" method="post" action="/app/inbox/add">
+      <input type="text" name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Capturar ideia solta — tria depois" aria-label="Captura rápida pro inbox" autocomplete="off" required />
+      <input type="hidden" name="next" value="/app" />
+      <button type="submit" class="btn btn-sm">Capturar</button>
+    </form>`;
   if (pending === 0) {
     return `<section class="card home-card">
       <h2>Inbox <a href="/app/inbox">ver tudo →</a></h2>
+      ${capture}
       <p class="home-empty">Inbox vazio.</p>
     </section>`;
   }
   // listInboxItems ordena created_at ASC (mais antigo primeiro, ordem de triagem) —
-  // os "3 mais recentes" pra home são o FIM dessa lista, invertido.
+  // os mais recentes pra home são o FIM dessa lista, invertido.
   const preview = items.slice(-INBOX_PREVIEW).reverse();
-  const list = preview.map((it) => `<li><a href="/app/inbox">${esc(firstLine(it.body, 140))}</a></li>`).join('');
+  const rows = preview
+    .map((it) => `<li class="home-inbox-item">
+      <a class="home-inbox-text" href="/app/inbox" title="Abrir no inbox">${esc(firstLine(it.body, 140))}</a>
+      <span class="home-inbox-actions">
+        <form method="post" action="/app/inbox/to-note"><input type="hidden" name="id" value="${esc(it.id)}" /><button type="submit" class="home-inbox-btn" title="Virar nota">nota</button></form>
+        <form method="post" action="/app/inbox/to-task"><input type="hidden" name="id" value="${esc(it.id)}" /><button type="submit" class="home-inbox-btn" title="Virar tarefa">tarefa</button></form>
+        <form method="post" action="/app/inbox/resolve"><input type="hidden" name="id" value="${esc(it.id)}" /><input type="hidden" name="action" value="discard" /><input type="hidden" name="next" value="/app" /><button type="submit" class="home-inbox-btn danger" title="Descartar" aria-label="Descartar">✕</button></form>
+      </span>
+    </li>`)
+    .join('');
   return `<section class="card home-card">
     <h2>Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a></h2>
-    <ul class="home-list">${list}</ul>
+    ${capture}
+    <ul class="home-list home-inbox-list">${rows}</ul>
   </section>`;
 }
 
@@ -121,7 +175,9 @@ function renderActivityFeedSection(): string {
       <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
       <label><input type="checkbox" class="journal-filter" value="contact" checked /> Interações</label>
     </div>
-    <div id="journal-groups" data-lazy="1"><p class="home-empty">Carregando a atividade…</p></div>
+    <div class="home-activity-box">
+      <div id="journal-groups" data-lazy="1"><p class="home-empty">Carregando a atividade…</p></div>
+    </div>
     <noscript><p class="home-empty"><a href="/app/journal?feed=1">Abrir o feed de atividade</a></p></noscript>
   </section>`;
 }

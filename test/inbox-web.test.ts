@@ -242,20 +242,45 @@ describe('página /app/inbox + badge na navegação', () => {
     expect(html).toContain('name="source" value="pwa-share"');
   });
 
-  it('badge na nav mostra a contagem e some em zero', async () => {
-    // 2 pendentes → badge "2" na nav de QUALQUER página (aqui: notas)
+  it('Inbox saiu da navegação (Onda 8): sem item de menu, sem badge — mesmo com pendentes', async () => {
     await insertInboxItem(E, { id: 'ibx_a', body: 'x', source: 'mcp', created_at: 1000 });
     await insertInboxItem(E, { id: 'ibx_b', body: 'y', source: 'mcp', created_at: 2000 });
-    const withBadge = await (await handleNotesList(req('GET', '/app/notes', { cookie: await cookie() }), E)).text();
-    // O span do badge (não a regra CSS .nav-badge, sempre presente): checa pela aria-label.
-    expect(withBadge).toContain('class="nav-badge"');
-    expect(withBadge).toContain('aria-label="2 na triagem"');
+    const html = await (await handleNotesList(req('GET', '/app/notes', { cookie: await cookie() }), E)).text();
+    expect(html).not.toContain('href="/app/inbox"');
+    expect(html).not.toContain('class="nav-badge"');
+    expect(html).not.toContain('na triagem');
+  });
 
-    // zera → badge some (a aria-label "na triagem" não existe no CSS, então é sinal limpo)
-    await handleInboxResolvePost(req('POST', '/app/inbox/resolve', { cookie: await cookie(), form: { id: 'ibx_a', action: 'discard' } }), E);
-    await handleInboxResolvePost(req('POST', '/app/inbox/resolve', { cookie: await cookie(), form: { id: 'ibx_b', action: 'discard' } }), E);
-    const noBadge = await (await handleNotesList(req('GET', '/app/notes', { cookie: await cookie() }), E)).text();
-    expect(noBadge).not.toContain('class="nav-badge"');
-    expect(noBadge).not.toContain('na triagem');
+  it('a página /app/inbox segue viva (link "ver tudo" da home + share target), com Início ativo na nav', async () => {
+    const res = await handleInboxPage(req('GET', '/app/inbox', { cookie: await cookie() }), E);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<h1>Inbox</h1>');
+    // Sem item próprio na nav, o destaque cai em Início.
+    expect(html).toMatch(/nav-item active" href="\/app" title="Início"/);
+  });
+});
+
+// Onda 8 (spec 70): o card Inbox da home reusa os endpoints com hidden `next` pra
+// voltar pra home. Allowlist fechada: só '/app'; qualquer outra coisa → /app/inbox.
+describe('redirect `next` dos endpoints do inbox (card da home)', () => {
+  beforeEach(resetDb);
+
+  it('add com next=/app volta pra home; next malicioso cai no default', async () => {
+    const home = await handleInboxAddPost(
+      req('POST', '/app/inbox/add', { cookie: await cookie(), form: { text: 'da home', next: '/app' } }), E);
+    expect(home.headers.get('location')).toBe('/app');
+
+    const evil = await handleInboxAddPost(
+      req('POST', '/app/inbox/add', { cookie: await cookie(), form: { text: 'x', next: 'https://evil.example' } }), E);
+    expect(evil.headers.get('location')).toBe('/app/inbox');
+  });
+
+  it('resolve (descartar) com next=/app volta pra home', async () => {
+    await insertInboxItem(E, { id: 'ibx_n', body: 'x', source: 'mcp', created_at: 1000 });
+    const res = await handleInboxResolvePost(
+      req('POST', '/app/inbox/resolve', { cookie: await cookie(), form: { id: 'ibx_n', action: 'discard', next: '/app' } }), E);
+    expect(res.headers.get('location')).toBe('/app');
+    expect(await countPendingInbox(E)).toBe(0);
   });
 });

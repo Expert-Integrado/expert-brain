@@ -84,6 +84,10 @@ describe('GET /app/tasks/data — payload de projetos (spec 58)', () => {
     const t2 = open.tasks.find((t: any) => t.id === 't2');
     expect(t1.project_id).toBe('proj_a');
     expect(t2.project_id).toBeNull();
+    // Onda 8 (spec 70): search_text pronto pro filtro de busca do client —
+    // título + corpo, minúsculo e sem acento (fold no server).
+    expect(t1.search_text).toContain('task t1');
+    expect(t1.search_text).toContain('b');
   });
 });
 
@@ -102,6 +106,12 @@ describe('SSR /app/tasks — filtro e breadcrumb de projeto (spec 58 + Onda 5)',
     // muted "Em <projeto>" abaixo do título (anatomia ClickUp).
     expect(html).toContain('task-card-crumb');
     expect(html).toContain('data-project="proj_a"');
+    // Onda 8 (spec 70): busca + filtros de prioridade e tag no toolbar.
+    expect(html).toContain('id="task-search"');
+    expect(html).toContain('id="task-prio-filter"');
+    expect(html).toContain('id="task-tag-filter"');
+    expect(html).toContain('Todas as prioridades');
+    expect(html).toContain('Todas as tags');
   });
 });
 
