@@ -16,9 +16,9 @@ export const THEME_COLOR = '#070a13';
 // gradient, soft grain, lavender-accented cards with hover-lift, focus-visible rings.
 //
 // Onda 2 (specs/60-ux-reforma/63): o CSS do console é composto em camadas.
-// NEBULA_CSS (o /app/styles.css completo) = TOKENS + BASE + COMPONENTS + SHELL + SURFACES,
-// preservando a ordem de cascata original. PUBLIC_CSS (páginas /s/ sem sessão) = TOKENS +
-// BASE + COMPONENTS. Trocar identidade/tema (Onda 6) = mexer SÓ em TOKENS_CSS.
+// NEBULA_CSS (o /app/styles.css completo) = TOKENS + BASE + SHELL + COMPONENTS + SURFACES,
+// preservando a ordem relativa original das regras. PUBLIC_CSS (páginas /s/ sem sessão) =
+// TOKENS + BASE + COMPONENTS. Trocar identidade/tema (Onda 6) = mexer SÓ em TOKENS_CSS.
 
 // ---------------------------------------------------------------------------
 // TOKENS_CSS — o que muda entre identidades/temas. Três sub-camadas no mesmo
@@ -64,6 +64,7 @@ export const TOKENS_CSS = `
   --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 18px 50px rgba(0, 0, 0, 0.45);
   --text-subtle: rgba(248, 250, 252, 0.5); /* terciário informativo — piso AA, entre --text-dim e o decorativo --text-faint */
+  --input-bg: var(--surface);
   --success: #6fe39a;
   --success-bg: rgba(111, 227, 154, 0.1);
   --success-border: rgba(111, 227, 154, 0.4);
@@ -159,16 +160,12 @@ a:hover { color: var(--text); }
 `;
 
 // ---------------------------------------------------------------------------
-// COMPONENTS_CSS — biblioteca de componentes global (.card, .btn, .chip, ...).
-// Placeholder nesta onda; a Onda 3 (specs/60-ux-reforma/64) é quem preenche.
-// ---------------------------------------------------------------------------
-export const COMPONENTS_CSS = `
-`;
-
-// ---------------------------------------------------------------------------
 // SHELL_CSS — moldura do console logado: .shell, sidebar (+ modo recolhido),
 // .main e page-header. Bottom-nav mobile e as regras responsivas do shell
 // seguem em SURFACES_CSS até a Onda 5, pra preservar a ordem de cascata.
+// Na cascata, SHELL vem ANTES de COMPONENTS: tipografia genérica do shell
+// (ex. .main h2) não pode vencer componente (ex. .card h2) em especificidade
+// igual — componente é mais específico em intenção.
 // ---------------------------------------------------------------------------
 export const SHELL_CSS = `
 /* ---- Shell ---- */
@@ -346,6 +343,240 @@ export const SHELL_CSS = `
   background: rgba(167, 139, 250, 0.12);
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
+}
+`;
+
+// ---------------------------------------------------------------------------
+// COMPONENTS_CSS — biblioteca de componentes global (Onda 3, specs/60-ux-reforma/64).
+// Só consome tokens da Onda 2. As telas ADOTAM esses componentes na Onda 5 via
+// co-classe (ex. class="task-btn btn btn-sm") — classes protegidas por teste
+// (task-project-chip, task-tag-chip, task-detail-sidebar, nav-badge) nunca são
+// renomeadas. CSS por página (SURFACES e folhas de cada tela) vem DEPOIS na
+// cascata e continua vencendo empates até a Onda 5 remover as duplicatas.
+// ---------------------------------------------------------------------------
+export const COMPONENTS_CSS = `
+/* ---- Card ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5) 22px;
+  margin-bottom: var(--space-4);
+}
+.card h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  margin: 0 0 10px;
+}
+.card pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+.card--interactive {
+  cursor: pointer;
+  transition: transform 160ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- Botões: hierarquia única (primary > secondary > ghost; danger; -sm) ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease), transform 150ms var(--ease), box-shadow 180ms var(--ease);
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-violet));
+  color: #fff;
+  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.55);
+}
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.7); }
+.btn-primary:active { transform: translateY(0); }
+.btn-secondary {
+  background: rgba(var(--accent-lav-rgb), 0.12);
+  color: var(--accent);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover { background: rgba(var(--accent-lav-rgb), 0.22); }
+.btn-ghost {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-0); }
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+.btn-danger:hover { background: rgba(255, 122, 144, 0.2); }
+.btn-sm { padding: 6px 10px; font-size: var(--text-xs); border-radius: 6px; }
+
+/* ---- Chips: pill compacta de metadado. Cor dinâmica via --chip (spec 54). ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  --chip: var(--accent-lav);
+  color: var(--chip);
+  background: color-mix(in srgb, var(--chip) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip) 32%, transparent);
+}
+.chip--tag { --chip: var(--accent-cyan); }
+.chip--project { --chip: var(--accent-pink); }
+.chip--prio-1 { --chip: var(--prio-1); }
+.chip--prio-2 { --chip: var(--prio-2); }
+.chip--prio-3 { --chip: var(--prio-3); }
+.chip--prio-4 { --chip: var(--text-dim); }
+.chip--due { --chip: var(--text-dim); }
+.chip--due.overdue { --chip: var(--danger); }
+.chip--privacy { --chip: var(--warning); }
+.chip--status { --chip: var(--info); }
+.chip--kind { --chip: var(--accent-lav); }
+
+/* ---- Estados vazios / carregando / erro ---- */
+.empty-state {
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(100deg, var(--surface-0) 40%, var(--surface-1) 50%, var(--surface-0) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  color: transparent;
+  user-select: none;
+  pointer-events: none;
+}
+@keyframes skeleton-pulse {
+  0% { background-position: 120% 0; }
+  100% { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; background: var(--surface-1); }
+}
+.error-state {
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+/* ---- Formulário ---- */
+.field { display: block; margin-bottom: var(--space-4); }
+.field > .field-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.input, .textarea, .select {
+  width: 100%;
+  padding: var(--space-3) 14px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-md);
+  font-family: inherit;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.input:focus, .textarea:focus, .select:focus {
+  border-color: var(--accent);
+  background: rgba(var(--accent-lav-rgb), 0.05);
+}
+.textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+.select { cursor: pointer; }
+
+/* ---- Modal genérico (task-modal e palette consomem na Onda 5) ---- */
+.modal { position: fixed; inset: 0; z-index: 1000; }
+.modal[hidden] { display: none; }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.modal-dialog {
+  position: relative;
+  max-width: 620px;
+  margin: 10vh auto 0;
+  background: var(--bg-accent);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-x {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
+}
+.modal-x:hover { color: var(--text); background: var(--surface-1); }
+.modal-body { padding: var(--space-4) 18px; }
+
+/* ---- Banner informativo (banner Novidades sai do style inline na Onda 5) ---- */
+.banner-info {
+  display: block;
+  margin: 0 0 var(--space-4);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.14), rgba(var(--accent-lav-rgb), 0.14));
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
 }
 `;
 
@@ -1982,5 +2213,5 @@ select.panel-form-input { cursor: pointer; }
 // é o subconjunto pras páginas públicas /s/ (sem shell nem superfícies do
 // console) — consumida por share.ts a partir da Onda 5.
 // ---------------------------------------------------------------------------
-export const NEBULA_CSS = TOKENS_CSS + BASE_CSS + COMPONENTS_CSS + SHELL_CSS + SURFACES_CSS;
+export const NEBULA_CSS = TOKENS_CSS + BASE_CSS + SHELL_CSS + COMPONENTS_CSS + SURFACES_CSS;
 export const PUBLIC_CSS = TOKENS_CSS + BASE_CSS + COMPONENTS_CSS;

@@ -1,7 +1,20 @@
 # Onda 3 — Biblioteca de componentes
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (08/07/2026) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/63-onda2-tokens-retematizaveis.md`
+>
+> **Evidência de conclusão:** `COMPONENTS_CSS` preenchida com toda a biblioteca do objetivo
+> (card/btn/chip/estados/form/modal/banner-info), consumindo só tokens da Onda 2 (+ novo
+> `--input-bg`). Duas decisões de execução documentadas no "Design proposto" abaixo:
+> (1) ordem de cascata ajustada pra `TOKENS + BASE + SHELL + COMPONENTS + SURFACES` — o
+> COMPONENTS antes do SHELL faria `.main h2` (shell) vencer `.card h2` (componente) em
+> especificidade igual quando a Onda 5 remover duplicatas; (2) `.btn-primary`/`.btn-danger`/
+> `.input-text` JÁ existiam no CSS da página config com esses nomes — a biblioteca coexiste
+> com especificidade nivelada (hover sem `:not(:disabled)`) e a página continua vencendo
+> empates até a Onda 5 remover as versões locais. `task-badges.ts` intocado.
+> Validação: typecheck, 791+5 server, 12 client, harness 32/32 wave-3 com pixel-diff vs
+> baseline — diffs só de timestamp relativo (reseed cruzou a meia-noite) e grafo; zero
+> regressão visual.
 
 ## Contexto
 
@@ -42,11 +55,11 @@ Tudo aditivo dentro de `COMPONENTS_CSS`:
 
 ## Critérios de aceite
 
-- [ ] `COMPONENTS_CSS` em `src/web/styles.ts` contém `.card`/`.card--interactive`, hierarquia `.btn-*`, sistema `.chip` + modificadores, `.empty-state`/`.skeleton`/`.error-state`, `.field`/`.input`/`.textarea`/`.select`, `.modal`, `.banner-info`
-- [ ] `task-project-chip`, `task-tag-chip`, `task-detail-sidebar`, `nav-badge` continuam existindo com o mesmo nome literal em todo o código e em todos os testes que os asseram
-- [ ] `src/util/task-badges.ts` não precisou ser alterado nesta onda (a geração de HTML já está correta; só o CSS que estiliza essas classes muda/absorve)
-- [ ] Todos os testes que passam hoje continuam passando sem alteração de asserção de classe (exceto onde a lista de "Testes que asseram strings" de `60-visao-geral.md` explicitamente prevê mudança)
-- [ ] Nenhuma mudança visual perceptível fora do escopo desta onda (biblioteca é aditiva; aplicação tela-a-tela é a Onda 5)
+- [x] `COMPONENTS_CSS` em `src/web/styles.ts` contém `.card`/`.card--interactive`, hierarquia `.btn-*`, sistema `.chip` + modificadores (`--tag`/`--project`/`--prio-1..4`/`--due`(+`.overdue`)/`--privacy`/`--status`/`--kind`, cor dinâmica via `--chip`), `.empty-state`/`.skeleton`/`.error-state`, `.field`/`.input`/`.textarea`/`.select` (com `--input-bg`), `.modal`, `.banner-info`
+- [x] `task-project-chip`, `task-tag-chip`, `task-detail-sidebar`, `nav-badge` continuam existindo com o mesmo nome literal em todo o código e em todos os testes que os asseram
+- [x] `src/util/task-badges.ts` não precisou ser alterado nesta onda
+- [x] Todos os testes que passam hoje continuam passando sem alteração de asserção de classe (791+5 server, 12 client, zero edição de teste)
+- [x] Nenhuma mudança visual perceptível (pixel-diff wave-3 vs baseline: diffs só de timestamp e grafo não-determinístico)
 
 ## Validação
 
