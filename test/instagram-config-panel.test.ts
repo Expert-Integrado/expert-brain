@@ -28,10 +28,15 @@ describe('painel Conversas do Instagram na config', () => {
     expect(html).toContain('id="ig-status"');
     expect(html).toContain('id="ig-contacts-section"');
     expect(html).toContain('id="ig-save-contacts"');
-    // microcopy que fixa o contrato: allowlist + criação deliberada por conversa marcada
+    // microcopy que fixa o contrato: dependência obrigatória do agente, allowlist
+    // pré-marcada por padrão, criação deliberada por conversa marcada
+    expect(html).toContain('Requer o <strong>Instagram Agent conectado</strong>');
     expect(html).toContain('conversas que você marcar');
+    expect(html).toContain('por padrão todas vêm marcadas');
     expect(html).toContain('cria o contato');
     expect(html).toContain('nunca são sobrescritos');
+    expect(html).toContain('id="ig-select-all"');
+    expect(html).toContain('id="ig-clear-all"');
   });
 
   it('bundle da config carrega o wiring do painel', async () => {

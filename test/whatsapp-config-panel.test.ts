@@ -28,9 +28,14 @@ describe('painel Grupos do WhatsApp na config', () => {
     expect(html).toContain('id="wa-status"');
     expect(html).toContain('id="wa-groups-section"');
     expect(html).toContain('id="wa-save-groups"');
-    // microcopy que fixa o contrato: allowlist + sem criação de contato novo
+    // microcopy que fixa o contrato: dependência obrigatória do agente, allowlist
+    // pré-marcada por padrão, sem criação de contato novo
+    expect(html).toContain('Requer o <strong>WhatsApp Agent conectado</strong>');
     expect(html).toContain('grupos que você marcar');
+    expect(html).toContain('por padrão todos vêm marcados');
     expect(html).toContain('não cria contato novo');
+    expect(html).toContain('id="wa-select-all"');
+    expect(html).toContain('id="wa-clear-all"');
   });
 
   it('bundle da config carrega o wiring do painel', async () => {

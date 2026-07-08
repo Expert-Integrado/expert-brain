@@ -637,11 +637,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </summary>
       <div class="adv-body">
         <div class="adv-section">
-          <p>Só entram os <strong>grupos que você marcar</strong> abaixo (nunca todos). Participante só vira vínculo se <strong>já existe</strong> como contato no vault (match por telefone) — número desconhecido não cria contato novo. Quem sai do grupo perde o vínculo criado pelo sync; vínculos manuais ficam. A lista de grupos e os membros são empurrados por um script na sua máquina (peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo").</p>
+          <p>Requer o <strong>WhatsApp Agent conectado</strong> — é ele quem fornece a lista de grupos e participantes; sem essa conexão este módulo não funciona. Só entram os <strong>grupos que você marcar</strong> abaixo (por padrão todos vêm marcados; desmarque o que não quiser). Participante só vira vínculo se <strong>já existe</strong> como contato no vault (match por telefone) — número desconhecido não cria contato novo. Quem sai do grupo perde o vínculo criado pelo sync; vínculos manuais ficam. A lista de grupos e os membros são empurrados por um script na sua máquina (peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo").</p>
           <p id="wa-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
         </div>
         <div class="adv-section" id="wa-groups-section" hidden>
           <h3>Grupos sincronizados</h3>
+          <div class="row" style="gap:8px;margin-bottom:8px">
+            <button type="button" class="btn" id="wa-select-all">Marcar todos</button>
+            <button type="button" class="btn" id="wa-clear-all">Desmarcar todos</button>
+          </div>
           <div id="wa-groups" style="display:flex;flex-direction:column;gap:6px"></div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <button type="button" class="btn btn-primary" id="wa-save-groups">Salvar grupos</button>
@@ -658,11 +662,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </summary>
       <div class="adv-body">
         <div class="adv-section">
-          <p>Só entram as <strong>conversas que você marcar</strong> abaixo (nunca o inbox inteiro). Marcar a conversa <strong>cria o contato</strong> se a pessoa ainda não existe no vault (com o @ do Instagram e o telefone, quando conhecido); se já existe, só ganha o vínculo e o canal — nome e dados locais nunca são sobrescritos. A lista de conversas é empurrada por um script na sua máquina (peça ao Claude: "sincroniza as conversas do Instagram pro grafo").</p>
+          <p>Requer o <strong>Instagram Agent conectado</strong> — é ele quem fornece a lista de conversas; sem essa conexão este módulo não funciona. Só entram as <strong>conversas que você marcar</strong> abaixo (por padrão todas vêm marcadas; desmarque o que não quiser). Marcar a conversa <strong>cria o contato</strong> se a pessoa ainda não existe no vault (com o @ do Instagram e o telefone, quando conhecido); se já existe, só ganha o vínculo e o canal — nome e dados locais nunca são sobrescritos. A lista de conversas é empurrada por um script na sua máquina (peça ao Claude: "sincroniza as conversas do Instagram pro grafo").</p>
           <p id="ig-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
         </div>
         <div class="adv-section" id="ig-contacts-section" hidden>
           <h3>Conversas sincronizadas</h3>
+          <div class="row" style="gap:8px;margin-bottom:8px">
+            <button type="button" class="btn" id="ig-select-all">Marcar todas</button>
+            <button type="button" class="btn" id="ig-clear-all">Desmarcar todas</button>
+          </div>
           <div id="ig-contacts" style="display:flex;flex-direction:column;gap:6px"></div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <button type="button" class="btn btn-primary" id="ig-save-contacts">Salvar conversas</button>

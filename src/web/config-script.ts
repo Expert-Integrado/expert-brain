@@ -415,13 +415,23 @@ export function configPageScript(): string {
       waGroupsSection.hidden = false;
       var chosen = {};
       (st.allowlist || []).forEach(function (id) { chosen[id] = true; });
+      // Nunca salvou (allowlist_set false) → todos vêm pré-marcados; o dono desmarca
+      // o que não quer e salva. Depois do 1º save, vale exatamente o que foi salvo.
+      var waPreAll = st.allowlist_set === false;
       waGroups.innerHTML = st.catalog.map(function (g) {
+        var on = waPreAll || chosen[g.chat_id];
         return '<label style="display:flex;align-items:center;gap:8px">' +
-          '<input type="checkbox" class="wa-group" value="' + waEscape(g.chat_id) + '"' + (chosen[g.chat_id] ? ' checked' : '') + '>' +
+          '<input type="checkbox" class="wa-group" value="' + waEscape(g.chat_id) + '"' + (on ? ' checked' : '') + '>' +
           '<span>' + waEscape(g.name) + (g.member_count != null ? ' <span style="color:var(--text-dim)">(' + g.member_count + ')</span>' : '') + '</span>' +
           '</label>';
       }).join('');
     }
+
+    function waSetAll(on) {
+      document.querySelectorAll('.wa-group').forEach(function (c) { c.checked = on; });
+    }
+    document.getElementById('wa-select-all').addEventListener('click', function () { waSetAll(true); });
+    document.getElementById('wa-clear-all').addEventListener('click', function () { waSetAll(false); });
 
     waJson('/app/config/whatsapp/status').then(waRender);
 
@@ -490,15 +500,24 @@ export function configPageScript(): string {
       igContactsSection.hidden = false;
       var chosen = {};
       (st.allowlist || []).forEach(function (id) { chosen[id] = true; });
+      // Mesmo padrão do WhatsApp: nunca salvou → todas pré-marcadas.
+      var igPreAll = st.allowlist_set === false;
       igContacts.innerHTML = st.catalog.map(function (c) {
         var label = c.name ? igEscape(c.name) : '';
         if (c.username) label += (label ? ' ' : '') + '<span style="color:var(--text-dim)">@' + igEscape(c.username) + '</span>';
+        var on = igPreAll || chosen[c.igsid];
         return '<label style="display:flex;align-items:center;gap:8px">' +
-          '<input type="checkbox" class="ig-contact" value="' + igEscape(c.igsid) + '"' + (chosen[c.igsid] ? ' checked' : '') + '>' +
+          '<input type="checkbox" class="ig-contact" value="' + igEscape(c.igsid) + '"' + (on ? ' checked' : '') + '>' +
           '<span>' + label + '</span>' +
           '</label>';
       }).join('');
     }
+
+    function igSetAll(on) {
+      document.querySelectorAll('.ig-contact').forEach(function (c) { c.checked = on; });
+    }
+    document.getElementById('ig-select-all').addEventListener('click', function () { igSetAll(true); });
+    document.getElementById('ig-clear-all').addEventListener('click', function () { igSetAll(false); });
 
     igJson('/app/config/instagram/status').then(igRender);
 
