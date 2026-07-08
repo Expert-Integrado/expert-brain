@@ -85,7 +85,7 @@ const INBOX_CSS = `
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
 }
-.inbox-item-head { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-faint); }
+.inbox-item-head { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-subtle); }
 .inbox-item-source { text-transform: uppercase; letter-spacing: .06em; }
 .inbox-item-body { font-size: 14px; line-height: 1.55; color: var(--text); word-break: break-word; }
 .inbox-item-body > :first-child { margin-top: 0; }

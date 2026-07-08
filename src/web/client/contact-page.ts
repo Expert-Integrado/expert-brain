@@ -3,22 +3,17 @@
 // via fetch nos proxies same-origin do Brain (contacts-data.ts → service binding
 // pro Worker expert-contacts): entity, neighbors (1º/2º nível) e timeline paginada.
 //
-// Cópias inline de labels/formatters de contato (CONTACT_TYPE_LABELS,
-// EVENT_KIND_LABELS, etc.) — mesmo racional do painel de contato em graph.ts: este
-// bundle não importa o TS do Worker de contatos, e graph.ts é grande/sensível
-// demais (força/física/render) pra virar dependência compartilhada aqui.
+// Cópias inline de labels/formatters de contato (CONTACT_TYPE_LABELS etc.) —
+// mesmo racional do painel de contato em graph.ts: este bundle não importa o TS
+// do Worker de contatos. EVENT_KIND_LABELS saiu daqui pro módulo compartilhado
+// src/util/event-kind-labels.ts (onda 6) — home/journal usam a MESMA tradução.
 
 import { esc } from '../../util/html.js';
 import { domainColor } from '../domain-colors.js';
+import { EVENT_KIND_LABELS } from '../../util/event-kind-labels.js';
 
 const CONTACT_TYPE_LABELS: Record<string, string> = {
   person: 'Pessoa', company: 'Empresa', place: 'Lugar', event: 'Evento', other: 'Outro',
-};
-
-const EVENT_KIND_LABELS: Record<string, string> = {
-  met: 'Encontro', talked: 'Conversa', meeting: 'Reunião', email: 'E-mail', message: 'Mensagem',
-  note: 'Nota', saw_post: 'Vi post', recommended: 'Indicação', birthday_reminder: 'Aniversário',
-  mentioned_in_brain: 'Citado no Brain',
 };
 const MANUAL_EVENT_KINDS: Array<{ value: string; label: string }> = [
   { value: 'met', label: 'Encontro' },

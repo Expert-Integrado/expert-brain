@@ -1,5 +1,6 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
+import { eventKindLabel } from '../util/event-kind-labels.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
@@ -81,7 +82,7 @@ function toContactItem(ev: RecentContactEvent, base: string): JournalItemView {
     title: ev.entity_name || 'Contato',
     private: false,
     url: `${base}/app/contacts/${encodeURIComponent(ev.entity_id)}`,
-    chipLabel: `interação · ${ev.kind}`,
+    chipLabel: `interação · ${eventKindLabel(ev.kind)}`,
     dataKind: 'contact',
   };
 }
@@ -140,13 +141,13 @@ const JOURNAL_CSS = `
 .journal-day:first-child { margin-top: 0; }
 .journal-list { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .journal-item { display: flex; align-items: center; gap: 10px; font-size: 13.5px; padding: 8px 0; border-bottom: 1px solid var(--border); }
-.journal-time { flex-shrink: 0; width: 40px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.journal-time { flex-shrink: 0; width: 40px; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 .journal-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; }
 .journal-title:hover { color: var(--accent-lav); }
-.journal-priv { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+.journal-priv { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
 .journal-chip { flex-shrink: 0; font-size: 11px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-dim); }
 .journal-chip-note { color: var(--accent-lav); border-color: rgba(var(--accent-lav-rgb),0.35); }
-.journal-chip-task { color: #5eead4; border-color: color-mix(in srgb, #5eead4 35%, transparent); }
+.journal-chip-task { color: var(--accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 35%, transparent); }
 .journal-chip-contact { color: #fb923c; border-color: color-mix(in srgb, #fb923c 35%, transparent); }
 .journal-degraded { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
 /* Filtros client-side (journal.bundle.js): a classe vai no container, não no item —
@@ -220,7 +221,7 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
     ${degradedHtml}
     <div class="journal-filters">
       <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
-      <label><input type="checkbox" class="journal-filter" value="task" checked /> Tasks</label>
+      <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
       <label><input type="checkbox" class="journal-filter" value="contact" checked /> Interações</label>
     </div>
     <div id="journal-groups">${groupsHtml}${emptyHtml}</div>

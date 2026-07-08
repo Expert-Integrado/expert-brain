@@ -391,7 +391,7 @@ async function renderGraphLikePage(
         background: transparent;
         border: none;
         border-radius: 50%;
-        color: var(--text-faint, #8b87a0);
+        color: var(--text-subtle, #8e96ad);
         cursor: pointer;
         padding: 0;
       }
@@ -490,7 +490,7 @@ async function renderGraphLikePage(
         </svg>
       </button>
       <!-- LEFT OVERLAY: search + filters + status -->
-      <div id="graph-overlay" class="graph-overlay${panelCollapsed ? ' collapsed' : ''}" role="region" aria-label="Graph controls">
+      <div id="graph-overlay" class="graph-overlay${panelCollapsed ? ' collapsed' : ''}" role="region" aria-label="Controles do grafo">
         <div class="graph-overlay-row graph-search-row">
           <span class="graph-search-icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>

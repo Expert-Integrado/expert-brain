@@ -1004,7 +1004,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // client/task-edit.ts.
   const body = `
     <div class="task-d-banner">
-      <a href="/app/tasks" class="task-d-back">← Tasks</a>
+      <a href="/app/tasks" class="task-d-back">← Tarefas</a>
       <span class="task-d-tag">Task</span>
       ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
       ${originNote ? `<span class="task-d-origin">de <a href="/app/notes/${esc(originNote.id)}">${esc(originNote.title)}</a></span>` : ''}
@@ -1015,7 +1015,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       <div class="task-detail-grid">
         <div class="task-detail-main">
           <div class="task-edit-titlerow">
-            <input type="text" class="task-edit-title" data-field="title" value="${esc(task.title)}" maxlength="200" placeholder="Título da task" aria-label="Título da task" />
+            <textarea class="task-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da task" aria-label="Título da task">${esc(task.title)}</textarea>
             <button type="button" class="btn task-d-btn task-edit-save" data-save="title">Salvar</button>
           </div>
 
@@ -1126,7 +1126,7 @@ const SHARE_SECTION_CSS = `
 .task-share-state strong { color:var(--text); }
 .task-share-controls { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
 .task-share-ttl { display:flex; flex-direction:column; gap:6px; }
-.task-share-ttl span { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.task-share-ttl span { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-share-ttl input {
   width:96px; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
   border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; font-family:inherit;
@@ -1181,10 +1181,13 @@ const TASK_DETAIL_CSS = `
 
 /* Título: input grande, borda invisível até focar (estilo ClickUp) */
 .task-edit-titlerow { display:flex; gap:12px; align-items:center; margin-bottom:20px; }
+/* Textarea de 1 linha com auto-grow via JS (task-edit.ts) — título longo quebra
+   em vez de cortar (input de linha única truncava). */
 .task-edit-title {
   flex:1; min-width:0; font-family:var(--font-display); font-size:28px; font-weight:500; letter-spacing:-0.02em;
   color:var(--text); background:transparent; border:1px solid transparent;
   border-radius:var(--radius-sm); padding:8px 12px; transition:border-color 160ms var(--ease), background 160ms var(--ease);
+  resize:none; overflow:hidden; line-height:1.25;
 }
 .task-edit-title:hover { border-color:var(--border); }
 .task-edit-title:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
@@ -1199,11 +1202,11 @@ const TASK_DETAIL_CSS = `
   padding:18px 20px;
 }
 .task-sidebar-field { display:flex; flex-direction:column; gap:7px; }
-.task-sidebar-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.task-sidebar-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-sidebar-val { font-size:13px; color:var(--text); }
 .task-sidebar-dates { gap:10px; }
 .task-sidebar-dates > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
-.task-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.task-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-edit-select {
   width:100%; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
   border-radius:var(--radius-sm); padding:7px 11px; font-size:13px; font-family:inherit; cursor:pointer;
@@ -1220,13 +1223,13 @@ const TASK_DETAIL_CSS = `
 .task-edit-due-date { min-width:0; flex:1; }
 .task-edit-due-date:focus, .task-edit-due-time:focus { outline:none; border-color:var(--accent-lav); }
 .task-edit-clear {
-  background:none; border:1px solid var(--border); color:var(--text-faint);
+  background:none; border:1px solid var(--border); color:var(--text-subtle);
   border-radius:var(--radius-sm); width:30px; height:32px; font-size:12px; cursor:pointer; flex-shrink:0;
   transition:color 160ms var(--ease), border-color 160ms var(--ease);
 }
 .task-edit-clear:hover { color:var(--danger); border-color:var(--danger-border); }
 .task-edit-domains { display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:24px; }
-.task-edit-domains:empty::after { content:"—"; color:var(--text-faint); }
+.task-edit-domains:empty::after { content:"—"; color:var(--text-subtle); }
 
 /* Editor de tags (spec 52): chips + input inline, autosave via a fila de rajada */
 .task-tags-editor { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
@@ -1236,7 +1239,7 @@ const TASK_DETAIL_CSS = `
   border-radius:999px; padding:3px 6px 3px 9px;
 }
 .task-tag-remove {
-  background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:13px;
+  background:none; border:none; color:var(--text-subtle); cursor:pointer; font-size:13px;
   line-height:1; padding:0 3px; transition:color 140ms var(--ease);
 }
 .task-tag-remove:hover { color:var(--danger); }
@@ -1245,7 +1248,7 @@ const TASK_DETAIL_CSS = `
   color:var(--text); font-family:inherit; font-size:12px; padding:4px 7px; border-radius:6px;
   transition:border-color 160ms var(--ease), background 160ms var(--ease);
 }
-.task-tags-input::placeholder { color:var(--text-faint); }
+.task-tags-input::placeholder { color:var(--text-subtle); }
 .task-tags-input:focus { outline:none; border-color:var(--accent-lav); background:var(--bg-accent); }
 
 /* Descrição: label + botão Salvar alinhado à direita do label (não flutuando) */
@@ -1262,12 +1265,12 @@ const TASK_DETAIL_CSS = `
 
 /* Prévia: bloco bem separado com cartão próprio */
 .task-edit-previewrow { margin:22px 0 8px; }
-.task-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; margin-bottom:10px; }
+.task-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; margin-bottom:10px; }
 .task-edit-preview {
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
   padding:16px 20px;
 }
-.task-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-faint); font-size:13px; }
+.task-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-subtle); font-size:13px; }
 .task-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
 .task-edit-status.ok { color:var(--success); }
 .task-edit-status.saving { color:var(--text-dim); }
@@ -1286,15 +1289,15 @@ ${SHARE_SECTION_CSS}
 .cmt-author-owner { color:var(--accent-lav); }
 .cmt-author-agent { color:var(--info); }
 .cmt-author-guest { color:var(--text); }
-.cmt-time { font-size:11.5px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.cmt-time { font-size:11.5px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
 .cmt-body { font-size:14px; line-height:1.55; color:var(--text); word-break:break-word; }
-.cmt-empty { color:var(--text-faint); font-size:14px; margin-bottom:18px; }
+.cmt-empty { color:var(--text-subtle); font-size:14px; margin-bottom:18px; }
 .cmt-del-form { margin-left:auto; }
-.cmt-del { background:none; border:none; color:var(--text-faint); font-size:11.5px; cursor:pointer; padding:0; transition:color 140ms var(--ease); }
+.cmt-del { background:none; border:none; color:var(--text-subtle); font-size:11.5px; cursor:pointer; padding:0; transition:color 140ms var(--ease); }
 .cmt-del:hover { color:var(--danger); }
 .cmt-form { display:flex; flex-direction:column; gap:10px; }
 .cmt-field { display:flex; flex-direction:column; gap:6px; }
-.cmt-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.cmt-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .cmt-form textarea {
   width:100%; box-sizing:border-box; resize:vertical; min-height:64px;
   background:var(--surface); border:1px solid var(--border); color:var(--text);
@@ -1340,7 +1343,7 @@ const NOTE_EDIT_CSS = `
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
 }
 .note-edit-ctl { display:flex; flex-direction:column; gap:6px; }
-.note-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
+.note-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .note-edit-select {
   background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
   border-radius:var(--radius-sm); padding:7px 11px; font-size:13px; font-family:inherit; cursor:pointer;
@@ -1358,8 +1361,8 @@ const NOTE_EDIT_CSS = `
 .note-edit-domain input { accent-color:var(--accent-lav); margin:0; }
 .note-edit-domains.at-max .note-edit-domain input:not(:checked) { opacity:.4; }
 /* spec 54 — slug canônico ao lado do label quando customizado, sempre mono */
-.note-edit-domain-slug { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:10.5px; color:var(--text-faint); }
-.note-edit-updated { font-size:12px; color:var(--text-faint); margin-left:auto; align-self:center; }
+.note-edit-domain-slug { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:10.5px; color:var(--text-subtle); }
+.note-edit-updated { font-size:12px; color:var(--text-subtle); margin-left:auto; align-self:center; }
 .note-edit-copy {
   background:none; border:1px solid var(--border); border-radius:6px; color:var(--text-dim);
   cursor:pointer; font-size:12px; padding:5px 11px; align-self:center;
@@ -1381,7 +1384,7 @@ const NOTE_EDIT_CSS = `
 }
 .note-edit-tldr:hover { border-color:var(--border); }
 .note-edit-tldr:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
-.note-edit-tldr-count { position:absolute; right:4px; bottom:-16px; font-size:11px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+.note-edit-tldr-count { position:absolute; right:4px; bottom:-16px; font-size:11px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
 .note-edit-tldr-count.bad { color:var(--danger); }
 
 .note-edit-bodyrow { margin-top:26px; }
@@ -1394,11 +1397,11 @@ const NOTE_EDIT_CSS = `
   transition:border-color 160ms var(--ease);
 }
 .note-edit-body:focus { outline:none; border-color:var(--accent-lav); }
-.note-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; margin:22px 0 10px; }
+.note-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; margin:22px 0 10px; }
 .note-edit-preview {
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px;
 }
-.note-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-faint); font-size:13px; }
+.note-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-subtle); font-size:13px; }
 .note-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
 .note-edit-status.ok { color:var(--success); }
 .note-edit-status.saving { color:var(--text-dim); }

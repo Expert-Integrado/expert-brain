@@ -4,6 +4,7 @@
 //   nunca bloqueia o SSR da home no proxy pro Worker do Contacts.
 
 import { appFetch } from './http.js';
+import { eventKindLabel } from '../../util/event-kind-labels.js';
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
@@ -66,7 +67,7 @@ async function loadInteractions(): Promise<void> {
         const url = `/app/contacts/${encodeURIComponent(ev.entity_id)}`;
         return `<li>
           <a class="home-event-title" href="${url}">${esc(ev.entity_name || 'Contato')}</a>
-          <span class="home-event-kind">${esc(ev.kind)}</span>
+          <span class="home-event-kind">${esc(eventKindLabel(ev.kind))}</span>
           <span class="home-event-when">${esc(formatEventWhen(ev.ts))}</span>
         </li>`;
       })

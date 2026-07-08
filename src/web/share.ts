@@ -410,7 +410,7 @@ const SHARE_CSS = `
 .share-meta-row { display: flex; align-items: center; gap: 14px; }
 .share-meta-lbl {
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--text-faint); font-weight: 600; width: 96px; flex-shrink: 0;
+  color: var(--text-subtle); font-weight: 600; width: 96px; flex-shrink: 0;
 }
 .share-value { color: var(--text); font-size: 14px; }
 .share-badge {
@@ -431,8 +431,8 @@ const SHARE_CSS = `
 .share-body pre { background: var(--bg-accent); padding: 14px; border-radius: var(--radius-sm); overflow-x: auto; }
 .share-body a { color: var(--accent-lav); }
 .share-body .wikilink.broken { color: var(--text-dim); border-bottom: 1px dotted var(--text-faint); cursor: default; }
-.share-empty { color: var(--text-faint); font-style: italic; }
-.share-footer { text-align: center; margin-top: 22px; font-size: 12px; color: var(--text-faint); letter-spacing: .02em; }
+.share-empty { color: var(--text-subtle); font-style: italic; }
+.share-footer { text-align: center; margin-top: 22px; font-size: 12px; color: var(--text-subtle); letter-spacing: .02em; }
 
 /* Comentários (spec 53) — thread + form do convidado, SSR puro */
 .cmt-section { margin-top: 26px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 26px 30px 28px; }
@@ -444,16 +444,16 @@ const SHARE_CSS = `
 .cmt-author-owner { color: var(--accent-lav); }
 .cmt-author-agent { color: var(--info); }
 .cmt-author-guest { color: var(--text); }
-.cmt-time { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.cmt-time { font-size: 11.5px; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 .cmt-body { font-size: 14px; line-height: 1.55; color: var(--text); word-break: break-word; }
-.cmt-empty { color: var(--text-faint); font-size: 14px; margin-bottom: 20px; }
+.cmt-empty { color: var(--text-subtle); font-size: 14px; margin-bottom: 20px; }
 .cmt-msg { font-size: 13px; margin-bottom: 14px; padding: 8px 12px; border-radius: var(--radius-sm); }
 .cmt-msg-err { color: var(--danger); background: var(--danger-bg); }
 .cmt-msg-ok { color: var(--success); background: var(--success-bg); }
 .cmt-form { display: flex; flex-direction: column; gap: 12px; }
 .cmt-field { display: flex; flex-direction: column; gap: 6px; }
-.cmt-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 600; }
-.cmt-hint { font-size: 11px; color: var(--text-faint); }
+.cmt-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-subtle); font-weight: 600; }
+.cmt-hint { font-size: 11px; color: var(--text-subtle); }
 .cmt-form input[type=text], .cmt-form textarea {
   background: var(--bg-accent); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 9px 12px; font-family: inherit; font-size: 14px; width: 100%; box-sizing: border-box;

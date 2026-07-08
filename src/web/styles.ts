@@ -27,24 +27,33 @@ export const THEME_COLOR = '#070a13';
 // ---------------------------------------------------------------------------
 export const TOKENS_CSS = `
 :root {
+  /* ============ Direção A — "Nebula Refinada" (Onda 6, specs/60-ux-reforma/62+67) ============
+     Decisão do dono no gate da Onda 1: evolução do Midnight Nebula — mesma identidade
+     (fundo espacial, lavanda + ciano, Poppins/Manrope), com contraste AA em todo texto
+     informativo, gradiente mais calmo e escada REAL de superfícies (opacas, não véus
+     translúcidos — viabiliza cálculo de contraste e o futuro tema claro).
+     Breakpoint canônico do console: 767px (único @media mobile permitido).
+     Tabela de contraste WCAG: docs/ux-contraste-aa.md (gate da Onda 6). */
+
   /* -- primitiva: paleta bruta, fontes, raios -- */
   --bg: #070a13;
   --bg-mid: #0b0f19;
-  --bg-accent: #111827;
+  --bg-accent: var(--surface-1); /* legado — degrau 1 da escada de superfícies */
   --text: #f8fafc;
-  --text-dim: rgba(248, 250, 252, 0.58);
-  --text-faint: rgba(248, 250, 252, 0.35); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
-  --border: rgba(167, 139, 250, 0.14);
-  --border-strong: rgba(167, 139, 250, 0.32);
-  --surface: rgba(255, 255, 255, 0.035);
-  --surface-raised: rgba(255, 255, 255, 0.06);
+  --text-dim: #b9bfd0;    /* AA 9.7:1 sobre --surface-1 */
+  --text-faint: rgba(248, 250, 252, 0.34); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
+  --border: rgba(167, 139, 250, 0.16);
+  --border-strong: rgba(167, 139, 250, 0.38);
+  --surface: #0c101d;
+  --surface-raised: #121728;
   --accent-lav: #a78bfa;
   --accent-cyan: #5eead4;
   --accent-pink: #f0abfc;
   --accent-violet: #7c3aed;
   --accent-lav-rgb: 167, 139, 250;
   --accent-violet-rgb: 124, 58, 237;
-  --danger: #ff7a90;
+  --accent-contrast: #0b0f19; /* texto SOBRE o acento sólido (botão primário, badge) — AA 7.2:1 */
+  --danger: #ff8298;
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
@@ -57,38 +66,38 @@ export const TOKENS_CSS = `
   --accent-2: var(--accent-cyan);
   --surface-0: var(--surface);
   --surface-1: var(--surface-raised);
-  --surface-2: rgba(255, 255, 255, 0.09);
-  --surface-3: rgba(255, 255, 255, 0.13);
+  --surface-2: #192036;
+  --surface-3: #212a46;
   --backdrop: rgba(4, 6, 12, 0.72);
-  --shadow-1: 0 4px 14px rgba(0, 0, 0, 0.25);
-  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.35);
-  --shadow-3: 0 18px 50px rgba(0, 0, 0, 0.45);
-  --text-subtle: rgba(248, 250, 252, 0.5); /* terciário informativo — piso AA, entre --text-dim e o decorativo --text-faint */
+  --shadow-1: 0 1px 2px rgba(2, 4, 12, 0.4);
+  --shadow-2: 0 6px 18px rgba(2, 4, 12, 0.5), 0 0 0 1px rgba(167, 139, 250, 0.08);
+  --shadow-3: 0 18px 50px rgba(2, 4, 12, 0.6);
+  --text-subtle: #8e96ad; /* terciário informativo — AA 6.0:1 sobre --surface-1, entre --text-dim e o decorativo --text-faint */
   --input-bg: var(--surface);
-  --success: #6fe39a;
-  --success-bg: rgba(111, 227, 154, 0.1);
-  --success-border: rgba(111, 227, 154, 0.4);
+  --success: #4ade80;
+  --success-bg: rgba(74, 222, 128, 0.12);
+  --success-border: rgba(74, 222, 128, 0.4);
   --warning: #fbbf24;
-  --warning-bg: rgba(251, 191, 36, 0.1);
+  --warning-bg: rgba(251, 191, 36, 0.12);
   --warning-border: rgba(251, 191, 36, 0.4);
-  --danger-bg: rgba(255, 122, 144, 0.1);
-  --danger-border: rgba(255, 122, 144, 0.5);
-  --info: #93c5fd;
-  --info-bg: rgba(147, 197, 253, 0.1);
-  --info-border: rgba(147, 197, 253, 0.4);
-  --prio-1: #fca5a5;
-  --prio-2: #fdba74;
-  --prio-3: #93c5fd;
-  --prio-4: var(--text-dim);
+  --danger-bg: rgba(255, 130, 152, 0.12);
+  --danger-border: rgba(255, 130, 152, 0.5);
+  --info: #7db8ff;
+  --info-bg: rgba(125, 184, 255, 0.12);
+  --info-border: rgba(125, 184, 255, 0.4);
+  --prio-1: var(--danger);
+  --prio-2: var(--warning);
+  --prio-3: var(--info);
+  --prio-4: #9aa2b8;
   /* Palco do grafo (2D e 3D): neutro escuro, sem tint lavanda — mais profundo
      que o Obsidian (#1e1e1e) de propósito. graph3d.ts (BG_COLOR) espelha o valor
      em JS pro WebGL — mudar aqui = mudar lá. */
   --surface-canvas: #0c0c10;
 
-  /* -- tema: fundo e grain tokenizados (preparo pra tema claro, Onda 6) -- */
+  /* -- tema: fundo e grain tokenizados (gradiente calmo da direção A) -- */
   --bg-gradient:
-    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(94, 234, 212, 0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 55% at 30% 0%, rgba(124, 58, 237, 0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 88% 100%, rgba(94, 234, 212, 0.06) 0%, transparent 55%),
     radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
   --grain-opacity: 0.22;
 
@@ -126,6 +135,17 @@ export const BASE_CSS = `
 * { box-sizing: border-box; }
 *:focus { outline: none; }
 *:focus-visible { outline: 2px solid var(--accent-lav); outline-offset: 2px; border-radius: 4px; }
+
+/* Acessibilidade: usuário pediu menos movimento no SO = zera animação/transição
+   em tudo (spec 67). Regras locais (ex: .skeleton) podem complementar o visual
+   estático, mas a garantia global mora aqui. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 html, body {
   margin: 0;
@@ -240,7 +260,7 @@ export const SHELL_CSS = `
 
 /* Rodapé da sidebar (Onda 5, decisão do gate): grupo coeso Recolher → Configurações
    → bloco do usuário (avatar + e-mail + Sair), separado da navegação por borda. */
-.sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-faint); display: flex; flex-direction: column; gap: 2px; }
+.sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-subtle); display: flex; flex-direction: column; gap: 2px; }
 .sidebar .bottom form { margin: 0; }
 
 /* Badge numérico de pendências na nav (inbox) — antes vivia inline no <head> */
@@ -248,7 +268,7 @@ export const SHELL_CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
   font-size: 11px; font-weight: 600; line-height: 1;
-  background: var(--accent-lav); color: #0b0b12;
+  background: var(--accent-lav); color: var(--accent-contrast);
 }
 .nav-item .nav-badge { margin-left: auto; }
 .sidebar-collapsed .nav-item .nav-badge {
@@ -435,13 +455,16 @@ export const COMPONENTS_CSS = `
   transition: background 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease), transform 150ms var(--ease), box-shadow 180ms var(--ease);
 }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Direção A (Onda 6): primário é acento SÓLIDO com texto escuro (--accent-contrast,
+   AA 7.2:1) — o gradiente lavanda->violeta com texto branco reprovava AA (2.2:1). */
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent-violet));
-  color: #fff;
-  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.55);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.45);
 }
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.7); }
-.btn-primary:active { transform: translateY(0); }
+.btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.6); }
+.btn-primary:active { filter: none; transform: translateY(0); }
 .btn-secondary {
   background: rgba(var(--accent-lav-rgb), 0.12);
   color: var(--accent);
@@ -458,7 +481,7 @@ export const COMPONENTS_CSS = `
   color: var(--danger);
   border-color: var(--danger-border);
 }
-.btn-danger:hover { background: rgba(255, 122, 144, 0.2); }
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
 .btn-sm { padding: 6px 10px; font-size: var(--text-xs); border-radius: 6px; }
 
 /* ---- Chips: pill compacta de metadado. Cor dinâmica via --chip (spec 54). ---- */
@@ -766,12 +789,13 @@ export const SURFACES_CSS = `
   border-color: var(--accent-lav);
   background: rgba(167, 139, 250, 0.05);
 }
+/* Direção A (Onda 6): mesma receita do .btn-primary — acento sólido + texto escuro AA */
 .login-wrap button {
   width: 100%;
   padding: 13px;
   margin-top: 8px;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-contrast);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -780,10 +804,10 @@ export const SURFACES_CSS = `
   cursor: pointer;
   font-family: inherit;
   transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-  box-shadow: 0 8px 24px -6px rgba(167, 139, 250, 0.55);
+  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.45);
 }
-.login-wrap button:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(167, 139, 250, 0.7); }
-.login-wrap button:active { transform: translateY(0); }
+.login-wrap button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.6); }
+.login-wrap button:active { filter: none; transform: translateY(0); }
 
 .error { color: var(--danger); font-size: 13px; margin-bottom: 14px; text-align: center; }
 
@@ -851,8 +875,8 @@ export const SURFACES_CSS = `
   vertical-align: middle;
   margin-left: 12px;
 }
-.badge-ok { background: rgba(111, 227, 154, 0.12); color: #6fe39a; border: 1px solid rgba(111, 227, 154, 0.3); }
-.badge-warn { background: rgba(255, 184, 112, 0.12); color: #ffb870; border: 1px solid rgba(255, 184, 112, 0.3); }
+.badge-ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+.badge-warn { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
 
 /* ---- Config page: disclosure progressivo (2 passos + gaveta avancada + rodape) ---- */
 .config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 12px; }
@@ -888,8 +912,8 @@ export const SURFACES_CSS = `
   margin-top: 16px; padding: 12px 14px;
   border-radius: var(--radius-sm);
   font-size: 13px; line-height: 1.55; color: var(--text-dim);
-  background: rgba(94, 234, 212, 0.06);
-  border: 1px solid rgba(94, 234, 212, 0.20);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 .callout-info strong { color: var(--accent-cyan); }
 .callout-info em { font-style: italic; color: var(--text); }
@@ -939,7 +963,7 @@ export const SURFACES_CSS = `
 }
 .disclosure-advanced[open] > summary .adv-title::before { transform: rotate(90deg); }
 .disclosure-advanced > summary .adv-sub {
-  font-size: 12.5px; color: var(--text-faint); padding-left: 22px;
+  font-size: 12.5px; color: var(--text-subtle); padding-left: 22px;
 }
 .disclosure-advanced .adv-body {
   padding: 4px 20px 22px;
@@ -972,7 +996,7 @@ export const SURFACES_CSS = `
 .keys-table th {
   text-align: left; padding: 8px 10px;
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-faint); border-bottom: 1px solid var(--border);
+  color: var(--text-subtle); border-bottom: 1px solid var(--border);
 }
 .keys-table td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
 .keys-table tr:last-child td { border-bottom: none; }
@@ -996,8 +1020,8 @@ export const SURFACES_CSS = `
   z-index: 300;
 }
 .app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-.app-toast[data-kind='error'] { border-color: rgba(255, 122, 144, 0.5); color: var(--danger); }
-.app-toast[data-kind='ok'] { border-color: rgba(94, 234, 212, 0.4); }
+.app-toast[data-kind='error'] { border-color: var(--danger-border); color: var(--danger); }
+.app-toast[data-kind='ok'] { border-color: var(--success-border); }
 
 /* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
 .tax-swatch {
@@ -1011,17 +1035,17 @@ export const SURFACES_CSS = `
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
 .key-flash {
   margin-bottom: 18px; padding: 16px 18px;
-  border: 1px solid rgba(111, 227, 154, 0.4);
-  background: rgba(111, 227, 154, 0.08);
+  border: 1px solid var(--success-border);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
   border-radius: var(--radius);
-  box-shadow: 0 0 24px -10px rgba(111, 227, 154, 0.3);
+  box-shadow: 0 0 24px -10px color-mix(in srgb, var(--success) 30%, transparent);
 }
-.key-flash h2 { font-family: var(--font-display); font-weight: 500; font-size: 16px; margin: 0 0 6px; color: #6fe39a; }
+.key-flash h2 { font-family: var(--font-display); font-weight: 500; font-size: 16px; margin: 0 0 6px; color: var(--success); }
 .key-flash p { color: var(--text-dim); font-size: 13px; margin: 0 0 10px; }
 .key-flash input.key-flash-value {
   width: 100%; box-sizing: border-box; padding: 12px 14px;
   background: rgba(0, 0, 0, 0.4); color: #b9f6ca;
-  border: 1px solid rgba(111, 227, 154, 0.3); border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: var(--radius-sm);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
 }
 
@@ -1041,8 +1065,8 @@ export const SURFACES_CSS = `
   font-family: var(--font-display); font-size: 18px; font-weight: 600;
   color: var(--text); font-variant-numeric: tabular-nums;
 }
-.stat-pill .k { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
-.vault-stats-foot .links { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
+.stat-pill .k { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-subtle); }
+.vault-stats-foot .links { margin-top: 16px; font-size: 13px; color: var(--text-subtle); }
 .vault-stats-foot .links a { color: var(--accent-lav); }
 .vault-stats-foot .empty-hint { margin-top: 10px; font-size: 13px; color: var(--text-dim); }
 
@@ -1118,7 +1142,7 @@ export const SURFACES_CSS = `
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-subtle);
   display: inline-flex;
 }
 .graph-search-input {
@@ -1132,7 +1156,7 @@ export const SURFACES_CSS = `
   font-size: 12.5px;
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
-.graph-search-input::placeholder { color: var(--text-faint); }
+.graph-search-input::placeholder { color: var(--text-subtle); }
 .graph-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
 .graph-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 
@@ -1154,11 +1178,11 @@ export const SURFACES_CSS = `
 }
 .graph-search-counter {
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   letter-spacing: 0.04em;
   padding: 4px 8px 6px;
 }
-.graph-search-empty { font-size: 12px; color: var(--text-faint); padding: 8px 10px; }
+.graph-search-empty { font-size: 12px; color: var(--text-subtle); padding: 8px 10px; }
 .graph-search-item {
   display: flex;
   align-items: center;
@@ -1180,7 +1204,7 @@ export const SURFACES_CSS = `
 .graph-search-item-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graph-search-item-tldr {
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1210,7 +1234,7 @@ export const SURFACES_CSS = `
   font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-field dd { margin: 1px 0 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
 .panel-field dd a { color: var(--accent-lav); text-decoration: none; }
@@ -1221,7 +1245,7 @@ export const SURFACES_CSS = `
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-conns { display: flex; flex-direction: column; gap: 6px; }
 .panel-conn {
@@ -1243,12 +1267,12 @@ export const SURFACES_CSS = `
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.panel-conn-why { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.panel-conn-why { display: block; font-size: 11px; color: var(--text-subtle); margin-top: 2px; }
 .panel-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .panel-events li { font-size: 12px; color: var(--text-dim); }
 .panel-event-kind { font-weight: 600; color: var(--text); }
-.panel-event-ts { color: var(--text-faint); margin-left: 6px; font-size: 10.5px; }
-.panel-event-ctx { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.panel-event-ts { color: var(--text-subtle); margin-left: 6px; font-size: 10.5px; }
+.panel-event-ctx { font-size: 11px; color: var(--text-subtle); margin-top: 1px; }
 .panel-empty { color: var(--text-dim); font-size: 13px; margin: 0; list-style: none; }
 .panel-timeline-wrap { margin-top: 16px; }
 
@@ -1309,7 +1333,7 @@ export const SURFACES_CSS = `
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-form-input,
 .panel-form-textarea {
@@ -1334,6 +1358,7 @@ select.panel-form-input { cursor: pointer; }
 .panel-form-feedback.ok { color: var(--accent-cyan); }
 .panel-form-feedback:empty { display: none; }
 
+/* Direção A (Onda 6): mesma receita do .btn-primary — acento sólido + texto escuro AA */
 .panel-form-submit {
   padding: 10px 16px;
   border: none;
@@ -1343,18 +1368,18 @@ select.panel-form-input { cursor: pointer; }
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  box-shadow: 0 8px 24px -8px rgba(var(--accent-lav-rgb), 0.45);
   transition: transform 150ms var(--ease), box-shadow 180ms var(--ease), opacity 150ms var(--ease);
 }
-.panel-form-submit:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
-.panel-form-submit:active { transform: translateY(0); }
+.panel-form-submit:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(var(--accent-lav-rgb), 0.6); }
+.panel-form-submit:active { filter: none; transform: translateY(0); }
 .panel-form-submit:disabled { opacity: 0.55; cursor: progress; transform: none; box-shadow: none; }
 
 .graph-status {
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   letter-spacing: 0.015em;
   padding: 2px 0;
 }
@@ -1368,7 +1393,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   margin-top: 2px;
 }
 .graph-reset-btn {
@@ -1421,7 +1446,7 @@ select.panel-form-input { cursor: pointer; }
 .graph-chip .label { font-weight: 500; }
 .graph-chip .count {
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-variant-numeric: tabular-nums;
 }
 .graph-chip.graph-chip-kind { padding-left: 8px; }
@@ -1445,7 +1470,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .graph-slider-label input[type="range"] {
   width: 100%;
@@ -1468,7 +1493,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 10px;
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
@@ -1550,7 +1575,7 @@ select.panel-form-input { cursor: pointer; }
   height: 30px;
   background: transparent;
   border: none;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -1564,7 +1589,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 10px;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-kind {
   display: inline-block;
@@ -1579,7 +1604,7 @@ select.panel-form-input { cursor: pointer; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.panel-degree { font-size: 11.5px; color: var(--text-faint); }
+.panel-degree { font-size: 11.5px; color: var(--text-subtle); }
 
 .panel-title {
   font-family: var(--font-display);
@@ -1662,7 +1687,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 6px 4px;
   background: none;
   border: none;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   text-decoration: none;
   font: inherit;
   font-size: 10.5px;
@@ -1783,7 +1808,7 @@ select.panel-form-input { cursor: pointer; }
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-subtle);
   display: inline-flex;
   pointer-events: none;
 }
@@ -1798,7 +1823,7 @@ select.panel-form-input { cursor: pointer; }
   font-size: 14px;
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
-.notes-search-input::placeholder { color: var(--text-faint); }
+.notes-search-input::placeholder { color: var(--text-subtle); }
 .notes-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
 
 .notes-toolbar-actions { display: flex; gap: 8px; }
@@ -1828,7 +1853,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   min-width: 64px;
 }
 .notes-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -1858,7 +1883,7 @@ select.panel-form-input { cursor: pointer; }
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
-.notes-chip .count { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.notes-chip .count { font-size: 10.5px; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 
 /* Notes list layout variants */
 /* Lista de notas usa a largura toda da tela (detalhe da nota e config seguem
@@ -1890,7 +1915,7 @@ select.panel-form-input { cursor: pointer; }
   gap: 8px;
   margin-bottom: 8px;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .note-card-date { margin-left: auto; font-variant-numeric: tabular-nums; }
 .note-card-tldr {
@@ -1957,7 +1982,7 @@ select.panel-form-input { cursor: pointer; }
   color: var(--text-dim);
   flex-wrap: wrap;
 }
-.note-row-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.note-row-date { color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 
 .notes-empty {
   padding: 32px 20px;
@@ -1985,7 +2010,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .local-graph-hops input[type=range] { width: 120px; }
 .local-graph-hops #local-graph-hops-value {
@@ -2012,7 +2037,7 @@ select.panel-form-input { cursor: pointer; }
   justify-content: center;
   height: 100%;
   margin: 0;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 13px;
 }
 
@@ -2029,8 +2054,8 @@ select.panel-form-input { cursor: pointer; }
   border-bottom-color: var(--text);
 }
 .wikilink.broken {
-  color: #ff7a90;
-  border-bottom-color: rgba(255, 122, 144, 0.4);
+  color: var(--danger);
+  border-bottom-color: color-mix(in srgb, var(--danger) 40%, transparent);
   cursor: help;
 }
 
@@ -2071,7 +2096,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
-.cmd-input-icon { color: var(--text-faint); display: inline-flex; }
+.cmd-input-icon { color: var(--text-subtle); display: inline-flex; }
 .cmd-input {
   flex: 1;
   background: transparent;
@@ -2081,7 +2106,7 @@ select.panel-form-input { cursor: pointer; }
   font-size: 16px;
   letter-spacing: 0;
 }
-.cmd-input::placeholder { color: var(--text-faint); }
+.cmd-input::placeholder { color: var(--text-subtle); }
 .cmd-input:focus { outline: none; }
 .cmd-esc {
   font-size: 11px;
@@ -2089,7 +2114,7 @@ select.panel-form-input { cursor: pointer; }
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -2124,7 +2149,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-label { flex: 1; }
 .cmd-hint {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   text-transform: lowercase;
 }
@@ -2133,7 +2158,7 @@ select.panel-form-input { cursor: pointer; }
    (role="presentation") — a navegação por setas pula direto pros .cmd-row. */
 .cmd-group-header {
   padding: 10px 18px 4px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -2142,7 +2167,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-group-header:first-child { padding-top: 6px; }
 .cmd-empty {
   padding: 20px 18px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   text-align: center;
   font-size: 13px;
   font-style: italic;
@@ -2160,7 +2185,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 10px 18px;
   border-top: 1px solid var(--border);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .cmd-help kbd {
   display: inline-block;

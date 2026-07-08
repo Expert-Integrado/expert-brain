@@ -41,12 +41,12 @@ const HOME_CSS = `
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .home-task-complete:hover { border-color: var(--accent-lav); color: var(--accent-lav); }
-.home-task-when, .home-event-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
+.home-task-when, .home-event-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
 .home-task-when.overdue { color: var(--danger); }
-.home-event-kind { flex-shrink: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+.home-event-kind { flex-shrink: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-subtle); }
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
 .home-error { color: var(--danger); }
-.home-private-badge { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+.home-private-badge { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
 `;
 
 function taskWhenHtml(t: TaskRow, now: number): string {

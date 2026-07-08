@@ -10,13 +10,14 @@ export interface PriorityMeta {
   color: string; // cor da bandeirinha (hex)
 }
 
-// Cores mapeadas na semântica do tema (vermelho→laranja→azul→cinza), no espírito
-// do ClickUp mas dentro da paleta Nebula (mesma família dos badges de status/due).
+// Cores mapeadas na semântica do tema (vermelho→amarelo→azul→cinza), no espírito
+// do ClickUp mas dentro da paleta Nebula. Espelho JS dos tokens --prio-1..4 de
+// styles.ts (SVG inline não resolve custom property) — mudar lá = mudar aqui.
 export const PRIORITIES: PriorityMeta[] = [
-  { value: 1, label: 'Crítica', color: '#f87171' },
-  { value: 2, label: 'Alta', color: '#fb923c' },
-  { value: 3, label: 'Normal', color: '#60a5fa' },
-  { value: 4, label: 'Baixa', color: '#94a3b8' },
+  { value: 1, label: 'Crítica', color: '#ff8298' },
+  { value: 2, label: 'Alta', color: '#fbbf24' },
+  { value: 3, label: 'Normal', color: '#7db8ff' },
+  { value: 4, label: 'Baixa', color: '#9aa2b8' },
 ];
 
 export function priorityMeta(p: number | null): PriorityMeta | null {

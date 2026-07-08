@@ -27,6 +27,8 @@ describe('assets/manifest.webmanifest', () => {
     expect(m.share_target).toEqual({
       action: '/app/inbox',
       method: 'GET',
+      // enctype explícito cala o warning do Chrome no manifest (onda 6, spec 67)
+      enctype: 'application/x-www-form-urlencoded',
       params: { title: 'title', text: 'text', url: 'url' },
     });
   });

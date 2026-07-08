@@ -142,7 +142,7 @@ export function configPageScript(): string {
           return res.json().catch(function () { return {}; }).then(function (data) {
             if (!res.ok) {
               statusEl.textContent = data.error || ('Erro ao salvar (' + res.status + ')');
-              statusEl.style.color = '#f87171';
+              statusEl.style.color = 'var(--danger)';
               return;
             }
             location.href = '/app/config?saved=taxonomy#taxonomy';
@@ -150,7 +150,7 @@ export function configPageScript(): string {
         })
         .catch(function () {
           statusEl.textContent = 'Falha de rede ao salvar.';
-          statusEl.style.color = '#f87171';
+          statusEl.style.color = 'var(--danger)';
         });
     });
   }
@@ -164,7 +164,7 @@ export function configPageScript(): string {
         .catch(function () {
           var statusEl = document.getElementById('taxonomy-status');
           statusEl.textContent = 'Falha de rede ao restaurar.';
-          statusEl.style.color = '#f87171';
+          statusEl.style.color = 'var(--danger)';
         });
     });
   }

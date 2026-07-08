@@ -121,7 +121,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
           <p>As colunas do board <a href="/app/tasks">/app/tasks</a> vêm daqui. Cada coluna pertence a uma das 4 categorias fixas (<em>${TASK_STATUSES.map((c) => esc(CATEGORY_LABELS[c])).join(', ')}</em>), que definem o estado real da task — a categoria é travada após a criação. Arrastar um card pra uma coluna aplica a categoria dela.</p>
           <table class="keys-table">
             <thead><tr>
-              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tasks</th><th></th>
+              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tarefas</th><th></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -206,7 +206,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
           <p>Projeto é uma <strong>pasta</strong> de tarefas: single-valorado (cada task pertence a 0 ou 1 projeto), com cor e filtro próprio no board <a href="/app/tasks">/app/tasks</a>. Diferente de <em>tag</em> (rótulo transversal, multi). Arquivar um projeto <strong>não mexe nas tasks</strong> — elas continuam no board (chip esmaecido), o projeto só some dos seletores. ${total}/${TASK_PROJECT_CAP} projetos.</p>
           <table class="keys-table">
             <thead><tr>
-              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tasks</th><th></th>
+              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tarefas</th><th></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>

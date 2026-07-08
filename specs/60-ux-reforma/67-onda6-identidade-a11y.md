@@ -1,6 +1,6 @@
 # Onda 6 — Identidade vencedora + acessibilidade/responsivo
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (08/07/2026) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/62-onda1-pesquisa-referencias-identidade.md`, `60-ux-reforma/66-onda5-fix-list-por-tela.md`
 
 ## Contexto
@@ -39,14 +39,14 @@ O console aplica a direção de identidade escolhida pelo dono na Onda 1, nenhum
 
 ## Critérios de aceite
 
-- [ ] `TOKENS_CSS` reflete a direção de identidade escolhida pelo dono (valores colados, não os antigos de Midnight Nebula, a menos que a direção A tenha sido a escolhida — nesse caso os valores são os corrigidos de contraste da direção A, não os originais problemáticos)
-- [ ] Tabela de contraste WCAG de cada token de texto usado como conteúdo, incluída no commit (pode ser um comentário no código ou um arquivo em `docs/`), com todos os pares ≥ 4.5:1
-- [ ] `--text-faint` documentado como decorativo-apenas; nenhum uso de conteúdo real restante nesse token
-- [ ] Nenhum `@media` com breakpoint diferente de 767px restante no CSS do console
-- [ ] Regra global de `prefers-reduced-motion` presente em `BASE_CSS`
-- [ ] `focus-visible` funcional e visível em todo elemento interativo testado manualmente
-- [ ] Nenhuma string visível ao usuário em inglês remanescente
-- [ ] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
+- [x] `TOKENS_CSS` reflete a direção de identidade escolhida pelo dono (valores colados, não os antigos de Midnight Nebula, a menos que a direção A tenha sido a escolhida — nesse caso os valores são os corrigidos de contraste da direção A, não os originais problemáticos)
+- [x] Tabela de contraste WCAG de cada token de texto usado como conteúdo, incluída no commit (pode ser um comentário no código ou um arquivo em `docs/`), com todos os pares ≥ 4.5:1
+- [x] `--text-faint` documentado como decorativo-apenas; nenhum uso de conteúdo real restante nesse token
+- [x] Nenhum `@media` com breakpoint diferente de 767px restante no CSS do console
+- [x] Regra global de `prefers-reduced-motion` presente em `BASE_CSS`
+- [x] `focus-visible` funcional e visível em todo elemento interativo testado manualmente
+- [x] Nenhuma string visível ao usuário em inglês remanescente
+- [x] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
 
 ## Validação
 
@@ -72,3 +72,23 @@ Teste manual: navegar o console inteiro só de teclado (Tab, Enter, Esc) checand
 - **Risco:** a direção de identidade escolhida, ao ser aplicada de verdade (não só no protótipo isolado), revelar um problema de contraste ou de legibilidade que não apareceu no comparador da Onda 1 (ex. um componente real mais complexo que o markup de exemplo do protótipo). Mitigação: o gate de contraste desta onda (item 2 do Design proposto) é justamente a rede de segurança pra pegar isso antes do deploy; se a direção escolhida reprovar, ajustar os tokens específicos que falharem, sem precisar voltar à Onda 1 inteira.
 - **Risco:** trocar `--accent-lav` como cor de foco em todo o app sem revisar cada contexto onde ela aparece hardcoded fora do token. Mitigação: grep por `accent-lav` literal (não via `var()`) antes de considerar a troca completa.
 - **Reversão:** `git revert` do commit — mudança de valores de token, sem migration nem mudança de contrato; reverter volta pra identidade anterior sem efeito em dado.
+
+## Evidência de execução (08/07/2026)
+
+**Identidade (direção A "Nebula Refinada") aplicada em `TOKENS_CSS`:** escada de superfícies opacas (`#0c101d/#121728/#192036/#212a46`), texto AA opaco (`--text-dim #b9bfd0` 9.7:1, `--text-subtle #8e96ad` 6.0:1), `--accent-contrast #0b0f19` (texto escuro sobre acento sólido, 7.0:1 — o gradiente+branco reprovava em 2.2:1 e foi descartado), estados `danger #ff8298 / success #4ade80 / warning #fbbf24 / info #7db8ff` com tintas 0.12, sombras e gradiente de fundo calmos. Botão primário virou acento sólido + `--accent-contrast` (`.btn-primary`, login, `.panel-form-submit`, nav-badge).
+
+**Espelhos JS sincronizados:** `src/util/priority.ts` (PRIORITIES = `--prio-1..4`), `config-script.ts` (3x `#f87171` → `var(--danger)`). `graph3d.ts` BG_COLOR e THEME_COLOR inalterados (tokens não mudaram).
+
+**Varredura de literais órfãos da paleta antiga:** `.btn-danger:hover`, `.badge-ok/.badge-warn`, `.callout-info`, `.app-toast` ok/error, `.key-flash`, `.wikilink.broken`, chip de task do journal — tudo em token/color-mix.
+
+**Gate AA:** tabela completa em `docs/ux-contraste-aa.md` (28 pares, 0 reprovações; tintas de estado compostas sobre `--surface-1` antes de medir). **83 usos informativos de `--text-faint` migrados pra `--text-subtle`** (timestamps, labels, contadores, placeholders, empty-states); restam 2 usos decorativos permitidos (borda pontilhada em share, dot do graph-chip).
+
+**Breakpoint:** só 767px em todo `src/web` (5 blocos @media + prefers-reduced-motion). **Reduced-motion global** em BASE_CSS (verificado no navegador: `transitionDuration 1e-05s` sob emulação). **Focus-visible** global com outline lavanda (verificado por Tab no navegador).
+
+**PT-BR:** `aria-label="Graph controls"` → "Controles do grafo"; breadcrumb "← Tasks" → "← Tarefas"; botão/modal "Nova task" → "Nova tarefa"; filtro do journal e cabeçalhos de tabela do config "Tasks" → "Tarefas"; description do manifest traduzida; **kinds de interação de contato traduzidos na home e no journal** via módulo compartilhado novo `src/util/event-kind-labels.ts` (deduplica as cópias de contact-page e graph). Decisão registrada: "task" como substantivo de produto em microcopy corrente ("task criada", "Virar task") fica — é o jargão do dono; só rótulos de página/navegação viram "Tarefas".
+
+**Extras:** `assets/favicon.ico` novo (gerado do icon-192; 404 do navegador resolvido, verificado 200 + warning de manifest sumiu com `enctype` explícito no share_target); título do task detail virou textarea de 1 linha com auto-grow (`fitTitle` em task-edit.ts, Enter salva, `\n` de paste vira espaço, correção border-box de 2px) — título longo quebra em vez de cortar (verificado no navegador: 86px → 191px, "Salvo", sem newline); teste e2e atualizado pro seletor `textarea.task-edit-title` e `test/manifest.test.ts` pro enctype.
+
+**Validação:** typecheck ok (4 tsconfigs); server 86 files/792 tests + auth 2/5 (exit 0); client 5/38; e2e 21/21 (4.7m); audit wave-6 32/32 + recapturas pós-fix; contact sheet vs baseline em `C:/tmp/ux-audit/wave-6/contact-sheet.html`; QA interativo no navegador (login, home, board, task detail, grafo 2D→3D sem erro de console, mobile 390/320px sem overflow horizontal, bottom-nav icon-only, foco por teclado, reduced-motion); scan PII/segredo limpo.
+
+**Backlog registrado (fora do escopo, não bloqueia):** mover card do board por teclado (setas + Enter), conforme item 7 do design.

@@ -1088,7 +1088,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <h1>Tarefas</h1>
       <span class="count" id="tasks-count">${totalOpen} aberta${totalOpen === 1 ? '' : 's'}</span>
       <button class="btn btn-primary task-new-btn" id="task-new-btn" type="button">
-        <span class="task-new-plus" aria-hidden="true">+</span> Nova task
+        <span class="task-new-plus" aria-hidden="true">+</span> Nova tarefa
       </button>
     </div>
 
@@ -1109,7 +1109,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <div class="task-modal-backdrop" data-close-modal></div>
       <div class="task-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="task-create-title">
         <div class="task-modal-head">
-          <h2 id="task-create-title">Nova task</h2>
+          <h2 id="task-create-title">Nova tarefa</h2>
           <button class="task-modal-x" data-close-modal type="button" aria-label="Fechar">✕</button>
         </div>
         <form class="task-create-form" id="task-create-form">
@@ -1202,7 +1202,7 @@ export const TASKS_CSS = `
 }
 /* Colapsar coluna (spec 52): estado persiste em localStorage (kanban_collapsed) */
 .task-col-collapse-btn {
-  background: none; border: none; color: var(--text-faint); font-size: 11px; line-height: 1;
+  background: none; border: none; color: var(--text-subtle); font-size: 11px; line-height: 1;
   cursor: pointer; padding: 3px 5px; border-radius: 5px; transition: color 140ms var(--ease), background 140ms var(--ease);
 }
 .task-col-collapse-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
@@ -1242,7 +1242,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   color: var(--text); border-radius: var(--radius-sm); padding: 7px 10px; font-family: inherit;
   font-size: 12.5px; transition: border-color 160ms var(--ease), background 160ms var(--ease);
 }
-.task-col-inline-input::placeholder { color: var(--text-faint); }
+.task-col-inline-input::placeholder { color: var(--text-subtle); }
 .task-col-inline-input:focus { outline: none; border-style: solid; border-color: var(--accent-lav); background: var(--bg-accent); }
 .task-col-inline-input:disabled { opacity: 0.5; }
 
@@ -1295,7 +1295,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* "concluir" gruda no rodapé do card — cards curtos ficam com altura consistente */
 .task-card-actions { display: flex; gap: 12px; margin-top: auto; }
 .task-btn {
-  background: none; border: none; color: var(--text-faint); font-size: 12px;
+  background: none; border: none; color: var(--text-subtle); font-size: 12px;
   cursor: pointer; padding: 0; transition: color 140ms var(--ease);
 }
 .task-btn:hover { color: var(--accent-lav); }
@@ -1312,7 +1312,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 500;
   color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 7px;
 }
-.task-tag-more { color: var(--text-faint); }
+.task-tag-more { color: var(--text-subtle); }
 /* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
 .task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
 
@@ -1355,7 +1355,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 }
 .task-card-prio:focus, .task-card-due-date:focus, .task-card-due-time:focus { outline: none; border-color: var(--accent-lav); }
 .task-card-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.task-card-edit-msg { font-size: 11px; color: var(--text-faint); }
+.task-card-edit-msg { font-size: 11px; color: var(--text-subtle); }
 .task-card-edit-msg.saving { color: var(--text-dim); }
 .task-card-edit-msg.ok { color: var(--success); }
 .task-card-edit-msg.err { color: var(--danger); }
@@ -1377,18 +1377,18 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .task-modal-head h2 { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 0; }
 .task-modal-x {
-  background: none; border: none; color: var(--text-faint); font-size: 18px; line-height: 1;
+  background: none; border: none; color: var(--text-subtle); font-size: 18px; line-height: 1;
   cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: background 160ms var(--ease), color 160ms var(--ease);
 }
 .task-modal-x:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 .task-create-form { display: flex; flex-direction: column; gap: 16px; }
 .task-create-ctl { display: flex; flex-direction: column; gap: 6px; }
 .task-create-lbl {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-subtle);
   display: flex; align-items: center; gap: 8px;
 }
 .task-create-req { color: var(--danger); text-transform: none; letter-spacing: 0; font-weight: 500; }
-.task-create-opt { color: var(--text-faint); text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.task-create-opt { color: var(--text-subtle); text-transform: none; letter-spacing: 0; opacity: 0.8; }
 .task-create-form input, .task-create-form textarea, .task-create-form select {
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 9px 12px; font-family: inherit; font-size: 14px;
@@ -1400,7 +1400,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 }
 .task-create-grid { display: grid; grid-template-columns: 1.2fr 1fr 0.9fr; gap: 12px; }
 .task-create-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
-.task-create-msg { font-size: 12px; color: var(--text-faint); }
+.task-create-msg { font-size: 12px; color: var(--text-subtle); }
 .task-create-msg.saving { color: var(--text-dim); }
 .task-create-msg.err { color: var(--danger); }
 .task-create-actions { display: flex; gap: 10px; align-items: center; }

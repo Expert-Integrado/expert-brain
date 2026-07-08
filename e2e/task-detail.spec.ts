@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 
 test('detalhe renderiza título, sidebar e o seletor de visibilidade', async ({ page }) => {
   // o título é um campo EDITÁVEL (input), não texto — getByText não o encontra
-  await expect(page.locator('input.task-edit-title')).toHaveValue('Revisar contrato de fornecedor fictício');
+  await expect(page.locator('textarea.task-edit-title')).toHaveValue('Revisar contrato de fornecedor fictício');
   const sidebar = page.locator('.task-detail-sidebar');
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByRole('heading', { name: 'Visibilidade' })).toBeVisible();
