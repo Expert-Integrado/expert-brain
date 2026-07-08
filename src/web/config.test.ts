@@ -138,13 +138,13 @@ describe('/app routing defaults', () => {
     const res = await SELF.fetch('https://x.test/app', { headers: { cookie: await authCookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('id="home-events-list"');
+    expect(html).toContain('id="journal-groups"');
   });
 
   it('/app/ com sessão → 200 renderizando a MESMA home', async () => {
     const res = await SELF.fetch('https://x.test/app/', { headers: { cookie: await authCookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('id="home-events-list"');
+    expect(html).toContain('id="journal-groups"');
   });
 });

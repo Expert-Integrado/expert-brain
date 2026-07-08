@@ -29,7 +29,9 @@ SCREENS = [
      "full_page": True, "settle_ms": 800},
     {"slug": "06-note-detail", "path": lambda ids: f"/app/notes/{ids['note']}",
      "needs": "note", "logged_in": True, "full_page": True, "settle_ms": 1200},
-    {"slug": "07-journal", "path": "/app/journal", "needs": None, "logged_in": True,
+    # Spec 69: /app/journal sem querystring redireciona pra home (feed absorvido).
+    # Captura a pagina standalone de paginacao sem JS, que continua viva.
+    {"slug": "07-journal", "path": "/app/journal?feed=1", "needs": None, "logged_in": True,
      "full_page": True, "settle_ms": 1000},
     {"slug": "08-inbox", "path": "/app/inbox", "needs": None, "logged_in": True,
      "full_page": True, "settle_ms": 800},

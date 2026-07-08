@@ -8,6 +8,57 @@
 // strict script-src 'self' CSP.
 export function configPageScript(): string {
   return `(function () {
+  // ── Abas segmentadas (spec 69): Conexões / Organização / Sistema ──
+  // O servidor decide a aba do primeiro paint (?saved=...); aqui resolvemos deep
+  // links por hash (#board, #backup, #organizacao...), o clique e as setas do teclado.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.config-tabs [role="tab"]'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.config-panel'));
+  function activateTab(slug, updateHash) {
+    tabs.forEach(function (t) {
+      var on = t.getAttribute('data-tab') === slug;
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+    });
+    panels.forEach(function (p) {
+      p.classList.toggle('active', p.getAttribute('data-panel') === slug);
+    });
+    if (updateHash && history.replaceState) history.replaceState(null, '', '#' + slug);
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener('click', function () { activateTab(t.getAttribute('data-tab'), true); });
+    t.addEventListener('keydown', function (e) {
+      var next = -1;
+      if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+      else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = tabs.length - 1;
+      if (next < 0) return;
+      e.preventDefault();
+      activateTab(tabs[next].getAttribute('data-tab'), true);
+      tabs[next].focus();
+    });
+  });
+  // Deep link: hash pode ser uma aba (#organizacao) ou uma seção dentro dela (#board).
+  // Roda no load E em hashchange (navegação same-document não reexecuta o script).
+  function resolveHash() {
+    if (!tabs.length || !location.hash) return;
+    var hash = location.hash.slice(1);
+    var isTab = tabs.some(function (t) { return t.getAttribute('data-tab') === hash; });
+    if (isTab) {
+      activateTab(hash, false);
+      return;
+    }
+    var target = document.getElementById(hash);
+    var panel = target && target.closest ? target.closest('.config-panel') : null;
+    if (panel) {
+      activateTab(panel.getAttribute('data-panel'), false);
+      if (target.tagName === 'DETAILS') target.open = true;
+      target.scrollIntoView();
+    }
+  }
+  resolveHash();
+  window.addEventListener('hashchange', resolveHash);
+
   var url = location.origin + '/mcp';
   // Pode haver mais de um box de URL (aba "agente local" e aba "sistemas web").
   document.querySelectorAll('.js-mcp-url').forEach(function (el) { el.textContent = url; });

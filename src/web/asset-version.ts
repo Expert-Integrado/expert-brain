@@ -12,10 +12,10 @@ export const ASSET_HASHES: Record<string, string> = {
   "task-edit.bundle.js": "2eb9aa0b7beb",
   "contact-page.bundle.js": "d5d48a5c04f2",
   "sim-worker.bundle.js": "2b1cd681554f",
-  "home.bundle.js": "8776ed5858f1",
-  "journal.bundle.js": "6741a0a12767",
-  "styles.css": "fca9c360e227",
-  "config.bundle.js": "14c39203a4f0"
+  "home.bundle.js": "729e30f7c8e3",
+  "journal.bundle.js": "c2dded04f4a4",
+  "styles.css": "39e24d563a01",
+  "config.bundle.js": "159edb1c711e"
 };
 
 export function assetVersion(name: string): string {

@@ -7,14 +7,15 @@ import { listTasksDueBefore, listInboxItems, countPendingInbox, type TaskRow, ty
 import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js';
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
+import { JOURNAL_CSS } from './journal.js';
 
-// Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): 4 cards SSR, cada
+// Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
 // um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
-// (try/catch por card, Onda 5), nunca derruba a página inteira. O card "Últimas
-// interações" é a ÚNICA
-// exceção: carrega ASSÍNCRONO no client (skeleton aqui, populado por home.bundle.js)
-// porque depende do proxy pro Worker do Contacts — não trava o SSR da home no request
-// path (Riscos da spec: "home lenta por depender do proxy").
+// (try/catch por card, Onda 5), nunca derruba a página inteira. Abaixo dos cards, o
+// feed "Atividade" (o antigo /app/journal, absorvido na home — spec 69) carrega
+// ASSÍNCRONO no client (journal.bundle.js busca /app/journal em JSON): uma das
+// fontes do feed é o proxy pro Worker do Contacts e ela NÃO pode travar o SSR da
+// home no request path (Riscos da spec 65: "home lenta por depender do proxy").
 
 // Horizonte "Hoje" = 24h à frente + tudo já vencido — MESMA convenção do lembrete
 // diário (src/notify.ts) e do filtro "hoje" do board de tasks (src/web/tasks.ts),
@@ -22,7 +23,6 @@ import { relativeDue } from '../util/time.js';
 const TODAY_HORIZON_MS = 24 * 60 * 60 * 1000;
 const INBOX_PREVIEW = 3;
 const INBOX_SCAN_LIMIT = 200;
-const CONTACT_EVENTS_PREVIEW = 5;
 
 const HOME_CSS = `
 .home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; align-items: start; }
@@ -34,19 +34,21 @@ const HOME_CSS = `
 .home-list li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; line-height: 1.4; }
 .home-list a { color: var(--text); text-decoration: none; }
 .home-list a:hover { color: var(--accent-lav); }
-.home-task-title, .home-event-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-task-complete {
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong);
   background: transparent; cursor: pointer; color: var(--text-dim); font-size: 11px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .home-task-complete:hover { border-color: var(--accent-lav); color: var(--accent-lav); }
-.home-task-when, .home-event-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
+.home-task-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
 .home-task-when.overdue { color: var(--danger); }
-.home-event-kind { flex-shrink: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-subtle); }
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
 .home-error { color: var(--danger); }
 .home-private-badge { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
+/* Feed "Atividade" (spec 69) — o antigo Journal, embutido abaixo dos cards */
+.home-activity { margin-top: 28px; }
+.home-activity-title { font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 14px; }
 `;
 
 function taskWhenHtml(t: TaskRow, now: number): string {
@@ -106,18 +108,21 @@ export function renderInboxCard(pending: number, items: InboxItem[]): string {
   </section>`;
 }
 
-// Card 4 — Últimas interações: SKELETON server-side, populado por home.bundle.js
-// (GET /app/contacts/events/recent) — nunca bloqueia o SSR da home no proxy.
-// As linhas .skeleton (Onda 3) têm texto transparente só pra dar dimensão; o client
-// substitui o innerHTML inteiro, então elas somem sozinhas quando os dados chegam.
-function renderInteractionsCardSkeleton(): string {
-  return `<section class="card home-card">
-    <h2>Últimas interações <a href="/app/journal">journal completo →</a></h2>
-    <ul class="home-list" id="home-events-list" data-limit="${CONTACT_EVENTS_PREVIEW}">
-      <li class="skeleton">Carregando as últimas interações…</li>
-      <li class="skeleton">Carregando as últimas interações</li>
-      <li class="skeleton">Carregando…</li>
-    </ul>
+// Feed "Atividade" (spec 69): o antigo /app/journal absorvido na home. SSR só do
+// esqueleto (filtros + placeholder); journal.bundle.js busca a primeira página em
+// JSON (data-lazy="1") e injeta — o proxy do Contacts fica FORA do request path.
+// O card "Últimas interações" foi absorvido junto: o feed já traz as interações
+// (chip laranja + filtro próprio), então o card seria informação duplicada.
+function renderActivityFeedSection(): string {
+  return `<section class="home-activity" id="atividade">
+    <h2 class="home-activity-title">Atividade</h2>
+    <div class="journal-filters">
+      <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
+      <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
+      <label><input type="checkbox" class="journal-filter" value="contact" checked /> Interações</label>
+    </div>
+    <div id="journal-groups" data-lazy="1"><p class="home-empty">Carregando a atividade…</p></div>
+    <noscript><p class="home-empty"><a href="/app/journal?feed=1">Abrir o feed de atividade</a></p></noscript>
   </section>`;
 }
 
@@ -180,9 +185,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       ${todayCardHtml}
       ${inboxCardHtml}
       ${digestCardHtml}
-      ${renderInteractionsCardSkeleton()}
     </div>
+    ${renderActivityFeedSection()}
     <script src="/app/home/bundle.js?v=${assetVersion('home.bundle.js')}" defer></script>
+    <script src="/app/journal/bundle.js?v=${assetVersion('journal.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
@@ -192,7 +198,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       email: session.email,
       env,
       body,
-      extraHead: `<style>${HOME_CSS}</style>`,
+      extraHead: `<style>${HOME_CSS}${JOURNAL_CSS}</style>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),
     })
   );

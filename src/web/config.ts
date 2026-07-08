@@ -113,7 +113,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
   return `
     <details class="disclosure-advanced conn-section" id="board"${savedBoard ? ' open' : ''}>
       <summary>
-        <span class="adv-title">4. Quadro de tarefas</span>
+        <span class="adv-title">Quadro de tarefas</span>
         <span class="adv-sub">Colunas/estágios do Kanban — crie, renomeie, recolora, reordene e arquive</span>
       </summary>
       <div class="adv-body">
@@ -198,7 +198,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
   return `
     <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
       <summary>
-        <span class="adv-title">5. Projetos</span>
+        <span class="adv-title">Projetos</span>
         <span class="adv-sub">Pastas de tarefas — agrupe tasks por projeto, com cor e ciclo de vida (arquivar)</span>
       </summary>
       <div class="adv-body">
@@ -264,7 +264,7 @@ function renderTaxonomySection(
   return `
     <details class="disclosure-advanced conn-section" id="taxonomy"${savedTaxonomy ? ' open' : ''}>
       <summary>
-        <span class="adv-title">6. Áreas e tipos</span>
+        <span class="adv-title">Áreas e tipos</span>
         <span class="adv-sub">Cor e nome de exibição das áreas (domains) e tipos (kinds) — crie áreas novas aqui</span>
       </summary>
       <div class="adv-body">
@@ -304,7 +304,7 @@ function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: b
   return `
     <details class="disclosure-advanced conn-section" id="owner-instructions"${savedOwner ? ' open' : ''}>
       <summary>
-        <span class="adv-title">7. Instruções pros agentes (MCP)</span>
+        <span class="adv-title">Instruções pros agentes (MCP)</span>
         <span class="adv-sub">Um "CLAUDE.md do Brain": orientações suas que TODO agente recebe no handshake</span>
       </summary>
       <div class="adv-body">
@@ -479,37 +479,34 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
        </div>`
     : '';
 
+  // Aba ativa no primeiro paint (spec 69): os redirects ?saved= de board/projects/
+  // taxonomy caem na aba "Organização" e o de backup na aba "Sistema"; todo o resto
+  // (prefs, owner, chave criada) mora na aba padrão "Conexões". Deep links por hash
+  // (#backup, #board...) são resolvidos no client — o servidor não vê o fragment.
+  const savedBackup = url.searchParams.get('saved') === 'backup';
+  const activeTab: 'conexoes' | 'organizacao' | 'sistema' =
+    savedBoard || savedProjects || savedTaxonomy ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
+  const tabButton = (slug: string, label: string): string =>
+    `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
+
   const body = `
     <div class="page-header">
       <h1>Configurações ${badge}</h1>
     </div>
 
-    <div class="card">
-      <h2>Status do vault</h2>
-      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
-      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
-    </div>
+    <nav class="config-tabs" role="tablist" aria-label="Seções das configurações">
+      ${tabButton('conexoes', 'Conexões')}
+      ${tabButton('organizacao', 'Organização')}
+      ${tabButton('sistema', 'Sistema')}
+    </nav>
+    <noscript><style>.config-panel{display:block !important}.config-tabs{display:none}</style></noscript>
 
-    <div class="card" id="backup">
-      <h2>Backup</h2>
-      ${backupStatus}
-      <div class="row" style="gap:8px;margin-top:10px">
-        <form method="post" action="/app/config/backup-now">
-          <button type="submit" class="btn btn-primary">Fazer backup agora</button>
-        </form>
-        <form method="get" action="/app/export">
-          <button type="submit">Baixar export (.zip)</button>
-        </form>
-      </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
-    </div>
-
-    <h2 class="conn-heading">Conexões</h2>
-    <p class="config-subtitle">Como você liga o Expert Brain ao seu cliente de IA. Abra o caso que é o seu.</p>
+    <section class="config-panel${activeTab === 'conexoes' ? ' active' : ''}" id="panel-conexoes" role="tabpanel" aria-labelledby="config-tab-conexoes" data-panel="conexoes">
+    <p class="config-subtitle">Como você liga o Expert Brain aos seus clientes de IA — e as orientações que todo agente recebe ao conectar. Abra o caso que é o seu.</p>
 
     <details class="disclosure-advanced conn-section" open>
       <summary>
-        <span class="adv-title">1. Agente no seu computador</span>
+        <span class="adv-title">Agente no seu computador</span>
         <span class="adv-sub">Claude Code, Codex ou qualquer agente instalado na sua máquina — conecta por login, sem chave</span>
       </summary>
       <div class="adv-body">
@@ -539,7 +536,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <details class="disclosure-advanced conn-section" id="prefs"${savedPrefs ? ' open' : ''}>
       <summary>
-        <span class="adv-title">2. Sistemas web</span>
+        <span class="adv-title">Sistemas web</span>
         <span class="adv-sub">ChatGPT (modo desenvolvedor) ou Claude.ai — conector MCP no navegador</span>
       </summary>
       <div class="adv-body">
@@ -566,7 +563,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <details class="disclosure-advanced conn-section" id="api-keys"${justCreatedKey ? ' open' : ''}>
       <summary>
-        <span class="adv-title">3. Agentes externos e automações</span>
+        <span class="adv-title">Agentes externos e automações</span>
         <span class="adv-sub">OpenClaw ou sistemas rodando numa VPS — precisam de uma chave de API (token)</span>
       </summary>
       <div class="adv-body">
@@ -606,13 +603,42 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    ${ownerInstructionsSection}
+    </section>
+
+    <section class="config-panel${activeTab === 'organizacao' ? ' active' : ''}" id="panel-organizacao" role="tabpanel" aria-labelledby="config-tab-organizacao" data-panel="organizacao">
+    <p class="config-subtitle">Como o seu conteúdo se organiza: colunas do quadro de tarefas, pastas de projeto e as áreas e tipos do vault.</p>
+
     ${boardSection}
 
     ${projectsSection}
 
     ${taxonomySection}
+    </section>
 
-    ${ownerInstructionsSection}
+    <section class="config-panel${activeTab === 'sistema' ? ' active' : ''}" id="panel-sistema" role="tabpanel" aria-labelledby="config-tab-sistema" data-panel="sistema">
+    <p class="config-subtitle">Saúde da instância: números do vault, snapshot semanal e export completo.</p>
+
+    <div class="card">
+      <h2>Status do vault</h2>
+      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
+      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
+    </div>
+
+    <div class="card" id="backup">
+      <h2>Backup</h2>
+      ${backupStatus}
+      <div class="row" style="gap:8px;margin-top:10px">
+        <form method="post" action="/app/config/backup-now">
+          <button type="submit" class="btn btn-primary">Fazer backup agora</button>
+        </form>
+        <form method="get" action="/app/export">
+          <button type="submit">Baixar export (.zip)</button>
+        </form>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
+    </div>
+    </section>
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;

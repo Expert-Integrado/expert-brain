@@ -885,6 +885,29 @@ export const SURFACES_CSS = `
 .conn-heading { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 36px 0 2px; }
 .conn-section { margin-top: 12px; }
 
+/* Abas segmentadas da config (spec 69): Conexoes / Organizacao / Sistema */
+.config-tabs {
+  display: flex; gap: 4px; margin: 2px 0 18px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.config-tabs::-webkit-scrollbar { display: none; }
+.config-tabs [role="tab"] {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font-family: var(--font-display); font-size: 14.5px; font-weight: 500;
+  color: var(--text-subtle);
+  padding: 10px 16px 12px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  white-space: nowrap;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.config-tabs [role="tab"]:hover { color: var(--text); }
+.config-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent-lav); }
+.config-panel { display: none; }
+.config-panel.active { display: block; }
+/* Dentro de um painel o respiro entre gavetas e menor que o default de 32px */
+.config-panel .disclosure-advanced { margin-top: 12px; }
+
 /* Cards de passo numerado (trilha essencial) */
 .card-step { border-left: 3px solid var(--accent-lav); }
 .card-step h2.step-head { display: flex; align-items: center; gap: 12px; margin: 0; }

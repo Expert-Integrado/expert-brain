@@ -134,7 +134,8 @@ async function fetchBatches(env: Env, cursors: JournalCursors, limit: number): P
   return { batches, overflow, contactsOk: contactRes.ok };
 }
 
-const JOURNAL_CSS = `
+// Exportado (spec 69): a home embute o feed de atividade e precisa do mesmo CSS.
+export const JOURNAL_CSS = `
 .journal-filters { display: flex; gap: 18px; margin-bottom: 20px; font-size: 13px; color: var(--text-dim); }
 .journal-filters label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .journal-day { font-family: var(--font-display); font-size: 14px; font-weight: 500; color: var(--text-dim); margin: 22px 0 10px; }
@@ -150,6 +151,8 @@ const JOURNAL_CSS = `
 .journal-chip-task { color: var(--accent-cyan); border-color: color-mix(in srgb, var(--accent-cyan) 35%, transparent); }
 .journal-chip-contact { color: #fb923c; border-color: color-mix(in srgb, #fb923c 35%, transparent); }
 .journal-degraded { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
+/* Estado vazio do feed — mesmo visual do .home-empty da home (o feed aparece nas duas superfícies) */
+.home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
 /* Filtros client-side (journal.bundle.js): a classe vai no container, não no item —
    itens anexados por "Carregar mais" já nascem filtrados sem JS por item. */
 #journal-groups.journal-hide-note .journal-item[data-kind="note"] { display: none; }
@@ -166,6 +169,14 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
   const cursors = cursorsFromParams(url.searchParams);
   const isFirstPage = SOURCE_KEYS.every((k) => cursors[k] === null);
   const wantsJson = (req.headers.get('accept') || '').includes('application/json');
+
+  // Spec 69 (opção A): o Journal virou o feed "Atividade" DENTRO da home — a rota
+  // continua viva como fonte de dados (JSON do "carregar mais" + primeira página
+  // lazy da home) e como fallback de paginação sem JS (qualquer querystring rende
+  // a página standalone abaixo). Bookmark antigo de /app/journal cai na home.
+  if (!wantsJson && url.search === '') {
+    return new Response(null, { status: 302, headers: { location: '/app' } });
+  }
 
   let items: JournalItemView[] = [];
   let nextCursors: JournalCursors = EMPTY_CURSORS;
@@ -193,7 +204,9 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
   if (wantsJson) {
     const carry = url.searchParams.get('carry');
     const { html, lastLabel } = renderJournalItems(items, now, carry || null);
-    return new Response(JSON.stringify({ ok: true, html, last_label: lastLabel, next_url: nextUrl }), {
+    // `degraded` avisa o client (home lazy-load) que a fonte de contatos falhou
+    // nesta página — o aviso vira UI lá, igual ao degradedHtml do SSR abaixo.
+    return new Response(JSON.stringify({ ok: true, html, last_label: lastLabel, next_url: nextUrl, degraded: contactsDegraded }), {
       headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
     });
   }
@@ -216,8 +229,11 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
     ? '<p class="journal-degraded">Interações de contato indisponíveis no momento — notas e tasks seguem normais.</p>'
     : '';
 
+  // Página standalone (só alcançável com querystring): fallback de paginação sem
+  // JS do feed da home. Sem item próprio na nav — Início fica ativo.
   const body = `
-    <div class="page-header"><h1>Journal</h1></div>
+    <div class="page-header"><h1>Atividade</h1></div>
+    <p class="config-subtitle"><a href="/app">← Início</a></p>
     ${degradedHtml}
     <div class="journal-filters">
       <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
@@ -231,8 +247,8 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
 
   return htmlResponse(
     await renderShell({
-      title: 'Journal',
-      active: 'journal',
+      title: 'Atividade',
+      active: 'home',
       email: session.email,
       env,
       body,
