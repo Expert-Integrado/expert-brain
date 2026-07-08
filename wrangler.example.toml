@@ -49,6 +49,15 @@ index_name = "expert-brain-embeddings"
 binding = "MEDIA"
 bucket_name = "expert-brain-media"
 
+# (Opcional) Vault de contatos — segundo Worker (github.com/Expert-Integrado/expert-contacts).
+# Depois de deploya-lo na MESMA conta, descomente pra ligar as mencoes @contato, a aba
+# Contatos do console e os paineis de integracao. W2W via service binding (sem token no
+# browser; fetch global entre Workers da mesma conta da erro 1042). Complete com os
+# secrets CONTACTS_PROXY_TOKEN / CONTACTS_WRITE_TOKEN (mesmo valor nos dois Workers).
+# [[services]]
+# binding = "CONTACTS"
+# service = "expert-contacts"
+
 [ai]
 binding = "AI"
 

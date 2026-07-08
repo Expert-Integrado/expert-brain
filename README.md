@@ -73,9 +73,16 @@ Dois crons (`[triggers]` no `wrangler.toml`): digest diário de tasks vencendo/a
 
 ## Instalação
 
+> **O caminho ideal: deixe o Claude Code instalar pra você.** Abra o [Claude Code](https://claude.com/claude-code) numa pasta vazia e peça: *"clone `https://github.com/Expert-Integrado/expert-brain` e faça o setup completo na minha conta Cloudflare — inclusive os passos de navegador"*. Ele roda os comandos abaixo, e o que for de browser (criar a conta Cloudflare, habilitar billing pro R2, autorizar o `wrangler login`) ele faz junto com você via automação de navegador (Playwright ou similar) ou te guia clique a clique. Os passos manuais desta seção continuam valendo pra quem prefere fazer à mão.
+
+O Expert Brain completo são **dois Workers** na sua conta Cloudflare, os dois dentro do free tier:
+
+1. **`expert-brain`** (este repo) — notas, grafo, tasks, MCP e console. É o essencial; sozinho já entrega tudo menos contatos.
+2. **`expert-contacts`** ([repo próprio](https://github.com/Expert-Integrado/expert-contacts)) — **opcional**: o vault de contatos (pessoas, empresas, timeline, menções `@` nas notas). Instale depois, quando quiser — o passo 6 abaixo explica.
+
 **Pré-requisitos:**
 - Node.js 18+ (recomendado 20+) ([nodejs.org](https://nodejs.org))
-- Conta Cloudflare gratuita, sem cartão ([cadastro](https://dash.cloudflare.com/sign-up))
+- Conta Cloudflare gratuita ([cadastro](https://dash.cloudflare.com/sign-up)) — **sem cartão**; a única exceção é a mídia/backup via R2, que exige habilitar billing (continua US$ 0 dentro do free tier)
 
 ### 1. Criar o projeto
 
@@ -119,6 +126,18 @@ claude mcp add --transport http expert-brain https://<seu-worker>.workers.dev/mc
 ```
 
 A primeira conexão abre o fluxo OAuth 2.1 no browser. Depois, abra `/app/config` no console e cole o bloco de instruções do dono em *Claude → Settings → Personalization → Custom instructions* — ele entra no handshake de todo agente conectado.
+
+### 6. (Opcional) O segundo Worker: vault de contatos
+
+Contatos moram num Worker separado de propósito — banco próprio (D1 dele), privacidade própria, ciclo de deploy próprio. O Brain fala com ele por **service binding** (Worker-a-Worker, dentro da Cloudflare, sem token no browser). É o que liga: menções `@contato` em notas e tasks, a aba **Contatos** do console com dossiê e timeline, e os painéis de integração (WhatsApp, Instagram, Pipedrive) em `/app/config`.
+
+Setup no [repo do expert-contacts](https://github.com/Expert-Integrado/expert-contacts) (mesma conta Cloudflare, mesmo free tier). Depois de deployá-lo, conecte os dois lados:
+
+1. No `wrangler.toml` **deste** repo, descomente/adicione o service binding `CONTACTS` apontando pro Worker `expert-contacts`, e redeploye.
+2. Crie dois tokens (strings aleatórias longas) e suba **o mesmo valor nos dois Workers**: `CONTACTS_PROXY_TOKEN` (leitura) e `CONTACTS_WRITE_TOKEN` (escrita escopada — só registra eventos de timeline). No lado do contacts eles são validados contra uma allowlist de rotas; qualquer outra rota responde 401.
+3. (Opcional) `SSO_SECRET` igual nos dois pra abrir o console de contatos já logado a partir do Brain.
+
+Sem esse passo, nada quebra: as tools de contato respondem com um erro explicando que o vault não está configurado, e o resto do Brain funciona normal.
 
 ### Atualizando
 
