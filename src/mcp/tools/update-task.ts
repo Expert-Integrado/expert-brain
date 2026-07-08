@@ -208,6 +208,8 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
           add: input.mentions,
           remove: input.mentions_remove,
           seePrivate: canSeePrivate(auth),
+          // `task` é o estado FINAL (relido após setTaskPrivate quando marcada agora).
+          notePrivate: task.private === 1,
         });
       }
 

@@ -231,6 +231,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
           url: noteUrl(env, id),
           add: mentionIds,
           seePrivate: canSeePrivate(auth),
+          notePrivate: input.private === true,
         });
         mentionsCreated = r.created;
       }

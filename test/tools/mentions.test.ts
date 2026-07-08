@@ -34,7 +34,7 @@ function collector() {
 // GET /app/entity só as devolve com o header x-include-private:1 (senão 404), espelhando
 // o callerSeesPrivate real do contacts. POST /app/entity/event é registrado em `events`.
 function mockContacts(opts: { privateIds?: string[]; throwOnFetch?: boolean } = {}) {
-  const events: Array<{ entity_id: string; kind: string; context: string; source: string }> = [];
+  const events: Array<{ entity_id: string; kind: string; context: string; source: string; private?: boolean }> = [];
   const priv = new Set(opts.privateIds ?? []);
   const fetcher = {
     fetch: async (req: Request) => {
@@ -42,7 +42,7 @@ function mockContacts(opts: { privateIds?: string[]; throwOnFetch?: boolean } = 
       const url = new URL(req.url);
       if (req.method === 'POST' && url.pathname === '/app/entity/event') {
         const b = await req.json().catch(() => ({}));
-        events.push({ entity_id: (b as any).entity_id, kind: (b as any).kind, context: (b as any).context, source: (b as any).source });
+        events.push({ entity_id: (b as any).entity_id, kind: (b as any).kind, context: (b as any).context, source: (b as any).source, private: (b as any).private });
         return new Response(JSON.stringify({ ok: true, id: newId() }), { headers: { 'content-type': 'application/json' } });
       }
       if (req.method === 'GET' && url.pathname === '/app/entity') {
@@ -136,6 +136,8 @@ describe('save_note — mentions', () => {
     expect(rows[0].entity_label).toBe('Contato ent1'); // label cacheado do contacts
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ entity_id: 'ent1', kind: 'mentioned_in_brain', source: 'brain_bridge' });
+    // Nota pública → evento público na timeline do contato.
+    expect(events[0].private).toBe(false);
   });
 
   it('binding do contacts CAINDO não impede o save (critério 7)', async () => {
@@ -153,6 +155,58 @@ describe('save_note — mentions', () => {
     const note = await E.DB.prepare('SELECT id FROM notes WHERE id = ?').bind(out.id).first();
     expect(note).not.toBeNull();
     expect(await listMentionsForNote(E, out.id)).toHaveLength(1);
+  });
+});
+
+describe('menção em nota/task PRIVADA → evento privado (o context carrega o título)', () => {
+  it('save_note com private:true → evento mentioned_in_brain nasce private', async () => {
+    const { fetcher, events } = mockContacts();
+    E.CONTACTS = fetcher;
+    const { tools } = collector();
+    registerSaveNote({ registerTool: (n: string, _c: any, h: any) => { (tools as any)[n] = h; } }, E, OWNER);
+    const r = await tools.save_note({
+      title: 'Negociação sigilosa', body: 'b', tldr: 'detalhes que nao podem vazar pela timeline', domains: ['operations'], kind: 'fact',
+      private: true, mentions: ['ent-sig'],
+    });
+    expect(r.isError).toBeUndefined();
+    expect(events).toHaveLength(1);
+    // Sem isso o TÍTULO da nota privada ficaria público na timeline do contato.
+    expect(events[0].private).toBe(true);
+  });
+
+  it('save_task com private:true → evento nasce private', async () => {
+    const { fetcher, events } = mockContacts();
+    E.CONTACTS = fetcher;
+    const { tools } = collector();
+    registerSaveTask({ registerTool: (n: string, _c: any, h: any) => { (tools as any)[n] = h; } }, E, OWNER);
+    const r = await tools.save_task({ title: 'Task sigilosa', private: true, mentions: ['ent-sig'] });
+    expect(r.isError).toBeUndefined();
+    expect(events).toHaveLength(1);
+    expect(events[0].private).toBe(true);
+  });
+
+  it('update_note adicionando menção a nota JÁ privada → evento private', async () => {
+    const { fetcher, events } = mockContacts();
+    E.CONTACTS = fetcher;
+    await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,private,created_at,updated_at) VALUES ('np1','Já secreta','b','tl','["operations"]','concept',1,1,1)`).run();
+    const { tools } = collector();
+    registerUpdateNote({ registerTool: (n: string, _c: any, h: any) => { (tools as any)[n] = h; } }, E, OWNER);
+    const r = await tools.update_note({ id: 'np1', mentions: ['ent-sig'] });
+    expect(r.isError).toBeUndefined();
+    expect(events).toHaveLength(1);
+    expect(events[0].private).toBe(true);
+  });
+
+  it('update_task marcando private:true E mencionando na mesma escrita → evento private', async () => {
+    const { fetcher, events } = mockContacts();
+    E.CONTACTS = fetcher;
+    await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,status,created_at,updated_at) VALUES ('tp1','Task pública ainda','b','t','["operations"]','task','open',1,1)`).run();
+    const { tools } = collector();
+    registerUpdateTask({ registerTool: (n: string, _c: any, h: any) => { (tools as any)[n] = h; } }, E, OWNER);
+    const r = await tools.update_task({ id: 'tp1', private: true, mentions: ['ent-sig'] });
+    expect(r.isError).toBeUndefined();
+    expect(events).toHaveLength(1);
+    expect(events[0].private).toBe(true);
   });
 });
 

@@ -180,6 +180,8 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
           add: input.mentions,
           remove: input.mentions_remove,
           seePrivate: canSeePrivate(auth),
+          // Estado FINAL da nota: já era privada OU está sendo marcada nesta escrita.
+          notePrivate: setsPrivate || existing.private === 1,
         });
         if (mentionsChanged.created > 0 || mentionsChanged.removed > 0) fieldsChanged.push('mentions');
       }

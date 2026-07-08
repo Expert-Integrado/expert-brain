@@ -60,7 +60,11 @@ export async function publicVisibleEntityIds(env: Env, ids: string[]): Promise<S
 // Dispara `mentioned_in_brain` na timeline do contato (spec 62 §3.1) via CONTACTS_WRITE_TOKEN
 // (allowlist de 1 path do lado do contacts). NON-FATAL: binding ausente, contacts fora do
 // ar ou entidade inexistente são engolidos — o save da nota/task não pode falhar (critério 7).
-export async function dispatchMentionEvent(env: Env, entityId: string, context: string): Promise<void> {
+// `isPrivate` espelha o selo da nota/task de origem: o context carrega o TÍTULO dela, então
+// nota privada → evento privado na timeline (senão o título vazaria pra caller sem escopo).
+export async function dispatchMentionEvent(
+  env: Env, entityId: string, context: string, isPrivate: boolean
+): Promise<void> {
   try {
     if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) return;
     await env.CONTACTS.fetch(new Request('https://contacts/app/entity/event', {
@@ -71,6 +75,7 @@ export async function dispatchMentionEvent(env: Env, entityId: string, context: 
         kind: 'mentioned_in_brain',
         context: context.slice(0, 2000),
         source: 'brain_bridge',
+        private: isPrivate === true,
       }),
     }));
   } catch (err) {
@@ -85,6 +90,7 @@ export interface ApplyMentionsInput {
   add?: string[];      // entity ids a mencionar (upsert por par; dispara evento se novo)
   remove?: string[];   // entity ids a remover
   seePrivate: boolean; // escopo do caller (header do fetch de label)
+  notePrivate: boolean; // selo da nota/task de origem — evento herda (o context tem o título)
 }
 
 // Aplica add/remove de menções e dispara os efeitos (evento na timeline pra cada menção
@@ -112,7 +118,7 @@ export async function applyMentions(
       });
       if (isNew) {
         created++;
-        await dispatchMentionEvent(env, id, `${input.title} · ${input.url}`);
+        await dispatchMentionEvent(env, id, `${input.title} · ${input.url}`, input.notePrivate);
       }
     }
   } catch (err) {

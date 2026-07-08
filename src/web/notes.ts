@@ -666,6 +666,8 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
       add: mentionsAdd,
       remove: mentionsRemove,
       seePrivate: true,
+      // O editor não mexe no selo (toggle é rota própria) — vale o estado atual da nota.
+      notePrivate: (existing.private ?? 0) === 1,
     });
   }
 
@@ -742,6 +744,8 @@ export async function handleTaskFromNotePost(req: Request, env: Env): Promise<Re
       url: `${(env.WORKER_URL ?? '').replace(/\/$/, '')}/app/tasks/${id}`,
       add: inherited.map((m) => m.entity_id),
       seePrivate: true,
+      // A task herdou a privacidade da nota de origem — o evento acompanha.
+      notePrivate: (origin.private ?? 0) === 1,
     });
   }
 
