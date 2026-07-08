@@ -1,0 +1,148 @@
+/* Onda 1 (specs/60-ux-reforma/62) — biblioteca de componentes do protótipo.
+   REGRA DE OURO: este arquivo consome SOMENTE custom properties. Os três
+   tokens-*.css declaram EXATAMENTE o mesmo contrato abaixo — é o contrato
+   que a Onda 2 (specs/63) implementa em produção.
+
+   Contrato de tokens (todo tokens-*.css DEVE declarar):
+     Fontes      --font-display --font-body
+     Fundo       --bg-0 --bg-image
+     Superfícies --surface-0 --surface-1 --surface-2 --surface-3
+     Bordas      --border --border-strong
+     Texto       --text --text-dim --text-subtle --text-faint (faint = decorativo)
+     Acento      --accent --accent-2 --accent-contrast
+     Estados     --danger --danger-bg --warning --warning-bg --success --success-bg --info --info-bg
+     Prioridade  --prio-1 --prio-2 --prio-3 --prio-4
+     Raio        --radius-sm --radius --radius-lg
+     Sombra      --shadow-1 --shadow-2
+     Densidade   --density (multiplicador de espaçamento; 1 = base 4px)
+*/
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  min-height: 100vh;
+  background: var(--bg-image), var(--bg-0);
+  background-color: var(--bg-0);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: calc(15px * var(--density));
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; }
+
+/* ── shell ── */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 216px; flex: 0 0 auto; padding: calc(16px * var(--density)) 12px;
+  border-right: 1px solid var(--border); background: var(--surface-0);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.sidebar .brand { font-family: var(--font-display); font-weight: 700; font-size: 15px; padding: 6px 10px 14px; color: var(--text); }
+.sidebar a {
+  display: flex; align-items: center; gap: 10px; padding: calc(8px * var(--density)) 10px;
+  border-radius: var(--radius-sm); color: var(--text-dim); text-decoration: none; font-size: 13.5px;
+}
+.sidebar a.active { background: var(--surface-2); color: var(--text); }
+.sidebar a:hover { background: var(--surface-1); color: var(--text); }
+.sidebar .nav-badge {
+  margin-left: auto; background: var(--accent); color: var(--accent-contrast);
+  font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 7px;
+}
+main.page { flex: 1; padding: calc(24px * var(--density)) calc(28px * var(--density)); min-width: 0; }
+.page-head { display: flex; align-items: center; gap: 14px; margin-bottom: calc(20px * var(--density)); }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.page-head .spacer { flex: 1; }
+
+/* ── botões ── */
+.btn {
+  font: 600 13px/1 var(--font-body); border-radius: var(--radius-sm); cursor: pointer;
+  padding: calc(9px * var(--density)) 14px; border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--text);
+}
+.btn:hover { background: var(--surface-3); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.btn-primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+.btn-ghost:hover { background: var(--surface-1); color: var(--text); }
+
+/* ── chips ── */
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  padding: 4px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-dim); border: 1px solid var(--border);
+}
+.chip-project { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+.chip-tag { background: color-mix(in srgb, var(--accent-2) 14%, transparent); color: var(--accent-2); border-color: color-mix(in srgb, var(--accent-2) 28%, transparent); }
+.chip-due { background: var(--surface-1); }
+.chip-due.overdue { background: var(--danger-bg); color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
+/* prio tintado (fundo suave + texto na cor): legível em tema claro e escuro */
+.prio-1 { background: color-mix(in srgb, var(--prio-1) 16%, transparent); color: var(--prio-1); border-color: color-mix(in srgb, var(--prio-1) 35%, transparent); }
+.prio-2 { background: color-mix(in srgb, var(--prio-2) 16%, transparent); color: var(--prio-2); border-color: color-mix(in srgb, var(--prio-2) 35%, transparent); }
+.prio-3 { background: color-mix(in srgb, var(--prio-3) 16%, transparent); color: var(--prio-3); border-color: color-mix(in srgb, var(--prio-3) 35%, transparent); }
+.prio-4 { background: color-mix(in srgb, var(--prio-4) 16%, transparent); color: var(--prio-4); border-color: color-mix(in srgb, var(--prio-4) 35%, transparent); }
+.private-badge { font-size: 11px; color: var(--warning); }
+
+/* ── board ── */
+.task-board {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr);
+  gap: calc(14px * var(--density)); align-items: start; overflow-x: auto; padding-bottom: 6px;
+}
+.task-col { background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius); }
+.task-col-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: calc(10px * var(--density)) 12px; border-bottom: 1px solid var(--border);
+}
+.task-col-head h2 { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.task-col-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.task-col-count { margin-left: auto; font-size: 11.5px; color: var(--text-subtle); }
+.task-col-body { display: flex; flex-direction: column; gap: calc(8px * var(--density)); padding: calc(10px * var(--density)); min-height: 60px; }
+.task-col-empty {
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  color: var(--text-subtle); font-size: 12.5px; text-align: center; padding: 14px 8px;
+}
+.task-card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: calc(10px * var(--density)) calc(12px * var(--density));
+  display: flex; flex-direction: column; gap: 7px;
+  box-shadow: var(--shadow-1); cursor: pointer;
+}
+.task-card:hover { background: var(--surface-2); border-color: var(--border-strong); box-shadow: var(--shadow-2); }
+.task-card-head { display: flex; flex-wrap: wrap; gap: 5px; }
+.task-card-title { color: var(--text); font-size: 13.5px; font-weight: 600; text-decoration: none; line-height: 1.4; }
+.task-card-title:hover { color: var(--accent); }
+.task-card.done .task-card-title { text-decoration: line-through; color: var(--text-dim); }
+.task-card-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.task-card-meta .comments { font-size: 11.5px; color: var(--text-subtle); }
+
+/* ── home ── */
+.greeting { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+.greeting-sub { color: var(--text-dim); margin: 4px 0 calc(24px * var(--density)); font-size: 14px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: calc(16px * var(--density)); }
+.card {
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: calc(16px * var(--density)) calc(18px * var(--density)); box-shadow: var(--shadow-1);
+}
+.card > h2 { font-size: 15px; font-weight: 600; margin-bottom: calc(12px * var(--density)); }
+.home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.home-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: calc(8px * var(--density)) 0; border-bottom: 1px solid var(--border); font-size: 13.5px;
+}
+.home-list li:last-child { border-bottom: none; }
+.home-list .when { margin-left: auto; color: var(--text-subtle); font-size: 12px; white-space: nowrap; }
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent); font-size: 11px; font-weight: 700;
+}
+.error-state {
+  border: 1px dashed color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-bg); border-radius: var(--radius); padding: 14px;
+  color: var(--text-dim); font-size: 13px;
+}
+.error-state b { color: var(--danger); }
+.empty-state { color: var(--text-subtle); font-size: 13px; text-align: center; padding: 18px 8px; }

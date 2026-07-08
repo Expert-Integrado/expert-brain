@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protótipo · Início</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link id="tokens" rel="stylesheet" href="../tokens-a.css">
+<link rel="stylesheet" href="base.css">
+<script>
+  const t = new URLSearchParams(location.search).get('t');
+  if (t === 'b' || t === 'c') document.getElementById('tokens').href = '../tokens-' + t + '.css';
+</script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">Expert Brain</div>
+    <a href="#" class="active">Início</a>
+    <a href="#">Grafo</a>
+    <a href="#">Notas</a>
+    <a href="#">Tarefas</a>
+    <a href="#">Inbox <span class="nav-badge">3</span></a>
+    <a href="#">Contatos</a>
+    <a href="#">Configurações</a>
+  </aside>
+  <main class="page">
+    <h1 class="greeting">Boa noite</h1>
+    <p class="greeting-sub">terça-feira, 7 de julho · 3 tasks pra hoje, 1 vencida</p>
+    <div class="home-grid">
+      <section class="card">
+        <h2>Pra hoje</h2>
+        <ul class="home-list">
+          <li><span class="chip prio-1">crítica</span> Follow-up com Empresa Exemplo Ltda <span class="when chip chip-due overdue">vencida há 2d</span></li>
+          <li><span class="chip prio-2">alta</span> Revisar contrato de fornecedor fictício <span class="when">hoje</span></li>
+          <li><span class="chip prio-3">normal</span> Preparar pauta da reunião de equipe <span class="when">amanhã</span></li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Ressurgindo do vault</h2>
+        <ul class="home-list">
+          <li>Nota "Framework de decisão por tradeoff" sem visita há 90d <span class="when">insight</span></li>
+          <li>Task "Pesquisar ferramentas de exemplo" parada há 14d <span class="when">task</span></li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Interações recentes</h2>
+        <ul class="home-list">
+          <li><span class="avatar">AA</span> Ana Almeida · mencionada na task de follow-up <span class="when">há 2h</span></li>
+          <li><span class="avatar">BC</span> Bruno Castro · evento de reunião registrado <span class="when">ontem</span></li>
+          <li><span class="avatar">EE</span> Empresa Exemplo Ltda · proposta enviada <span class="when">há 3d</span></li>
+        </ul>
+      </section>
+      <section class="card">
+        <h2>Captura rápida</h2>
+        <div class="error-state"><b>Exemplo de estado de erro:</b> o card falhou ao carregar e diz isso na cara, em vez de sumir da home.</div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>
