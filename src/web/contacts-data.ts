@@ -425,3 +425,50 @@ export async function handleContactsWhatsappAllowlist(req: Request, env: Env): P
     headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
+
+// ── Instagram Agent conversas (expert-contacts specs/instagram-contacts-sync.md) ──
+// Painel em /app/config#instagram-contatos, mesmo desenho do WhatsApp: leitura de
+// estado via CONTACTS_PROXY_TOKEN (GET), gravação da allowlist de conversas via
+// CONTACTS_WRITE_TOKEN (POST). Nenhuma credencial chega ao browser; o
+// INSTAGRAM_SYNC_TOKEN do script de push nunca passa por aqui.
+
+export async function handleContactsInstagramStatus(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/instagram/status', {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
+export async function handleContactsInstagramAllowlist(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  let bodyText: string;
+  try { bodyText = await req.text(); } catch { bodyText = ''; }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/instagram/allowlist', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`, 'content-type': 'application/json' },
+    body: bodyText || '{}',
+  }));
+  const resBody = await res.text();
+  return new Response(resBody, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}

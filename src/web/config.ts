@@ -651,6 +651,27 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    <details class="disclosure-advanced conn-section" id="instagram-contatos">
+      <summary>
+        <span class="adv-title">Conversas do Instagram</span>
+        <span class="adv-sub">Integração opcional com o Instagram Agent — conversas escolhidas viram contatos no grafo</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Só entram as <strong>conversas que você marcar</strong> abaixo (nunca o inbox inteiro). Marcar a conversa <strong>cria o contato</strong> se a pessoa ainda não existe no vault (com o @ do Instagram e o telefone, quando conhecido); se já existe, só ganha o vínculo e o canal — nome e dados locais nunca são sobrescritos. A lista de conversas é empurrada por um script na sua máquina (peça ao Claude: "sincroniza as conversas do Instagram pro grafo").</p>
+          <p id="ig-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
+        </div>
+        <div class="adv-section" id="ig-contacts-section" hidden>
+          <h3>Conversas sincronizadas</h3>
+          <div id="ig-contacts" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+            <button type="button" class="btn btn-primary" id="ig-save-contacts">Salvar conversas</button>
+            <span id="ig-contacts-status" style="color:var(--text-dim)"></span>
+          </div>
+        </div>
+      </div>
+    </details>
+
     ${ownerInstructionsSection}
     </section>
 

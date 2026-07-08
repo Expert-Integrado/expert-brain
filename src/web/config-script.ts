@@ -441,6 +441,83 @@ export function configPageScript(): string {
     });
   }
 
+  // ── Conversas do Instagram (integração opcional — expert-contacts specs/
+  // instagram-contacts-sync.md). Hidrata o painel #instagram-contatos via
+  // /app/config/instagram/* (proxy same-origin do Brain; nenhum token chega aqui).
+  // Diferença pro WhatsApp: marcar a conversa CRIA o contato se ele não existe.
+  var igRoot = document.getElementById('instagram-contatos');
+  if (igRoot) {
+    var igStatusEl = document.getElementById('ig-status');
+    var igContactsSection = document.getElementById('ig-contacts-section');
+    var igContacts = document.getElementById('ig-contacts');
+    var igContactsStatus = document.getElementById('ig-contacts-status');
+
+    function igEscape(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function igJson(url, opts) {
+      opts = opts || {};
+      opts.credentials = 'same-origin';
+      opts.headers = Object.assign({ accept: 'application/json' }, opts.headers || {});
+      return fetch(url, opts).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          data._status = res.status;
+          return data;
+        });
+      });
+    }
+
+    function igRender(st) {
+      if (!st.ok) {
+        igStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
+        return;
+      }
+      if (!st.configured) {
+        igStatusEl.textContent = 'Integração desligada: falta configurar o INSTAGRAM_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
+        return;
+      }
+      var parts = ['Integração ativa'];
+      if (st.contacts_linked) parts.push(st.contacts_linked + ' conversa(s) vinculada(s) a contatos');
+      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
+      if (!st.catalog || !st.catalog.length) {
+        parts.push('nenhum catálogo de conversas ainda — rode o script de push pra listar suas conversas aqui');
+        igStatusEl.textContent = parts.join(' · ') + '.';
+        return;
+      }
+      igStatusEl.textContent = parts.join(' · ') + '.';
+      igContactsSection.hidden = false;
+      var chosen = {};
+      (st.allowlist || []).forEach(function (id) { chosen[id] = true; });
+      igContacts.innerHTML = st.catalog.map(function (c) {
+        var label = c.name ? igEscape(c.name) : '';
+        if (c.username) label += (label ? ' ' : '') + '<span style="color:var(--text-dim)">@' + igEscape(c.username) + '</span>';
+        return '<label style="display:flex;align-items:center;gap:8px">' +
+          '<input type="checkbox" class="ig-contact" value="' + igEscape(c.igsid) + '"' + (chosen[c.igsid] ? ' checked' : '') + '>' +
+          '<span>' + label + '</span>' +
+          '</label>';
+      }).join('');
+    }
+
+    igJson('/app/config/instagram/status').then(igRender);
+
+    var igSave = document.getElementById('ig-save-contacts');
+    igSave.addEventListener('click', function () {
+      var ids = Array.prototype.slice.call(document.querySelectorAll('.ig-contact:checked')).map(function (c) { return c.value; });
+      igContactsStatus.textContent = 'Salvando…';
+      igJson('/app/config/instagram/allowlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ igsids: ids }),
+      }).then(function (r) {
+        igContactsStatus.textContent = r.ok
+          ? 'Salvo. A próxima rodada do script sincroniza só as conversas marcadas.'
+          : 'Erro ao salvar (' + (r.error || r._status) + ').';
+      });
+    });
+  }
+
   // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
   // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
   // contador "usados/max" (usa o maxlength do próprio campo como teto).
