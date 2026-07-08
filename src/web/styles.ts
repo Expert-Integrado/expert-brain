@@ -1916,6 +1916,9 @@ select.panel-form-input { cursor: pointer; }
 /* Board de tarefas idem (Onda 8): N colunas usam a tela toda — o scroll lateral
    só aparece quando as colunas realmente não cabem, não por causa do cap de 980px. */
 .main:has(#task-board) { max-width: none; }
+/* Home idem (Onda 9): os cards e o feed de atividade espalham na tela toda em vez
+   de espremer no cap de leitura. */
+.main:has(.home-grid) { max-width: none; }
 #notes-list[data-layout="cards"] {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));

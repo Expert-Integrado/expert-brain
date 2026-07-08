@@ -66,7 +66,10 @@ function formatDate(ts: number): string {
 // não rodou ou está vazio.
 // Exportado: reusado pela home (spec 65 §2, card "Do seu cérebro") pra não duplicar
 // a marcação — a home lê o MESMO cache, nunca recomputa.
-export function renderDigestCard(d: ResurfaceDigest): string {
+// opts.bare (Onda 9, spec 71): omite o <strong> interno — a home fornece o h2 do
+// card (mesma anatomia dos vizinhos "Hoje"/"Inbox"); a lista de notas segue com o
+// callout completo.
+export function renderDigestCard(d: ResurfaceDigest, opts: { bare?: boolean } = {}): string {
   const items: string[] = [];
   for (const q of d.open_questions) {
     items.push(`<li>❓ <a href="${esc(q.url)}">${esc(q.title)}</a> — sem resposta há ${q.age_days}d</li>`);
@@ -79,6 +82,12 @@ export function renderDigestCard(d: ResurfaceDigest): string {
   }
   if (d.inbox_pending_over_7d) {
     items.push(`<li>📥 <a href="${esc(d.inbox_url)}">Inbox</a> — ${d.inbox_pending_over_7d} item(ns) parado(s) há mais de 7 dias</li>`);
+  }
+  if (opts.bare) {
+    return `
+    <div id="resurface-digest-card">
+      <ul style="margin:0; padding-left:18px; line-height:1.6;">${items.join('')}</ul>
+    </div>`;
   }
   return `
     <div class="callout-info" id="resurface-digest-card">

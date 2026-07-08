@@ -26,6 +26,32 @@ test('navegação da shell leva ao board e às notas', async ({ page }) => {
   await expect(page).toHaveURL(/\/app\/notes/);
 });
 
+test('modal "Ajustar caixas" edita altura com preview ao vivo e persiste (Onda 9, spec 71)', async ({ page }) => {
+  await page.goto('/app');
+  await page.click('#home-prefs-open');
+  await expect(page.locator('#home-prefs-modal')).toBeVisible();
+
+  // slider muda a caixa NA HORA (preview via custom property)
+  await page.locator('#home-prefs-modal .home-prefs-range[data-box="today"]').fill('640');
+  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '640px');
+
+  // salvar persiste e a altura sobrevive ao reload
+  const saved = page.waitForResponse((r) => r.url().includes('/app/home/prefs') && r.ok());
+  await page.click('#home-prefs-save');
+  await saved;
+  await page.reload();
+  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '640px');
+
+  // limpeza: restaurar padrão + salvar (estado previsível pros outros specs/runs)
+  await page.click('#home-prefs-open');
+  await page.click('#home-prefs-reset');
+  const cleared = page.waitForResponse((r) => r.url().includes('/app/home/prefs') && r.ok());
+  await page.click('#home-prefs-save');
+  await cleared;
+  await page.reload();
+  await expect(page.locator('[data-home-box="today"]')).toHaveCSS('max-height', '420px');
+});
+
 test('Inbox saiu do menu; card da home captura e descarta inline (Onda 8, spec 70)', async ({ page }) => {
   await page.goto('/app');
   // sem item de menu (sidebar E bottom-nav)

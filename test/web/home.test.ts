@@ -67,6 +67,14 @@ describe('renderTodayCard (spec 65 §2, card "Hoje")', () => {
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('&lt;script&gt;');
   });
+
+  it('Onda 9 (spec 71): data-home-box sempre; style com --home-card-h SÓ com pref salva', () => {
+    const noPref = renderTodayCard([], Date.now());
+    expect(noPref).toContain('data-home-box="today"');
+    expect(noPref).not.toContain('--home-card-h');
+    const withPref = renderTodayCard([], Date.now(), { today: 640 });
+    expect(withPref).toContain('data-home-box="today" style="--home-card-h:640px"');
+  });
 });
 
 describe('renderInboxCard (spec 65 §2 + Onda 8/spec 70: captura e triagem na home)', () => {
