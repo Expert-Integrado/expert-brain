@@ -15,6 +15,21 @@ export interface ReleaseEntry {
 
 export const RELEASES: ReleaseEntry[] = [
   {
+    id: '2026-07-08-ux-reforma',
+    date: '08/07/2026',
+    title: 'Reforma de interface — identidade Nebula Refinada',
+    highlights: [
+      'Visual novo em todo o console: superfícies opacas, contraste AA em todos os textos e hierarquia de cores por estado',
+      'Arrastar cartões no board reescrito: funciona no touch (segure 300ms), indicador de destino discreto e coluna vazia sinalizada',
+      'Cartão de tarefa inteiro clicável — sem botão "abrir"',
+      'Visibilidade unificada em 3 níveis (Privado / Normal / Link público) numa régua só, em notas e tarefas',
+      'Início absorveu o Journal: feed "Atividade" com filtros e "carregar mais" na própria home — um lugar só pra ver tudo',
+      'Configurações reorganizadas em 3 abas: Conexões, Organização e Sistema',
+      'Mobile revisado de ponta a ponta: navegação inferior compacta, telas sem corte em 390px e 320px',
+      'Acessibilidade: foco visível em tudo, animações respeitam "reduzir movimento", rótulos e textos 100% em português',
+    ],
+  },
+  {
     id: '2026-07-06-console-v2',
     date: '06/07/2026',
     title: 'Console v2+v3 — o segundo cérebro completo',
