@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
-import { FONT_LINKS } from './styles.js';
+import { FONT_LINKS, THEME_COLOR } from './styles.js';
 import { readCookie } from './session.js';
 import { assetVersion } from './asset-version.js';
 import { countPendingInbox } from '../db/queries.js';
@@ -90,7 +90,7 @@ export async function renderShell(opts: {
   return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#070a13">
+<meta name="theme-color" content="${THEME_COLOR}">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

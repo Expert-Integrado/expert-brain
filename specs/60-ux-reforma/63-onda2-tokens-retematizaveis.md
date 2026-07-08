@@ -1,7 +1,17 @@
 # Onda 2 — Fundação: tokens re-tematizáveis
 
-> **Status:** ready · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (08/07/2026) · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/62-onda1-pesquisa-referencias-identidade.md`
+>
+> **Evidência de conclusão:** styles.ts reestruturado em TOKENS/BASE/COMPONENTS/SHELL/SURFACES
+> com `NEBULA_CSS` = concatenação (polish.test.ts intocado e verde) + `PUBLIC_CSS` novo;
+> `--text-muted` extinto (eram 3 ocorrências, não 1 — graph-search-item-chip, panel-events li
+> e local-graph-hops-value, todas → `--text-dim`); `theme-color` derivado da constante
+> `THEME_COLOR` exportada por styles.ts (render.ts + as 2 duplicatas em share.ts).
+> Validação: typecheck 4 projetos, 791 + 5 testes server, 12 client, 19 e2e, harness 32/32
+> na fase wave-2 com pixel-diff vs baseline: 29/32 telas <1% de pixels alterados; exceções
+> são o grafo (layout força-dirigida, excluído por contrato) e timestamps relativos da home
+> (baseline capturado 2h30 antes) — zero regressão de estilo.
 
 ## Contexto
 
@@ -64,14 +74,14 @@ Em `src/web/styles.ts:1653` (reconferir a linha exata antes de editar — pode t
 
 ## Critérios de aceite
 
-- [ ] `src/web/styles.ts` exporta `TOKENS_CSS`, `BASE_CSS`, `COMPONENTS_CSS`, `SHELL_CSS`, `SURFACES_CSS` como constantes distintas
-- [ ] `export const NEBULA_CSS` continua existindo e a concatenação das camadas produz byte-a-byte o mesmo resultado que antes da reestruturação (exceto o fix do `--text-muted`, que é uma mudança intencional)
-- [ ] `test/web/polish.test.ts:28` (`expect(body).toBe(NEBULA_CSS)`) passa sem alteração no teste — só o `styles.ts` muda
-- [ ] `export const PUBLIC_CSS` existe e é `TOKENS_CSS + BASE_CSS + COMPONENTS_CSS`
-- [ ] Tokens de espaçamento `--space-1..10` e de escala tipográfica `--text-xs..2xl` + `--leading-*` existem em `TOKENS_CSS`, mesmo que ainda não sejam usados amplamente pelo resto do CSS (adoção ampla é trabalho das Ondas 3-5)
-- [ ] `--text-muted` não aparece mais em nenhum lugar do CSS do console; o elemento que usava esse token agora usa `--text-dim` ou `--text-subtle` e o contraste resultante é visualmente equivalente ou melhor
-- [ ] `--bg-gradient`/token de grain e `theme-color` derivam de token, não de valor literal duplicado
-- [ ] `npm run typecheck` e `npm test` passam sem nenhuma alteração de teste além do necessário pra acomodar a reestruturação (idealmente zero alteração de teste, já que o resultado final é idêntico)
+- [x] `src/web/styles.ts` exporta `TOKENS_CSS`, `BASE_CSS`, `COMPONENTS_CSS`, `SHELL_CSS`, `SURFACES_CSS` como constantes distintas
+- [x] `export const NEBULA_CSS` continua existindo e a concatenação das camadas produz byte-a-byte o mesmo resultado que antes da reestruturação (exceto mudanças intencionais: fix `--text-muted`, tokens novos no `:root`, fundo/grain via token)
+- [x] `test/web/polish.test.ts:28` (`expect(body).toBe(NEBULA_CSS)`) passa sem alteração no teste — só o `styles.ts` muda
+- [x] `export const PUBLIC_CSS` existe e é `TOKENS_CSS + BASE_CSS + COMPONENTS_CSS`
+- [x] Tokens de espaçamento `--space-1..10` e de escala tipográfica `--text-xs..2xl` + `--leading-*` existem em `TOKENS_CSS` (+ `--density`, `--surface-0..3`, `--backdrop`, `--shadow-1..3`, `--text-subtle`, estados com `-bg`/`-border`, `--prio-1..4`, aliases `--accent`/`--accent-2`)
+- [x] `--text-muted` não aparece mais em nenhum lugar do CSS do console (3 ocorrências corrigidas pra `--text-dim` — a spec citava 1, o grep achou 3)
+- [x] `--bg-gradient`/`--grain-opacity` e `theme-color` derivam de token (`THEME_COLOR` exportado por styles.ts, consumido por render.ts e share.ts)
+- [x] `npm run typecheck` e `npm test` passam com zero alteração de teste
 
 ## Validação
 

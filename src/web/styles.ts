@@ -8,16 +8,32 @@ export const FONT_LINKS = `
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 `;
 
-// Midnight Nebula — distinctive aesthetic: Fraunces display + Manrope body, deep nebula
+// Cor do <meta name="theme-color"> — DEVE espelhar o token --bg abaixo (fonte única
+// em TS porque meta tag não resolve custom property CSS). Consumida por render.ts e share.ts.
+export const THEME_COLOR = '#070a13';
+
+// Midnight Nebula — distinctive aesthetic: Poppins display + Manrope body, deep nebula
 // gradient, soft grain, lavender-accented cards with hover-lift, focus-visible rings.
-export const NEBULA_CSS = `
+//
+// Onda 2 (specs/60-ux-reforma/63): o CSS do console é composto em camadas.
+// NEBULA_CSS (o /app/styles.css completo) = TOKENS + BASE + COMPONENTS + SHELL + SURFACES,
+// preservando a ordem de cascata original. PUBLIC_CSS (páginas /s/ sem sessão) = TOKENS +
+// BASE + COMPONENTS. Trocar identidade/tema (Onda 6) = mexer SÓ em TOKENS_CSS.
+
+// ---------------------------------------------------------------------------
+// TOKENS_CSS — o que muda entre identidades/temas. Três sub-camadas no mesmo
+// :root: primitiva (paleta bruta/fontes/raios), semântica (superfícies, texto,
+// estados, prioridades) e escalas (espaçamento, tipografia, densidade).
+// ---------------------------------------------------------------------------
+export const TOKENS_CSS = `
 :root {
+  /* -- primitiva: paleta bruta, fontes, raios -- */
   --bg: #070a13;
   --bg-mid: #0b0f19;
   --bg-accent: #111827;
   --text: #f8fafc;
   --text-dim: rgba(248, 250, 252, 0.58);
-  --text-faint: rgba(248, 250, 252, 0.35);
+  --text-faint: rgba(248, 250, 252, 0.35); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
   --border: rgba(167, 139, 250, 0.14);
   --border-strong: rgba(167, 139, 250, 0.32);
   --surface: rgba(255, 255, 255, 0.035);
@@ -35,8 +51,73 @@ export const NEBULA_CSS = `
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --font-display: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-}
 
+  /* -- semântica: aliases e escalas derivadas (adoção ampla nas Ondas 3-5) -- */
+  --accent: var(--accent-lav);
+  --accent-2: var(--accent-cyan);
+  --surface-0: var(--surface);
+  --surface-1: var(--surface-raised);
+  --surface-2: rgba(255, 255, 255, 0.09);
+  --surface-3: rgba(255, 255, 255, 0.13);
+  --backdrop: rgba(4, 6, 12, 0.72);
+  --shadow-1: 0 4px 14px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 10px 30px rgba(0, 0, 0, 0.35);
+  --shadow-3: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --text-subtle: rgba(248, 250, 252, 0.5); /* terciário informativo — piso AA, entre --text-dim e o decorativo --text-faint */
+  --success: #6fe39a;
+  --success-bg: rgba(111, 227, 154, 0.1);
+  --success-border: rgba(111, 227, 154, 0.4);
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.1);
+  --warning-border: rgba(251, 191, 36, 0.4);
+  --danger-bg: rgba(255, 122, 144, 0.1);
+  --danger-border: rgba(255, 122, 144, 0.5);
+  --info: #93c5fd;
+  --info-bg: rgba(147, 197, 253, 0.1);
+  --info-border: rgba(147, 197, 253, 0.4);
+  --prio-1: #fca5a5;
+  --prio-2: #fdba74;
+  --prio-3: #93c5fd;
+  --prio-4: var(--text-dim);
+
+  /* -- tema: fundo e grain tokenizados (preparo pra tema claro, Onda 6) -- */
+  --bg-gradient:
+    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(94, 234, 212, 0.09) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
+  --grain-opacity: 0.22;
+
+  /* -- escalas: espaçamento base 4px, tipografia pareada, densidade -- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --text-xs: 11px;
+  --leading-xs: 1.45;
+  --text-sm: 13px;
+  --leading-sm: 1.5;
+  --text-md: 15px;
+  --leading-md: 1.6;
+  --text-lg: 18px;
+  --leading-lg: 1.45;
+  --text-xl: 22px;
+  --leading-xl: 1.3;
+  --text-2xl: 28px;
+  --leading-2xl: 1.15;
+  --density: 1;
+}
+`;
+
+// ---------------------------------------------------------------------------
+// BASE_CSS — reset, foco, html/body (fundo + grain via token), links, seleção.
+// ---------------------------------------------------------------------------
+export const BASE_CSS = `
 * { box-sizing: border-box; }
 *:focus { outline: none; }
 *:focus-visible { outline: 2px solid var(--accent-lav); outline-offset: 2px; border-radius: 4px; }
@@ -55,10 +136,7 @@ html, body {
   /* Mobile: evita swipe-from-edge disparar back-nav do browser e impede
      bounce/overscroll vertical interferindo nos gestos do canvas. */
   overscroll-behavior: contain;
-  background:
-    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(94, 234, 212, 0.09) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
+  background: var(--bg-gradient);
   background-attachment: fixed;
 }
 
@@ -69,7 +147,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.22;
+  opacity: var(--grain-opacity);
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
@@ -78,7 +156,21 @@ a { color: var(--accent-lav); text-decoration: none; transition: color 180ms var
 a:hover { color: var(--text); }
 
 ::selection { background: rgba(167, 139, 250, 0.4); color: var(--text); }
+`;
 
+// ---------------------------------------------------------------------------
+// COMPONENTS_CSS — biblioteca de componentes global (.card, .btn, .chip, ...).
+// Placeholder nesta onda; a Onda 3 (specs/60-ux-reforma/64) é quem preenche.
+// ---------------------------------------------------------------------------
+export const COMPONENTS_CSS = `
+`;
+
+// ---------------------------------------------------------------------------
+// SHELL_CSS — moldura do console logado: .shell, sidebar (+ modo recolhido),
+// .main e page-header. Bottom-nav mobile e as regras responsivas do shell
+// seguem em SURFACES_CSS até a Onda 5, pra preservar a ordem de cascata.
+// ---------------------------------------------------------------------------
+export const SHELL_CSS = `
 /* ---- Shell ---- */
 .shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
 
@@ -255,7 +347,14 @@ a:hover { color: var(--text); }
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
 }
+`;
 
+// ---------------------------------------------------------------------------
+// SURFACES_CSS — CSS restante das superfícies do console (notas, login, config,
+// grafo, palette, bottom-nav mobile, ...). Categoria "resto" desta onda; as
+// Ondas 3-5 promovem o que for componente e enxugam o que for por página.
+// ---------------------------------------------------------------------------
+export const SURFACES_CSS = `
 /* ---- Note cards ---- */
 .note-card {
   display: block;
@@ -850,7 +949,7 @@ a:hover { color: var(--text); }
 }
 .graph-search-item-chip {
   font-size: 9.5px;
-  color: var(--text-muted);
+  color: var(--text-dim);
   border: 1px solid var(--border);
   padding: 1px 7px;
   border-radius: 999px;
@@ -908,7 +1007,7 @@ a:hover { color: var(--text); }
 }
 .panel-conn-why { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 .panel-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.panel-events li { font-size: 12px; color: var(--text-muted); }
+.panel-events li { font-size: 12px; color: var(--text-dim); }
 .panel-event-kind { font-weight: 600; color: var(--text); }
 .panel-event-ts { color: var(--text-faint); margin-left: 6px; font-size: 10.5px; }
 .panel-event-ctx { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
@@ -1650,7 +1749,7 @@ select.panel-form-input { cursor: pointer; }
 .local-graph-hops #local-graph-hops-value {
   min-width: 48px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 .local-graph-wrap .local-graph {
   border-radius: 0 0 var(--radius) var(--radius);
@@ -1876,3 +1975,12 @@ select.panel-form-input { cursor: pointer; }
   .main { padding: 24px 18px 80px; }
 }
 `;
+
+// ---------------------------------------------------------------------------
+// Folhas servidas. NEBULA_CSS é o /app/styles.css completo do console logado
+// (test/web/polish.test.ts asserta byte-a-byte contra este export). PUBLIC_CSS
+// é o subconjunto pras páginas públicas /s/ (sem shell nem superfícies do
+// console) — consumida por share.ts a partir da Onda 5.
+// ---------------------------------------------------------------------------
+export const NEBULA_CSS = TOKENS_CSS + BASE_CSS + COMPONENTS_CSS + SHELL_CSS + SURFACES_CSS;
+export const PUBLIC_CSS = TOKENS_CSS + BASE_CSS + COMPONENTS_CSS;

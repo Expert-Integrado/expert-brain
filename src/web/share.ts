@@ -20,7 +20,7 @@
 
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
-import { NEBULA_CSS, FONT_LINKS } from './styles.js';
+import { NEBULA_CSS, FONT_LINKS, THEME_COLOR } from './styles.js';
 import { renderMarkdown } from './markdown.js';
 import {
   addTaskComment,
@@ -334,7 +334,7 @@ export function renderSharePage(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#070a13">
+<meta name="theme-color" content="${THEME_COLOR}">
 <title>${esc(task.title)}</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}${SHARE_CSS}</style>
@@ -551,7 +551,7 @@ function renderNoteSharePage(note: SharedNoteRow, media: MediaRow[], token: stri
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#070a13">
+<meta name="theme-color" content="${THEME_COLOR}">
 <title>${esc(note.title)}</title>
 ${FONT_LINKS}
 <style>${NEBULA_CSS}${SHARE_CSS}${NOTE_SHARE_CSS}</style>
