@@ -220,6 +220,151 @@ export function configPageScript(): string {
     });
   }
 
+  // ── Google Contatos (sync mão única — expert-contacts specs/google-contacts-sync.md) ──
+  // Hidrata o painel #google-contatos via /app/config/google/* (proxy same-origin
+  // do Brain; credencial nunca chega aqui). ?google=connected|error:* vem do
+  // callback do OAuth e vira banner.
+  var gcRoot = document.getElementById('google-contatos');
+  if (gcRoot) {
+    var gcStatusEl = document.getElementById('gc-status');
+    var gcFlash = document.getElementById('gc-flash');
+    var gcConnect = document.getElementById('gc-connect');
+    var gcSync = document.getElementById('gc-sync');
+    var gcDisconnect = document.getElementById('gc-disconnect');
+    var gcLabelsSection = document.getElementById('gc-labels-section');
+    var gcLabels = document.getElementById('gc-labels');
+    var gcLabelsStatus = document.getElementById('gc-labels-status');
+
+    var gcParam = new URLSearchParams(location.search).get('google');
+    if (gcParam) {
+      gcRoot.open = true;
+      gcFlash.hidden = false;
+      if (gcParam === 'connected') {
+        gcFlash.textContent = 'Google conectado. Escolha abaixo as etiquetas que entram no vault e clique em Salvar etiquetas.';
+      } else {
+        gcFlash.textContent = 'A conexão com o Google falhou (' + gcParam.replace(/^error:?/, '') + '). Tente conectar de novo.';
+        gcFlash.style.color = 'var(--danger)';
+      }
+      if (history.replaceState) history.replaceState(null, '', location.pathname + '#google-contatos');
+    }
+
+    function gcEscape(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function gcJson(url, opts) {
+      opts = opts || {};
+      opts.credentials = 'same-origin';
+      opts.headers = Object.assign({ accept: 'application/json' }, opts.headers || {});
+      return fetch(url, opts).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          data._status = res.status;
+          return data;
+        });
+      });
+    }
+
+    function gcRenderLabels(configured) {
+      gcJson('/app/config/google/labels').then(function (data) {
+        if (!data.ok) {
+          gcLabels.innerHTML = '<p style="color:var(--danger)">Não deu pra listar as etiquetas (' + gcEscape(data.error || data._status) + ').</p>';
+          return;
+        }
+        var chosen = {};
+        (configured || []).forEach(function (g) { chosen[g] = true; });
+        gcLabels.innerHTML = data.labels.map(function (l) {
+          return '<label style="display:flex;align-items:center;gap:8px">' +
+            '<input type="checkbox" class="gc-label" value="' + gcEscape(l.resourceName) + '"' + (chosen[l.resourceName] ? ' checked' : '') + '>' +
+            '<span>' + gcEscape(l.name) + ' <span style="color:var(--text-dim)">(' + l.memberCount + ')</span></span>' +
+            '</label>';
+        }).join('') || '<p style="color:var(--text-dim)">Nenhuma etiqueta na conta.</p>';
+      });
+    }
+
+    function gcRender(st) {
+      if (!st.ok) {
+        gcStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
+        return;
+      }
+      if (!st.configured) {
+        gcStatusEl.innerHTML = 'Falta configurar as credenciais do Google no servidor de contatos (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).';
+        return;
+      }
+      gcConnect.hidden = !!st.connected;
+      gcSync.hidden = !st.connected;
+      gcDisconnect.hidden = !st.connected;
+      gcLabelsSection.hidden = !st.connected;
+      if (!st.connected) {
+        gcStatusEl.textContent = 'Não conectado. Clique em "Conectar ao Google" — abre a tela de permissão da sua conta.';
+        return;
+      }
+      var parts = ['Conectado', st.linked_count + ' contatos vinculados'];
+      if (st.groups && st.groups.length) parts.push(st.groups.length + ' etiqueta(s) configurada(s)');
+      else parts.push('nenhuma etiqueta configurada ainda (o sync fica parado até salvar)');
+      if (st.last_run && st.last_run.at) parts.push('último sync: ' + new Date(st.last_run.at).toLocaleString());
+      if (st.alert && st.alert.kind === 'gsync_reconnect_required') {
+        parts.push('ATENÇÃO: a autorização expirou, reconecte');
+      }
+      gcStatusEl.textContent = parts.join(' · ') + '.';
+      gcRenderLabels(st.groups || []);
+    }
+
+    gcJson('/app/config/google/status').then(gcRender);
+
+    gcConnect.addEventListener('click', function () {
+      gcConnect.disabled = true;
+      gcJson('/app/config/google/connect', { method: 'POST' }).then(function (data) {
+        if (data.ok && data.auth_url) { location.href = data.auth_url; return; }
+        gcConnect.disabled = false;
+        gcStatusEl.textContent = 'Não deu pra iniciar a conexão (' + (data.error || data._status) + ').';
+      });
+    });
+
+    gcSync.addEventListener('click', function () {
+      gcSync.disabled = true;
+      gcStatusEl.textContent = 'Sincronizando…';
+      gcJson('/app/config/google/sync', { method: 'POST' }).then(function (r) {
+        gcSync.disabled = false;
+        if (!r.ok && !r.skipped) {
+          gcStatusEl.textContent = 'Sync falhou (' + (r.error || r._status) + ').';
+          return;
+        }
+        if (r.skipped === 'no_groups_configured') {
+          gcStatusEl.textContent = 'Nenhuma etiqueta configurada — salve as etiquetas primeiro.';
+          return;
+        }
+        var s = 'Sync ok: ' + (r.created || 0) + ' novos, ' + (r.updated || 0) + ' atualizados, ' + (r.unchanged || 0) + ' sem mudança';
+        if (r.unlinked) s += ', ' + r.unlinked + ' desvinculados';
+        if (r.partial) s += ' (parcial — continua no próximo ciclo)';
+        gcStatusEl.textContent = s + '.';
+      });
+    });
+
+    gcDisconnect.addEventListener('click', function () {
+      if (!confirm('Desconectar do Google? Os contatos já sincronizados FICAM no vault; só a ponte com a agenda é desfeita.')) return;
+      gcJson('/app/config/google/disconnect', { method: 'POST' }).then(function () {
+        location.href = '/app/config#google-contatos';
+        location.reload();
+      });
+    });
+
+    var gcSaveLabels = document.getElementById('gc-save-labels');
+    gcSaveLabels.addEventListener('click', function () {
+      var groups = Array.prototype.slice.call(document.querySelectorAll('.gc-label:checked')).map(function (c) { return c.value; });
+      gcLabelsStatus.textContent = 'Salvando…';
+      gcJson('/app/config/google/config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ groups: groups }),
+      }).then(function (r) {
+        gcLabelsStatus.textContent = r.ok
+          ? 'Salvo. O próximo sync aplica o recorte novo (ou clique em "Sincronizar agora").'
+          : 'Erro ao salvar (' + (r.error || r._status) + ').';
+      });
+    });
+  }
+
   // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
   // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
   // contador "usados/max" (usa o maxlength do próprio campo como teto).

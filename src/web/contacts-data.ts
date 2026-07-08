@@ -322,3 +322,59 @@ export async function handleContactsMedia(req: Request, env: Env, hash: string):
     },
   });
 }
+
+// ── Google Contacts sync (expert-contacts specs/google-contacts-sync.md) ──
+// O painel em /app/config#google-contatos fala SÓ com o Brain (same-origin);
+// aqui a chamada desce pro contacts com o token certo por verbo: leitura de
+// estado/etiquetas via CONTACTS_PROXY_TOKEN (GET, allowlist da 10-backend/24),
+// mutações de ESTADO DO SYNC via CONTACTS_WRITE_TOKEN (POST, allowlist
+// writeTokenAllowsPath do lado de lá). Nenhuma credencial chega ao browser.
+
+const GOOGLE_GET_PATHS = { status: '/google/status', labels: '/google/labels' } as const;
+const GOOGLE_POST_PATHS = {
+  connect: '/google/connect-start',
+  config: '/google/config',
+  sync: '/google/sync',
+  disconnect: '/google/disconnect',
+} as const;
+
+export async function handleContactsGoogleGet(req: Request, env: Env, action: keyof typeof GOOGLE_GET_PATHS): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const res = await env.CONTACTS.fetch(new Request(`https://contacts${GOOGLE_GET_PATHS[action]}`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
+export async function handleContactsGooglePost(req: Request, env: Env, action: keyof typeof GOOGLE_POST_PATHS): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  let bodyText: string;
+  try { bodyText = await req.text(); } catch { bodyText = ''; }
+  const res = await env.CONTACTS.fetch(new Request(`https://contacts${GOOGLE_POST_PATHS[action]}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`, 'content-type': 'application/json' },
+    body: bodyText || '{}',
+  }));
+  const resBody = await res.text();
+  return new Response(resBody, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}

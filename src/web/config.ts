@@ -603,6 +603,33 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    <details class="disclosure-advanced conn-section" id="google-contatos">
+      <summary>
+        <span class="adv-title">Google Contatos</span>
+        <span class="adv-sub">Sincroniza etiquetas escolhidas da sua agenda pro vault de contatos — mão única, o Google nunca é alterado</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Só entram os contatos das <strong>etiquetas que você escolher</strong> (nunca a agenda inteira). Nome, telefone, e-mail e aniversário vêm do Google; empresa e cargo só preenchem quando estão vazios aqui; observações e categorias locais nunca são tocadas. Apagar no Google <strong>não</strong> apaga o contato do vault. Roda sozinho 1x por dia.</p>
+          <p id="gc-flash" class="callout-info" hidden></p>
+          <p id="gc-status" style="color:var(--text-dim)">Carregando estado da conexão…</p>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="gc-connect" hidden>Conectar ao Google</button>
+            <button type="button" class="btn" id="gc-sync" hidden>Sincronizar agora</button>
+            <button type="button" class="btn" id="gc-disconnect" hidden>Desconectar</button>
+          </div>
+        </div>
+        <div class="adv-section" id="gc-labels-section" hidden>
+          <h3>Etiquetas sincronizadas</h3>
+          <div id="gc-labels" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+            <button type="button" class="btn btn-primary" id="gc-save-labels">Salvar etiquetas</button>
+            <span id="gc-labels-status" style="color:var(--text-dim)"></span>
+          </div>
+        </div>
+      </div>
+    </details>
+
     ${ownerInstructionsSection}
     </section>
 

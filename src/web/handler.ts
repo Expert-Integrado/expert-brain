@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost } from './contacts-data.js';
 import { handleHomePage } from './home.js';
 import { handleHomePrefsPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
@@ -251,6 +251,15 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/taxonomy' && req.method === 'GET') return handleTaxonomyGet(req, env);
   if (path === '/app/config/taxonomy' && req.method === 'POST') return handleTaxonomyPost(req, env);
   if (path === '/app/config/taxonomy/reset' && req.method === 'POST') return handleTaxonomyResetPost(req, env);
+  // Google Contacts sync (painel em /app/config#google-contatos): proxy pro
+  // expert-contacts com o token certo por verbo (leitura = proxy token; mutação
+  // de estado do sync = write token). Sessão obrigatória em todos.
+  if (path === '/app/config/google/status' && req.method === 'GET') return handleContactsGoogleGet(req, env, 'status');
+  if (path === '/app/config/google/labels' && req.method === 'GET') return handleContactsGoogleGet(req, env, 'labels');
+  if (path === '/app/config/google/connect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'connect');
+  if (path === '/app/config/google/config' && req.method === 'POST') return handleContactsGooglePost(req, env, 'config');
+  if (path === '/app/config/google/sync' && req.method === 'POST') return handleContactsGooglePost(req, env, 'sync');
+  if (path === '/app/config/google/disconnect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'disconnect');
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);
