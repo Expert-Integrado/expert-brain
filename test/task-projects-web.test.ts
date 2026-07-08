@@ -87,18 +87,20 @@ describe('GET /app/tasks/data — payload de projetos (spec 58)', () => {
   });
 });
 
-describe('SSR /app/tasks — filtro e chip de projeto (spec 58)', () => {
+describe('SSR /app/tasks — filtro e breadcrumb de projeto (spec 58 + Onda 5)', () => {
   beforeEach(reset);
 
-  it('a página inclui o select de filtro com o projeto ativo e o chip no card', async () => {
+  it('a página inclui o select de filtro com o projeto ativo e o breadcrumb no card', async () => {
     await createTaskProject(E, { id: 'proj_a', label: 'Projeto Alfa', color: '#8b5cf6' }, 1);
     await seedTask('t1', 'open', 'proj_a');
     const res = await SELF.fetch('https://x/app/tasks', { headers: { cookie: await cookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('id="task-project-filter"');
-    expect(html).toContain('Projeto Alfa'); // no select e no chip
-    expect(html).toContain('task-project-chip');
+    expect(html).toContain('Projeto Alfa'); // no select e no breadcrumb
+    // Onda 5 (specs/60-ux-reforma/66): o chip colorido no head virou breadcrumb
+    // muted "Em <projeto>" abaixo do título (anatomia ClickUp).
+    expect(html).toContain('task-card-crumb');
     expect(html).toContain('data-project="proj_a"');
   });
 });

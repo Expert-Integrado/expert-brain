@@ -27,6 +27,8 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
   contacts:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  journal:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>',
   config:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   logout:
@@ -47,26 +49,9 @@ async function inboxPendingCount(env: Env): Promise<number> {
   }
 }
 
-const NAV_BADGE_CSS = `
-.nav-badge, .bottom-nav-badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-  font-size: 11px; font-weight: 600; line-height: 1;
-  background: var(--accent-lav, #a78bfa); color: #0b0b12;
-}
-.nav-item .nav-badge { margin-left: auto; }
-.sidebar-collapsed .nav-item .nav-badge {
-  position: absolute; top: 4px; right: 4px; margin-left: 0;
-  min-width: 16px; height: 16px; font-size: 10px;
-}
-.sidebar-collapsed .nav-item { position: relative; }
-.bottom-nav-item { position: relative; }
-.bottom-nav-badge { position: absolute; top: 3px; right: 22%; min-width: 16px; height: 16px; font-size: 10px; }
-`;
-
 export async function renderShell(opts: {
   title: string;
-  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'inbox' | 'config' | 'api-keys';
+  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'inbox' | 'journal' | 'config' | 'api-keys';
   email: string;
   body: string;
   env: Env;
@@ -101,23 +86,26 @@ export async function renderShell(opts: {
 <link rel="apple-touch-icon" href="/icon-192.png">
 ${FONT_LINKS}
 <link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}">
-<style>${NAV_BADGE_CSS}</style>
 ${opts.extraHead ?? ''}
 </head><body>
 <div class="shell${collapsed ? ' sidebar-collapsed' : ''}">
   <aside class="sidebar">
     <div class="logo"><span class="logo-text">Expert Brain</span></div>
     <a class="nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" title="Início">${SIDEBAR_ICONS.home}<span class="nav-label">Início</span></a>
+    <a class="nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" title="Inbox">${SIDEBAR_ICONS.inbox}<span class="nav-label">Inbox</span>${sidebarBadge}</a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" title="Grafo">${SIDEBAR_ICONS.graph}<span class="nav-label">Grafo</span></a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
+    <a class="nav-item${opts.active === 'journal' ? ' active' : ''}" href="/app/journal" title="Journal">${SIDEBAR_ICONS.journal}<span class="nav-label">Journal</span></a>
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
-    <a class="nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" title="Inbox">${SIDEBAR_ICONS.inbox}<span class="nav-label">Inbox</span>${sidebarBadge}</a>
     <a class="nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" title="Contatos">${SIDEBAR_ICONS.contacts}<span class="nav-label">Contatos</span></a>
-    <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" title="Configurações">${SIDEBAR_ICONS.config}<span class="nav-label">Configurações</span></a>
     <div class="bottom">
       <button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="${collapsed ? 'false' : 'true'}" title="Recolher menu (Ctrl+B)">${SIDEBAR_ICONS.chevron}<span class="nav-label">Recolher</span></button>
-      <div class="sidebar-email" title="${esc(opts.email)}">${esc(opts.email)}</div>
-      <form method="post" action="/app/logout"><button type="submit" class="sidebar-logout" title="Sair">${SIDEBAR_ICONS.logout}<span class="nav-label">Sair</span></button></form>
+      <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" title="Configurações">${SIDEBAR_ICONS.config}<span class="nav-label">Configurações</span></a>
+      <div class="sidebar-user" title="${esc(opts.email)}">
+        <span class="sidebar-avatar" aria-hidden="true">${esc((opts.email[0] ?? '?').toUpperCase())}</span>
+        <span class="sidebar-email">${esc(opts.email)}</span>
+        <form method="post" action="/app/logout"><button type="submit" class="sidebar-logout" title="Sair" aria-label="Sair">${SIDEBAR_ICONS.logout}</button></form>
+      </div>
     </div>
   </aside>
   <main class="main">${releaseBanner}${opts.body}</main>
@@ -127,6 +115,10 @@ ${opts.extraHead ?? ''}
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
     <span>Início</span>
   </a>
+  <a class="bottom-nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" aria-label="Inbox">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+    <span>Inbox</span>${bottomBadge}
+  </a>
   <a class="bottom-nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" aria-label="Grafo">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8" y1="8" x2="11" y2="16"/><line x1="16" y1="8" x2="13" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>
     <span>Grafo</span>
@@ -135,13 +127,13 @@ ${opts.extraHead ?? ''}
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
     <span>Notas</span>
   </a>
+  <a class="bottom-nav-item${opts.active === 'journal' ? ' active' : ''}" href="/app/journal" aria-label="Journal">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"/></svg>
+    <span>Journal</span>
+  </a>
   <a class="bottom-nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" aria-label="Tarefas">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
     <span>Tarefas</span>
-  </a>
-  <a class="bottom-nav-item${opts.active === 'inbox' ? ' active' : ''}" href="/app/inbox" aria-label="Inbox">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-    <span>Inbox</span>${bottomBadge}
   </a>
   <a class="bottom-nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" aria-label="Contatos">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>

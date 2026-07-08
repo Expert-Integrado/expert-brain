@@ -14,7 +14,7 @@ import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -167,24 +167,32 @@ function prioOptions(p: number | null): string {
   return opts.join('');
 }
 
-// Chip de projeto do card (spec 58): resolve o project_id no BoardProject do payload.
-function projectChip(t: TaskView): string {
+// Breadcrumb de projeto do card (Onda 5): resolve o project_id no BoardProject do payload.
+function projectCrumb(t: TaskView): string {
   if (!t.project_id) return '';
   const p = projectsById.get(t.project_id);
-  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+  return p ? projectCrumbHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
 }
 
 // Badge 🔒 do card (spec 59) — mesma classe global .private-badge das notas/SSR.
 const PRIVATE_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
 
+// Anatomia do card no padrão ClickUp (Onda 5, decisão do gate da Onda 1): título
+// PRIMEIRO (clamp 2 linhas, com o ✎ de edição rápida ao lado), breadcrumb de
+// projeto muted, UMA linha de meta (prio + prazo + comentários + selo privada +
+// link) e UMA linha de tags sem wrap. Mesma estrutura do renderCardSSR
+// (src/web/tasks.ts) — manter em sincronia.
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
+  const tags = tagChipsHtml(t.tags);
   return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}"${t.project_id ? ` data-project="${esc(t.project_id)}"` : ''} data-updated-at="${t.updated_at}">
-    <div class="task-card-head">${t.private ? PRIVATE_BADGE : ''}${projectChip(t)}${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
+    <div class="task-card-top">
+      <a class="task-card-title" href="/app/tasks/${esc(t.id)}" draggable="false">${esc(t.title)}</a>
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
-    <a class="task-card-title" href="/app/tasks/${esc(t.id)}" draggable="false">${esc(t.title)}</a>
-    <div class="task-card-meta">${dueBadge(t)}${commentBadge(t.comment_count)}</div>
+    ${projectCrumb(t)}
+    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}</div>
+    ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     <div class="task-card-edit" data-editpanel hidden>
       <label class="task-card-edit-ctl">Prioridade
         <select class="task-card-prio" data-qe-prio>${prioOptions(t.priority)}</select>
@@ -200,7 +208,7 @@ function cardHTML(t: TaskView): string {
         <span class="task-card-edit-msg" data-qe-msg></span>
       </div>
     </div>
-    ${canClose ? `<div class="task-card-actions"><button class="task-btn task-complete" data-id="${esc(t.id)}" type="button">✓ concluir</button></div>` : ''}
+    ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(t.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
 }
 

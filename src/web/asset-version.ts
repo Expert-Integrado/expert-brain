@@ -8,13 +8,13 @@ export const ASSET_HASHES: Record<string, string> = {
   "note-media.bundle.js": "24c52523002f",
   "note-edit.bundle.js": "2adc231224e4",
   "shell.bundle.js": "75aebd3ba9af",
-  "tasks.bundle.js": "e985ad43c086",
+  "tasks.bundle.js": "4fe9bb298a67",
   "task-edit.bundle.js": "85439ea4c10e",
   "contact-page.bundle.js": "4d43b9fa16a3",
   "sim-worker.bundle.js": "2b1cd681554f",
   "home.bundle.js": "3e7c2a90d12b",
   "journal.bundle.js": "6741a0a12767",
-  "styles.css": "2a9adee934a5",
+  "styles.css": "9668afa46653",
   "config.bundle.js": "0711d0d07351"
 };
 

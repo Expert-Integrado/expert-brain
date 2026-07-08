@@ -22,7 +22,8 @@ describe('/app/login', () => {
       redirect: 'manual',
     });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/graph');
+    // destino default pós-login é a HOME desde a Onda 5 (specs/60-ux-reforma/66)
+    expect(res.headers.get('location')).toBe('/app');
     const setCookie = res.headers.get('set-cookie') ?? '';
     expect(setCookie).toMatch(/^eb_session=/);
     expect(setCookie).toContain('HttpOnly');
@@ -66,7 +67,23 @@ describe('/app/login', () => {
       redirect: 'manual',
     });
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/graph');
+    expect(res.headers.get('location')).toBe('/app');
+  });
+
+  it('POST aceita next=/app exato (home, sem barra final)', async () => {
+    const form = new URLSearchParams({
+      email: 'owner@example.com',
+      password: 'correct-horse-battery-staple',
+      next: '/app',
+    });
+    const res = await SELF.fetch('https://x.test/app/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', origin: 'https://x.test' },
+      body: form.toString(),
+      redirect: 'manual',
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/app');
   });
 
   // spec 50-console-v2/68 (PWA share target): compartilhar de outro app cai em

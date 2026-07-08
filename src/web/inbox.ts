@@ -75,13 +75,11 @@ const INBOX_CSS = `
 }
 .inbox-quickadd textarea:focus { outline: none; border-color: var(--accent-lav); }
 .inbox-quickadd-foot { display: flex; justify-content: flex-end; }
-.inbox-btn {
-  font-size: 13px; padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border);
-  background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit;
-}
+/* .inbox-btn é co-classe de .btn (COMPONENTS_CSS) — aqui só o delta de densidade da tela */
+.inbox-btn { font-size: 13px; padding: 7px 14px; border-color: var(--border); background: var(--surface); }
 .inbox-btn:hover { border-color: var(--border-strong); }
-.inbox-btn.primary { border-color: rgba(167,139,250,0.4); color: #ddd6fe; }
-.inbox-btn.danger { color: #fca5a5; }
+.inbox-btn.primary { border-color: rgba(var(--accent-lav-rgb),0.4); color: color-mix(in srgb, var(--accent-lav) 60%, white); }
+.inbox-btn.danger { color: var(--danger); }
 .inbox-list { display: flex; flex-direction: column; gap: 12px; }
 .inbox-item {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -126,16 +124,16 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
         <div class="inbox-item-actions">
           <form method="post" action="/app/inbox/to-note">
             <input type="hidden" name="id" value="${esc(it.id)}" />
-            <button type="submit" class="inbox-btn primary">Virar nota</button>
+            <button type="submit" class="btn inbox-btn primary">Virar nota</button>
           </form>
           <form method="post" action="/app/inbox/to-task">
             <input type="hidden" name="id" value="${esc(it.id)}" />
-            <button type="submit" class="inbox-btn">Virar task</button>
+            <button type="submit" class="btn inbox-btn">Virar task</button>
           </form>
           <form method="post" action="/app/inbox/resolve">
             <input type="hidden" name="id" value="${esc(it.id)}" />
             <input type="hidden" name="action" value="discard" />
-            <button type="submit" class="inbox-btn danger">Descartar</button>
+            <button type="submit" class="btn inbox-btn danger">Descartar</button>
           </form>
         </div>
       </div>`;
@@ -152,7 +150,7 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
       <textarea name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Captura rápida — uma ideia, um lembrete solto. Tria depois." aria-label="Captura rápida" required>${esc(sharePrefill)}</textarea>
       <input type="hidden" name="source" value="${isShare ? 'pwa-share' : 'console'}" />
       <div class="inbox-quickadd-foot">
-        <button type="submit" class="inbox-btn primary"${isShare ? ' autofocus' : ''}>Capturar</button>
+        <button type="submit" class="btn inbox-btn primary"${isShare ? ' autofocus' : ''}>Capturar</button>
       </div>
     </form>
 

@@ -121,13 +121,13 @@ const MENTIONS_CSS = `
 .mention-chip a { color:var(--text); text-decoration:none; }
 .mention-chip a:hover { color:var(--accent-lav); }
 .mention-chip-remove { border:none; background:transparent; color:var(--text-dim); cursor:pointer; font-size:15px; line-height:1; padding:0 4px; }
-.mention-chip-remove:hover { color:#fca5a5; }
+.mention-chip-remove:hover { color:var(--danger); }
 .mention-add { position:relative; max-width:360px; }
 .mention-add-input { width:100%; font-size:14px; padding:7px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); }
 .mention-add-input:focus { outline:none; border-color:var(--accent-lav); }
 .mention-suggest { position:absolute; z-index:20; left:0; right:0; margin-top:4px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); max-height:240px; overflow-y:auto; box-shadow:0 8px 24px rgba(0,0,0,0.35); }
 .mention-suggest-item { display:block; width:100%; text-align:left; padding:8px 12px; font-size:14px; background:transparent; border:none; color:var(--text); cursor:pointer; }
-.mention-suggest-item:hover, .mention-suggest-item.active { background:rgba(167,139,250,0.14); }
+.mention-suggest-item:hover, .mention-suggest-item.active { background:rgba(var(--accent-lav-rgb),0.14); }
 .mention-suggest-empty { padding:8px 12px; font-size:13px; color:var(--text-dim); }
 .mention-status { font-size:13px; color:var(--text-dim); margin-top:8px; min-height:1em; }
 .note-origin-empty { color:var(--text-dim); font-size:14px; }
@@ -834,12 +834,12 @@ function renderVisibilitySection(o: {
             <span>Validade (dias)</span>
             <input type="number" min="1" max="365" value="30" data-share-days aria-label="Validade em dias" />
           </label>${mediaOpt}
-          <button type="button" class="task-d-btn task-share-btn" data-share-generate>${o.shared && !o.expired ? 'Gerar novo link' : 'Gerar link'}</button>
-          <button type="button" class="task-d-btn task-share-revoke" data-share-revoke${o.shared ? '' : ' hidden'}>Revogar</button>
+          <button type="button" class="btn task-d-btn task-share-btn" data-share-generate>${o.shared && !o.expired ? 'Gerar novo link' : 'Gerar link'}</button>
+          <button type="button" class="btn task-d-btn task-share-revoke" data-share-revoke${o.shared ? '' : ' hidden'}>Revogar</button>
         </div>
         <div class="task-share-link" data-share-link hidden>
           <input type="text" readonly data-share-url aria-label="Link público" />
-          <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
+          <button type="button" class="btn task-d-btn" data-share-copy>Copiar</button>
         </div>
       </div>
       <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
@@ -909,7 +909,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           <textarea name="body" rows="3" maxlength="4000" required placeholder="Escreva um comentário"></textarea>
         </label>
         <div class="cmt-form-foot">
-          <button type="submit" class="task-d-btn cmt-submit">Comentar</button>
+          <button type="submit" class="btn task-d-btn cmt-submit">Comentar</button>
         </div>
       </form>
     </section>`;
@@ -934,7 +934,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // handler inline; o wiring vive em client/note-media.ts, que já é carregado
   // nesta página, via data-attribute [data-task-complete].
   const completeBtn = canClose
-    ? `<button type="button" class="task-d-btn task-d-complete" data-task-complete data-task-id="${esc(task.id)}">✓ Concluir</button>`
+    ? `<button type="button" class="btn task-d-btn task-d-complete" data-task-complete data-task-id="${esc(task.id)}">✓ Concluir</button>`
     : '';
 
   // Coluna do Kanban (spec 52): a sidebar troca o antigo select cru de "Status" por
@@ -1008,7 +1008,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       <span class="task-d-tag">Task</span>
       ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
       ${originNote ? `<span class="task-d-origin">de <a href="/app/notes/${esc(originNote.id)}">${esc(originNote.title)}</a></span>` : ''}
-      <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="task-d-btn">Abrir no board</a></div>
+      <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="btn task-d-btn">Abrir no board</a></div>
     </div>
 
     <div class="task-edit" data-task-id="${esc(task.id)}" data-updated-at="${task.updated_at}">
@@ -1016,13 +1016,13 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
         <div class="task-detail-main">
           <div class="task-edit-titlerow">
             <input type="text" class="task-edit-title" data-field="title" value="${esc(task.title)}" maxlength="200" placeholder="Título da task" aria-label="Título da task" />
-            <button type="button" class="task-d-btn task-edit-save" data-save="title">Salvar</button>
+            <button type="button" class="btn task-d-btn task-edit-save" data-save="title">Salvar</button>
           </div>
 
           <div class="task-edit-bodyrow">
             <div class="task-edit-bodyhead">
               <span class="task-edit-lbl">Descrição (markdown)</span>
-              <button type="button" class="task-d-btn task-edit-save" data-save="body">Salvar descrição</button>
+              <button type="button" class="btn task-d-btn task-edit-save" data-save="body">Salvar descrição</button>
             </div>
             <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
           </div>
@@ -1107,8 +1107,6 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
 // o espaçamento da seção e o checkbox "incluir mídia" (exclusivo de nota).
 const NOTE_SHARE_WRAP_CSS = `
 .note-share-wrap { margin: 32px 0 8px; }
-.note-share-wrap .task-d-btn { font-size:13px; padding:7px 14px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; transition:border-color 160ms var(--ease), background 160ms var(--ease); white-space:nowrap; }
-.note-share-wrap .task-d-btn:hover { border-color:var(--border-strong); }
 .note-share-media-opt { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--text-dim); cursor:pointer; padding-bottom:8px; }
 .note-share-media-opt input { accent-color: var(--accent-lav); }
 `;
@@ -1118,6 +1116,11 @@ const NOTE_SHARE_WRAP_CSS = `
 const SHARE_SECTION_CSS = `
 /* Compartilhamento público (spec 33) — vive na sidebar (spec 52), espaçamento
    vem do gap do flex column ao redor, não de margin própria */
+/* .task-d-btn é CO-CLASSE do .btn (Onda 3/5): o markup usa class="btn task-d-btn";
+   aqui só o ajuste fino sobre o componente. Definido UMA vez (esta folha entra
+   tanto no detalhe de task quanto no de nota). */
+.task-d-btn { font-size:13px; padding:7px 14px; border-color:var(--border); background:var(--surface); color:var(--text); white-space:nowrap; }
+.task-d-btn:hover { border-color:var(--border-strong); }
 .task-share h2 { font-size:15px; margin-bottom:10px; }
 .task-share-state { color:var(--text-dim); font-size:13px; line-height:1.5; margin-bottom:14px; }
 .task-share-state strong { color:var(--text); }
@@ -1129,10 +1132,10 @@ const SHARE_SECTION_CSS = `
   border-radius:var(--radius-sm); padding:7px 10px; font-size:13px; font-family:inherit;
 }
 .task-share-ttl input:focus { outline:none; border-color:var(--accent-lav); }
-.task-share-btn { border-color:rgba(167,139,250,0.4); color:var(--accent-lav); }
-.task-share-btn:hover { background:rgba(167,139,250,0.12); }
-.task-share-revoke { border-color:rgba(239,68,68,0.4); color:#fca5a5; }
-.task-share-revoke:hover { background:rgba(239,68,68,0.12); }
+.task-share-btn { border-color:rgba(var(--accent-lav-rgb),0.4); color:var(--accent-lav); }
+.task-share-btn:hover { background:rgba(var(--accent-lav-rgb),0.12); }
+.task-share-revoke { border-color:var(--danger-border); color:var(--danger); }
+.task-share-revoke:hover { background:var(--danger-bg); }
 .task-share-revoke[hidden] { display:none; }
 .task-share-link { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
 .task-share-link[hidden] { display:none; }
@@ -1142,8 +1145,8 @@ const SHARE_SECTION_CSS = `
 }
 .task-share-link input:focus { outline:none; border-color:var(--accent-lav); }
 .task-share-status { font-size:13px; min-height:18px; }
-.task-share-status.ok { color:#86efac; }
-.task-share-status.err { color:#fca5a5; }
+.task-share-status.ok { color:var(--success); }
+.task-share-status.err { color:var(--danger); }
 .task-share-status.saving { color:var(--text-dim); }
 
 /* Seletor único de visibilidade (spec 65) — radiogroup de 3 níveis, task e nota */
@@ -1156,7 +1159,7 @@ const SHARE_SECTION_CSS = `
   transition:border-color 140ms var(--ease), background 140ms var(--ease);
 }
 .vis-opt:hover { border-color:var(--border-strong); }
-.vis-opt.selected { border-color:var(--accent-lav); background:rgba(167,139,250,0.08); }
+.vis-opt.selected { border-color:var(--accent-lav); background:rgba(var(--accent-lav-rgb),0.08); }
 .vis-opt input[type="radio"] { grid-row:1 / span 2; margin:0; accent-color:var(--accent-lav); }
 .vis-opt-head { display:flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600; color:var(--text); }
 .vis-opt-desc { grid-column:2; font-size:12px; color:var(--text-dim); line-height:1.45; }
@@ -1170,12 +1173,11 @@ const TASK_DETAIL_CSS = `
 .task-d-banner { display:flex; align-items:center; gap:12px; margin-bottom:22px; }
 .task-d-back { color:var(--text-dim); font-size:13px; text-decoration:none; }
 .task-d-back:hover { color:var(--text); }
-.task-d-tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-lav); border:1px solid rgba(167,139,250,0.35); border-radius:999px; padding:2px 10px; }
+.task-d-tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-lav); border:1px solid rgba(var(--accent-lav-rgb),0.35); border-radius:999px; padding:2px 10px; }
 .task-d-actions { display:flex; gap:10px; margin-left:auto; }
-.task-d-btn { font-size:13px; padding:7px 14px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; transition:border-color 160ms var(--ease), background 160ms var(--ease); white-space:nowrap; }
-.task-d-btn:hover { border-color:var(--border-strong); }
-.task-d-complete { border-color:rgba(74,222,128,0.4); color:#bbf7d0; }
-.task-d-complete:hover { background:rgba(74,222,128,0.12); }
+/* .task-d-btn: definição única em SHARE_SECTION_CSS (co-classe do .btn, Onda 5) */
+.task-d-complete { border-color:var(--success-border); color:var(--success); }
+.task-d-complete:hover { background:var(--success-bg); }
 
 /* Título: input grande, borda invisível até focar (estilo ClickUp) */
 .task-edit-titlerow { display:flex; gap:12px; align-items:center; margin-bottom:20px; }
@@ -1222,7 +1224,7 @@ const TASK_DETAIL_CSS = `
   border-radius:var(--radius-sm); width:30px; height:32px; font-size:12px; cursor:pointer; flex-shrink:0;
   transition:color 160ms var(--ease), border-color 160ms var(--ease);
 }
-.task-edit-clear:hover { color:#fca5a5; border-color:rgba(239,68,68,0.4); }
+.task-edit-clear:hover { color:var(--danger); border-color:var(--danger-border); }
 .task-edit-domains { display:flex; gap:6px; flex-wrap:wrap; align-items:center; min-height:24px; }
 .task-edit-domains:empty::after { content:"—"; color:var(--text-faint); }
 
@@ -1237,7 +1239,7 @@ const TASK_DETAIL_CSS = `
   background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:13px;
   line-height:1; padding:0 3px; transition:color 140ms var(--ease);
 }
-.task-tag-remove:hover { color:#fca5a5; }
+.task-tag-remove:hover { color:var(--danger); }
 .task-tags-input {
   flex:1 1 70px; min-width:70px; background:transparent; border:1px solid transparent;
   color:var(--text); font-family:inherit; font-size:12px; padding:4px 7px; border-radius:6px;
@@ -1267,9 +1269,9 @@ const TASK_DETAIL_CSS = `
 }
 .task-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-faint); font-size:13px; }
 .task-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
-.task-edit-status.ok { color:#86efac; }
+.task-edit-status.ok { color:var(--success); }
 .task-edit-status.saving { color:var(--text-dim); }
-.task-edit-status.err { color:#fca5a5; }
+.task-edit-status.err { color:var(--danger); }
 .task-edit-save.dirty { border-color:var(--accent-lav); color:var(--accent-lav); }
 
 ${SHARE_SECTION_CSS}
@@ -1282,14 +1284,14 @@ ${SHARE_SECTION_CSS}
 .cmt-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
 .cmt-author { font-size:13px; font-weight:600; color:var(--text); }
 .cmt-author-owner { color:var(--accent-lav); }
-.cmt-author-agent { color:#93c5fd; }
+.cmt-author-agent { color:var(--info); }
 .cmt-author-guest { color:var(--text); }
 .cmt-time { font-size:11.5px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
 .cmt-body { font-size:14px; line-height:1.55; color:var(--text); word-break:break-word; }
 .cmt-empty { color:var(--text-faint); font-size:14px; margin-bottom:18px; }
 .cmt-del-form { margin-left:auto; }
 .cmt-del { background:none; border:none; color:var(--text-faint); font-size:11.5px; cursor:pointer; padding:0; transition:color 140ms var(--ease); }
-.cmt-del:hover { color:#fca5a5; }
+.cmt-del:hover { color:var(--danger); }
 .cmt-form { display:flex; flex-direction:column; gap:10px; }
 .cmt-field { display:flex; flex-direction:column; gap:6px; }
 .cmt-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); font-weight:600; }
@@ -1301,10 +1303,11 @@ ${SHARE_SECTION_CSS}
 }
 .cmt-form textarea:focus { outline:none; border-color:var(--accent-lav); }
 .cmt-form-foot { display:flex; justify-content:flex-end; }
-.cmt-submit { border-color:rgba(167,139,250,0.4); color:var(--accent-lav); }
-.cmt-submit:hover { background:rgba(167,139,250,0.12); }
+.cmt-submit { border-color:rgba(var(--accent-lav-rgb),0.4); color:var(--accent-lav); }
+.cmt-submit:hover { background:rgba(var(--accent-lav-rgb),0.12); }
 
-@media (max-width: 640px) {
+/* Breakpoint canônico 767px (Onda 5 — alinhado ao shell) */
+@media (max-width: 767px) {
   .task-d-banner { flex-wrap:wrap; }
   .task-d-actions { margin-left:0; width:100%; }
   .task-detail-grid { grid-template-columns:1fr; }
@@ -1379,7 +1382,7 @@ const NOTE_EDIT_CSS = `
 .note-edit-tldr:hover { border-color:var(--border); }
 .note-edit-tldr:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
 .note-edit-tldr-count { position:absolute; right:4px; bottom:-16px; font-size:11px; color:var(--text-faint); font-variant-numeric:tabular-nums; }
-.note-edit-tldr-count.bad { color:#fca5a5; }
+.note-edit-tldr-count.bad { color:var(--danger); }
 
 .note-edit-bodyrow { margin-top:26px; }
 .note-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
@@ -1397,9 +1400,9 @@ const NOTE_EDIT_CSS = `
 }
 .note-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-faint); font-size:13px; }
 .note-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
-.note-edit-status.ok { color:#86efac; }
+.note-edit-status.ok { color:var(--success); }
 .note-edit-status.saving { color:var(--text-dim); }
-.note-edit-status.err { color:#fca5a5; }
+.note-edit-status.err { color:var(--danger); }
 .note-edit-reload {
   font-size:12px; padding:4px 10px; border-radius:var(--radius-sm); border:1px solid var(--accent-lav);
   background:none; color:var(--accent-lav); cursor:pointer;
@@ -1426,7 +1429,7 @@ const NOTE_MEDIA_CSS = `
   border: 1.5px dashed var(--border-strong); border-radius: var(--radius); padding: 18px;
   color: var(--text-dim); font-size: 13px; cursor: pointer; transition: all 160ms var(--ease);
 }
-.media-dropzone:hover, .media-dropzone.drag-over { color: var(--text); background: rgba(167,139,250,0.07); border-color: var(--accent-lav); }
+.media-dropzone:hover, .media-dropzone.drag-over { color: var(--text); background: rgba(var(--accent-lav-rgb),0.07); border-color: var(--accent-lav); }
 .media-dropzone.uploading { opacity: 0.6; pointer-events: none; }
 .media-modal {
   position: fixed; inset: 0; background: rgba(7,10,19,0.88); z-index: 1000;
@@ -1439,6 +1442,6 @@ const NOTE_MEDIA_CSS = `
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 7px 14px; font-size: 13px; cursor: pointer; text-decoration: none;
 }
-.media-modal .media-del { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
-.media-modal .media-del:hover { background: rgba(239,68,68,0.14); }
+.media-modal .media-del { color: var(--danger); border-color: var(--danger-border); }
+.media-modal .media-del:hover { background: var(--danger-bg); }
 `;

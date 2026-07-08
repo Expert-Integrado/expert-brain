@@ -145,9 +145,9 @@ const JOURNAL_CSS = `
 .journal-title:hover { color: var(--accent-lav); }
 .journal-priv { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
 .journal-chip { flex-shrink: 0; font-size: 11px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-dim); }
-.journal-chip-note { color: #a78bfa; border-color: rgba(167,139,250,0.35); }
-.journal-chip-task { color: #5eead4; border-color: rgba(94,234,212,0.35); }
-.journal-chip-contact { color: #fb923c; border-color: rgba(251,146,60,0.35); }
+.journal-chip-note { color: var(--accent-lav); border-color: rgba(var(--accent-lav-rgb),0.35); }
+.journal-chip-task { color: #5eead4; border-color: color-mix(in srgb, #5eead4 35%, transparent); }
+.journal-chip-contact { color: #fb923c; border-color: color-mix(in srgb, #fb923c 35%, transparent); }
 .journal-degraded { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
 /* Filtros client-side (journal.bundle.js): a classe vai no container, não no item —
    itens anexados por "Carregar mais" já nascem filtrados sem JS por item. */
@@ -231,7 +231,7 @@ export async function handleJournalPage(req: Request, env: Env): Promise<Respons
   return htmlResponse(
     await renderShell({
       title: 'Journal',
-      active: 'home',
+      active: 'journal',
       email: session.email,
       env,
       body,

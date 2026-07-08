@@ -10,7 +10,7 @@ import { esc } from '../util/html.js';
 // data-attribute data-graph-src no #graph-canvas. Eric quer o Contatos DENTRO do
 // Brain (mesma sidebar/URL, só o painel direito troca), não pulando pro Console.
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
-  return renderGraphLikePage(req, env, { active: 'graph', graphSrc: '/app/graph', title: 'Graph' });
+  return renderGraphLikePage(req, env, { active: 'graph', graphSrc: '/app/graph', title: 'Grafo' });
 }
 
 export async function handleContactsPage(req: Request, env: Env): Promise<Response> {
@@ -67,7 +67,7 @@ async function renderGraphLikePage(
          tem outro box) em vez de centralizar no palco — era isso que jogava
          o spinner de loading do 3D pro canto superior-esquerdo, atrás da
          caixa de busca (bug reportado 2026-07). */
-      .graph-wrap { background: #0c0c10; position: relative; }
+      .graph-wrap { background: var(--surface-canvas); position: relative; }
       #graph-canvas { cursor: grab; }
       #graph-canvas:active { cursor: grabbing; }
       #graph-canvas .sigma-labels {
@@ -78,7 +78,7 @@ async function renderGraphLikePage(
         max-width: none;
         width: auto;
         padding: 0;
-        background: #0c0c10;
+        background: var(--surface-canvas);
         position: relative;
         z-index: 2;
       }
@@ -429,7 +429,7 @@ async function renderGraphLikePage(
         position: absolute;
         inset: 0;
         z-index: 0;
-        background: #0c0c10;
+        background: var(--surface-canvas);
         display: none;      /* aceso via .graph-wrap.mode-3d abaixo */
       }
       #graph3d-stage canvas { display: block; }  /* three insere <canvas> bloco */

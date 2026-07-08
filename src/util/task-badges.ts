@@ -23,19 +23,19 @@ export function tagChipsHtml(tags: string[]): string {
   return chips + more;
 }
 
-// Chip de PROJETO no card (spec 58): bolinha na cor do projeto + label. Projeto
-// arquivado renderiza esmaecido (classe .archived). null → string vazia (task sem
-// projeto não polui o card). Cor só entra no style se for hex #rrggbb válido.
-export function projectChipHtml(
+// Breadcrumb de projeto no card (Onda 5, specs/60-ux-reforma/66 — anatomia
+// ClickUp): contexto muted "Em <projeto>" abaixo do título, no lugar do chip
+// colorido no head. A bolinha mantém a cor do projeto; arquivado esmaece.
+export function projectCrumbHtml(
   project: { label: string; color: string | null; archived?: boolean } | null
 ): string {
   if (!project) return '';
   const dot = project.color && /^#[0-9a-fA-F]{6}$/.test(project.color)
     ? ` style="background:${project.color}"`
     : '';
-  const cls = project.archived ? 'task-project-chip archived' : 'task-project-chip';
+  const cls = project.archived ? 'task-card-crumb archived' : 'task-card-crumb';
   const label = escBadge(project.label);
-  return `<span class="${cls}" title="Projeto: ${label}"><span class="task-project-dot"${dot}></span>${label}</span>`;
+  return `<div class="${cls}" title="Projeto: ${label}"><span class="task-project-dot"${dot}></span>Em ${label}</div>`;
 }
 
 const LINK_ICON =

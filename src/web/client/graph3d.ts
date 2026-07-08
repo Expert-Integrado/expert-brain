@@ -76,7 +76,7 @@ export interface Graph3DController {
   dispose: () => void;
 }
 
-const BG_COLOR = '#0c0c10'; // igual ao .graph-wrap do 2D
+const BG_COLOR = '#0c0c10'; // espelho JS do token --surface-canvas (styles.ts) — WebGL não lê CSS var
 
 // Baseline de colisão espelhado do sim-worker.ts do 2D (raio flat 60 desligado,
 // 66 ligado). No mundo 3D usamos nodeRelSize 6 e o `val` é n.size/3, então os

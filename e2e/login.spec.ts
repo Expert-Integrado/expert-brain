@@ -23,9 +23,9 @@ test('login com credencial válida cria sessão e navega', async ({ page }) => {
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', password);
   await Promise.all([page.waitForNavigation(), page.click('button[type="submit"]')]);
-  // Destino default hoje é /app/graph; a Onda 5 muda pra /app — atualizar aqui
-  // no MESMO commit da mudança (specs/60-ux-reforma/66).
-  await expect(page).toHaveURL(/\/app\/graph/);
+  // Destino default pós-login é a HOME desde a Onda 5 (specs/60-ux-reforma/66).
+  await expect(page).toHaveURL(/\/app\/?$/);
+  await expect(page.getByRole('heading', { name: 'Início' })).toBeVisible();
 });
 
 test('login com senha errada mostra erro e não cria sessão', async ({ page }) => {

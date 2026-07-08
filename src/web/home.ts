@@ -9,8 +9,9 @@ import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): 4 cards SSR, cada
-// um TOLERANTE a falha isolada — uma query que falha some SÓ o card dela (try/catch
-// por card), nunca derruba a página inteira. O card "Últimas interações" é a ÚNICA
+// um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
+// (try/catch por card, Onda 5), nunca derruba a página inteira. O card "Últimas
+// interações" é a ÚNICA
 // exceção: carrega ASSÍNCRONO no client (skeleton aqui, populado por home.bundle.js)
 // porque depende do proxy pro Worker do Contacts — não trava o SSR da home no request
 // path (Riscos da spec: "home lenta por depender do proxy").
@@ -24,8 +25,9 @@ const INBOX_SCAN_LIMIT = 200;
 const CONTACT_EVENTS_PREVIEW = 5;
 
 const HOME_CSS = `
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
-.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-family: var(--font-display); font-size: 16px; font-weight: 500; margin: 0 0 14px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; align-items: start; }
+/* fonte/peso herdam do .card h2 (Onda 3) — aqui só o layout flex do link à direita */
+.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; }
 .home-card h2 a { font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
 .home-card h2 a:hover { text-decoration: underline; }
 .home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -40,10 +42,10 @@ const HOME_CSS = `
 }
 .home-task-complete:hover { border-color: var(--accent-lav); color: var(--accent-lav); }
 .home-task-when, .home-event-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
-.home-task-when.overdue { color: #fca5a5; }
+.home-task-when.overdue { color: var(--danger); }
 .home-event-kind { flex-shrink: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
-.home-error { color: #fca5a5; }
+.home-error { color: var(--danger); }
 .home-private-badge { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
 `;
 
@@ -106,10 +108,25 @@ export function renderInboxCard(pending: number, items: InboxItem[]): string {
 
 // Card 4 — Últimas interações: SKELETON server-side, populado por home.bundle.js
 // (GET /app/contacts/events/recent) — nunca bloqueia o SSR da home no proxy.
+// As linhas .skeleton (Onda 3) têm texto transparente só pra dar dimensão; o client
+// substitui o innerHTML inteiro, então elas somem sozinhas quando os dados chegam.
 function renderInteractionsCardSkeleton(): string {
   return `<section class="card home-card">
     <h2>Últimas interações <a href="/app/journal">journal completo →</a></h2>
-    <ul class="home-list" id="home-events-list" data-limit="${CONTACT_EVENTS_PREVIEW}"><li class="home-empty">Carregando…</li></ul>
+    <ul class="home-list" id="home-events-list" data-limit="${CONTACT_EVENTS_PREVIEW}">
+      <li class="skeleton">Carregando as últimas interações…</li>
+      <li class="skeleton">Carregando as últimas interações</li>
+      <li class="skeleton">Carregando…</li>
+    </ul>
+  </section>`;
+}
+
+// Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
+// visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
+function renderCardError(titleHtml: string, msg: string): string {
+  return `<section class="card home-card">
+    <h2>${titleHtml}</h2>
+    <p class="error-state">${esc(msg)}</p>
   </section>`;
 }
 
@@ -119,8 +136,8 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
 
   const now = Date.now();
 
-  // Cada card é buscado/renderizado de forma isolada — falha numa fonte some SÓ o
-  // card dela (log + string vazia), nunca derruba a home inteira (critério de aceite).
+  // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
+  // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
   let todayCardHtml = '';
   try {
     // includePrivate=true: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
@@ -128,7 +145,8 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, true);
     todayCardHtml = renderTodayCard(tasks, now);
   } catch (e) {
-    console.error('home: falha ao carregar tasks de hoje (card omitido)', e);
+    console.error('home: falha ao carregar tasks de hoje', e);
+    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.');
   }
 
   let inboxCardHtml = '';
@@ -139,17 +157,21 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     ]);
     inboxCardHtml = renderInboxCard(pending, items);
   } catch (e) {
-    console.error('home: falha ao carregar inbox (card omitido — spec 63 pode não ter rodado)', e);
+    console.error('home: falha ao carregar inbox (spec 63 pode não ter rodado)', e);
+    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.');
   }
 
   let digestCardHtml = '';
   try {
     const digest = await readCachedResurfaceDigest(env);
     if (digest && !isDigestEmpty(digest)) {
-      digestCardHtml = `<div class="home-card">${renderDigestCard(digest)}</div>`;
+      // Digest vazio/inexistente continua OMITIDO de propósito (não é erro) —
+      // só a FALHA de leitura vira card de erro visível.
+      digestCardHtml = `<section class="card home-card">${renderDigestCard(digest)}</section>`;
     }
   } catch (e) {
-    console.error('home: falha ao ler cache do resurface digest (card omitido — spec 64 pode não ter rodado)', e);
+    console.error('home: falha ao ler cache do resurface digest (spec 64 pode não ter rodado)', e);
+    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.');
   }
 
   const body = `

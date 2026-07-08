@@ -80,6 +80,10 @@ export const TOKENS_CSS = `
   --prio-2: #fdba74;
   --prio-3: #93c5fd;
   --prio-4: var(--text-dim);
+  /* Palco do grafo (2D e 3D): neutro escuro, sem tint lavanda — mais profundo
+     que o Obsidian (#1e1e1e) de propósito. graph3d.ts (BG_COLOR) espelha o valor
+     em JS pro WebGL — mudar aqui = mudar lá. */
+  --surface-canvas: #0c0c10;
 
   /* -- tema: fundo e grain tokenizados (preparo pra tema claro, Onda 6) -- */
   --bg-gradient:
@@ -234,29 +238,33 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-.sidebar .bottom { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-faint); }
-.sidebar .bottom > div { margin-bottom: 6px; font-family: var(--font-body); }
+/* Rodapé da sidebar (Onda 5, decisão do gate): grupo coeso Recolher → Configurações
+   → bloco do usuário (avatar + e-mail + Sair), separado da navegação por borda. */
+.sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-faint); display: flex; flex-direction: column; gap: 2px; }
 .sidebar .bottom form { margin: 0; }
-.sidebar .bottom button {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 4px 0;
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 500;
-  transition: color 180ms var(--ease);
+
+/* Badge numérico de pendências na nav (inbox) — antes vivia inline no <head> */
+.nav-badge, .bottom-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  background: var(--accent-lav); color: #0b0b12;
 }
-.sidebar .bottom button:hover { color: var(--accent-lav); }
+.nav-item .nav-badge { margin-left: auto; }
+.sidebar-collapsed .nav-item .nav-badge {
+  position: absolute; top: 4px; right: 4px; margin-left: 0;
+  min-width: 16px; height: 16px; font-size: 10px;
+}
+.sidebar-collapsed .nav-item { position: relative; }
+.bottom-nav-item { position: relative; }
+.bottom-nav-badge { position: absolute; top: 3px; right: 22%; min-width: 16px; height: 16px; font-size: 10px; }
 
 /* nav-item agora carrega ícone + label. Ícone fixo, label some no modo recolhido. */
 .sidebar .nav-item svg { flex-shrink: 0; }
 .sidebar .nav-label { white-space: nowrap; overflow: hidden; }
 
-/* Botão de recolher + logout viram linha de ícone+texto no rodapé do menu. */
-.sidebar .bottom .sidebar-toggle,
-.sidebar .bottom .sidebar-logout {
+/* Botão de recolher: linha de ícone+texto, mesmo desenho dos nav-item. */
+.sidebar .bottom .sidebar-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -272,12 +280,31 @@ export const SHELL_CSS = `
   font-weight: 500;
   transition: color 180ms var(--ease), background 180ms var(--ease);
 }
-.sidebar .bottom .sidebar-toggle { margin-bottom: 8px; }
 .sidebar .bottom .sidebar-toggle svg { transition: transform 220ms var(--ease); flex-shrink: 0; }
-.sidebar .bottom .sidebar-toggle:hover,
-.sidebar .bottom .sidebar-logout:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
-.sidebar .bottom .sidebar-logout:hover { color: var(--danger); }
-.sidebar .sidebar-email { font-family: var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .bottom .sidebar-toggle:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
+
+/* Bloco do usuário: avatar com a inicial + e-mail truncado + Sair (ícone) */
+.sidebar .sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 10px 4px 14px;
+}
+.sidebar .sidebar-avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(167, 139, 250, 0.22);
+  color: var(--accent-lav); font-size: 11px; font-weight: 700;
+}
+.sidebar .sidebar-email { flex: 1; min-width: 0; font-family: var(--font-body); font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .sidebar-logout {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  background: none; border: none; padding: 6px; border-radius: var(--radius-sm);
+  color: var(--text-dim); cursor: pointer;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
+}
+.sidebar .sidebar-logout:hover { color: var(--danger); background: rgba(167, 139, 250, 0.08); }
 
 /* ---- Sidebar recolhida (régua de ícones, desktop) ---- */
 .sidebar { transition: width 200ms var(--ease), padding 200ms var(--ease); }
@@ -302,8 +329,8 @@ export const SHELL_CSS = `
   width: 44px;
 }
 .shell.sidebar-collapsed .sidebar .nav-item::before { display: none; }
-.shell.sidebar-collapsed .sidebar .bottom { align-items: center; display: flex; flex-direction: column; }
-.shell.sidebar-collapsed .sidebar .bottom form { width: 44px; }
+.shell.sidebar-collapsed .sidebar .bottom { align-items: center; }
+.shell.sidebar-collapsed .sidebar .sidebar-user { flex-direction: column; gap: 6px; padding: 8px 0 0; width: 44px; justify-content: center; }
 /* Chevron aponta pra fora (expandir) quando recolhido. */
 .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
@@ -350,9 +377,9 @@ export const SHELL_CSS = `
 // COMPONENTS_CSS — biblioteca de componentes global (Onda 3, specs/60-ux-reforma/64).
 // Só consome tokens da Onda 2. As telas ADOTAM esses componentes na Onda 5 via
 // co-classe (ex. class="task-btn btn btn-sm") — classes protegidas por teste
-// (task-project-chip, task-tag-chip, task-detail-sidebar, nav-badge) nunca são
-// renomeadas. CSS por página (SURFACES e folhas de cada tela) vem DEPOIS na
-// cascata e continua vencendo empates até a Onda 5 remover as duplicatas.
+// (task-tag-chip, task-detail-sidebar, nav-badge) nunca são renomeadas.
+// CSS por página (SURFACES e folhas de cada tela) vem DEPOIS na cascata; a
+// Onda 5 removeu as duplicatas que venciam empates (.btn-primary/.btn-danger).
 // ---------------------------------------------------------------------------
 export const COMPONENTS_CSS = `
 /* ---- Card ---- */
@@ -578,6 +605,56 @@ export const COMPONENTS_CSS = `
   text-decoration: none;
   font-size: 14px;
 }
+
+/* ---- Note body (markdown) ----
+   Componente compartilhado: detalhe de nota (/app) E página pública /s/ (PUBLIC_CSS). */
+.note-body {
+  line-height: 1.75;
+  font-size: 16px;
+  color: rgba(248, 250, 252, 0.86);
+  max-width: 68ch;
+}
+.note-body h1, .note-body h2, .note-body h3 {
+  font-family: var(--font-display);
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+.note-body h1 { font-size: 28px; }
+.note-body h2 { font-size: 22px; }
+.note-body h3 { font-size: 18px; }
+.note-body p { margin: 0 0 1em; }
+.note-body ul, .note-body ol { padding-left: 1.3em; margin: 0 0 1em; }
+.note-body li { margin-bottom: 4px; }
+.note-body blockquote {
+  margin: 1em 0;
+  padding: 4px 0 4px 18px;
+  border-left: 2px solid var(--accent-lav);
+  color: var(--text-dim);
+  font-style: italic;
+}
+.note-body pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.note-body code {
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.note-body pre code { background: none; padding: 0; }
+.note-body a { color: var(--accent-cyan); border-bottom: 1px solid rgba(140, 200, 255, 0.3); }
+.note-body a:hover { border-bottom-color: var(--accent-cyan); }
+.note-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 `;
 
 // ---------------------------------------------------------------------------
@@ -637,55 +714,6 @@ export const SURFACES_CSS = `
   border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 32%, transparent);
   margin-right: 6px;
 }
-
-/* ---- Note body (markdown) ---- */
-.note-body {
-  line-height: 1.75;
-  font-size: 16px;
-  color: rgba(248, 250, 252, 0.86);
-  max-width: 68ch;
-}
-.note-body h1, .note-body h2, .note-body h3 {
-  font-family: var(--font-display);
-  color: var(--text);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  margin-top: 1.8em;
-  margin-bottom: 0.5em;
-}
-.note-body h1 { font-size: 28px; }
-.note-body h2 { font-size: 22px; }
-.note-body h3 { font-size: 18px; }
-.note-body p { margin: 0 0 1em; }
-.note-body ul, .note-body ol { padding-left: 1.3em; margin: 0 0 1em; }
-.note-body li { margin-bottom: 4px; }
-.note-body blockquote {
-  margin: 1em 0;
-  padding: 4px 0 4px 18px;
-  border-left: 2px solid var(--accent-lav);
-  color: var(--text-dim);
-  font-style: italic;
-}
-.note-body pre {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border);
-  padding: 14px 18px;
-  border-radius: var(--radius-sm);
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.note-body code {
-  background: rgba(255, 255, 255, 0.07);
-  padding: 1.5px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-}
-.note-body pre code { background: none; padding: 0; }
-.note-body a { color: var(--accent-cyan); border-bottom: 1px solid rgba(140, 200, 255, 0.3); }
-.note-body a:hover { border-bottom-color: var(--accent-cyan); }
-.note-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 
 /* ---- Login ---- */
 .login-wrap {
@@ -796,9 +824,12 @@ export const SURFACES_CSS = `
   color: var(--text);
 }
 .row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
-.row button {
+/* Look default pra botões SEM classe dentro de .row (Salvar, Copiar, ↑↓...).
+   O :not(.btn) evita atropelar a hierarquia .btn-* (Onda 5): .row button tinha
+   especificidade (0,1,1) e vencia .btn-primary (0,1,0) — o backup ficava sem gradiente. */
+.row button:not(.btn) {
   padding: 10px 14px;
-  background: rgba(167, 139, 250, 0.12);
+  background: rgba(var(--accent-lav-rgb), 0.12);
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -808,7 +839,7 @@ export const SURFACES_CSS = `
   cursor: pointer;
   transition: background 180ms var(--ease);
 }
-.row button:hover { background: rgba(167, 139, 250, 0.22); }
+.row button:not(.btn):hover { background: rgba(var(--accent-lav-rgb), 0.22); }
 
 .badge-pill {
   display: inline-block;
@@ -863,16 +894,7 @@ export const SURFACES_CSS = `
 .callout-info strong { color: var(--accent-cyan); }
 .callout-info em { font-style: italic; color: var(--text); }
 
-/* Acao primaria (Salvar prompt) — gradiente lavanda->violeta */
-.btn-primary {
-  padding: 10px 18px; border: none; border-radius: var(--radius-sm); cursor: pointer;
-  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: #fff;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
-  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-}
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
-.btn-primary:active { transform: translateY(0); }
+/* Acao primaria (Salvar prompt): .btn .btn-primary do COMPONENTS_CSS (Onda 5) */
 
 /* Textarea do prompt */
 .prefs-textarea {
@@ -958,22 +980,7 @@ export const SURFACES_CSS = `
   background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
 }
-.btn-danger {
-  padding: 6px 12px;
-  background: rgba(255, 122, 144, 0.12); color: var(--danger);
-  border: 1px solid rgba(255, 122, 144, 0.3); border-radius: var(--radius-sm);
-  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: background 160ms var(--ease);
-}
-.btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
-
-/* Coluna vazia do kanban (spec 72) — placeholder que dá alvo visual pro drop. */
-.task-col-empty {
-  margin: 4px 2px; padding: 18px 10px;
-  border: 1px dashed var(--border); border-radius: var(--radius-sm);
-  color: var(--text-faint); font-size: 12px; text-align: center;
-  user-select: none;
-}
+/* Acoes destrutivas (Arquivar/Revogar): .btn .btn-danger .btn-sm do COMPONENTS_CSS (Onda 5) */
 
 /* Toast global dos bundles do /app (spec 72) — feedback de erro/sucesso de ações client. */
 .app-toast {
@@ -1664,11 +1671,15 @@ select.panel-form-input { cursor: pointer; }
   cursor: pointer;
   transition: color 140ms var(--ease);
 }
-.bottom-nav-item span {
-  white-space: nowrap;
+/* Onda 5: com 9 destinos a label textual truncava ("Jour…", "Cont…") — a barra é
+   icon-only; o nome segue lendo pra leitores de tela (clip) e no aria-label. */
+.bottom-nav-item span:not(.bottom-nav-badge) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .bottom-nav-item:hover { color: var(--text-dim); }
 .bottom-nav-item.active { color: var(--accent-lav); }
@@ -2176,33 +2187,10 @@ select.panel-form-input { cursor: pointer; }
   .notes-toolbar-actions { width: 100%; }
   .notes-select { flex: 1; }
 
-  /* Sidebar collapses: compact width, icon-ish nav */
-  .sidebar {
-    width: 64px;
-    padding: 20px 6px;
-  }
-  .sidebar .logo {
-    font-size: 0;
-    gap: 0;
-    justify-content: center;
-    margin-bottom: 20px;
-  }
-  .sidebar .logo::before {
-    width: 24px;
-    height: 24px;
-  }
-  .sidebar .nav-item {
-    padding: 10px 0;
-    justify-content: center;
-    font-size: 11.5px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .sidebar .nav-item::before { display: none; }
-  .sidebar .bottom {
-    display: none;
-  }
+  /* Sidebar mobile: NADA aqui — ela é display:none no bloco @media do shell
+     (a navegação mobile é a bottom-nav). O bloco de "sidebar 64px" que vivia
+     aqui era CSS morto contraditório (Onda 5, specs/60-ux-reforma/66): nunca
+     tinha efeito porque display:none vence sem depender de ordem. */
   .main { padding: 24px 18px 80px; }
 }
 `;

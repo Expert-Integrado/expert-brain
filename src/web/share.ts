@@ -20,7 +20,7 @@
 
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
-import { NEBULA_CSS, FONT_LINKS, THEME_COLOR } from './styles.js';
+import { PUBLIC_CSS, FONT_LINKS, THEME_COLOR } from './styles.js';
 import { renderMarkdown } from './markdown.js';
 import {
   addTaskComment,
@@ -227,7 +227,7 @@ const NOT_FOUND_HTML = `<!doctype html><html lang="pt-BR"><head>
 <meta name="robots" content="noindex, nofollow">
 <title>Link inválido</title>
 ${FONT_LINKS}
-<style>${NEBULA_CSS}
+<style>${PUBLIC_CSS}
 .share-404 { max-width: 480px; margin: 18vh auto; padding: 0 24px; text-align: center; }
 .share-404 h1 { font-family: var(--font-display); font-size: 24px; margin-bottom: 10px; }
 .share-404 p { color: var(--text-dim); }
@@ -337,7 +337,7 @@ export function renderSharePage(
 <meta name="theme-color" content="${THEME_COLOR}">
 <title>${esc(task.title)}</title>
 ${FONT_LINKS}
-<style>${NEBULA_CSS}${SHARE_CSS}</style>
+<style>${PUBLIC_CSS}${SHARE_CSS}</style>
 </head><body>
 <main class="share-wrap">
   <article class="share-card">
@@ -376,7 +376,7 @@ function renderShareComments(token: string, comments: TaskComment[], form: Share
         <label class="cmt-hp" aria-hidden="true"><span>Não preencha este campo</span>
           <input type="text" name="website" tabindex="-1" autocomplete="off" /></label>
         <div class="cmt-form-foot">
-          <button type="submit" class="cmt-submit">Comentar</button>
+          <button type="submit" class="btn btn-primary cmt-submit">Comentar</button>
         </div>
       </form>`;
   return `<section class="cmt-section" id="comentarios">
@@ -419,7 +419,7 @@ const SHARE_CSS = `
   background: var(--surface-raised); border: 1px solid var(--border); color: var(--text);
 }
 .share-badge-status { text-transform: none; }
-.share-status-done { color: #bbf7d0; border-color: rgba(74,222,128,0.4); }
+.share-status-done { color: var(--success); border-color: var(--success-border); }
 .share-status-canceled { color: var(--text-dim); }
 .share-domains { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .share-badge-domain { font-size: 12px; }
@@ -442,14 +442,14 @@ const SHARE_CSS = `
 .cmt-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .cmt-author { font-size: 13px; font-weight: 600; color: var(--text); }
 .cmt-author-owner { color: var(--accent-lav); }
-.cmt-author-agent { color: #93c5fd; }
+.cmt-author-agent { color: var(--info); }
 .cmt-author-guest { color: var(--text); }
 .cmt-time { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .cmt-body { font-size: 14px; line-height: 1.55; color: var(--text); word-break: break-word; }
 .cmt-empty { color: var(--text-faint); font-size: 14px; margin-bottom: 20px; }
 .cmt-msg { font-size: 13px; margin-bottom: 14px; padding: 8px 12px; border-radius: var(--radius-sm); }
-.cmt-msg-err { color: #fca5a5; background: rgba(239,68,68,0.12); }
-.cmt-msg-ok { color: #86efac; background: rgba(74,222,128,0.12); }
+.cmt-msg-err { color: var(--danger); background: var(--danger-bg); }
+.cmt-msg-ok { color: var(--success); background: var(--success-bg); }
 .cmt-form { display: flex; flex-direction: column; gap: 12px; }
 .cmt-field { display: flex; flex-direction: column; gap: 6px; }
 .cmt-lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--text-faint); font-weight: 600; }
@@ -463,11 +463,7 @@ const SHARE_CSS = `
 /* Honeypot: fora da tela pra humanos, presente no DOM pra bots preencherem */
 .cmt-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
 .cmt-form-foot { display: flex; justify-content: flex-end; }
-.cmt-submit {
-  padding: 9px 20px; border: none; border-radius: var(--radius-sm);
-  background: var(--accent-lav); color: #0b0713; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-}
-.cmt-submit:hover { filter: brightness(1.08); }
+/* .cmt-submit é .btn .btn-primary (COMPONENTS_CSS via PUBLIC_CSS) */
 `;
 
 // ─────────────── Rate-limit dos GETs públicos (spec 33 item 7) ───────────────
@@ -554,7 +550,7 @@ function renderNoteSharePage(note: SharedNoteRow, media: MediaRow[], token: stri
 <meta name="theme-color" content="${THEME_COLOR}">
 <title>${esc(note.title)}</title>
 ${FONT_LINKS}
-<style>${NEBULA_CSS}${SHARE_CSS}${NOTE_SHARE_CSS}</style>
+<style>${PUBLIC_CSS}${SHARE_CSS}${NOTE_SHARE_CSS}</style>
 </head><body>
 <main class="share-wrap">
   <article class="share-card">

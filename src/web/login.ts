@@ -27,7 +27,7 @@ ${error ? `<p class="error">${esc(error)}</p>` : ''}
 
 export async function handleLoginGet(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const next = url.searchParams.get('next') ?? '/app/graph';
+  const next = url.searchParams.get('next') ?? '/app';
   return htmlResponse(renderLoginPage(null, next));
 }
 
@@ -43,10 +43,11 @@ function safeNextPath(next: string): string {
   const qIndex = next.indexOf('?');
   const path = qIndex === -1 ? next : next.slice(0, qIndex);
   const query = qIndex === -1 ? '' : next.slice(qIndex);
-  if (path.startsWith('/app/') && !path.includes('//') && !path.includes('..')) {
+  // '/app' exato (sem barra) é a home — destino default pós-login desde a Onda 5.
+  if ((path === '/app' || path.startsWith('/app/')) && !path.includes('//') && !path.includes('..')) {
     return path + query;
   }
-  return '/app/graph';
+  return '/app';
 }
 
 function checkOrigin(req: Request): boolean {
@@ -64,7 +65,7 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   const form = await req.formData();
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
-  const next = String(form.get('next') ?? '/app/graph');
+  const next = String(form.get('next') ?? '/app');
 
   // Mesmo rate limit (e mesmo bucket IP+e-mail) do POST /authorize — é a mesma
   // senha, então as falhas dos dois endpoints somam (spec 10-backend/18).

@@ -80,12 +80,12 @@ describe('hitTestColumn (puro)', () => {
 });
 
 describe('initBoardDnd', () => {
-  let onDrop: ReturnType<typeof vi.fn>;
-  let onOpen: ReturnType<typeof vi.fn>;
+  let onDrop: ReturnType<typeof vi.fn<(cardId: string, columnId: string) => void>>;
+  let onOpen: ReturnType<typeof vi.fn<(cardId: string) => void>>;
 
   beforeEach(() => {
-    onDrop = vi.fn();
-    onOpen = vi.fn();
+    onDrop = vi.fn<(cardId: string, columnId: string) => void>();
+    onOpen = vi.fn<(cardId: string) => void>();
   });
 
   afterEach(() => {

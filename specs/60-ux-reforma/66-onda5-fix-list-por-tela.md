@@ -1,6 +1,6 @@
 # Onda 5 — Fix list por tela
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done (08/07/2026) · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/65-onda4-interacoes-dnd-clique-visibilidade.md`
 
 ## Contexto
@@ -67,15 +67,29 @@ Ordem de execução dentro desta onda (cada item pode ser um commit separado, to
 
 ## Critérios de aceite
 
-- [ ] Home: grid não transborda em 320px de viewport; digest com `.card`; erro visível em vez de card sumido; skeleton real preservando os ids usados por `home.bundle.js`
-- [ ] Board: breakpoint 767px; cores via token; botões com `.btn`; `.task-col-empty` consolidado numa única definição
-- [ ] Shell: CSS morto/contraditório de sidebar mobile removido (um único comportamento remanescente, verificado visualmente); Journal presente no tipo `active`, na sidebar e no bottom-nav; `NAV_BADGE_CSS` dentro de `SHELL_CSS`
-- [ ] Login → home: os 3 defaults trocados; `safeNextPath` aceita `/app` exato; `login.test.ts` atualizado e verde
-- [ ] Graph: título "Grafo"; canvas usa token de cor
-- [ ] Notes/task detail: hardcodes migrados pra tokens; breakpoint 767px; `.task-d-btn` com `.btn`
-- [ ] Share: as 3 ocorrências de `NEBULA_CSS` trocadas por `PUBLIC_CSS`, página pública renderiza idêntica visualmente (ou melhor) com payload menor
-- [ ] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
-- [ ] Todos os testes na lista de "strings atualizadas no mesmo commit" (`60-visao-geral.md`) que forem afetados por esta onda foram de fato atualizados
+- [x] Home: grid não transborda em 320px de viewport; digest com `.card`; erro visível em vez de card sumido; skeleton real preservando os ids usados por `home.bundle.js`
+- [x] Board: breakpoint 767px; cores via token; botões com `.btn`; `.task-col-empty` consolidado numa única definição
+- [x] Shell: CSS morto/contraditório de sidebar mobile removido (um único comportamento remanescente, verificado visualmente); Journal presente no tipo `active`, na sidebar e no bottom-nav; `NAV_BADGE_CSS` dentro de `SHELL_CSS`
+- [x] Login → home: os 3 defaults trocados; `safeNextPath` aceita `/app` exato; `login.test.ts` atualizado e verde
+- [x] Graph: título "Grafo"; canvas usa token de cor
+- [x] Notes/task detail: hardcodes migrados pra tokens; breakpoint 767px; `.task-d-btn` com `.btn`
+- [x] Share: as 3 ocorrências de `NEBULA_CSS` trocadas por `PUBLIC_CSS`, página pública renderiza idêntica visualmente (ou melhor) com payload menor
+- [x] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
+- [x] Todos os testes na lista de "strings atualizadas no mesmo commit" (`60-visao-geral.md`) que forem afetados por esta onda foram de fato atualizados
+
+## Evidência de execução (08/07/2026, branch ux-reforma)
+
+Entregue conforme itens 1-6 do design, mais correções descobertas na verificação em navegador:
+
+- **Anatomia ClickUp do card** (decisão do gate): SSR (`renderCardSSR` em `tasks.ts`) e client (`cardHTML` em `client/tasks.ts`) sincronizados — título primeiro (clamp 2 linhas), breadcrumb "Em <projeto>" via `projectCrumbHtml` (novo em `util/task-badges.ts`; `projectChipHtml` removido por ficar sem uso), uma linha de meta, uma linha de tags sem wrap, concluir fixado embaixo (`.btn .btn-sm .btn-ghost`).
+- **Rodapé da sidebar** (decisão do gate): Recolher → Configurações → bloco de usuário (`.sidebar-user`: avatar-inicial + e-mail com ellipsis + botão Sair com hover danger); modo recolhido vira coluna de 44px.
+- **Bottom-nav mobile icon-only**: com 9 destinos (Journal entrou) as labels truncavam ("Jour…", "Cont…") — labels agora são visualmente ocultas (clip) e seguem no aria-label/leitores de tela.
+- **`.row button` → `.row button:not(.btn)`** (`styles.ts`): a regra genérica (0,1,1) vencia `.btn-primary` (0,1,0) e matava o gradiente dos botões primários do config.
+- **Duplicatas legadas removidas de SURFACES_CSS**: `.btn-primary` (~895) e `.btn-danger` (~989) — o config adota `.btn .btn-primary` / `.btn .btn-danger .btn-sm`.
+- **`.note-body` subiu de SURFACES_CSS pra COMPONENTS_CSS** — é compartilhado com a página pública `/s/` via `PUBLIC_CSS`.
+- **Inbox**: `.inbox-btn` virou co-classe de `.btn`; cores de estado tokenizadas. **Journal**: chips tokenizados (nota=lavanda; task/contact via `color-mix` da cor própria).
+- **Validação**: typecheck 4 tsconfigs OK; server 792+5 verdes; client 38 verdes; e2e 21 specs verdes; harness `wave-5` 32/32 capturas (contact page exige `npm run dev:full`, não `wrangler dev` puro); pixel diff vs baseline coerente com redesign deliberado (graph e alturas de página são as exceções conhecidas).
+- **Pendências registradas pra Onda 6**: favicon.ico 404; warnings de enctype no manifest PWA; input de título no task detail trunca títulos longos.
 
 ## Validação
 

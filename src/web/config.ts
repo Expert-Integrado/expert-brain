@@ -71,7 +71,7 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
          <input type="hidden" name="id" value="${esc(col.id)}">
          <input type="hidden" name="archived" value="1">
          ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
-         <button type="submit" class="btn-danger">Arquivar</button>
+         <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
@@ -141,7 +141,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
               <label for="new-col-category" style="font-size:12px;color:var(--text-dim)">Categoria (estado real da task)</label>
               <select id="new-col-category" name="category" required>${categoryOptions('open')}</select>
             </div>
-            <button type="submit" class="btn-primary">Criar coluna</button>
+            <button type="submit" class="btn btn-primary">Criar coluna</button>
           </form>
           <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Ex.: uma coluna <strong>Backlog</strong> pertence à categoria <strong>Aberta</strong> — a categoria é o estado REAL da task (o que o MCP e as automações leem); a coluna é só o estágio visual no board.</p>
           <p style="color:var(--text-dim);font-size:13px;margin-top:8px">A coluna <strong>Cancelado</strong> nasce arquivada — desarquive-a aqui pra ver tasks canceladas no board.</p>
@@ -163,7 +163,7 @@ function renderProjectRow(proj: TaskProject, count: number): string {
     : `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
          <input type="hidden" name="id" value="${esc(proj.id)}">
          <input type="hidden" name="archived" value="1">
-         <button type="submit" class="btn-danger">Arquivar</button>
+         <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
@@ -218,7 +218,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
             : `<form method="post" action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" name="label" required maxlength="40" placeholder="Nome do projeto" class="input-text" style="width:200px">
             <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
-            <button type="submit" class="btn-primary">Criar projeto</button>
+            <button type="submit" class="btn btn-primary">Criar projeto</button>
           </form>`}
         </div>
       </div>
@@ -290,8 +290,8 @@ function renderTaxonomySection(
           </table>
         </div>
         <div class="row" style="gap:8px">
-          <button type="button" id="taxonomy-save" class="btn-primary">Salvar</button>
-          <button type="button" id="taxonomy-reset" class="btn-danger">Restaurar padrão</button>
+          <button type="button" id="taxonomy-save" class="btn btn-primary">Salvar</button>
+          <button type="button" id="taxonomy-reset" class="btn btn-danger btn-sm">Restaurar padrão</button>
         </div>
         <p id="taxonomy-status" class="tax-inline-status" role="status" aria-live="polite"></p>
       </div>
@@ -314,7 +314,7 @@ function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: b
             <label for="owner-instructions-text">Instruções (texto puro/markdown leve, máx ${OWNER_INSTRUCTIONS_MAX_LEN} caracteres)</label>
             <textarea id="owner-instructions-text" name="owner_instructions" rows="8" maxlength="${OWNER_INSTRUCTIONS_MAX_LEN}" class="prefs-textarea" data-charcount="owner-instructions-count" placeholder="Ex: Sempre responda em pt-BR. Antes de salvar nota, varra analogias em outros domínios.">${esc(ownerInstructions)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px;align-items:center">
-              <button type="submit" class="btn-primary">Salvar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
               <span id="owner-instructions-count" style="color:var(--text-dim);font-size:13px">${len}/${OWNER_INSTRUCTIONS_MAX_LEN}</span>
             </div>
           </form>
@@ -454,7 +454,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         ? '—'
         : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn-danger">Revogar</button>
+             <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
            </form>`;
       // Escopo (spec 17 + 31): CSV — base full/read + escopo aditivo 'private'.
       // Mostra o CSV integral (ex.: 'full,private') pra o dono ver o alcance real.
@@ -495,7 +495,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${backupStatus}
       <div class="row" style="gap:8px;margin-top:10px">
         <form method="post" action="/app/config/backup-now">
-          <button type="submit" class="btn-primary">Fazer backup agora</button>
+          <button type="submit" class="btn btn-primary">Fazer backup agora</button>
         </form>
         <form method="get" action="/app/export">
           <button type="submit">Baixar export (.zip)</button>
@@ -556,7 +556,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <form method="post" action="/app/config/prefs">
             <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" class="prefs-textarea">${esc(prefsPrompt)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px">
-              <button type="submit" class="btn-primary">Salvar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
               <button type="button" data-copy="prefs-block">Copiar prompt</button>
             </div>
           </form>
@@ -590,7 +590,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
               <input type="checkbox" name="private_scope" value="1">
               <span>Acesso a notas privadas <span style="color:var(--text-dim)">— sem isto, a chave NÃO vê notas marcadas como privadas (spec 31)</span></span>
             </label>
-            <button type="submit" class="btn-primary" style="margin-top:12px">Criar chave</button>
+            <button type="submit" class="btn btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>
         <div class="adv-section">

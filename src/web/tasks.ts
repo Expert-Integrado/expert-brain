@@ -49,7 +49,7 @@ import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -999,24 +999,30 @@ function dueBadge(v: TaskView): string {
   return `<span class="${cls}">${esc(v.due_brt)}${v.when ? ` · ${esc(v.when)}` : ''}</span>`;
 }
 
-// Chip de projeto do card (spec 58): resolve o project_id da task no BoardProject
-// (do payload) pra pegar label/cor/arquivado. project_id órfão/ausente → sem chip.
-function cardProjectChip(v: TaskView, projectsById: Map<string, BoardProject>): string {
+// Breadcrumb de projeto do card (Onda 5): resolve o project_id da task no
+// BoardProject (do payload) pra pegar label/cor/arquivado. Órfão/ausente → nada.
+function cardProjectCrumb(v: TaskView, projectsById: Map<string, BoardProject>): string {
   if (!v.project_id) return '';
   const p = projectsById.get(v.project_id);
-  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+  return p ? projectCrumbHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
 }
 
 // Badge 🔒 do card/detalhe (spec 59) — mesma classe global .private-badge das notas.
 const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
 
+// Anatomia do card no padrão ClickUp (Onda 5, decisão do gate da Onda 1): título
+// PRIMEIRO (clamp 2 linhas), breadcrumb de projeto muted, UMA linha de meta
+// (prio + prazo + comentários + selo privada + link) e UMA linha de tags sem wrap.
+// Mesma estrutura do cardHTML do client (src/web/client/tasks.ts) — manter em sincronia.
 function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
+  const tags = tagChipsHtml(v.tags);
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''}>
-    <div class="task-card-head">${v.private ? PRIVATE_TASK_BADGE : ''}${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
-    <a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a>
-    <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
-    ${canClose ? `<div class="task-card-actions"><button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
+    <div class="task-card-top"><a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a></div>
+    ${cardProjectCrumb(v, projectsById)}
+    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}</div>
+    ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
+    ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
 }
 
@@ -1030,7 +1036,7 @@ function renderColumnSSR(col: BoardColumn, projectsById: Map<string, BoardProjec
   return `<section class="task-col" data-col="${esc(col.id)}" data-category="${esc(col.category)}"${c ? ` style="--col-accent:${esc(c)}"` : ''}>
     <header class="task-col-head"><span class="task-col-label">${columnSwatch(col.color)}${esc(col.label)}</span><span class="task-col-count" data-count="${esc(col.id)}">${col.tasks.length}</span></header>
     <div class="task-col-body" data-dropzone="${esc(col.id)}">
-      ${col.tasks.map((t) => renderCardSSR(t, projectsById)).join('') || '<div class="task-col-empty">—</div>'}
+      ${col.tasks.map((t) => renderCardSSR(t, projectsById)).join('') || '<div class="task-col-empty">Solte tarefas aqui</div>'}
     </div>
   </section>`;
 }
@@ -1081,7 +1087,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     <div class="page-header">
       <h1>Tarefas</h1>
       <span class="count" id="tasks-count">${totalOpen} aberta${totalOpen === 1 ? '' : 's'}</span>
-      <button class="task-new-btn" id="task-new-btn" type="button">
+      <button class="btn btn-primary task-new-btn" id="task-new-btn" type="button">
         <span class="task-new-plus" aria-hidden="true">+</span> Nova task
       </button>
     </div>
@@ -1134,7 +1140,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
             <span class="task-create-msg" data-create-msg role="status" aria-live="polite"></span>
             <div class="task-create-actions">
               <button class="task-d-btn" type="button" data-close-modal>Cancelar</button>
-              <button class="task-create-submit" type="submit">Criar task</button>
+              <button class="btn btn-primary task-create-submit" type="submit">Criar task</button>
             </div>
           </div>
         </form>
@@ -1162,19 +1168,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
 // Espaçamento em grid consistente + bandeirinhas de prioridade + drag-drop com
 // feedback visual (spec 36 fase 2). Escala de espaçamento: 8/12/16/20/24.
 export const TASKS_CSS = `
-/* Botão "Nova task" no header — ação primária, hierarquia clara (gradiente lavanda) */
-.task-new-btn {
-  margin-left: auto;
-  display: inline-flex; align-items: center; gap: 7px;
-  padding: 9px 16px; border: none; border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.01em;
-  cursor: pointer;
-  box-shadow: 0 8px 22px -10px rgba(167,139,250,0.6);
-  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-}
-.task-new-btn:hover { transform: translateY(-1px); box-shadow: 0 12px 28px -10px rgba(167,139,250,0.75); }
-.task-new-btn:active { transform: translateY(0); }
+/* Botão "Nova task" — hierarquia vem do .btn-primary (Onda 3); aqui só o posicionamento */
+.task-new-btn { margin-left: auto; }
 .task-new-plus { font-size: 17px; line-height: 1; font-weight: 400; }
 
 .task-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -1226,9 +1221,13 @@ export const TASKS_CSS = `
   box-shadow: inset 0 0 0 1px var(--accent-lav);
 }
 .task-col.drag-target .task-col-label { color: var(--accent-lav); }
+/* Coluna vazia — definição ÚNICA (Onda 5 consolidou; a duplicata do styles.ts saiu).
+   Tracejado invisível em repouso; acende como convite durante o drag (spec 65). */
 .task-col-empty {
-  color: var(--text-faint); font-size: 13px; text-align: center; padding: 20px 0;
+  margin: 4px 2px; padding: 20px 10px;
+  color: var(--text-subtle); font-size: 13px; text-align: center;
   border: 1px dashed transparent; border-radius: var(--radius-sm);
+  user-select: none;
   transition: border-color 160ms var(--ease);
 }
 /* Durante o drag, TODA coluna vazia mostra o tracejado (convite sutil); a coluna
@@ -1247,7 +1246,10 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-col-inline-input:focus { outline: none; border-style: solid; border-color: var(--accent-lav); background: var(--bg-accent); }
 .task-col-inline-input:disabled { opacity: 0.5; }
 
+/* Anatomia ClickUp (Onda 5): flex column com gap único entre as linhas (título →
+   breadcrumb → meta → tags → concluir) e altura mínima consistente entre cards. */
 .task-card {
+  display: flex; flex-direction: column; gap: 7px; min-height: 86px;
   background: var(--bg-accent); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 12px 13px; cursor: pointer;
   transition: border-color 160ms var(--ease), transform 160ms var(--ease), box-shadow 160ms var(--ease), opacity 160ms var(--ease);
@@ -1270,18 +1272,28 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* Card focado via ?task=<id> (spec 66: paleta abre o board com o card em destaque) —
    anel temporário, remove sozinho depois de scrollar até ele. */
 .task-card.task-card-focused { border-color: var(--accent-lav); box-shadow: 0 0 0 2px var(--accent-lav); }
-/* Linha meta superior: prioridade + tags + ícone de link (spec 52) */
-.task-card-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
-.task-card-head:empty { display: none; }
+/* Título PRIMEIRO (clamp 2 linhas); o ✎ de edição rápida fica ao lado, no topo */
+.task-card-top { display: flex; align-items: flex-start; gap: 8px; }
 .task-card-title {
+  flex: 1; min-width: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   color: var(--text); font-size: 14px; line-height: 1.4; font-weight: 500;
 }
 .task-card-title:hover { color: var(--accent-lav); }
-/* Linha meta inferior: prazo + contador de comentários (spec 52) */
-.task-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; min-height: 4px; }
+/* Breadcrumb de projeto muted "Em <projeto>" (substitui o chip colorido no head) */
+.task-card-crumb {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--text-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-card-crumb.archived { opacity: 0.5; }
+/* UMA linha de meta: prio + prazo + comentários + selo privada + link público */
+.task-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .task-card-meta:empty { display: none; }
-.task-card-actions { display: flex; gap: 12px; margin-top: 10px; }
+/* UMA linha de tags, sem wrap — excesso corta (o helper já limita a 3 + "+N") */
+.task-card-tags { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
+/* "concluir" gruda no rodapé do card — cards curtos ficam com altura consistente */
+.task-card-actions { display: flex; gap: 12px; margin-top: auto; }
 .task-btn {
   background: none; border: none; color: var(--text-faint); font-size: 12px;
   cursor: pointer; padding: 0; transition: color 140ms var(--ease);
@@ -1289,7 +1301,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-btn:hover { color: var(--accent-lav); }
 
 .task-due { font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
-.task-due.overdue { color: #fca5a5; background: rgba(239,68,68,0.14); }
+.task-due.overdue { color: var(--danger); background: var(--danger-bg); }
 
 /* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
 .task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
@@ -1304,13 +1316,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
 .task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
 
-/* Chip de projeto/pasta no card (spec 58): bolinha de cor + label. Arquivado esmaece. */
-.task-project-chip {
-  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600;
-  color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px;
-  max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.task-project-chip.archived { opacity: 0.5; }
+/* Bolinha de cor do projeto — usada pelo breadcrumb do card (Onda 5) */
 .task-project-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex: none; }
 
 /* Filtro de projeto no header do board (spec 58) */
@@ -1328,10 +1334,10 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   font-size: 11px; font-weight: 600; border-radius: 6px; padding: 2px 8px 2px 6px; letter-spacing: 0.01em;
 }
 .task-prio-lbl { line-height: 1; }
-.task-prio-p1 { color: #fca5a5; background: rgba(248,113,113,0.14); }
-.task-prio-p2 { color: #fdba74; background: rgba(251,146,60,0.14); }
-.task-prio-p3 { color: #93c5fd; background: rgba(96,165,250,0.14); }
-.task-prio-p4 { color: var(--text-dim); background: var(--surface-raised); }
+.task-prio-p1 { color: var(--prio-1); background: color-mix(in srgb, var(--prio-1) 14%, transparent); }
+.task-prio-p2 { color: var(--prio-2); background: color-mix(in srgb, var(--prio-2) 14%, transparent); }
+.task-prio-p3 { color: var(--prio-3); background: color-mix(in srgb, var(--prio-3) 14%, transparent); }
+.task-prio-p4 { color: var(--prio-4); background: var(--surface-raised); }
 
 .task-quickedit-btn { margin-left: auto; font-size: 12px; line-height: 1; }
 .task-card-edit {
@@ -1351,14 +1357,14 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-card-edit-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .task-card-edit-msg { font-size: 11px; color: var(--text-faint); }
 .task-card-edit-msg.saving { color: var(--text-dim); }
-.task-card-edit-msg.ok { color: #86efac; }
-.task-card-edit-msg.err { color: #fca5a5; }
+.task-card-edit-msg.ok { color: var(--success); }
+.task-card-edit-msg.err { color: var(--danger); }
 
 /* ── Modal "Nova task" (spec 36 fase 2): painel leve, mesma linguagem do cmd-palette ── */
 .task-modal { position: fixed; inset: 0; z-index: 1000; }
 .task-modal[hidden] { display: none; }
 .task-modal-backdrop {
-  position: absolute; inset: 0; background: rgba(4,2,14,0.72);
+  position: absolute; inset: 0; background: var(--backdrop);
   backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   animation: taskFadeIn 160ms var(--ease);
 }
@@ -1381,7 +1387,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-faint);
   display: flex; align-items: center; gap: 8px;
 }
-.task-create-req { color: #fca5a5; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.task-create-req { color: var(--danger); text-transform: none; letter-spacing: 0; font-weight: 500; }
 .task-create-opt { color: var(--text-faint); text-transform: none; letter-spacing: 0; opacity: 0.8; }
 .task-create-form input, .task-create-form textarea, .task-create-form select {
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
@@ -1396,17 +1402,10 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-create-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
 .task-create-msg { font-size: 12px; color: var(--text-faint); }
 .task-create-msg.saving { color: var(--text-dim); }
-.task-create-msg.err { color: #fca5a5; }
+.task-create-msg.err { color: var(--danger); }
 .task-create-actions { display: flex; gap: 10px; align-items: center; }
-.task-create-submit {
-  padding: 9px 18px; border: none; border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  color: #fff; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
-  box-shadow: 0 8px 22px -10px rgba(167,139,250,0.6);
-  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease), opacity 160ms var(--ease);
-}
-.task-create-submit:hover { transform: translateY(-1px); }
-.task-create-submit:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+/* Submit do modal usa .btn-primary (Onda 3); só o disabled zera o efeito de hover */
+.task-create-submit:disabled { transform: none; box-shadow: none; }
 
 /* Enquanto arrasta: cursor grabbing na página toda, seleção de texto suspensa e
    colunas com corpo mínimo pra receber o drop */
@@ -1417,7 +1416,8 @@ body.task-dragging .task-col-body { min-height: 90px; }
 @keyframes taskFadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes taskSlideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
-@media (max-width: 760px) {
+/* Breakpoint canônico 767px (Onda 5 — alinhado ao shell) */
+@media (max-width: 767px) {
   .task-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
