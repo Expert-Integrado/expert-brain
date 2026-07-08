@@ -630,6 +630,27 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    <details class="disclosure-advanced conn-section" id="whatsapp-grupos">
+      <summary>
+        <span class="adv-title">Grupos do WhatsApp</span>
+        <span class="adv-sub">Integração opcional com o WhatsApp Agent — grupos escolhidos viram nós no grafo de contatos, com quem está dentro</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Só entram os <strong>grupos que você marcar</strong> abaixo (nunca todos). Participante só vira vínculo se <strong>já existe</strong> como contato no vault (match por telefone) — número desconhecido não cria contato novo. Quem sai do grupo perde o vínculo criado pelo sync; vínculos manuais ficam. A lista de grupos e os membros são empurrados por um script na sua máquina (peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo").</p>
+          <p id="wa-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
+        </div>
+        <div class="adv-section" id="wa-groups-section" hidden>
+          <h3>Grupos sincronizados</h3>
+          <div id="wa-groups" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div class="row" style="margin-top:10px;gap:8px;align-items:center">
+            <button type="button" class="btn btn-primary" id="wa-save-groups">Salvar grupos</button>
+            <span id="wa-groups-status" style="color:var(--text-dim)"></span>
+          </div>
+        </div>
+      </div>
+    </details>
+
     ${ownerInstructionsSection}
     </section>
 

@@ -15,7 +15,7 @@ export const ASSET_HASHES: Record<string, string> = {
   "home.bundle.js": "519965cc9ad9",
   "journal.bundle.js": "c2dded04f4a4",
   "styles.css": "e7283ae54018",
-  "config.bundle.js": "c597e0df543d"
+  "config.bundle.js": "5a07b46df85d"
 };
 
 export function assetVersion(name: string): string {

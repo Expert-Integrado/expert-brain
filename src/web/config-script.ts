@@ -365,6 +365,82 @@ export function configPageScript(): string {
     });
   }
 
+  // ── Grupos do WhatsApp (integração opcional — expert-contacts specs/whatsapp-
+  // groups-sync.md). Hidrata o painel #whatsapp-grupos via /app/config/whatsapp/*
+  // (proxy same-origin do Brain; nenhum token chega aqui). O catálogo de grupos é
+  // empurrado por script na máquina do dono — o painel só ESCOLHE o que sincronizar.
+  var waRoot = document.getElementById('whatsapp-grupos');
+  if (waRoot) {
+    var waStatusEl = document.getElementById('wa-status');
+    var waGroupsSection = document.getElementById('wa-groups-section');
+    var waGroups = document.getElementById('wa-groups');
+    var waGroupsStatus = document.getElementById('wa-groups-status');
+
+    function waEscape(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function waJson(url, opts) {
+      opts = opts || {};
+      opts.credentials = 'same-origin';
+      opts.headers = Object.assign({ accept: 'application/json' }, opts.headers || {});
+      return fetch(url, opts).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          data._status = res.status;
+          return data;
+        });
+      });
+    }
+
+    function waRender(st) {
+      if (!st.ok) {
+        waStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
+        return;
+      }
+      if (!st.configured) {
+        waStatusEl.textContent = 'Integração desligada: falta configurar o WHATSAPP_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
+        return;
+      }
+      var parts = ['Integração ativa'];
+      if (st.groups_linked) parts.push(st.groups_linked + ' grupo(s) no grafo');
+      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
+      if (st.last_run && st.last_run.unmatched) parts.push(st.last_run.unmatched + ' participante(s) sem contato correspondente (não viraram vínculo)');
+      if (!st.catalog || !st.catalog.length) {
+        parts.push('nenhum catálogo de grupos ainda — rode o script de push pra listar seus grupos aqui');
+        waStatusEl.textContent = parts.join(' · ') + '.';
+        return;
+      }
+      waStatusEl.textContent = parts.join(' · ') + '.';
+      waGroupsSection.hidden = false;
+      var chosen = {};
+      (st.allowlist || []).forEach(function (id) { chosen[id] = true; });
+      waGroups.innerHTML = st.catalog.map(function (g) {
+        return '<label style="display:flex;align-items:center;gap:8px">' +
+          '<input type="checkbox" class="wa-group" value="' + waEscape(g.chat_id) + '"' + (chosen[g.chat_id] ? ' checked' : '') + '>' +
+          '<span>' + waEscape(g.name) + (g.member_count != null ? ' <span style="color:var(--text-dim)">(' + g.member_count + ')</span>' : '') + '</span>' +
+          '</label>';
+      }).join('');
+    }
+
+    waJson('/app/config/whatsapp/status').then(waRender);
+
+    var waSave = document.getElementById('wa-save-groups');
+    waSave.addEventListener('click', function () {
+      var ids = Array.prototype.slice.call(document.querySelectorAll('.wa-group:checked')).map(function (c) { return c.value; });
+      waGroupsStatus.textContent = 'Salvando…';
+      waJson('/app/config/whatsapp/allowlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ chat_ids: ids }),
+      }).then(function (r) {
+        waGroupsStatus.textContent = r.ok
+          ? 'Salvo. A próxima rodada do script sincroniza só os grupos marcados.'
+          : 'Erro ao salvar (' + (r.error || r._status) + ').';
+      });
+    });
+  }
+
   // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
   // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
   // contador "usados/max" (usa o maxlength do próprio campo como teto).

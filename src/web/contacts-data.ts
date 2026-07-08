@@ -378,3 +378,50 @@ export async function handleContactsGooglePost(req: Request, env: Env, action: k
     headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 }
+
+// ── WhatsApp Agent grupos (expert-contacts specs/whatsapp-groups-sync.md) ──
+// Painel em /app/config#whatsapp-grupos, mesmo desenho do Google: leitura de
+// estado via CONTACTS_PROXY_TOKEN (GET), gravação da allowlist de grupos via
+// CONTACTS_WRITE_TOKEN (POST). Nenhuma credencial chega ao browser; o
+// WHATSAPP_SYNC_TOKEN do script de push nunca passa por aqui.
+
+export async function handleContactsWhatsappStatus(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/whatsapp/status', {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
+export async function handleContactsWhatsappAllowlist(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  let bodyText: string;
+  try { bodyText = await req.text(); } catch { bodyText = ''; }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/whatsapp/allowlist', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`, 'content-type': 'application/json' },
+    body: bodyText || '{}',
+  }));
+  const resBody = await res.text();
+  return new Response(resBody, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}

@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist } from './contacts-data.js';
 import { handleHomePage } from './home.js';
 import { handleHomePrefsPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
@@ -260,6 +260,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/google/config' && req.method === 'POST') return handleContactsGooglePost(req, env, 'config');
   if (path === '/app/config/google/sync' && req.method === 'POST') return handleContactsGooglePost(req, env, 'sync');
   if (path === '/app/config/google/disconnect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'disconnect');
+  // WhatsApp Agent grupos (painel em /app/config#whatsapp-grupos): mesmo desenho
+  // do Google — leitura de estado via proxy token, allowlist via write token.
+  if (path === '/app/config/whatsapp/status' && req.method === 'GET') return handleContactsWhatsappStatus(req, env);
+  if (path === '/app/config/whatsapp/allowlist' && req.method === 'POST') return handleContactsWhatsappAllowlist(req, env);
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);
