@@ -306,6 +306,24 @@ Regras de manutenção:
 - Dependência nova declarada numa spec → refletir na tabela da fase e no grafo de dependências.
 - Spec fechada (`done`) → marcar os findings correspondentes no `00-sistema/02-inventario-de-falhas.md` com a data, no mesmo commit.
 
+### Fase UX-Reforma (specs/60-ux-reforma/)
+
+Programa de reforma completa de UI/UX do console, pedido pelo dono da instância após apontar bugs de interface (drag do Kanban, clique no cartão, seletor de visibilidade confuso) numa aula ao vivo. Visão geral, decisões do dono e diagnóstico completo vivem em `specs/60-ux-reforma/60-visao-geral.md`. Execução estritamente sequencial (cada onda depende da anterior):
+
+| Ordem | Spec | Gate |
+|---|---|---|
+| 1 | `60-ux-reforma/60-visao-geral.md` | — |
+| 2 | `60-ux-reforma/61-onda0-infra-auditoria-baseline.md` | — |
+| 3 | `60-ux-reforma/62-onda1-pesquisa-referencias-identidade.md` | **GATE: decisão de identidade do dono** (qual das 3 direções, ou mix, registrada na própria spec) |
+| 4 | `60-ux-reforma/63-onda2-tokens-retematizaveis.md` | — |
+| 5 | `60-ux-reforma/64-onda3-biblioteca-componentes.md` | — |
+| 6 | `60-ux-reforma/65-onda4-interacoes-dnd-clique-visibilidade.md` | — |
+| 7 | `60-ux-reforma/66-onda5-fix-list-por-tela.md` | — |
+| 8 | `60-ux-reforma/67-onda6-identidade-a11y.md` | **GATE: escolha de identidade aplicada** (tokens reais colados, contraste AA verificado) |
+| 9 | `60-ux-reforma/68-onda7-verificacao-deploy.md` | **GATE: OK de deploy do dono** (contact sheet + checklist manual + validação local aprovados antes do deploy único de produção) |
+
+Restrições transversais ao programa (detalhadas em `60-visao-geral.md`): zero migration em toda a reforma, zero mudança de contrato do MCP, repo público exige zero PII (capturas do ClickUp real do dono nunca são commitadas), deploy só na onda 9 com OK explícito do dono.
+
 ## Fora de escopo
 
 - Escrever ou alterar o conteúdo técnico das specs individuais (cada uma é sua própria entrega).
