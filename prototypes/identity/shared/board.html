@@ -20,12 +20,17 @@
   <aside class="sidebar">
     <div class="brand">Expert Brain</div>
     <a href="#">Início</a>
+    <a href="#">Inbox <span class="nav-badge">3</span></a>
     <a href="#">Grafo</a>
     <a href="#">Notas</a>
     <a href="#" class="active">Tarefas</a>
-    <a href="#">Inbox <span class="nav-badge">3</span></a>
     <a href="#">Contatos</a>
-    <a href="#">Configurações</a>
+    <span class="sidebar-spacer"></span>
+    <div class="sidebar-user">
+      <a href="#">Configurações</a>
+      <div class="who"><span class="avatar">D</span><span>dono@exemplo.dev</span></div>
+      <a href="#">Sair</a>
+    </div>
   </aside>
   <main class="page">
     <div class="page-head">
@@ -39,19 +44,18 @@
         <header class="task-col-head"><span class="task-col-dot" style="background: var(--info)"></span><h2>A fazer</h2><span class="task-col-count">3</span></header>
         <div class="task-col-body">
           <div class="task-card">
-            <div class="task-card-head"><span class="chip chip-project">Lançamento Produto X</span><span class="chip prio-1">crítica</span><span class="chip chip-tag">cliente</span></div>
             <a class="task-card-title" href="#">Follow-up com Empresa Exemplo Ltda sobre proposta</a>
-            <div class="task-card-meta"><span class="chip chip-due overdue">vencida há 2d</span><span class="comments">3 comentários</span></div>
+            <div class="task-card-context">Em Lançamento Produto X</div>
+            <div class="task-card-meta"><span class="chip prio-1">crítica</span><span class="chip chip-due overdue">vencida há 2d</span><span class="comments">3 comentários</span></div>
+            <div class="task-card-tags"><span class="chip chip-tag">cliente</span><span class="chip chip-tag">proposta</span><span class="chip chip-tag">follow-up</span><span class="chip chip-tag">comercial</span></div>
           </div>
           <div class="task-card">
-            <div class="task-card-head"><span class="chip prio-2">alta</span></div>
             <a class="task-card-title" href="#">Revisar contrato de fornecedor fictício</a>
-            <div class="task-card-meta"><span class="chip chip-due">vence hoje</span></div>
+            <div class="task-card-meta"><span class="chip prio-2">alta</span><span class="chip chip-due">vence hoje</span></div>
           </div>
           <div class="task-card">
-            <div class="task-card-head"><span class="private-badge">🔒 privada</span><span class="chip prio-3">normal</span></div>
             <a class="task-card-title" href="#">Organizar documentos pessoais de exemplo</a>
-            <div class="task-card-meta"><span class="chip chip-due">vence em 3d</span></div>
+            <div class="task-card-meta"><span class="private-badge">🔒 privada</span><span class="chip prio-3">normal</span><span class="chip chip-due">vence em 3d</span></div>
           </div>
         </div>
       </section>
@@ -59,14 +63,14 @@
         <header class="task-col-head"><span class="task-col-dot" style="background: var(--warning)"></span><h2>Em progresso</h2><span class="task-col-count">2</span></header>
         <div class="task-col-body">
           <div class="task-card">
-            <div class="task-card-head"><span class="chip chip-project">Lançamento Produto X</span><span class="chip prio-2">alta</span><span class="chip chip-tag">urgente</span></div>
             <a class="task-card-title" href="#">Preparar pauta da reunião de equipe</a>
-            <div class="task-card-meta"><span class="chip chip-due">vence amanhã</span><span class="comments">1 comentário</span></div>
+            <div class="task-card-context">Em Lançamento Produto X</div>
+            <div class="task-card-meta"><span class="chip prio-2">alta</span><span class="chip chip-due">vence amanhã</span><span class="comments">1 comentário</span></div>
+            <div class="task-card-tags"><span class="chip chip-tag">urgente</span></div>
           </div>
           <div class="task-card">
-            <div class="task-card-head"><span class="chip prio-4">baixa</span></div>
             <a class="task-card-title" href="#">Pesquisar ferramentas de exemplo pro time</a>
-            <div class="task-card-meta"></div>
+            <div class="task-card-meta"><span class="chip prio-4">baixa</span></div>
           </div>
         </div>
       </section>
@@ -74,12 +78,11 @@
         <header class="task-col-head"><span class="task-col-dot" style="background: var(--success)"></span><h2>Concluído</h2><span class="task-col-count">2</span></header>
         <div class="task-col-body">
           <div class="task-card done">
-            <div class="task-card-head"><span class="chip chip-tag">cliente</span></div>
             <a class="task-card-title" href="#">Enviar proposta comercial fictícia</a>
             <div class="task-card-meta"><span class="comments">2 comentários</span></div>
+            <div class="task-card-tags"><span class="chip chip-tag">cliente</span></div>
           </div>
           <div class="task-card done">
-            <div class="task-card-head"></div>
             <a class="task-card-title" href="#">Agendar conversa com Ana Almeida</a>
             <div class="task-card-meta"></div>
           </div>

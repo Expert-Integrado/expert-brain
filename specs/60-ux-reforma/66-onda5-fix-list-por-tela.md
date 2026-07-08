@@ -38,8 +38,11 @@ Ordem de execução dentro desta onda (cada item pode ser um commit separado, to
    - Cores de estado (colunas, badges) → tokens semânticos da Onda 2.
    - Botões do card e da toolbar → co-classe `.btn`/`.btn-sm`.
    - Consolidar `.task-col-empty` numa única definição.
+   - **Anatomia do card no padrão ClickUp (decisão do dono, 07/07/2026, no gate da Onda 1):** título PRIMEIRO no card (clamp de 2 linhas), depois contexto de projeto como breadcrumb muted ("Em <projeto>", substitui o chip de projeto no head), depois UMA linha de meta (prio + due + comentários + selo privada), depois UMA ÚNICA linha de tags sem wrap (excesso corta com overflow hidden — considerar sufixo "+N"; hoje as tags empilham e poluem). Altura mínima consistente entre cards. Referência de proporção/título: capturas do ClickUp real em `C:/tmp/ux-refs/clickup/` (local, fora do repo) e protótipo `prototypes/identity/shared/board.html`.
 3. **Shell/login:**
    - Remover o bloco de CSS morto identificado em `styles.ts:1849-1875` (ou `1380-1392`, o que for determinado como o comportamento NÃO-vigente após inspeção visual) — decisão registrada no commit.
+   - **Ordem da navegação (decisão do dono, 07/07/2026):** Início → Inbox → Grafo → Notas → Tarefas → Contatos (+ Journal quando entrar, junto de Notas). **Configurações SAI do meio da lista e vai pro RODAPÉ da sidebar**, agrupada com o bloco do usuário. Aplicar em `render.ts:110-116` (sidebar) e na bottom-nav mobile (`render.ts:127-153`) na mesma ordem relativa.
+   - **Bloco do usuário no rodapé (decisão do dono, 07/07/2026: "parte dos usuários ali não está legal"):** redesenhar o rodapé da sidebar como grupo coeso — Configurações, avatar/inicial + e-mail truncado com ellipsis, Sair — separado da navegação por borda superior. Referência: `prototypes/identity/shared/base.css` (`.sidebar-user`).
    - Adicionar `'journal'` ao tipo `active` em `render.ts:69`; adicionar o link de sidebar (perto de `render.ts:110-116`) e de bottom-nav (perto de `render.ts:127-153`) pro Journal, com ícone consistente com os demais.
    - `journal.ts:234` passa a usar `active: 'journal'` em vez de `'home'` emprestado.
    - `NAV_BADGE_CSS` sobe pro `SHELL_CSS` (Onda 2).

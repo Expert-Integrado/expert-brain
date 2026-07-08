@@ -1,7 +1,15 @@
 # Onda 1 — Pesquisa de referências + opções de identidade visual
 
-> **Status:** ready · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** in-progress · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/61-onda0-infra-auditoria-baseline.md`
+>
+> **GATE RESOLVIDO (07/07/2026) — decisão do dono: direção A (Nebula Refinada)**, com ajustes
+> decididos no mesmo gate: (1) ordem da navegação Início → Inbox → Grafo → Notas → Tarefas →
+> Contatos, com Configurações no RODAPÉ junto do bloco do usuário (redesenhado); (2) anatomia
+> de card no padrão ClickUp — título primeiro, breadcrumb de projeto, UMA linha de meta e UMA
+> linha de tags sem wrap. Detalhes operacionais gravados em `66-onda5-fix-list-por-tela.md`
+> (itens Board e Shell). Protótipos e comparador: `prototypes/identity/` (commit 4e18be2 + revisão A').
+> Pendente pra fechar esta spec: pesquisa web (kanban/detail/visibilidade/temas).
 
 ## Contexto
 

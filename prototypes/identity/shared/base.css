@@ -50,6 +50,20 @@ h1, h2, h3 { font-family: var(--font-display); margin: 0; }
   margin-left: auto; background: var(--accent); color: var(--accent-contrast);
   font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 1px 7px;
 }
+.sidebar-spacer { flex: 1; }
+/* bloco do usuário no rodapé da sidebar (decisão do dono 07/07): Configurações
+   vive AQUI, junto do usuário — não no meio da navegação */
+.sidebar-user {
+  border-top: 1px solid var(--border); margin-top: 8px; padding-top: 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.sidebar-user .who {
+  display: flex; align-items: center; gap: 9px; padding: 7px 10px;
+  font-size: 12.5px; color: var(--text-dim); min-width: 0;
+}
+.sidebar-user .who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-user .who .avatar { width: 24px; height: 24px; font-size: 10px; }
+.sidebar-user a { font-size: 13px; }
 main.page { flex: 1; padding: calc(24px * var(--density)) calc(28px * var(--density)); min-width: 0; }
 .page-head { display: flex; align-items: center; gap: 14px; margin-bottom: calc(20px * var(--density)); }
 .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
@@ -103,19 +117,28 @@ main.page { flex: 1; padding: calc(24px * var(--density)) calc(28px * var(--dens
   border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
   color: var(--text-subtle); font-size: 12.5px; text-align: center; padding: 14px 8px;
 }
+/* anatomia de card no padrão ClickUp (decisão do dono 07/07): título PRIMEIRO
+   (clamp 2 linhas), contexto de projeto como breadcrumb muted, meta em linha,
+   tags numa ÚNICA linha sem wrap (o excesso corta — nada de card-torre) */
 .task-card {
   background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: calc(10px * var(--density)) calc(12px * var(--density));
+  padding: calc(12px * var(--density));
   display: flex; flex-direction: column; gap: 7px;
+  min-height: 86px;
   box-shadow: var(--shadow-1); cursor: pointer;
 }
 .task-card:hover { background: var(--surface-2); border-color: var(--border-strong); box-shadow: var(--shadow-2); }
-.task-card-head { display: flex; flex-wrap: wrap; gap: 5px; }
-.task-card-title { color: var(--text); font-size: 13.5px; font-weight: 600; text-decoration: none; line-height: 1.4; }
+.task-card-title {
+  color: var(--text); font-size: 13.5px; font-weight: 600; text-decoration: none; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .task-card-title:hover { color: var(--accent); }
 .task-card.done .task-card-title { text-decoration: line-through; color: var(--text-dim); }
+.task-card-context { font-size: 11.5px; color: var(--text-subtle); }
 .task-card-meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .task-card-meta .comments { font-size: 11.5px; color: var(--text-subtle); }
+.task-card-tags { display: flex; gap: 5px; overflow: hidden; flex-wrap: nowrap; }
+.task-card-tags .chip { flex: 0 0 auto; }
 
 /* ── home ── */
 .greeting { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
