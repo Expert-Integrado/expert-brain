@@ -1,15 +1,16 @@
 # Onda 1 — Pesquisa de referências + opções de identidade visual
 
-> **Status:** in-progress · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026) · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/61-onda0-infra-auditoria-baseline.md`
 >
-> **GATE RESOLVIDO (07/07/2026) — decisão do dono: direção A (Nebula Refinada)**, com ajustes
-> decididos no mesmo gate: (1) ordem da navegação Início → Inbox → Grafo → Notas → Tarefas →
-> Contatos, com Configurações no RODAPÉ junto do bloco do usuário (redesenhado); (2) anatomia
-> de card no padrão ClickUp — título primeiro, breadcrumb de projeto, UMA linha de meta e UMA
-> linha de tags sem wrap. Detalhes operacionais gravados em `66-onda5-fix-list-por-tela.md`
-> (itens Board e Shell). Protótipos e comparador: `prototypes/identity/` (commit 4e18be2 + revisão A').
-> Pendente pra fechar esta spec: pesquisa web (kanban/detail/visibilidade/temas).
+> **GATE RESOLVIDO E VALIDADO (07/07/2026) — decisão do dono: direção A (Nebula Refinada)**,
+> com ajustes decididos no mesmo gate e VALIDADOS pelo dono no comparador revisado: (1) ordem
+> da navegação Início → Inbox → Grafo → Notas → Tarefas → Contatos, com Configurações no RODAPÉ
+> junto do bloco do usuário (redesenhado); (2) anatomia de card no padrão ClickUp — título
+> primeiro, breadcrumb de projeto, UMA linha de meta e UMA linha de tags sem wrap. Detalhes
+> operacionais gravados em `66-onda5-fix-list-por-tela.md` (itens Board e Shell). Protótipos e
+> comparador: `prototypes/identity/` (commits 4e18be2 + 31f52ab). Pesquisa web das 5 categorias
+> documentada em `prototypes/identity/README.md`. Decisão no Brain: nota `b6j0hk0quwbi`.
 
 ## Contexto
 
@@ -70,14 +71,14 @@ O dono abre `prototypes/identity/index.html` localmente (ex. `python -m http.ser
 
 ## Critérios de aceite
 
-- [ ] Observações do ClickUp real capturadas em pasta LOCAL fora do repo, com nota explícita de "não commitar"
-- [ ] Pesquisa web das 5 categorias de padrão documentada (pode ser um arquivo de notas dentro de `prototypes/identity/README.md`, sem dado sensível)
-- [ ] `prototypes/identity/shared/base.css`, `home.html`, `board.html` criados com dados 100% fictícios
-- [ ] 3 arquivos `tokens.css` (direções A, B, C) criados, todos declarando o MESMO conjunto de custom properties
-- [ ] `prototypes/identity/index.html` (comparador com 3 iframes) funcional localmente
-- [ ] Tabela de contraste WCAG calculada para os tokens de texto de cada direção, incluída no README do protótipo
-- [ ] **Decisão do dono registrada nesta spec:** qual direção (A, B, C ou mix) foi escolhida — preencher aqui antes de a Onda 6 rodar: `[A PREENCHER PELO DONO]`
-- [ ] Varredura de PII: nenhum arquivo em `prototypes/identity/` contém nome de cliente, dado do ClickUp real ou qualquer identificador pessoal
+- [x] Observações do ClickUp real capturadas em pasta LOCAL fora do repo, com nota explícita de "não commitar" (`C:/tmp/ux-refs/clickup/` — 6 capturas + `observacoes.md`)
+- [x] Pesquisa web das 5 categorias de padrão documentada (`prototypes/identity/README.md`, seção "Pesquisa web", sem dado sensível)
+- [x] `prototypes/identity/shared/base.css`, `home.html`, `board.html` criados com dados 100% fictícios
+- [x] 3 arquivos `tokens.css` (direções A, B, C) criados, todos declarando o MESMO conjunto de custom properties
+- [x] `prototypes/identity/index.html` (comparador com 3 iframes) funcional localmente
+- [x] Tabela de contraste WCAG calculada para os tokens de texto de cada direção, incluída no README do protótipo
+- [x] **Decisão do dono registrada nesta spec:** **direção A (Nebula Refinada)** com 3 ajustes (nav reordenada; Configurações no rodapé com bloco do usuário redesenhado; cards padrão ClickUp com uma linha de tags) — decidida e validada no comparador revisado em 07/07/2026
+- [x] Varredura de PII: nenhum arquivo em `prototypes/identity/` contém nome de cliente, dado do ClickUp real ou qualquer identificador pessoal (grep de PII rodado antes de cada commit)
 
 ## Validação
 
