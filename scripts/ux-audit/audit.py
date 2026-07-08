@@ -95,18 +95,15 @@ def discover_ids(context) -> dict:
     except Exception as exc:
         print(f"  discover note: {exc}", file=sys.stderr)
 
-    # contato: primeiro link de página própria em /app/contacts
+    # contato: via /app/contacts/data ({nodes:[{id,...}]}) — a landing é um canvas
+    # de grafo sem <a>, então DOM scraping não encontra nada ali.
     try:
-        page.goto(f"{BASE}/app/contacts", wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
-        chrefs = page.eval_on_selector_all(
-            'a[href^="/app/contacts/"]',
-            "els => els.map(e => e.getAttribute('href'))")
-        for h in chrefs:
-            tail = h.split("/app/contacts/")[-1]
-            if tail and "/" not in tail and "." not in tail and "?" not in tail:
-                ids["contact"] = tail
-                break
+        r = page.request.get(f"{BASE}/app/contacts/data")
+        if r.ok:
+            nodes = (r.json().get("nodes")) or []
+            if nodes:
+                seed = [n for n in nodes if str(n.get("id", "")).startswith("seed-")]
+                ids["contact"] = (seed or nodes)[0]["id"]
     except Exception as exc:
         print(f"  discover contact: {exc}", file=sys.stderr)
 
