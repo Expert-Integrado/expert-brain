@@ -627,7 +627,7 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
     if (result.reason === 'not-found') return json({ error: 'not found' }, 404);
     // Selo de privacidade (spec 31/59): nota/task privada não pode ter link público.
     if (result.reason === 'private') {
-      return json({ error: 'private', message: 'Nota privada não pode ter link público. Torne-a pública primeiro.' }, 409);
+      return json({ error: 'private', message: 'Item privado não pode ter link público. Tire-o do modo privado primeiro.' }, 409);
     }
     // already-shared (sem renew): não é erro — devolve a expiração atual.
     return json({
@@ -1012,14 +1012,11 @@ const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Task privada — 
 
 function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): string {
   const canClose = v.status === 'open' || v.status === 'in_progress';
-  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''} draggable="true">
+  return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''}>
     <div class="task-card-head">${v.private ? PRIVATE_TASK_BADGE : ''}${cardProjectChip(v, projectsById)}${priorityPill(v.priority)}${tagChipsHtml(v.tags)}${shareIconHtml(v.share_expires_brt)}</div>
-    <a class="task-card-title" href="/app/tasks/${esc(v.id)}">${esc(v.title)}</a>
+    <a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a>
     <div class="task-card-meta">${dueBadge(v)}${commentBadge(v.comment_count)}</div>
-    <div class="task-card-actions">
-      ${canClose ? `<button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button>` : ''}
-      <a class="task-btn task-open" href="/app/tasks/${esc(v.id)}">abrir</a>
-    </div>
+    ${canClose ? `<div class="task-card-actions"><button class="task-btn task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
 }
 
@@ -1222,17 +1219,22 @@ export const TASKS_CSS = `
   border-radius: var(--radius-sm); padding: 2px;
   transition: background 160ms var(--ease), box-shadow 160ms var(--ease);
 }
-/* Drop target destacado: fundo lavanda + moldura tracejada generosa (spec 36 fase 2) */
-.task-col-body.drag-over {
-  background: rgba(167,139,250,0.09);
-  box-shadow: inset 0 0 0 2px var(--border-strong);
+/* Alvo do drop (spec 65): borda + header da coluna acendem — nunca o fundo inteiro.
+   A classe .drag-target vai na <section class="task-col"> (board-dnd.ts). */
+.task-col.drag-target {
+  border-color: var(--accent-lav); border-top-color: var(--accent-lav);
+  box-shadow: inset 0 0 0 1px var(--accent-lav);
 }
+.task-col.drag-target .task-col-label { color: var(--accent-lav); }
 .task-col-empty {
   color: var(--text-faint); font-size: 13px; text-align: center; padding: 20px 0;
   border: 1px dashed transparent; border-radius: var(--radius-sm);
   transition: border-color 160ms var(--ease);
 }
-.task-col-body.drag-over .task-col-empty { border-color: var(--border-strong); color: var(--text-dim); }
+/* Durante o drag, TODA coluna vazia mostra o tracejado (convite sutil); a coluna
+   alvo destaca mais forte. */
+body.task-dragging .task-col-empty { border-color: var(--border); }
+.task-col.drag-target .task-col-empty { border-color: var(--border-strong); color: var(--text-dim); }
 
 /* "+ Nova tarefa" inline no rodapé da coluna (spec 52) — cria já na coluna certa */
 .task-col-inline-create { margin-top: 8px; padding: 0 2px; }
@@ -1247,13 +1249,22 @@ export const TASKS_CSS = `
 
 .task-card {
   background: var(--bg-accent); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); padding: 12px 13px; cursor: grab;
+  border-radius: var(--radius-sm); padding: 12px 13px; cursor: pointer;
   transition: border-color 160ms var(--ease), transform 160ms var(--ease), box-shadow 160ms var(--ease), opacity 160ms var(--ease);
 }
 .task-card:hover { border-color: var(--border-strong); box-shadow: 0 6px 18px -12px rgba(0,0,0,0.6); }
-.task-card:active { cursor: grabbing; }
-/* Card sendo arrastado: quase invisível no lugar de origem (é o "fantasma") */
-.task-card.dragging { opacity: 0.35; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.7); border-color: var(--accent-lav); cursor: grabbing; }
+/* O <a> do título segue sendo o único tab stop; o anel de foco vai pro card todo */
+.task-card:focus-within { border-color: var(--accent-lav); }
+/* Card sendo arrastado: esmaece no lugar de origem (o clone .task-card-ghost segue o ponteiro) */
+.task-card.dragging { opacity: 0.35; box-shadow: 0 10px 30px -12px rgba(0,0,0,0.7); border-color: var(--accent-lav); }
+/* Clone que segue o ponteiro durante o drag (board-dnd.ts) — fora do fluxo, sem hit-test */
+.task-card-ghost {
+  position: fixed; z-index: 400; margin: 0; pointer-events: none;
+  background: var(--bg-accent); border: 1px solid var(--accent-lav);
+  border-radius: var(--radius-sm); padding: 12px 13px;
+  opacity: 0.95; box-shadow: 0 18px 44px -12px rgba(0,0,0,0.75);
+  transform: rotate(1.5deg); transition: none;
+}
 .task-card[data-status="done"], .task-card[data-status="canceled"] { opacity: 0.62; }
 .task-card[data-status="done"] .task-card-title { text-decoration: line-through; color: var(--text-dim); }
 /* Card focado via ?task=<id> (spec 66: paleta abre o board com o card em destaque) —
@@ -1397,8 +1408,10 @@ export const TASKS_CSS = `
 .task-create-submit:hover { transform: translateY(-1px); }
 .task-create-submit:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
 
-/* Enquanto arrasta: cursor grabbing em toda a página + colunas convidam o drop */
-body.task-dragging { cursor: grabbing; }
+/* Enquanto arrasta: cursor grabbing na página toda, seleção de texto suspensa e
+   colunas com corpo mínimo pra receber o drop */
+body.task-dragging { cursor: grabbing; user-select: none; }
+body.task-dragging .task-card { cursor: grabbing; }
 body.task-dragging .task-col-body { min-height: 90px; }
 
 @keyframes taskFadeIn { from { opacity: 0; } to { opacity: 1; } }

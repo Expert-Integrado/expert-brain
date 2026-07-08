@@ -1,7 +1,33 @@
 # Onda 4 — Interações: drag-and-drop, clique no cartão, seletor de visibilidade
 
-> **Status:** ready · **Prioridade:** P0 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** done (08/07/2026) · **Prioridade:** P0 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/64-onda3-biblioteca-componentes.md`
+>
+> **Evidência de conclusão:** os 3 bugs da aula resolvidos.
+> (1) **DnD**: novo `src/web/client/board-dnd.ts` — Pointer Events, state machine
+> idle→armed→dragging, threshold 6px mouse / long-press 300ms touch (slop 10px cede ao
+> scroll nativo), ghost clonado com `pointer-events:none`, autoscroll em rAF (bordas
+> horizontais do board + verticais da janela), delegação única em `#task-board`,
+> `hitTestColumn()` puro exportado pro jsdom. `.drag-target` na `<section>` (borda +
+> label acesos, zero fundo pintado); tracejado nas colunas vazias durante o drag. HTML5
+> DnD removido dos 2 renderizadores; `draggable="false"` no `<a>` do título.
+> (2) **Card inteiro clicável** via pointerup sem drag armado (exceções conforme spec; o
+> `<a>` do título navega nativo e TAMBÉM arma drag — decisão de execução: o título é a
+> maior área de pega do card); guarda de seleção de texto; supressão do click fantasma
+> pós-drop em fase de captura; Esc cancela; contextmenu suprimido no long-press; scroll
+> nativo segurado só durante drag ativo via touchmove non-passive (padrão SortableJS).
+> Botão "abrir" removido; `.task-card:focus-within` dá o anel; cursor pointer (grabbing
+> só durante drag). (3) **Visibilidade**: `renderVisibilitySection()` em `src/web/notes.ts`
+> (task + nota, radiogroup Privado/Normal/Link público, microcopy "NÃO fica na internet")
+> substitui as 4 seções antigas; `client/visibility-ui.ts` substitui `share-ui.ts`
+> (deletado) com as transições encadeadas e confirm nas destrutivas; Privado→Link
+> despriva + gera com fail-safe pro menos exposto. Zero endpoint novo. Mensagem 409 do
+> share reescrita ("Tire-o do modo privado" no lugar de "Torne-a pública"). Testes: 26
+> casos jsdom novos (board-dnd 15, visibility-ui 11), `tasks-detail-sidebar` atualizado
+> (o assert antigo passava POR ACIDENTE via comentário do CSS inline), e2e
+> board/visibility/task-detail reescritos pra page.mouse + radios, com caso novo
+> Link→Privado revogando no mesmo write. Validação: typecheck, npm test 791+5,
+> test:client 38, e2e 21, harness wave-4 + pixel diff + verificação manual no navegador.
 
 ## Contexto
 
@@ -80,19 +106,19 @@ Substitui as 2 seções em `notes.ts:877-928` (task) e a dupla equivalente em `n
 
 ## Critérios de aceite
 
-- [ ] `src/web/client/board-dnd.ts` existe, implementa a state machine com threshold 6px/300ms, ghost, autoscroll, delegação em `#task-board`
-- [ ] `.drag-target` aplica borda + header na `<section>` da coluna, sem `background`/`box-shadow` de fundo pintado; `tasks.ts:1226-1229` removido ou substituído
-- [ ] `draggable="true"` removido dos 2 renderizadores de card; `<a class="task-card-title">` tem `draggable="false"` explícito
-- [ ] `wireDropzones()` e os listeners HTML5 DnD antigos (`client/tasks.ts:483-522`) removidos
-- [ ] Card inteiro navega no `pointerup` sem drag armado, respeitando as exceções (a/button/input/select/textarea/label/.task-card-edit) e a guarda de seleção de texto
-- [ ] Botão `<a class="task-btn task-open">` removido de `renderCardSSR`
-- [ ] `.task-card:focus-within` aplica foco visível; tab stop único continua sendo o `<a class="task-card-title">`
-- [ ] Seletor de visibilidade unificado (3 estados) substitui as seções antigas em `notes.ts:877-928` (task) e `notes.ts:402-462` (nota), sem nenhum endpoint novo
-- [ ] Transições destrutivas (Link→Privado, Link→Normal) pedem confirmação; transições não-destrutivas não pedem
-- [ ] `src/web/client/visibility-ui.ts` criado, evoluindo `share-ui.ts`
-- [ ] Testes jsdom novos cobrindo os casos listados + `test/tasks-detail-sidebar.test.ts` atualizado
-- [ ] 4 specs e2e de smoke passam localmente
-- [ ] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
+- [x] `src/web/client/board-dnd.ts` existe, implementa a state machine com threshold 6px/300ms, ghost, autoscroll, delegação em `#task-board`
+- [x] `.drag-target` aplica borda + header na `<section>` da coluna, sem `background`/`box-shadow` de fundo pintado; `tasks.ts:1226-1229` removido ou substituído
+- [x] `draggable="true"` removido dos 2 renderizadores de card; `<a class="task-card-title">` tem `draggable="false"` explícito
+- [x] `wireDropzones()` e os listeners HTML5 DnD antigos (`client/tasks.ts:483-522`) removidos
+- [x] Card inteiro navega no `pointerup` sem drag armado, respeitando as exceções (a/button/input/select/textarea/label/.task-card-edit) e a guarda de seleção de texto
+- [x] Botão `<a class="task-btn task-open">` removido de `renderCardSSR`
+- [x] `.task-card:focus-within` aplica foco visível; tab stop único continua sendo o `<a class="task-card-title">`
+- [x] Seletor de visibilidade unificado (3 estados) substitui as seções antigas em `notes.ts:877-928` (task) e `notes.ts:402-462` (nota), sem nenhum endpoint novo
+- [x] Transições destrutivas (Link→Privado, Link→Normal) pedem confirmação; transições não-destrutivas não pedem
+- [x] `src/web/client/visibility-ui.ts` criado, evoluindo `share-ui.ts`
+- [x] Testes jsdom novos cobrindo os casos listados + `test/tasks-detail-sidebar.test.ts` atualizado
+- [x] 4 specs e2e de smoke passam localmente
+- [x] `npm run typecheck`, `npm test`, `npm run test:client` e a suíte e2e passam
 
 ## Validação
 

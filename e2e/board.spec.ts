@@ -1,9 +1,9 @@
 // Smoke do board Kanban (specs/60-ux-reforma/61). Estado vem do seed
 // determinístico (global-setup roda seed-dev.mjs --reset a cada execução).
 //
-// ATENÇÃO Onda 4 (specs/60-ux-reforma/65): o DnD vai trocar de HTML5 drag events
-// pra Pointer Events — o teste 'arrastar card' abaixo DEVE ser reescrito com
-// page.mouse (down/move/up) no MESMO commit dessa mudança.
+// Onda 4 (specs/60-ux-reforma/65): DnD por Pointer Events (board-dnd.ts) — o
+// arrasto aqui usa page.mouse de verdade (down/move/up com steps), não eventos
+// sintéticos de HTML5 DnD. Card inteiro é clicável (abre o detalhe).
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -25,22 +25,34 @@ test('task privada aparece pro dono com o selo de privada', async ({ page }) => 
   await expect(card.locator('.private-badge')).toBeVisible();
 });
 
-test('arrastar card entre colunas persiste a mudança (HTML5 DnD)', async ({ page }) => {
+test('arrastar card entre colunas persiste a mudança (Pointer Events)', async ({ page }) => {
+  const card = page.locator('.task-card[data-id="seed-task-01"]');
+  const targetCol = page.locator('.task-col[data-col="col_progresso"]');
+  const cb = (await card.boundingBox())!;
+  const tb = (await targetCol.boundingBox())!;
+
   const moved = page.waitForResponse((r) => r.url().includes('/app/tasks/move') && r.ok());
-  await page.evaluate(() => {
-    const card = document.querySelector('.task-card[data-id="seed-task-01"]')!;
-    const zone = document.querySelector('.task-col-body[data-dropzone="col_progresso"]')!;
-    const dataTransfer = new DataTransfer();
-    card.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer }));
-    zone.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer }));
-    zone.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer }));
-    card.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
-  });
+  await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+  await page.mouse.down();
+  // steps garantem que o threshold de 6px arma o drag antes de chegar no alvo
+  await page.mouse.move(tb.x + tb.width / 2, tb.y + 80, { steps: 15 });
+  // affordance: a coluna-alvo (section) acende, nunca o fundo do corpo inteiro
+  await expect(targetCol).toHaveClass(/drag-target/);
+  await page.mouse.up();
   await moved;
   // move() recarrega o board — o card precisa REAPARECER dentro da coluna destino
   await expect(
     page.locator('.task-col-body[data-dropzone="col_progresso"] .task-card[data-id="seed-task-01"]')
   ).toBeVisible();
+});
+
+test('clicar no corpo do card (fora do título) abre o detalhe', async ({ page }) => {
+  const card = page.locator('.task-card[data-id="seed-task-02"]');
+  const box = (await card.boundingBox())!;
+  // canto inferior direito do card = padding, longe do <a> do título e dos botões
+  await page.mouse.click(box.x + box.width - 8, box.y + box.height - 6);
+  await expect(page).toHaveURL(/\/app\/tasks\/seed-task-02/);
+  await expect(page.locator('.task-detail-sidebar')).toBeVisible();
 });
 
 test('link do título do card navega pro detalhe', async ({ page }) => {

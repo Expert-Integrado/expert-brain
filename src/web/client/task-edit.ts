@@ -11,7 +11,7 @@
 
 import { appFetch } from './http.js';
 import { createSaveQueue, type SaveResult } from './save-queue.js';
-import { initShareUi } from './share-ui.js';
+import { initVisibilityUi } from './visibility-ui.js';
 
 const root = document.querySelector<HTMLElement>('.task-edit');
 
@@ -276,9 +276,9 @@ if (root) {
   });
 }
 
-// ── Compartilhamento público (spec 33) ──
-// Wiring extraído pro módulo compartilhado (share-ui.ts) — a mesma seção existe no
-// detalhe de NOTA (note-edit.ts). O endpoint vem do data-share-endpoint da seção.
-initShareUi();
+// ── Visibilidade (spec 65) ──
+// Wiring no módulo compartilhado (visibility-ui.ts) — a mesma seção existe no
+// detalhe de NOTA (note-edit.ts). Endpoints vêm dos data-attributes da seção.
+initVisibilityUi();
 
 export {};

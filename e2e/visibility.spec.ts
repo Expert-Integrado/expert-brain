@@ -1,20 +1,27 @@
-// Fluxos de visibilidade da task: share opt-in e toggle privada (specs/60-ux-reforma/61).
-// Comportamento que a reforma PRESERVA (decisão do Eric): private default 0, share
-// sempre opt-in, marcar privada revoga o link público na mesma escrita.
-//
-// ATENÇÃO Onda 4 (specs/60-ux-reforma/65): a UI vira um seletor único de 3 níveis
-// (Privado / Normal / Link público) — reescrever os seletores deste arquivo no MESMO
-// commit. Os POSTs de backend (share, /app/tasks/private) NÃO mudam.
+// Fluxos de visibilidade da task via o seletor único de 3 níveis (Privado /
+// Normal / Link público — specs/60-ux-reforma/65). Comportamento que a reforma
+// PRESERVA (decisão do Eric): private default 0, share sempre opt-in, marcar
+// privada revoga o link público na mesma escrita. Os POSTs de backend
+// (/app/tasks/private, share, unshare) são os mesmos de antes.
 import { test, expect } from '@playwright/test';
 
-test('gerar link público mostra URL /s/ e revogar esconde', async ({ page }) => {
+test('gerar link público mostra URL /s/ e revogar volta pro normal', async ({ page }) => {
   await page.goto('/app/tasks/seed-task-02');
+
+  // estado do seed: normal → o painel de link começa fechado
+  const section = page.locator('[data-visibility]');
+  await expect(section).toHaveAttribute('data-state', 'normal');
+  await expect(page.locator('[data-vis-panel]')).toBeHidden();
+
+  // selecionar "Link público" abre o painel; o link só nasce no botão
+  await page.check('input[name="visibility"][value="link"]');
+  await expect(page.locator('[data-vis-panel]')).toBeVisible();
 
   const shared = page.waitForResponse((r) => r.url().includes('/app/tasks/share') && r.ok());
   await page.click('[data-share-generate]');
   await shared;
-  const linkBox = page.locator('[data-share-link]');
-  await expect(linkBox).toBeVisible();
+  await expect(section).toHaveAttribute('data-state', 'link');
+  await expect(page.locator('[data-share-link]')).toBeVisible();
   await expect(page.locator('[data-share-url]')).toHaveValue(/\/s\/ebs_/);
   await expect(page.locator('[data-share-revoke]')).toBeVisible();
 
@@ -35,22 +42,62 @@ test('gerar link público mostra URL /s/ e revogar esconde', async ({ page }) =>
   const revoked = page.waitForResponse((r) => r.url().includes('/app/tasks/unshare') && r.ok());
   await page.click('[data-share-revoke]');
   await revoked;
+  await expect(section).toHaveAttribute('data-state', 'normal');
   const after = await anonPage.goto(shareUrl);
   expect(after!.status()).toBeGreaterThanOrEqual(400);
   await anon.close();
 });
 
-test('tornar privada esconde o painel de share; tornar pública restaura', async ({ page }) => {
+test('privado esconde o painel de link e persiste; normal restaura', async ({ page }) => {
   await page.goto('/app/tasks/seed-task-04');
+  const section = page.locator('[data-visibility]');
+  await expect(section).toHaveAttribute('data-state', 'normal');
 
-  // pública -> privada (form POST recarrega a página)
-  await Promise.all([page.waitForNavigation(), page.click('[data-task-private-toggle]')]);
-  await expect(page.locator('.task-private-state')).toContainText('privada');
-  await expect(page.locator('.task-share [data-share-state]')).toContainText('não pode ter link público');
-  await expect(page.locator('[data-share-generate]')).toHaveCount(0);
+  // normal → privado (sem link vivo = sem confirm; POST sem navegação)
+  const toPrivate = page.waitForResponse((r) => r.url().includes('/app/tasks/private') && r.ok());
+  await page.check('input[name="visibility"][value="private"]');
+  await toPrivate;
+  await expect(section).toHaveAttribute('data-state', 'private');
+  await expect(page.locator('[data-vis-panel]')).toBeHidden();
 
-  // privada -> pública (restaura o estado do seed pros demais testes)
-  await Promise.all([page.waitForNavigation(), page.click('[data-task-private-toggle]')]);
-  await expect(page.locator('.task-private-state')).toContainText('pública');
-  await expect(page.locator('[data-share-generate]')).toBeVisible();
+  // persistiu no servidor (reload re-renderiza do banco)
+  await page.reload();
+  await expect(page.locator('[data-visibility]')).toHaveAttribute('data-state', 'private');
+  await expect(page.locator('input[name="visibility"][value="private"]')).toBeChecked();
+
+  // privado → normal (restaura o estado do seed pros demais testes)
+  const toNormal = page.waitForResponse((r) => r.url().includes('/app/tasks/private') && r.ok());
+  await page.check('input[name="visibility"][value="normal"]');
+  await toNormal;
+  await expect(page.locator('[data-visibility]')).toHaveAttribute('data-state', 'normal');
+});
+
+test('link vivo → privado pede confirmação e derruba o link no mesmo write', async ({ page }) => {
+  await page.goto('/app/tasks/seed-task-05');
+
+  // gera um link primeiro
+  await page.check('input[name="visibility"][value="link"]');
+  const shared = page.waitForResponse((r) => r.url().includes('/app/tasks/share') && r.ok());
+  await page.click('[data-share-generate]');
+  await shared;
+  const url = await page.locator('[data-share-url]').inputValue();
+  const shareUrl = new URL(page.url()).origin + new URL(url).pathname;
+
+  // link → privado: confirm destrutivo; o server revoga o link na mesma escrita
+  page.once('dialog', (d) => d.accept());
+  const toPrivate = page.waitForResponse((r) => r.url().includes('/app/tasks/private') && r.ok());
+  await page.check('input[name="visibility"][value="private"]');
+  await toPrivate;
+  await expect(page.locator('[data-visibility]')).toHaveAttribute('data-state', 'private');
+
+  const anon = await page.context().browser()!.newContext();
+  const anonPage = await anon.newPage();
+  const res = await anonPage.goto(shareUrl);
+  expect(res!.status()).toBeGreaterThanOrEqual(400);
+  await anon.close();
+
+  // restaura o seed: privado → normal
+  const toNormal = page.waitForResponse((r) => r.url().includes('/app/tasks/private') && r.ok());
+  await page.check('input[name="visibility"][value="normal"]');
+  await toNormal;
 });

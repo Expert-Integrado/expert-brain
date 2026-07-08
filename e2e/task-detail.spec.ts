@@ -1,19 +1,20 @@
-// Smoke do detalhe de task (specs/60-ux-reforma/61). A Onda 4 substitui as duas
-// seções da sidebar (Compartilhamento público + Privacidade) por um seletor único
-// de visibilidade (specs/60-ux-reforma/65) — atualizar as âncoras aqui no MESMO commit.
+// Smoke do detalhe de task (specs/60-ux-reforma/61). Desde a Onda 4 a sidebar
+// tem UM seletor de visibilidade de 3 níveis (specs/60-ux-reforma/65) no lugar
+// das antigas seções "Compartilhamento público" + "Privacidade".
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/app/tasks/seed-task-02');
 });
 
-test('detalhe renderiza título, sidebar e seções de visibilidade', async ({ page }) => {
+test('detalhe renderiza título, sidebar e o seletor de visibilidade', async ({ page }) => {
   // o título é um campo EDITÁVEL (input), não texto — getByText não o encontra
   await expect(page.locator('input.task-edit-title')).toHaveValue('Revisar contrato de fornecedor fictício');
   const sidebar = page.locator('.task-detail-sidebar');
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.getByText('Compartilhamento público')).toBeVisible();
-  await expect(sidebar.getByText('Privacidade')).toBeVisible();
+  await expect(sidebar.getByRole('heading', { name: 'Visibilidade' })).toBeVisible();
+  await expect(sidebar.locator('input[name="visibility"]')).toHaveCount(3);
+  await expect(sidebar.getByText('NÃO fica na internet')).toBeVisible();
 });
 
 test('comentário novo aparece na página após o post', async ({ page }) => {

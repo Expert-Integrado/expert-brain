@@ -399,43 +399,18 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   }).join('');
   const tldrLen = (note.tldr ?? '').trim().length;
 
-  // Compartilhamento público de NOTA (spec 33, reconciliada): mesma seção do detalhe
-  // de task (classes .task-share*, wiring em client/share-ui.ts), com o opt-in de
-  // mídia a mais. Nota privada não compartilha (o servidor recusa; a UI nem oferece).
+  // Visibilidade da NOTA (spec 65): seletor único de 3 níveis substitui a antiga
+  // seção "Compartilhamento" + o toggle "Tornar privada" do note-edit-meta.
   const noteShareStatus = isPrivate ? null : await getShareStatus(env, note.id, Date.now());
-  const noteShared = noteShareStatus?.shared ?? false;
-  const noteShareExpired = noteShareStatus?.expired ?? false;
-  const noteShareStateHtml = noteShared
-    ? (noteShareExpired
-        ? `Havia um link público, mas <strong>expirou</strong> em ${esc(noteShareStatus?.expires_brt ?? '')}. Gere um novo abaixo.`
-        : `Esta nota tem um link público ativo, válido até <strong>${esc(noteShareStatus?.expires_brt ?? '')}</strong>. O link só aparece no momento em que é gerado (o banco guarda só o hash). Gere de novo pra revê-lo (isso troca o link), ou revogue.`)
-    : 'Esta nota não está compartilhada. Gere um link público read-only pra enviar a alguém sem conta.';
-  const noteShareSection = isPrivate
-    ? `<section class="task-share note-share-wrap" data-note-id="${esc(note.id)}" data-share-endpoint="/app/notes" data-shared="0" data-private="1">
-      <h2>Compartilhamento</h2>
-      <p class="task-share-state" data-share-state>Nota <strong>privada</strong>: não pode ter link público. Torne-a pública (acima) pra compartilhar.</p>
-    </section>`
-    : `<section class="task-share note-share-wrap" data-note-id="${esc(note.id)}" data-share-endpoint="/app/notes" data-shared="${noteShared ? '1' : '0'}">
-      <h2>Compartilhamento</h2>
-      <p class="task-share-state" data-share-state>${noteShareStateHtml}</p>
-      <div class="task-share-controls">
-        <label class="task-share-ttl">
-          <span>Validade (dias)</span>
-          <input type="number" min="1" max="365" value="30" data-share-days aria-label="Validade em dias" />
-        </label>
-        <label class="note-share-media-opt">
-          <input type="checkbox" data-share-media ${noteShareStatus?.include_media ? 'checked' : ''} />
-          <span>Incluir mídia</span>
-        </label>
-        <button type="button" class="task-d-btn task-share-btn" data-share-generate>${noteShared && !noteShareExpired ? 'Gerar novo link' : 'Compartilhar'}</button>
-        <button type="button" class="task-d-btn task-share-revoke" data-share-revoke ${noteShared ? '' : 'hidden'}>Revogar</button>
-      </div>
-      <div class="task-share-link" data-share-link hidden>
-        <input type="text" readonly data-share-url aria-label="Link público" />
-        <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
-      </div>
-      <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
-    </section>`;
+  const noteVisibilitySection = renderVisibilitySection({
+    kind: 'note',
+    id: note.id,
+    isPrivate,
+    shared: noteShareStatus?.shared ?? false,
+    expired: noteShareStatus?.expired ?? false,
+    expiresBrt: noteShareStatus?.expires_brt ?? '',
+    includeMedia: noteShareStatus?.include_media ?? false,
+  });
 
   const body = `
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
@@ -456,10 +431,6 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
         </div>
         <span class="note-edit-updated">Atualizada ${formatDate(note.updated_at)}</span>
         <button id="btn-copy-link" class="note-edit-copy" type="button">Copiar link</button>
-        <form method="post" action="/app/notes/${esc(note.id)}/private" class="note-private-form">
-          <input type="hidden" name="private" value="${isPrivate ? '0' : '1'}" />
-          <button type="submit" class="note-edit-copy note-private-toggle" data-private-toggle>${isPrivate ? 'Tornar pública' : 'Tornar privada'}</button>
-        </form>
       </div>
 
       <div class="note-edit-ctl note-edit-ctl-tldr">
@@ -507,7 +478,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       </label>
     </section>
 
-    ${noteShareSection}
+    ${noteVisibilitySection}
 
     ${mentionsHtml}
     ${tasksFromNoteHtml}
@@ -806,6 +777,75 @@ export async function handleNotePrivatePost(req: Request, env: Env, id: string):
     : new Response(null, { status: 302, headers: { location: `/app/notes/${id}` } });
 }
 
+// ─────────────── Seletor único de visibilidade (spec 60-ux-reforma/65) ───────────────
+// Um radiogroup de 3 níveis substitui as antigas seções "Privacidade" (specs 31/59) e
+// "Compartilhamento público" (spec 33) nos detalhes de NOTA e de TASK:
+//   Privado      → private=1 (nunca tem link público; marcar privada revoga no server)
+//   Normal       → private=0 sem link — o DEFAULT do sistema; visível só pro dono e
+//                  suas credenciais, NÃO fica na internet (a palavra "pública" da UI
+//                  antiga induzia a achar que sim)
+//   Link público → private=0 + link /s/token vivo (read-only, com validade)
+// ZERO endpoint novo: o wiring em client/visibility-ui.ts reusa POST {endpoint}/private,
+// /share e /unshare. As classes .task-share-* internas do painel são as mesmas de
+// antes (CSS reaproveitado); o radiogroup ganha .vis-*.
+function renderVisibilitySection(o: {
+  kind: 'task' | 'note';
+  id: string;
+  isPrivate: boolean;
+  shared: boolean;
+  expired: boolean;
+  expiresBrt: string;
+  includeMedia: boolean | null; // null = opção não existe (task)
+}): string {
+  const state = o.isPrivate ? 'private' : o.shared ? 'link' : 'normal';
+  const kindLabel = o.kind === 'task' ? 'task' : 'nota';
+  const endpoint = o.kind === 'task' ? '/app/tasks' : '/app/notes';
+  const privateAction = o.kind === 'task' ? '/app/tasks/private' : `/app/notes/${esc(o.id)}/private`;
+  const opt = (value: string, icon: string, title: string, desc: string) => `
+      <label class="vis-opt${state === value ? ' selected' : ''}">
+        <input type="radio" name="visibility" value="${value}"${state === value ? ' checked' : ''} />
+        <span class="vis-opt-head"><span aria-hidden="true">${icon}</span>${title}</span>
+        <span class="vis-opt-desc">${desc}</span>
+      </label>`;
+  const shareStateHtml = o.shared
+    ? (o.expired
+        ? `Havia um link público, mas <strong>expirou</strong> em ${esc(o.expiresBrt)}. Gere um novo.`
+        : `Link público ativo, válido até <strong>${esc(o.expiresBrt)}</strong>. O link só aparece quando é gerado (o banco guarda só o hash) — gere de novo pra revê-lo (isso troca o link), ou revogue.`)
+    : 'Gere um link público read-only pra enviar a alguém sem conta.';
+  const mediaOpt = o.includeMedia === null ? '' : `
+          <label class="note-share-media-opt">
+            <input type="checkbox" data-share-media${o.includeMedia ? ' checked' : ''} />
+            <span>Incluir mídia</span>
+          </label>`;
+  return `
+    <section class="task-visibility" data-visibility data-kind="${o.kind}" data-id="${esc(o.id)}"
+      data-share-endpoint="${endpoint}" data-private-action="${privateAction}"
+      data-state="${state}" data-shared="${o.shared ? '1' : '0'}">
+      <h2>Visibilidade</h2>
+      <div class="vis-group" role="radiogroup" aria-label="Visibilidade da ${kindLabel}">
+        ${opt('private', '🔒', 'Privado', 'Só você e credenciais com escopo <code>private</code>. Nunca tem link público.')}
+        ${opt('normal', '👥', 'Normal', 'Você + seus agentes. NÃO fica na internet.')}
+        ${opt('link', '🔗', 'Link público', 'Além do normal: quem tiver o link abre uma cópia read-only.')}
+      </div>
+      <div class="vis-panel" data-vis-panel${state === 'link' ? '' : ' hidden'}>
+        <p class="task-share-state" data-share-state>${shareStateHtml}</p>
+        <div class="task-share-controls">
+          <label class="task-share-ttl">
+            <span>Validade (dias)</span>
+            <input type="number" min="1" max="365" value="30" data-share-days aria-label="Validade em dias" />
+          </label>${mediaOpt}
+          <button type="button" class="task-d-btn task-share-btn" data-share-generate>${o.shared && !o.expired ? 'Gerar novo link' : 'Gerar link'}</button>
+          <button type="button" class="task-d-btn task-share-revoke" data-share-revoke${o.shared ? '' : ' hidden'}>Revogar</button>
+        </div>
+        <div class="task-share-link" data-share-link hidden>
+          <input type="text" readonly data-share-url aria-label="Link público" />
+          <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
+        </div>
+      </div>
+      <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
+    </section>`;
+}
+
 const TASK_STATUS_LABELS: Record<string, string> = {
   open: 'A fazer',
   in_progress: 'Em progresso',
@@ -874,58 +914,20 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       </form>
     </section>`;
 
-  // Selo de privacidade (spec 59): task privada NUNCA tem link público. Em vez do painel
-  // de compartilhamento, mostra um aviso — o link só volta a existir se a task for tornada
-  // pública (toggle abaixo). Isso também evita o botão "Compartilhar" que erraria (409).
+  // Visibilidade da TASK (spec 65): seletor único de 3 níveis substitui as antigas
+  // seções "Privacidade" (spec 59) e "Compartilhamento público" (spec 33). Task
+  // privada nem busca share status (nunca tem link — o server garante).
   const isPrivate = task.private === 1;
   const shareStatus = isPrivate ? null : await getShareStatus(env, task.id, Date.now());
-  const shared = shareStatus?.shared ?? false;
-  const shareExpiresBrt = shareStatus?.expires_brt ?? '';
-  const shareExpired = shareStatus?.expired ?? false;
-  const shareStateHtml = shared
-    ? (shareExpired
-        ? `Havia um link público, mas <strong>expirou</strong> em ${esc(shareExpiresBrt)}. Gere um novo abaixo.`
-        : `Esta task tem um link público ativo, válido até <strong>${esc(shareExpiresBrt)}</strong>. O link só aparece no momento em que é gerado (o banco guarda só o hash). Gere de novo pra revê-lo (isso troca o link), ou revogue.`)
-    : `Esta task não está compartilhada. Gere um link público read-only pra enviar a alguém sem conta.`;
-  const shareSection = isPrivate
-    ? `
-    <section class="task-share" data-task-id="${esc(task.id)}" data-shared="0" data-private="1">
-      <h2>Compartilhamento público</h2>
-      <p class="task-share-state" data-share-state>Task <strong>privada</strong>: não pode ter link público. Torne-a pública (acima) pra compartilhar.</p>
-    </section>`
-    : `
-    <section class="task-share" data-task-id="${esc(task.id)}" data-shared="${shared ? '1' : '0'}">
-      <h2>Compartilhamento público</h2>
-      <p class="task-share-state" data-share-state>${shareStateHtml}</p>
-      <div class="task-share-controls">
-        <label class="task-share-ttl">
-          <span>Validade (dias)</span>
-          <input type="number" min="1" max="365" value="30" data-share-days aria-label="Validade em dias" />
-        </label>
-        <button type="button" class="task-d-btn task-share-btn" data-share-generate>${shared && !shareExpired ? 'Gerar novo link' : 'Compartilhar'}</button>
-        <button type="button" class="task-d-btn task-share-revoke" data-share-revoke ${shared ? '' : 'hidden'}>Revogar</button>
-      </div>
-      <div class="task-share-link" data-share-link hidden>
-        <input type="text" readonly data-share-url aria-label="Link público" />
-        <button type="button" class="task-d-btn" data-share-copy>Copiar</button>
-      </div>
-      <div class="task-share-status" data-share-status role="status" aria-live="polite"></div>
-    </section>`;
-
-  // Toggle privada/pública (spec 59): form plano (CSP-safe), sessão do dono. Marcar
-  // privada revoga o link público na mesma escrita (server). Mesma UX do toggle de nota.
-  const privateSection = `
-    <section class="task-private" data-task-private>
-      <h2>Privacidade</h2>
-      <p class="task-private-state">${isPrivate
-        ? 'Esta task é <strong>privada</strong>: invisível pra credenciais sem escopo <code>private</code> e sem link público.'
-        : 'Esta task é <strong>pública</strong>: qualquer credencial válida a vê.'}</p>
-      <form method="post" action="/app/tasks/private" class="task-private-form">
-        <input type="hidden" name="id" value="${esc(task.id)}" />
-        <input type="hidden" name="private" value="${isPrivate ? '0' : '1'}" />
-        <button type="submit" class="task-d-btn" data-task-private-toggle>${isPrivate ? 'Tornar pública' : 'Tornar privada'}</button>
-      </form>
-    </section>`;
+  const visibilitySection = renderVisibilitySection({
+    kind: 'task',
+    id: task.id,
+    isPrivate,
+    shared: shareStatus?.shared ?? false,
+    expired: shareStatus?.expired ?? false,
+    expiresBrt: shareStatus?.expires_brt ?? '',
+    includeMedia: null,
+  });
 
   // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
   // sem unsafe-inline/script-src-attr — ver src/web/render.ts:115) BLOQUEIA
@@ -1074,9 +1076,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
 
           ${datesHtml}
 
-          ${privateSection}
-
-          ${shareSection}
+          ${visibilitySection}
         </aside>
       </div>
     </div>
@@ -1114,7 +1114,7 @@ const NOTE_SHARE_WRAP_CSS = `
 `;
 
 // CSS da seção "Compartilhamento público" (spec 33) — usada no detalhe de TASK
-// e no detalhe de NOTA (mesmas classes .task-share*, wiring em client/share-ui.ts).
+// e no detalhe de NOTA (mesmas classes .task-share*, wiring em client/visibility-ui.ts).
 const SHARE_SECTION_CSS = `
 /* Compartilhamento público (spec 33) — vive na sidebar (spec 52), espaçamento
    vem do gap do flex column ao redor, não de margin própria */
@@ -1145,6 +1145,24 @@ const SHARE_SECTION_CSS = `
 .task-share-status.ok { color:#86efac; }
 .task-share-status.err { color:#fca5a5; }
 .task-share-status.saving { color:var(--text-dim); }
+
+/* Seletor único de visibilidade (spec 65) — radiogroup de 3 níveis, task e nota */
+.task-visibility h2 { font-size:15px; margin-bottom:10px; }
+.vis-group { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.vis-opt {
+  display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px;
+  align-items:center; border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:10px 12px; cursor:pointer;
+  transition:border-color 140ms var(--ease), background 140ms var(--ease);
+}
+.vis-opt:hover { border-color:var(--border-strong); }
+.vis-opt.selected { border-color:var(--accent-lav); background:rgba(167,139,250,0.08); }
+.vis-opt input[type="radio"] { grid-row:1 / span 2; margin:0; accent-color:var(--accent-lav); }
+.vis-opt-head { display:flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600; color:var(--text); }
+.vis-opt-desc { grid-column:2; font-size:12px; color:var(--text-dim); line-height:1.45; }
+.vis-opt-desc code { font-size:11px; }
+.vis-panel { border-top:1px dashed var(--border); padding-top:12px; margin-bottom:10px; }
+.vis-panel[hidden] { display:none; }
 `;
 
 const TASK_DETAIL_CSS = `
@@ -1349,7 +1367,6 @@ const NOTE_EDIT_CSS = `
 /* Selo de privacidade (spec 31): toggle no detalhe. O form é plano (sem JS) pra ser
    CSP-safe — a ÚNICA superfície que desmarca uma nota. O badge .private-badge é global
    (styles.ts) pra valer também na lista. */
-.note-private-form { display:inline; margin:0; align-self:center; }
 .note-private-toggle { cursor:pointer; }
 
 .note-edit-ctl-tldr { position:relative; }
