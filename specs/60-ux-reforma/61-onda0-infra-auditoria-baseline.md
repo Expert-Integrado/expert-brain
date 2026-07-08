@@ -1,6 +1,6 @@
 # Onda 0 — Infra de auditoria e baseline
 
-> **Status:** in-progress · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done (07/07/2026 — baseline 32/32 congelado em C:/tmp/ux-audit/baseline; suíte client 12 + e2e 19 verdes; seed determinístico com bring-up do contacts; commits 53ae19c/19f8ec0/0f26df3) · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/60-visao-geral.md`
 
 ## Contexto
