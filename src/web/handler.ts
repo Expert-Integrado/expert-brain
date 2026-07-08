@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsInstagramStatus, handleContactsInstagramAllowlist } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
 import { handleHomePage } from './home.js';
 import { handleHomePrefsPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
@@ -267,6 +267,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // Instagram Agent conversas (painel em /app/config#instagram-contatos): mesmo desenho.
   if (path === '/app/config/instagram/status' && req.method === 'GET') return handleContactsInstagramStatus(req, env);
   if (path === '/app/config/instagram/allowlist' && req.method === 'POST') return handleContactsInstagramAllowlist(req, env);
+  // Pipedrive (painel em /app/config#pipedrive-crm): mesmo desenho.
+  if (path === '/app/config/pipedrive/status' && req.method === 'GET') return handleContactsPipedriveStatus(req, env);
+  if (path === '/app/config/pipedrive/sync' && req.method === 'POST') return handleContactsPipedriveSync(req, env);
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);

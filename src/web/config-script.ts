@@ -537,6 +537,63 @@ export function configPageScript(): string {
     });
   }
 
+  // ── Pipedrive (integração opcional do CRM no expert-contacts) ──
+  // Hidrata o painel #pipedrive-crm via /app/config/pipedrive/* (proxy same-origin;
+  // a chave de API do Pipedrive vive só no worker de contatos).
+  var pdRoot = document.getElementById('pipedrive-crm');
+  if (pdRoot) {
+    var pdStatusEl = document.getElementById('pd-status');
+    var pdSyncBtn = document.getElementById('pd-sync');
+    var pdSyncStatus = document.getElementById('pd-sync-status');
+
+    function pdJson(url, opts) {
+      opts = opts || {};
+      opts.credentials = 'same-origin';
+      opts.headers = Object.assign({ accept: 'application/json' }, opts.headers || {});
+      return fetch(url, opts).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          data._status = res.status;
+          return data;
+        });
+      });
+    }
+
+    function pdRender(st) {
+      if (!st.ok) {
+        pdStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
+        return;
+      }
+      if (!st.configured) {
+        pdStatusEl.textContent = 'Integração desligada: nenhuma chave do Pipedrive conectada no servidor de contatos. Nada é sincronizado.';
+        return;
+      }
+      var parts = ['Integração ativa (sync diário automático)'];
+      if (st.last_run) parts.push('última janela concluída: ' + st.last_run);
+      if (st.cursor_pending) parts.push('há uma janela em andamento (retoma no próximo run)');
+      if (st.consecutive_failures) parts.push(st.consecutive_failures + ' falha(s) consecutiva(s)');
+      pdStatusEl.textContent = parts.join(' · ') + '.';
+      pdSyncBtn.hidden = false;
+    }
+
+    pdJson('/app/config/pipedrive/status').then(pdRender);
+
+    pdSyncBtn.addEventListener('click', function () {
+      pdSyncBtn.disabled = true;
+      pdSyncStatus.textContent = 'Sincronizando…';
+      pdJson('/app/config/pipedrive/sync', { method: 'POST' }).then(function (r) {
+        pdSyncBtn.disabled = false;
+        if (r.ok) {
+          pdSyncStatus.textContent = r.partial
+            ? 'Janela parcial processada (' + (r.processed || 0) + ' pessoas); rode de novo pra continuar.'
+            : 'Sincronizado: ' + (r.escaneados || 0) + ' pessoa(s) verificada(s), ' + (r.enriquecidos || 0) + ' enriquecida(s).';
+          pdJson('/app/config/pipedrive/status').then(pdRender);
+        } else {
+          pdSyncStatus.textContent = 'Erro: ' + (r.error || r._status) + '.';
+        }
+      });
+    });
+  }
+
   // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
   // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um
   // contador "usados/max" (usa o maxlength do próprio campo como teto).

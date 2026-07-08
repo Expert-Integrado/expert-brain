@@ -451,6 +451,49 @@ export async function handleContactsInstagramStatus(req: Request, env: Env): Pro
   });
 }
 
+// ── Pipedrive (integração opcional do CRM no expert-contacts) ──
+// Painel em /app/config#pipedrive-crm: estado do sync incremental via
+// CONTACTS_PROXY_TOKEN (GET) e disparo manual via CONTACTS_WRITE_TOKEN (POST).
+// A PIPEDRIVE_API_KEY vive só no worker de contatos; nunca passa por aqui.
+
+export async function handleContactsPipedriveStatus(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_PROXY_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/pipedrive/status', {
+    method: 'GET',
+    headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
+export async function handleContactsPipedriveSync(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/pipedrive/sync', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}` },
+  }));
+  const body = await res.text();
+  return new Response(body, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 export async function handleContactsInstagramAllowlist(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;

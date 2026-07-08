@@ -680,6 +680,23 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    <details class="disclosure-advanced conn-section" id="pipedrive-crm">
+      <summary>
+        <span class="adv-title">Pipedrive (CRM)</span>
+        <span class="adv-sub">Integração opcional — enriquece contatos existentes com dados do seu CRM, mão única</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Integração <strong>opcional</strong>: só funciona se você conectar explicitamente o seu Pipedrive (chave de API no servidor de contatos). Quando ligada, roda 1x por dia e <strong>só preenche campos vazios</strong> (e-mail, empresa) de contatos que <strong>já existem</strong> no vault — nunca cria contato, nunca sobrescreve o que você editou, nunca escreve de volta no Pipedrive. Desligada, nada acontece.</p>
+          <p id="pd-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <button type="button" class="btn" id="pd-sync" hidden>Sincronizar agora</button>
+            <span id="pd-sync-status" style="color:var(--text-dim)"></span>
+          </div>
+        </div>
+      </div>
+    </details>
+
     ${ownerInstructionsSection}
     </section>
 
