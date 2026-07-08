@@ -3,18 +3,15 @@
 // via fetch nos proxies same-origin do Brain (contacts-data.ts → service binding
 // pro Worker expert-contacts): entity, neighbors (1º/2º nível) e timeline paginada.
 //
-// Cópias inline de labels/formatters de contato (CONTACT_TYPE_LABELS etc.) —
-// mesmo racional do painel de contato em graph.ts: este bundle não importa o TS
-// do Worker de contatos. EVENT_KIND_LABELS saiu daqui pro módulo compartilhado
-// src/util/event-kind-labels.ts (onda 6) — home/journal usam a MESMA tradução.
+// Labels de contato (tipo/relação) vêm do módulo compartilhado
+// src/util/contact-labels.ts (mesma tradução do painel em graph.ts);
+// EVENT_KIND_LABELS de src/util/event-kind-labels.ts (onda 6) — home/journal
+// usam a MESMA tradução.
 
 import { esc } from '../../util/html.js';
 import { domainColor } from '../domain-colors.js';
 import { EVENT_KIND_LABELS } from '../../util/event-kind-labels.js';
-
-const CONTACT_TYPE_LABELS: Record<string, string> = {
-  person: 'Pessoa', company: 'Empresa', place: 'Lugar', event: 'Evento', other: 'Outro',
-};
+import { CONTACT_TYPE_LABELS, contactRelLabel } from '../../util/contact-labels.js';
 const MANUAL_EVENT_KINDS: Array<{ value: string; label: string }> = [
   { value: 'met', label: 'Encontro' },
   { value: 'talked', label: 'Conversa' },
@@ -163,7 +160,7 @@ function renderMentionTasks(section: HTMLElement, tasks: MentionTask[], closedCo
 
 function neighborLine(n: NeighborItem): string {
   const detail = n.edge === 'explicit'
-    ? `<span class="panel-conn-rel">${esc(n.rel ?? '')}</span>${n.why ? `<span class="panel-conn-why">${esc(n.why)}</span>` : ''}`
+    ? `<span class="panel-conn-rel">${esc(contactRelLabel(n.rel ?? ''))}</span>${n.why ? `<span class="panel-conn-why">${esc(n.why)}</span>` : ''}`
     : `<span class="panel-conn-rel">similar · ${Math.round((n.score ?? 0) * 100)}%</span>`;
   return `<a class="panel-conn" href="${esc(contactHref(n.id))}">
     <span class="panel-conn-label">${esc(n.label)}</span>${detail}

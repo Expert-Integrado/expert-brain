@@ -548,8 +548,8 @@ async function renderGraphLikePage(
           <span>Esconder isoladas</span>
         </label>
 
-        <details class="graph-section" open${isContacts ? ' style="display:none"' : ''}>
-          <summary class="graph-section-summary">Notas parecidas<i class="graph-info-icon" title="Linhas semânticas conectam notas com conteúdo parecido (mesmo sem ligação explícita). Ajuste a intensidade, esconda, ou mostre conexões sugeridas pra criar links.">i</i></summary>
+        <details class="graph-section" open>
+          <summary class="graph-section-summary">${isContacts ? 'Contatos parecidos' : 'Notas parecidas'}<i class="graph-info-icon" title="${isContacts ? 'Linhas semânticas conectam contatos com perfil parecido (aparecem na busca e no modo foco). Ajuste a intensidade ou esconda.' : 'Linhas semânticas conectam notas com conteúdo parecido (mesmo sem ligação explícita). Ajuste a intensidade, esconda, ou mostre conexões sugeridas pra criar links.'}">i</i></summary>
           <label class="graph-slider-label">
             <span>Intensidade</span>
             <input
@@ -560,15 +560,17 @@ async function renderGraphLikePage(
               value="18"
               aria-label="Intensidade das linhas semânticas"
             />
-            <small class="graph-slider-help">Linhas que conectam notas semanticamente parecidas</small>
+            <small class="graph-slider-help">Linhas que conectam ${isContacts ? 'contatos' : 'notas'} semanticamente parecid${isContacts ? 'os' : 'as'}</small>
           </label>
           <label class="graph-check-label">
             <input type="checkbox" id="similar-hide" />
             <span>Esconder</span>
           </label>
           <!-- A.35 — chips inline pra Coloração (substituiu select; popup nativo
-               do <select> ignorava CSS em dark mode em vários browsers/SOs). -->
-          <div class="graph-slider-label">
+               do <select> ignorava CSS em dark mode em vários browsers/SOs).
+               Contatos: coloração é fixa por tipo e sugeridas criam edge de NOTA
+               (fluxo do Brain) — os dois controles ficam ocultos nesse vault. -->
+          <div class="graph-slider-label"${isContacts ? ' style="display:none"' : ''}>
             <span>Coloração das bolinhas</span>
             <div id="color-mode-chips" class="graph-color-chips" role="radiogroup" aria-label="Modo de coloração">
               <button type="button" class="graph-color-chip active" data-color-mode="neutral">Neutra</button>
@@ -579,7 +581,7 @@ async function renderGraphLikePage(
             <small class="graph-slider-help">Como as bolinhas são coloridas no grafo</small>
           </div>
           <!-- A.32 — Suggested links toggle -->
-          <div class="graph-suggested-row">
+          <div class="graph-suggested-row"${isContacts ? ' style="display:none"' : ''}>
             <button id="suggested-toggle" type="button" data-graph-action="toggle-suggested">Mostrar conexões sugeridas</button>
             <small class="graph-slider-help">Linhas tracejadas amarelas mostrando pares de notas com alta similaridade que ainda não têm ligação explícita. Clique numa pra criar a ligação justificada.</small>
           </div>

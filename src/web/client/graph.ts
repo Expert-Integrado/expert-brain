@@ -6,6 +6,7 @@ import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted, resolveD
 import { loadMeta } from './meta-cache.js';
 import { loadTaxonomy } from './taxonomy-cache.js';
 import { EVENT_KIND_LABELS } from '../../util/event-kind-labels.js';
+import { CONTACT_TYPE_LABELS, contactRelLabel } from '../../util/contact-labels.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Payload shape (matches src/web/graph-data.ts server-side)
@@ -169,13 +170,11 @@ async function main() {
   // ────────────────────────────────────────────────────────────────────────
   const isContacts = (document.getElementById('graph-canvas') as HTMLElement | null)?.dataset.vault === 'contacts';
   const noun = isContacts ? 'contatos' : 'notas';
-  // Rótulos pt-BR dos tipos de entidade do vault de contatos (chips do dropdown
-  // e do painel). As CORES vêm de CONTACT_KIND_COLORS via domainColor().
-  const CONTACT_TYPE_LABELS: Record<string, string> = {
-    person: 'Pessoa', company: 'Empresa', place: 'Lugar', event: 'Evento', other: 'Outro',
-  };
-  // Contatos não têm arestas semânticas (são puladas) — não mostra "X semânticas".
-  setStatus(isContacts
+  // Rótulos pt-BR dos tipos de entidade do vault de contatos: módulo compartilhado
+  // src/util/contact-labels.ts. As CORES vêm de CONTACT_KIND_COLORS via domainColor().
+  // Contatos ganham semânticas na busca/foco (o modo "todos" vem sem) — o status
+  // só menciona "semânticas" quando existe pelo menos uma no payload.
+  setStatus(isContacts && similarCount === 0
     ? `${payload.nodes.length} ${noun} · ${explicitCount} ligações`
     : `${payload.nodes.length} ${noun} · ${explicitCount} ligações explícitas · ${similarCount} semânticas`);
 
@@ -1193,18 +1192,30 @@ async function main() {
                   : esc(String(f.value ?? ''))
               }</dd></div>`).join('')}</dl>`
           : '';
-        const conns = Array.isArray(d.connections) && d.connections.length
-          ? `<div class="panel-section-title">Conexões</div><div class="panel-conns">${d.connections.slice(0, 12).map((c: any) => `
+        // Grupo (kind='group'): membros (rel member_of) ganham seção própria
+        // "Membros (N)" — feedback do dono: "clicar num grupo e ver quem está
+        // dentro". Demais conexões seguem na seção genérica, com rel em PT-BR.
+        const allConns: any[] = Array.isArray(d.connections) ? d.connections : [];
+        const isGroup = kind === 'group';
+        const members = isGroup ? allConns.filter((c) => c.rel === 'member_of') : [];
+        const rest = isGroup ? allConns.filter((c) => c.rel !== 'member_of') : allConns;
+        const connBtn = (c: any, showRel: boolean) => `
               <button type="button" class="panel-conn" data-focus="${esc(String(c.otherId ?? ''))}">
-                <span class="panel-conn-label">${esc(String(c.otherLabel ?? ''))}</span><span class="panel-conn-rel">${esc(String(c.rel ?? ''))}</span>
+                <span class="panel-conn-label">${esc(String(c.otherLabel ?? ''))}</span>${showRel ? `<span class="panel-conn-rel">${esc(contactRelLabel(String(c.rel ?? '')))}</span>` : ''}
                 ${c.why ? `<span class="panel-conn-why">${esc(String(c.why))}</span>` : ''}
-              </button>`).join('')}</div>`
+              </button>`;
+        const MEMBERS_CAP = 30;
+        const membersBlock = members.length
+          ? `<div class="panel-section-title">Membros (${members.length})</div><div class="panel-conns">${members.slice(0, MEMBERS_CAP).map((c) => connBtn(c, false)).join('')}</div>${members.length > MEMBERS_CAP ? `<p class="panel-tldr">+${members.length - MEMBERS_CAP} no contato completo</p>` : ''}`
+          : '';
+        const conns = rest.length
+          ? `<div class="panel-section-title">Conexões</div><div class="panel-conns">${rest.slice(0, 12).map((c) => connBtn(c, true)).join('')}</div>`
           : '';
         // Timeline (spec 50-console-v2/57): substitui a lista estática dos 8
         // eventos do payload por um bloco vivo, paginado (endpoint dedicado
         // /app/contacts/entity/events) + form "Registrar interação". Montado à
         // parte porque é assíncrono/interativo — não entra no innerHTML acima.
-        body.innerHTML = `${avatar}${fields}${conns}`;
+        body.innerHTML = `${avatar}${fields}${membersBlock}${conns}`;
         const timelineWrap = document.createElement('div');
         timelineWrap.className = 'panel-timeline-wrap';
         body.appendChild(timelineWrap);
@@ -2435,10 +2446,13 @@ function renderLegend(nodes: GraphNode[], taxonomy: TaxonomyConfig) {
   el.innerHTML = sorted
     .map((d) => {
       const meta = resolveDomainMeta(d, taxonomy);
+      // No grafo de CONTATOS o "domain" é o kind da entidade — legenda em PT-BR
+      // (os slugs de kind não colidem com os 12 domínios do Brain).
+      const label = CONTACT_TYPE_LABELS[d] ?? meta.label;
       return `
       <button class="graph-chip" data-filter="domain" data-value="${esc(d)}">
         <span class="dot" style="background:${meta.color}"></span>
-        <span class="label">${esc(meta.label)}</span>
+        <span class="label">${esc(label)}</span>
         <span class="count">${counts.get(d)}</span>
       </button>`;
     })

@@ -30,6 +30,7 @@ export const DOMAIN_COLORS: Record<string, string> = {
 export const CONTACT_KIND_COLORS: Record<string, string> = {
   'person': '#22c55e',
   'company': '#3b82f6',
+  'group': '#a855f7',
   'place': '#f59e0b',
   'event': '#ec4899',
   'other': '#64748b',
