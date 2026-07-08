@@ -200,6 +200,15 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `50-console-v2/68-pwa-instalavel.md` | PWA (base já existe): share target de captura + shortcuts no manifest | P2 | S | expert-brain | `63` (suave: `65`) |
 | `50-console-v2/69-backup-offsite.md` | Backup off-site: rotina externa copia snapshots pra fora da Cloudflare (Drive + servidor) | P1 | M | ops | `50-console-v2/67` (deployada; dono no loop) |
 | `50-console-v2/70-instrucoes-do-dono.md` | Instruções do dono ("CLAUDE.md do Brain"): campo no console servido no handshake MCP | P1 | S | expert-brain | `10-backend/11` (done) |
+| `60-ux-reforma/60-visao-geral.md` | Visão geral do programa de reforma UI/UX do console: decisões, diagnóstico e mapa das 7 ondas | P0 | S | expert-brain | nenhuma |
+| `60-ux-reforma/61-onda0-infra-auditoria-baseline.md` | Onda 0: harness de screenshots, baseline, seed determinístico, infra de teste client/e2e | P0 | M | expert-brain | `60-ux-reforma/60` |
+| `60-ux-reforma/62-onda1-pesquisa-referencias-identidade.md` | Onda 1: pesquisa de referências (ClickUp real + web) e 3 protótipos de identidade visual | P0 | M | expert-brain | `60-ux-reforma/61` |
+| `60-ux-reforma/63-onda2-tokens-retematizaveis.md` | Onda 2: reestruturação de `styles.ts` em camadas de tokens re-tematizáveis + fix `--text-muted` | P0 | M | expert-brain | `60-ux-reforma/62` |
+| `60-ux-reforma/64-onda3-biblioteca-componentes.md` | Onda 3: biblioteca de componentes (`.card`, `.btn`, `.chip`, `.empty-state`, `.modal`, etc.) | P1 | M | expert-brain | `60-ux-reforma/63` |
+| `60-ux-reforma/65-onda4-interacoes-dnd-clique-visibilidade.md` | Onda 4: os 3 bugs da aula — drag por Pointer Events, cartão clicável, seletor de visibilidade unificado | P0 | L | expert-brain | `60-ux-reforma/64` |
+| `60-ux-reforma/66-onda5-fix-list-por-tela.md` | Onda 5: fix list aplicando tokens e componentes tela a tela (home, board, shell, graph, notes, share) | P1 | L | expert-brain | `60-ux-reforma/65` |
+| `60-ux-reforma/67-onda6-identidade-a11y.md` | Onda 6: aplicação da identidade escolhida + gate de contraste AA + acessibilidade/responsivo | P1 | M | expert-brain | `60-ux-reforma/62`, `60-ux-reforma/66` |
+| `60-ux-reforma/68-onda7-verificacao-deploy.md` | Onda 7: verificação final, checklist manual, validação do dono e deploy único de produção | P0 | S | expert-brain | `60-ux-reforma/67` |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo

@@ -7,13 +7,15 @@ import { listTasksDueBefore, listInboxItems, countPendingInbox, type TaskRow, ty
 import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js';
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
+import { JOURNAL_CSS } from './journal.js';
 
-// Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): 4 cards SSR, cada
-// um TOLERANTE a falha isolada — uma query que falha some SÓ o card dela (try/catch
-// por card), nunca derruba a página inteira. O card "Últimas interações" é a ÚNICA
-// exceção: carrega ASSÍNCRONO no client (skeleton aqui, populado por home.bundle.js)
-// porque depende do proxy pro Worker do Contacts — não trava o SSR da home no request
-// path (Riscos da spec: "home lenta por depender do proxy").
+// Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
+// um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
+// (try/catch por card, Onda 5), nunca derruba a página inteira. Abaixo dos cards, o
+// feed "Atividade" (o antigo /app/journal, absorvido na home — spec 69) carrega
+// ASSÍNCRONO no client (journal.bundle.js busca /app/journal em JSON): uma das
+// fontes do feed é o proxy pro Worker do Contacts e ela NÃO pode travar o SSR da
+// home no request path (Riscos da spec 65: "home lenta por depender do proxy").
 
 // Horizonte "Hoje" = 24h à frente + tudo já vencido — MESMA convenção do lembrete
 // diário (src/notify.ts) e do filtro "hoje" do board de tasks (src/web/tasks.ts),
@@ -21,30 +23,32 @@ import { relativeDue } from '../util/time.js';
 const TODAY_HORIZON_MS = 24 * 60 * 60 * 1000;
 const INBOX_PREVIEW = 3;
 const INBOX_SCAN_LIMIT = 200;
-const CONTACT_EVENTS_PREVIEW = 5;
 
 const HOME_CSS = `
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
-.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-family: var(--font-display); font-size: 16px; font-weight: 500; margin: 0 0 14px; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; align-items: start; }
+/* fonte/peso herdam do .card h2 (Onda 3) — aqui só o layout flex do link à direita */
+.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; }
 .home-card h2 a { font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
 .home-card h2 a:hover { text-decoration: underline; }
 .home-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .home-list li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; line-height: 1.4; }
 .home-list a { color: var(--text); text-decoration: none; }
 .home-list a:hover { color: var(--accent-lav); }
-.home-task-title, .home-event-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-task-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-task-complete {
   flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--border-strong);
   background: transparent; cursor: pointer; color: var(--text-dim); font-size: 11px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; padding: 0;
 }
 .home-task-complete:hover { border-color: var(--accent-lav); color: var(--accent-lav); }
-.home-task-when, .home-event-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-faint); margin-left: auto; }
-.home-task-when.overdue { color: #fca5a5; }
-.home-event-kind { flex-shrink: 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-faint); }
+.home-task-when { flex-shrink: 0; font-size: 11.5px; color: var(--text-subtle); margin-left: auto; }
+.home-task-when.overdue { color: var(--danger); }
 .home-empty { color: var(--text-dim); font-size: 13px; margin: 0; }
-.home-error { color: #fca5a5; }
-.home-private-badge { font-size: 10px; color: var(--text-faint); flex-shrink: 0; }
+.home-error { color: var(--danger); }
+.home-private-badge { font-size: 10px; color: var(--text-subtle); flex-shrink: 0; }
+/* Feed "Atividade" (spec 69) — o antigo Journal, embutido abaixo dos cards */
+.home-activity { margin-top: 28px; }
+.home-activity-title { font-family: var(--font-display); font-size: 18px; font-weight: 500; margin: 0 0 14px; }
 `;
 
 function taskWhenHtml(t: TaskRow, now: number): string {
@@ -104,12 +108,30 @@ export function renderInboxCard(pending: number, items: InboxItem[]): string {
   </section>`;
 }
 
-// Card 4 — Últimas interações: SKELETON server-side, populado por home.bundle.js
-// (GET /app/contacts/events/recent) — nunca bloqueia o SSR da home no proxy.
-function renderInteractionsCardSkeleton(): string {
+// Feed "Atividade" (spec 69): o antigo /app/journal absorvido na home. SSR só do
+// esqueleto (filtros + placeholder); journal.bundle.js busca a primeira página em
+// JSON (data-lazy="1") e injeta — o proxy do Contacts fica FORA do request path.
+// O card "Últimas interações" foi absorvido junto: o feed já traz as interações
+// (chip laranja + filtro próprio), então o card seria informação duplicada.
+function renderActivityFeedSection(): string {
+  return `<section class="home-activity" id="atividade">
+    <h2 class="home-activity-title">Atividade</h2>
+    <div class="journal-filters">
+      <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
+      <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
+      <label><input type="checkbox" class="journal-filter" value="contact" checked /> Interações</label>
+    </div>
+    <div id="journal-groups" data-lazy="1"><p class="home-empty">Carregando a atividade…</p></div>
+    <noscript><p class="home-empty"><a href="/app/journal?feed=1">Abrir o feed de atividade</a></p></noscript>
+  </section>`;
+}
+
+// Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
+// visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
+function renderCardError(titleHtml: string, msg: string): string {
   return `<section class="card home-card">
-    <h2>Últimas interações <a href="/app/journal">journal completo →</a></h2>
-    <ul class="home-list" id="home-events-list" data-limit="${CONTACT_EVENTS_PREVIEW}"><li class="home-empty">Carregando…</li></ul>
+    <h2>${titleHtml}</h2>
+    <p class="error-state">${esc(msg)}</p>
   </section>`;
 }
 
@@ -119,8 +141,8 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
 
   const now = Date.now();
 
-  // Cada card é buscado/renderizado de forma isolada — falha numa fonte some SÓ o
-  // card dela (log + string vazia), nunca derruba a home inteira (critério de aceite).
+  // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
+  // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
   let todayCardHtml = '';
   try {
     // includePrivate=true: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
@@ -128,7 +150,8 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, true);
     todayCardHtml = renderTodayCard(tasks, now);
   } catch (e) {
-    console.error('home: falha ao carregar tasks de hoje (card omitido)', e);
+    console.error('home: falha ao carregar tasks de hoje', e);
+    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.');
   }
 
   let inboxCardHtml = '';
@@ -139,17 +162,21 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     ]);
     inboxCardHtml = renderInboxCard(pending, items);
   } catch (e) {
-    console.error('home: falha ao carregar inbox (card omitido — spec 63 pode não ter rodado)', e);
+    console.error('home: falha ao carregar inbox (spec 63 pode não ter rodado)', e);
+    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.');
   }
 
   let digestCardHtml = '';
   try {
     const digest = await readCachedResurfaceDigest(env);
     if (digest && !isDigestEmpty(digest)) {
-      digestCardHtml = `<div class="home-card">${renderDigestCard(digest)}</div>`;
+      // Digest vazio/inexistente continua OMITIDO de propósito (não é erro) —
+      // só a FALHA de leitura vira card de erro visível.
+      digestCardHtml = `<section class="card home-card">${renderDigestCard(digest)}</section>`;
     }
   } catch (e) {
-    console.error('home: falha ao ler cache do resurface digest (card omitido — spec 64 pode não ter rodado)', e);
+    console.error('home: falha ao ler cache do resurface digest (spec 64 pode não ter rodado)', e);
+    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.');
   }
 
   const body = `
@@ -158,9 +185,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       ${todayCardHtml}
       ${inboxCardHtml}
       ${digestCardHtml}
-      ${renderInteractionsCardSkeleton()}
     </div>
+    ${renderActivityFeedSection()}
     <script src="/app/home/bundle.js?v=${assetVersion('home.bundle.js')}" defer></script>
+    <script src="/app/journal/bundle.js?v=${assetVersion('journal.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
@@ -170,7 +198,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       email: session.email,
       env,
       body,
-      extraHead: `<style>${HOME_CSS}</style>`,
+      extraHead: `<style>${HOME_CSS}${JOURNAL_CSS}</style>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),
     })
   );

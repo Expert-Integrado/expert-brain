@@ -71,7 +71,7 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
          <input type="hidden" name="id" value="${esc(col.id)}">
          <input type="hidden" name="archived" value="1">
          ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
-         <button type="submit" class="btn-danger">Arquivar</button>
+         <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
@@ -113,7 +113,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
   return `
     <details class="disclosure-advanced conn-section" id="board"${savedBoard ? ' open' : ''}>
       <summary>
-        <span class="adv-title">4. Quadro de tarefas</span>
+        <span class="adv-title">Quadro de tarefas</span>
         <span class="adv-sub">Colunas/estágios do Kanban — crie, renomeie, recolora, reordene e arquive</span>
       </summary>
       <div class="adv-body">
@@ -121,7 +121,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
           <p>As colunas do board <a href="/app/tasks">/app/tasks</a> vêm daqui. Cada coluna pertence a uma das 4 categorias fixas (<em>${TASK_STATUSES.map((c) => esc(CATEGORY_LABELS[c])).join(', ')}</em>), que definem o estado real da task — a categoria é travada após a criação. Arrastar um card pra uma coluna aplica a categoria dela.</p>
           <table class="keys-table">
             <thead><tr>
-              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tasks</th><th></th>
+              <th>Coluna (nome + cor)</th><th>Categoria</th><th>Ordem</th><th>Tarefas</th><th></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -141,7 +141,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
               <label for="new-col-category" style="font-size:12px;color:var(--text-dim)">Categoria (estado real da task)</label>
               <select id="new-col-category" name="category" required>${categoryOptions('open')}</select>
             </div>
-            <button type="submit" class="btn-primary">Criar coluna</button>
+            <button type="submit" class="btn btn-primary">Criar coluna</button>
           </form>
           <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Ex.: uma coluna <strong>Backlog</strong> pertence à categoria <strong>Aberta</strong> — a categoria é o estado REAL da task (o que o MCP e as automações leem); a coluna é só o estágio visual no board.</p>
           <p style="color:var(--text-dim);font-size:13px;margin-top:8px">A coluna <strong>Cancelado</strong> nasce arquivada — desarquive-a aqui pra ver tasks canceladas no board.</p>
@@ -163,7 +163,7 @@ function renderProjectRow(proj: TaskProject, count: number): string {
     : `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
          <input type="hidden" name="id" value="${esc(proj.id)}">
          <input type="hidden" name="archived" value="1">
-         <button type="submit" class="btn-danger">Arquivar</button>
+         <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
@@ -198,7 +198,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
   return `
     <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
       <summary>
-        <span class="adv-title">5. Projetos</span>
+        <span class="adv-title">Projetos</span>
         <span class="adv-sub">Pastas de tarefas — agrupe tasks por projeto, com cor e ciclo de vida (arquivar)</span>
       </summary>
       <div class="adv-body">
@@ -206,7 +206,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
           <p>Projeto é uma <strong>pasta</strong> de tarefas: single-valorado (cada task pertence a 0 ou 1 projeto), com cor e filtro próprio no board <a href="/app/tasks">/app/tasks</a>. Diferente de <em>tag</em> (rótulo transversal, multi). Arquivar um projeto <strong>não mexe nas tasks</strong> — elas continuam no board (chip esmaecido), o projeto só some dos seletores. ${total}/${TASK_PROJECT_CAP} projetos.</p>
           <table class="keys-table">
             <thead><tr>
-              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tasks</th><th></th>
+              <th>Projeto (nome + cor)</th><th>Ordem</th><th>Tarefas</th><th></th>
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
@@ -218,7 +218,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
             : `<form method="post" action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" name="label" required maxlength="40" placeholder="Nome do projeto" class="input-text" style="width:200px">
             <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
-            <button type="submit" class="btn-primary">Criar projeto</button>
+            <button type="submit" class="btn btn-primary">Criar projeto</button>
           </form>`}
         </div>
       </div>
@@ -264,7 +264,7 @@ function renderTaxonomySection(
   return `
     <details class="disclosure-advanced conn-section" id="taxonomy"${savedTaxonomy ? ' open' : ''}>
       <summary>
-        <span class="adv-title">6. Áreas e tipos</span>
+        <span class="adv-title">Áreas e tipos</span>
         <span class="adv-sub">Cor e nome de exibição das áreas (domains) e tipos (kinds) — crie áreas novas aqui</span>
       </summary>
       <div class="adv-body">
@@ -290,8 +290,8 @@ function renderTaxonomySection(
           </table>
         </div>
         <div class="row" style="gap:8px">
-          <button type="button" id="taxonomy-save" class="btn-primary">Salvar</button>
-          <button type="button" id="taxonomy-reset" class="btn-danger">Restaurar padrão</button>
+          <button type="button" id="taxonomy-save" class="btn btn-primary">Salvar</button>
+          <button type="button" id="taxonomy-reset" class="btn btn-danger btn-sm">Restaurar padrão</button>
         </div>
         <p id="taxonomy-status" class="tax-inline-status" role="status" aria-live="polite"></p>
       </div>
@@ -304,7 +304,7 @@ function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: b
   return `
     <details class="disclosure-advanced conn-section" id="owner-instructions"${savedOwner ? ' open' : ''}>
       <summary>
-        <span class="adv-title">7. Instruções pros agentes (MCP)</span>
+        <span class="adv-title">Instruções pros agentes (MCP)</span>
         <span class="adv-sub">Um "CLAUDE.md do Brain": orientações suas que TODO agente recebe no handshake</span>
       </summary>
       <div class="adv-body">
@@ -314,7 +314,7 @@ function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: b
             <label for="owner-instructions-text">Instruções (texto puro/markdown leve, máx ${OWNER_INSTRUCTIONS_MAX_LEN} caracteres)</label>
             <textarea id="owner-instructions-text" name="owner_instructions" rows="8" maxlength="${OWNER_INSTRUCTIONS_MAX_LEN}" class="prefs-textarea" data-charcount="owner-instructions-count" placeholder="Ex: Sempre responda em pt-BR. Antes de salvar nota, varra analogias em outros domínios.">${esc(ownerInstructions)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px;align-items:center">
-              <button type="submit" class="btn-primary">Salvar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
               <span id="owner-instructions-count" style="color:var(--text-dim);font-size:13px">${len}/${OWNER_INSTRUCTIONS_MAX_LEN}</span>
             </div>
           </form>
@@ -454,7 +454,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         ? '—'
         : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn-danger">Revogar</button>
+             <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
            </form>`;
       // Escopo (spec 17 + 31): CSV — base full/read + escopo aditivo 'private'.
       // Mostra o CSV integral (ex.: 'full,private') pra o dono ver o alcance real.
@@ -479,37 +479,34 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
        </div>`
     : '';
 
+  // Aba ativa no primeiro paint (spec 69): os redirects ?saved= de board/projects/
+  // taxonomy caem na aba "Organização" e o de backup na aba "Sistema"; todo o resto
+  // (prefs, owner, chave criada) mora na aba padrão "Conexões". Deep links por hash
+  // (#backup, #board...) são resolvidos no client — o servidor não vê o fragment.
+  const savedBackup = url.searchParams.get('saved') === 'backup';
+  const activeTab: 'conexoes' | 'organizacao' | 'sistema' =
+    savedBoard || savedProjects || savedTaxonomy ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
+  const tabButton = (slug: string, label: string): string =>
+    `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
+
   const body = `
     <div class="page-header">
       <h1>Configurações ${badge}</h1>
     </div>
 
-    <div class="card">
-      <h2>Status do vault</h2>
-      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
-      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
-    </div>
+    <nav class="config-tabs" role="tablist" aria-label="Seções das configurações">
+      ${tabButton('conexoes', 'Conexões')}
+      ${tabButton('organizacao', 'Organização')}
+      ${tabButton('sistema', 'Sistema')}
+    </nav>
+    <noscript><style>.config-panel{display:block !important}.config-tabs{display:none}</style></noscript>
 
-    <div class="card" id="backup">
-      <h2>Backup</h2>
-      ${backupStatus}
-      <div class="row" style="gap:8px;margin-top:10px">
-        <form method="post" action="/app/config/backup-now">
-          <button type="submit" class="btn-primary">Fazer backup agora</button>
-        </form>
-        <form method="get" action="/app/export">
-          <button type="submit">Baixar export (.zip)</button>
-        </form>
-      </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
-    </div>
-
-    <h2 class="conn-heading">Conexões</h2>
-    <p class="config-subtitle">Como você liga o Expert Brain ao seu cliente de IA. Abra o caso que é o seu.</p>
+    <section class="config-panel${activeTab === 'conexoes' ? ' active' : ''}" id="panel-conexoes" role="tabpanel" aria-labelledby="config-tab-conexoes" data-panel="conexoes">
+    <p class="config-subtitle">Como você liga o Expert Brain aos seus clientes de IA — e as orientações que todo agente recebe ao conectar. Abra o caso que é o seu.</p>
 
     <details class="disclosure-advanced conn-section" open>
       <summary>
-        <span class="adv-title">1. Agente no seu computador</span>
+        <span class="adv-title">Agente no seu computador</span>
         <span class="adv-sub">Claude Code, Codex ou qualquer agente instalado na sua máquina — conecta por login, sem chave</span>
       </summary>
       <div class="adv-body">
@@ -539,7 +536,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <details class="disclosure-advanced conn-section" id="prefs"${savedPrefs ? ' open' : ''}>
       <summary>
-        <span class="adv-title">2. Sistemas web</span>
+        <span class="adv-title">Sistemas web</span>
         <span class="adv-sub">ChatGPT (modo desenvolvedor) ou Claude.ai — conector MCP no navegador</span>
       </summary>
       <div class="adv-body">
@@ -556,7 +553,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <form method="post" action="/app/config/prefs">
             <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" class="prefs-textarea">${esc(prefsPrompt)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px">
-              <button type="submit" class="btn-primary">Salvar</button>
+              <button type="submit" class="btn btn-primary">Salvar</button>
               <button type="button" data-copy="prefs-block">Copiar prompt</button>
             </div>
           </form>
@@ -566,7 +563,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <details class="disclosure-advanced conn-section" id="api-keys"${justCreatedKey ? ' open' : ''}>
       <summary>
-        <span class="adv-title">3. Agentes externos e automações</span>
+        <span class="adv-title">Agentes externos e automações</span>
         <span class="adv-sub">OpenClaw ou sistemas rodando numa VPS — precisam de uma chave de API (token)</span>
       </summary>
       <div class="adv-body">
@@ -590,7 +587,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
               <input type="checkbox" name="private_scope" value="1">
               <span>Acesso a notas privadas <span style="color:var(--text-dim)">— sem isto, a chave NÃO vê notas marcadas como privadas (spec 31)</span></span>
             </label>
-            <button type="submit" class="btn-primary" style="margin-top:12px">Criar chave</button>
+            <button type="submit" class="btn btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>
         <div class="adv-section">
@@ -606,13 +603,42 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    ${ownerInstructionsSection}
+    </section>
+
+    <section class="config-panel${activeTab === 'organizacao' ? ' active' : ''}" id="panel-organizacao" role="tabpanel" aria-labelledby="config-tab-organizacao" data-panel="organizacao">
+    <p class="config-subtitle">Como o seu conteúdo se organiza: colunas do quadro de tarefas, pastas de projeto e as áreas e tipos do vault.</p>
+
     ${boardSection}
 
     ${projectsSection}
 
     ${taxonomySection}
+    </section>
 
-    ${ownerInstructionsSection}
+    <section class="config-panel${activeTab === 'sistema' ? ' active' : ''}" id="panel-sistema" role="tabpanel" aria-labelledby="config-tab-sistema" data-panel="sistema">
+    <p class="config-subtitle">Saúde da instância: números do vault, snapshot semanal e export completo.</p>
+
+    <div class="card">
+      <h2>Status do vault</h2>
+      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
+      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
+    </div>
+
+    <div class="card" id="backup">
+      <h2>Backup</h2>
+      ${backupStatus}
+      <div class="row" style="gap:8px;margin-top:10px">
+        <form method="post" action="/app/config/backup-now">
+          <button type="submit" class="btn btn-primary">Fazer backup agora</button>
+        </form>
+        <form method="get" action="/app/export">
+          <button type="submit">Baixar export (.zip)</button>
+        </form>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
+    </div>
+    </section>
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>
   `;

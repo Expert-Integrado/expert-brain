@@ -111,21 +111,25 @@ describe('GET /app — home (spec 65 §2, smoke)', () => {
     expect(res.status).toBe(302);
   });
 
-  it('com sessão → 200, shell com nav "Início" ativa, skeleton assíncrono de interações', async () => {
+  it('com sessão → 200, shell com nav "Início" ativa, feed "Atividade" lazy (spec 69)', async () => {
     const res = await SELF.fetch('https://x.test/app', { headers: { cookie: await cookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('>Início<');
     expect(html).toContain('nav-item active');
-    expect(html).toContain('id="home-events-list"');
+    // Feed de atividade absorvido do /app/journal: container lazy + filtros + bundle.
+    expect(html).toContain('id="journal-groups" data-lazy="1"');
+    expect(html).toContain('journal-filter');
     expect(html).toContain('/app/home/bundle.js');
-    expect(html).toContain('journal completo');
+    expect(html).toContain('/app/journal/bundle.js');
+    // Journal saiu da navegação (sidebar e bottom-nav) — o feed mora na home.
+    expect(html).not.toContain('href="/app/journal"');
   });
 
   it('/app/ (com barra) também renderiza a home', async () => {
     const res = await SELF.fetch('https://x.test/app/', { headers: { cookie: await cookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('id="home-events-list"');
+    expect(html).toContain('id="journal-groups"');
   });
 });

@@ -37,17 +37,39 @@ beforeAll(async () => {
   await runMigrations(E);
 });
 
-describe('GET /app/journal — auth e degradação (spec 65)', () => {
+describe('GET /app/journal — auth, redirect pra home e degradação (specs 65 + 69)', () => {
   it('sem sessão → 302', async () => {
     const res = await SELF.fetch('https://x.test/app/journal', { redirect: 'manual' });
     expect(res.status).toBe(302);
   });
 
-  it('com sessão, CONTACTS não configurado → 200 com aviso de degradação, sem quebrar', async () => {
-    const res = await SELF.fetch('https://x.test/app/journal', { headers: { cookie: await cookie() } });
+  it('com sessão, HTML sem querystring → 302 pra /app (feed absorvido na home, spec 69)', async () => {
+    const res = await SELF.fetch('https://x.test/app/journal', {
+      headers: { cookie: await cookie() },
+      redirect: 'manual',
+    });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/app');
+  });
+
+  it('com sessão, JSON sem querystring → 200 com html + degraded (primeira página lazy da home)', async () => {
+    const res = await SELF.fetch('https://x.test/app/journal', {
+      headers: { cookie: await cookie(), accept: 'application/json' },
+    });
+    expect(res.status).toBe(200);
+    const j: any = await res.json();
+    expect(j.ok).toBe(true);
+    expect(typeof j.html).toBe('string');
+    // CONTACTS não configurado no ambiente de teste → fonte degradada sinalizada.
+    expect(j.degraded).toBe(true);
+  });
+
+  it('com sessão, HTML COM querystring (fallback sem JS) → 200 com aviso de degradação, sem quebrar', async () => {
+    const res = await SELF.fetch('https://x.test/app/journal?feed=1', { headers: { cookie: await cookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('Interações de contato indisponíveis');
+    expect(html).toContain('Atividade');
   });
 });
 
@@ -57,7 +79,7 @@ describe('GET /app/journal — ordem cronológica + agrupamento por dia (spec 65
     await insertTaskRow('jtest-task-mid', futureTs(90));
     await insertNoteRow('jtest-note-old', futureTs(80));
 
-    const res = await SELF.fetch('https://x.test/app/journal', { headers: { cookie: await cookie() } });
+    const res = await SELF.fetch('https://x.test/app/journal?feed=1', { headers: { cookie: await cookie() } });
     const html = await res.text();
     const idxNew = html.indexOf('jtest-note-new');
     const idxMid = html.indexOf('jtest-task-mid');
@@ -85,7 +107,7 @@ describe('GET /app/journal — "Carregar mais" (spec 65 §3, critério de merge)
       await insertTaskRow(id, futureTs(1000 + i));
     }
 
-    const page1 = await SELF.fetch('https://x.test/app/journal', { headers: { cookie: await cookie() } });
+    const page1 = await SELF.fetch('https://x.test/app/journal?feed=1', { headers: { cookie: await cookie() } });
     const html1 = await page1.text();
     const loadMoreMatch = html1.match(/id="journal-load-more" class="notes-load-more" href="([^"]+)"/);
     expect(loadMoreMatch).toBeTruthy();

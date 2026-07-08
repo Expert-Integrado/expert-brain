@@ -1,7 +1,7 @@
 {
   "name": "Expert Brain",
   "short_name": "Brain",
-  "description": "Personal knowledge graph — notes, connections, semantic recall.",
+  "description": "Grafo de conhecimento pessoal: notas, conexões e recall semântico.",
   "start_url": "/app",
   "scope": "/",
   "display": "standalone",
@@ -13,6 +13,7 @@
   "share_target": {
     "action": "/app/inbox",
     "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
     "params": {
       "title": "title",
       "text": "text",

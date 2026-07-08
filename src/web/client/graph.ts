@@ -5,6 +5,7 @@ import Fuse from 'fuse.js';
 import { DOMAIN_COLORS, DOMAIN_FALLBACK, domainColor, domainColorMuted, resolveDomainMeta, resolveKindMeta, EMPTY_TAXONOMY_CONFIG, type TaxonomyConfig } from '../domain-colors.js';
 import { loadMeta } from './meta-cache.js';
 import { loadTaxonomy } from './taxonomy-cache.js';
+import { EVENT_KIND_LABELS } from '../../util/event-kind-labels.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Payload shape (matches src/web/graph-data.ts server-side)
@@ -2304,14 +2305,9 @@ function esc(s: string): string {
   });
 }
 
-// Timeline de interações do contato (spec 50-console-v2/57) — labels PT-BR,
-// cópia inline porque este bundle não importa o TS do worker de contatos (mesmo
-// padrão de CONTACT_TYPE_LABELS acima, pro tipo de ENTIDADE).
-const EVENT_KIND_LABELS: Record<string, string> = {
-  met: 'Encontro', talked: 'Conversa', meeting: 'Reunião', email: 'E-mail', message: 'Mensagem',
-  note: 'Nota', saw_post: 'Vi post', recommended: 'Indicação', birthday_reminder: 'Aniversário',
-  mentioned_in_brain: 'Citado no Brain',
-};
+// Timeline de interações do contato (spec 50-console-v2/57) — labels PT-BR no
+// módulo compartilhado src/util/event-kind-labels.ts (onda 6): home/journal/
+// contact-page usam a MESMA tradução.
 // Kinds MANUAIS oferecidos no form "Registrar interação" (spec 57 §4).
 const MANUAL_EVENT_KINDS: Array<{ value: string; label: string }> = [
   { value: 'met', label: 'Encontro' },

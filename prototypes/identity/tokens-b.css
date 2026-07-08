@@ -1,0 +1,41 @@
+/* Direção B — "Grafite Denso" (specs/60-ux-reforma/62)
+   Estilo Linear: quase-monocromático, denso, sem gradiente/grão. Separação por
+   elevação de cinzas, não por cor. Cor saturada é RESERVADA pra semântica
+   (status, prioridade, vencido) — exatamente o padrão observado no ClickUp
+   real (C:/tmp/ux-refs/clickup/observacoes.md, seção 8). Um acento só. */
+:root {
+  --font-display: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+  --font-body: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+
+  --bg-0: #0e0f12;
+  --bg-image: none;
+
+  --surface-0: #131418;
+  --surface-1: #17181d;
+  --surface-2: #1e1f26;
+  --surface-3: #26272f;
+
+  --border: #26272e;
+  --border-strong: #3c3d47;
+
+  --text: #e8eaee;
+  --text-dim: #a6abb6;    /* AA: 7.7:1 sobre --surface-1 */
+  --text-subtle: #868c99;   /* AA: 5.3:1 sobre --surface-1 */
+  --text-faint: #565b66;    /* SÓ decorativo */
+
+  --accent: #7c8cf8;
+  --accent-2: #58c5b4;
+  --accent-contrast: #0d0e12;
+
+  --danger: #ff7b7b;  --danger-bg: rgba(255, 123, 123, 0.10);
+  --warning: #e5b454; --warning-bg: rgba(229, 180, 84, 0.10);
+  --success: #5dd88a; --success-bg: rgba(93, 216, 138, 0.10);
+  --info: #6fb4ff;    --info-bg: rgba(111, 180, 255, 0.10);
+
+  --prio-1: #ff7b7b; --prio-2: #e5b454; --prio-3: #6fb4ff; --prio-4: #868c99;
+
+  --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
+  --shadow-1: none;
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --density: 0.9;
+}

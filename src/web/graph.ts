@@ -10,7 +10,7 @@ import { esc } from '../util/html.js';
 // data-attribute data-graph-src no #graph-canvas. Eric quer o Contatos DENTRO do
 // Brain (mesma sidebar/URL, só o painel direito troca), não pulando pro Console.
 export async function handleGraphPage(req: Request, env: Env): Promise<Response> {
-  return renderGraphLikePage(req, env, { active: 'graph', graphSrc: '/app/graph', title: 'Graph' });
+  return renderGraphLikePage(req, env, { active: 'graph', graphSrc: '/app/graph', title: 'Grafo' });
 }
 
 export async function handleContactsPage(req: Request, env: Env): Promise<Response> {
@@ -67,7 +67,7 @@ async function renderGraphLikePage(
          tem outro box) em vez de centralizar no palco — era isso que jogava
          o spinner de loading do 3D pro canto superior-esquerdo, atrás da
          caixa de busca (bug reportado 2026-07). */
-      .graph-wrap { background: #0c0c10; position: relative; }
+      .graph-wrap { background: var(--surface-canvas); position: relative; }
       #graph-canvas { cursor: grab; }
       #graph-canvas:active { cursor: grabbing; }
       #graph-canvas .sigma-labels {
@@ -78,7 +78,7 @@ async function renderGraphLikePage(
         max-width: none;
         width: auto;
         padding: 0;
-        background: #0c0c10;
+        background: var(--surface-canvas);
         position: relative;
         z-index: 2;
       }
@@ -391,7 +391,7 @@ async function renderGraphLikePage(
         background: transparent;
         border: none;
         border-radius: 50%;
-        color: var(--text-faint, #8b87a0);
+        color: var(--text-subtle, #8e96ad);
         cursor: pointer;
         padding: 0;
       }
@@ -429,7 +429,7 @@ async function renderGraphLikePage(
         position: absolute;
         inset: 0;
         z-index: 0;
-        background: #0c0c10;
+        background: var(--surface-canvas);
         display: none;      /* aceso via .graph-wrap.mode-3d abaixo */
       }
       #graph3d-stage canvas { display: block; }  /* three insere <canvas> bloco */
@@ -490,7 +490,7 @@ async function renderGraphLikePage(
         </svg>
       </button>
       <!-- LEFT OVERLAY: search + filters + status -->
-      <div id="graph-overlay" class="graph-overlay${panelCollapsed ? ' collapsed' : ''}" role="region" aria-label="Graph controls">
+      <div id="graph-overlay" class="graph-overlay${panelCollapsed ? ' collapsed' : ''}" role="region" aria-label="Controles do grafo">
         <div class="graph-overlay-row graph-search-row">
           <span class="graph-search-icon" aria-hidden="true">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>

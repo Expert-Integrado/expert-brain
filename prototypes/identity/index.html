@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Identidade do console — 3 direções</title>
+<style>
+  :root{
+    --pg:#f3f2f8; --ink:#25243a; --dim:#6d6c84; --line:#dcdae8;
+    --panel:#ffffff; --acc:#6a6af0; --tagbg:#e9e8f6;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --pg:#0e0e16; --ink:#e2e1ef; --dim:#8a89a0; --line:#26263a;
+           --panel:#16161f; --acc:#8d8dff; --tagbg:#20203a; }
+  }
+  *{box-sizing:border-box}
+  body{background:var(--pg); color:var(--ink);
+       font:15px/1.55 "Segoe UI",system-ui,sans-serif; margin:0; padding:32px 20px 64px;}
+  main{max-width:1500px; margin:0 auto;}
+  h1{font-size:26px; font-weight:700; letter-spacing:-.02em; margin:0 0 6px; text-wrap:balance;}
+  .sub{color:var(--dim); margin:0 0 14px; max-width:78ch;}
+  .toggle{margin:0 0 26px; display:flex; gap:8px; align-items:center; color:var(--dim); font-size:13.5px;}
+  .toggle button{font:600 12px/1 system-ui; padding:7px 14px; border-radius:6px; cursor:pointer;
+       border:1px solid var(--line); background:var(--panel); color:var(--ink);}
+  .toggle button.on{background:var(--acc); border-color:var(--acc); color:#fff;}
+  .mocks{display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:28px;}
+  figure{margin:0; display:flex; flex-direction:column; gap:12px;}
+  figcaption{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;}
+  .tag{font:600 11px/1 Consolas,monospace; letter-spacing:.14em; text-transform:uppercase;
+       background:var(--tagbg); color:var(--acc); padding:5px 9px; border-radius:4px; white-space:nowrap;}
+  .tag.rec{background:var(--acc); color:#fff;}
+  figcaption span.t{font-size:13.5px; color:var(--dim);}
+  iframe{width:100%; height:560px; border:1px solid var(--line); border-radius:10px;
+         background:#111; box-shadow:0 14px 40px rgba(10,10,30,.25);}
+  ul.notes{margin:0; padding:0 0 0 18px; color:var(--dim); font-size:13.5px;}
+  ul.notes li{margin:0 0 7px;}
+  ul.notes b{color:var(--ink); font-weight:600;}
+  table{border-collapse:collapse; font-size:13px; margin:14px 0 0;}
+  th,td{border:1px solid var(--line); padding:6px 12px; text-align:left;}
+  th{color:var(--dim); font-weight:600;}
+  .verdict{margin-top:44px; border-top:1px solid var(--line); padding-top:22px; max-width:80ch;}
+  .verdict h2{font-size:16px; margin:0 0 8px;}
+  .verdict p{margin:0 0 10px; color:var(--dim);}
+  .verdict p b{color:var(--ink);}
+</style>
+</head>
+<body>
+<main>
+  <h1>Identidade visual do console — 3 direções pra escolher</h1>
+  <p class="sub">Cada janela é o MESMO markup e a MESMA biblioteca de componentes — só o arquivo de tokens muda
+     (contrato da Onda 2). Dados 100% fictícios. Todos os textos informativos passam WCAG AA (tabela no fim).
+     A escolhida (ou o mix que você pedir) vira o token-set aplicado na Onda 6.</p>
+  <div class="toggle">Tela:
+    <button class="on" data-view="board">Board</button>
+    <button data-view="home">Início</button>
+  </div>
+
+  <div class="mocks">
+    <figure>
+      <figcaption><span class="tag rec">A · Nebula Refinada (ESCOLHIDA 07/07)</span><span class="t">evolução do atual — identidade preservada, contraste consertado</span></figcaption>
+      <iframe data-t="a" src="shared/board.html?t=a" loading="lazy"></iframe>
+      <ul class="notes">
+        <li><b>Mantém o que já é seu:</b> fundo espacial, lavanda + ciano, Poppins/Manrope. Quem usa hoje reconhece na hora.</li>
+        <li><b>Conserta o problema real:</b> texto secundário sobe de 4.2:1 pra 9.7:1; escada de 4 superfícies substitui os vidros translúcidos que embaralhavam hierarquia.</li>
+        <li><b>Menor risco e menor custo</b> de migração nas Ondas 2-6.</li>
+      </ul>
+    </figure>
+
+    <figure>
+      <figcaption><span class="tag">B · Grafite Denso</span><span class="t">estilo Linear — sóbrio, denso, cor só onde significa algo</span></figcaption>
+      <iframe data-t="b" src="shared/board.html?t=b" loading="lazy"></iframe>
+      <ul class="notes">
+        <li><b>Cor reservada pra semântica</b> (status, prioridade, vencido) — o padrão que funciona no seu ClickUp real. O vermelho de "vencida" grita porque nada mais é vermelho.</li>
+        <li><b>Densidade 0.9:</b> ~15% mais conteúdo na tela; fonte de sistema (carrega mais rápido, look de ferramenta profissional).</li>
+        <li><b>Custo:</b> perde a personalidade Nebula; vira "mais um app cinza" se a execução não for impecável.</li>
+      </ul>
+    </figure>
+
+    <figure>
+      <figcaption><span class="tag">C · Claro ClickUp</span><span class="t">tema claro default — prova o mecanismo de re-tematização</span></figcaption>
+      <iframe data-t="c" src="shared/board.html?t=c" loading="lazy"></iframe>
+      <ul class="notes">
+        <li><b>Leitura diurna e projeção em telão</b> (palestras/demos) muito melhores que qualquer dark.</li>
+        <li><b>Prova a Onda 2 de verdade:</b> se o C funciona, o toggle claro/escuro do futuro é só trocar tokens.</li>
+        <li><b>Custo:</b> maior distância do console atual; grafo 2D/3D precisa de palco escuro próprio mesmo no tema claro.</li>
+      </ul>
+    </figure>
+  </div>
+
+  <div class="verdict">
+    <h2>Leitura do Claude</h2>
+    <p><b>Recomendação: A como identidade, com duas heranças.</b> A direção A resolve os problemas diagnosticados
+       (contraste, hierarquia de superfície) sem jogar fora uma identidade que já é distintiva — nenhum concorrente
+       de console pessoal tem a cara do Nebula. Da B, herdar a disciplina de cor (saturação SÓ em semântica, que é o
+       que faz o seu ClickUp legível). Da C, implementar o contrato de tokens de forma que o tema claro seja
+       plugável depois, sem reforma nova.</p>
+    <p>Contraste medido (WCAG, texto sobre superfície de card): A 17.0 / 9.7 / 6.0 · B 14.7 / 7.7 / 5.3 ·
+       C 16.1 / 8.0 / 5.1 (texto / secundário / terciário). Mínimo AA = 4.5. Os três passam; o atual reprova
+       (--text-faint 0.35 ≈ 3.2:1 usado em texto informativo).</p>
+    <p><b>Decisão do dono (07/07/2026): direção A</b>, com três ajustes decididos no mesmo gate:
+       navegação reordenada (Início → Inbox → Grafo → Notas → Tarefas → Contatos), Configurações no rodapé
+       da sidebar junto do bloco do usuário (redesenhado), e cartões no padrão ClickUp — título primeiro,
+       breadcrumb de projeto, uma linha de meta e UMA linha só de tags. Os mockups acima já refletem a revisão.</p>
+  </div>
+</main>
+<script>
+  document.querySelectorAll('.toggle button').forEach((b) => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.toggle button').forEach((x) => x.classList.remove('on'));
+      b.classList.add('on');
+      const view = b.dataset.view;
+      document.querySelectorAll('iframe[data-t]').forEach((f) => {
+        f.src = 'shared/' + view + '.html?t=' + f.dataset.t;
+      });
+    });
+  });
+</script>
+</body>
+</html>

@@ -13,3 +13,9 @@ outputs/
 
 # Artefatos locais do Playwright MCP
 .playwright-mcp/
+
+# e2e (specs/60-ux-reforma/61)
+e2e/.auth/
+test-results/
+playwright-report/
+__pycache__/

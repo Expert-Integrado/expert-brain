@@ -8,38 +8,144 @@ export const FONT_LINKS = `
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 `;
 
-// Midnight Nebula — distinctive aesthetic: Fraunces display + Manrope body, deep nebula
+// Cor do <meta name="theme-color"> — DEVE espelhar o token --bg abaixo (fonte única
+// em TS porque meta tag não resolve custom property CSS). Consumida por render.ts e share.ts.
+export const THEME_COLOR = '#070a13';
+
+// Midnight Nebula — distinctive aesthetic: Poppins display + Manrope body, deep nebula
 // gradient, soft grain, lavender-accented cards with hover-lift, focus-visible rings.
-export const NEBULA_CSS = `
+//
+// Onda 2 (specs/60-ux-reforma/63): o CSS do console é composto em camadas.
+// NEBULA_CSS (o /app/styles.css completo) = TOKENS + BASE + SHELL + COMPONENTS + SURFACES,
+// preservando a ordem relativa original das regras. PUBLIC_CSS (páginas /s/ sem sessão) =
+// TOKENS + BASE + COMPONENTS. Trocar identidade/tema (Onda 6) = mexer SÓ em TOKENS_CSS.
+
+// ---------------------------------------------------------------------------
+// TOKENS_CSS — o que muda entre identidades/temas. Três sub-camadas no mesmo
+// :root: primitiva (paleta bruta/fontes/raios), semântica (superfícies, texto,
+// estados, prioridades) e escalas (espaçamento, tipografia, densidade).
+// ---------------------------------------------------------------------------
+export const TOKENS_CSS = `
 :root {
+  /* ============ Direção A — "Nebula Refinada" (Onda 6, specs/60-ux-reforma/62+67) ============
+     Decisão do dono no gate da Onda 1: evolução do Midnight Nebula — mesma identidade
+     (fundo espacial, lavanda + ciano, Poppins/Manrope), com contraste AA em todo texto
+     informativo, gradiente mais calmo e escada REAL de superfícies (opacas, não véus
+     translúcidos — viabiliza cálculo de contraste e o futuro tema claro).
+     Breakpoint canônico do console: 767px (único @media mobile permitido).
+     Tabela de contraste WCAG: docs/ux-contraste-aa.md (gate da Onda 6). */
+
+  /* -- primitiva: paleta bruta, fontes, raios -- */
   --bg: #070a13;
   --bg-mid: #0b0f19;
-  --bg-accent: #111827;
+  --bg-accent: var(--surface-1); /* legado — degrau 1 da escada de superfícies */
   --text: #f8fafc;
-  --text-dim: rgba(248, 250, 252, 0.58);
-  --text-faint: rgba(248, 250, 252, 0.35);
-  --border: rgba(167, 139, 250, 0.14);
-  --border-strong: rgba(167, 139, 250, 0.32);
-  --surface: rgba(255, 255, 255, 0.035);
-  --surface-raised: rgba(255, 255, 255, 0.06);
+  --text-dim: #b9bfd0;    /* AA 9.7:1 sobre --surface-1 */
+  --text-faint: rgba(248, 250, 252, 0.34); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
+  --border: rgba(167, 139, 250, 0.16);
+  --border-strong: rgba(167, 139, 250, 0.38);
+  --surface: #0c101d;
+  --surface-raised: #121728;
   --accent-lav: #a78bfa;
   --accent-cyan: #5eead4;
   --accent-pink: #f0abfc;
   --accent-violet: #7c3aed;
   --accent-lav-rgb: 167, 139, 250;
   --accent-violet-rgb: 124, 58, 237;
-  --danger: #ff7a90;
+  --accent-contrast: #0b0f19; /* texto SOBRE o acento sólido (botão primário, badge) — AA 7.2:1 */
+  --danger: #ff8298;
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --font-display: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --font-body: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-}
 
+  /* -- semântica: aliases e escalas derivadas (adoção ampla nas Ondas 3-5) -- */
+  --accent: var(--accent-lav);
+  --accent-2: var(--accent-cyan);
+  --surface-0: var(--surface);
+  --surface-1: var(--surface-raised);
+  --surface-2: #192036;
+  --surface-3: #212a46;
+  --backdrop: rgba(4, 6, 12, 0.72);
+  --shadow-1: 0 1px 2px rgba(2, 4, 12, 0.4);
+  --shadow-2: 0 6px 18px rgba(2, 4, 12, 0.5), 0 0 0 1px rgba(167, 139, 250, 0.08);
+  --shadow-3: 0 18px 50px rgba(2, 4, 12, 0.6);
+  --text-subtle: #8e96ad; /* terciário informativo — AA 6.0:1 sobre --surface-1, entre --text-dim e o decorativo --text-faint */
+  --input-bg: var(--surface);
+  --success: #4ade80;
+  --success-bg: rgba(74, 222, 128, 0.12);
+  --success-border: rgba(74, 222, 128, 0.4);
+  --warning: #fbbf24;
+  --warning-bg: rgba(251, 191, 36, 0.12);
+  --warning-border: rgba(251, 191, 36, 0.4);
+  --danger-bg: rgba(255, 130, 152, 0.12);
+  --danger-border: rgba(255, 130, 152, 0.5);
+  --info: #7db8ff;
+  --info-bg: rgba(125, 184, 255, 0.12);
+  --info-border: rgba(125, 184, 255, 0.4);
+  --prio-1: var(--danger);
+  --prio-2: var(--warning);
+  --prio-3: var(--info);
+  --prio-4: #9aa2b8;
+  /* Palco do grafo (2D e 3D): neutro escuro, sem tint lavanda — mais profundo
+     que o Obsidian (#1e1e1e) de propósito. graph3d.ts (BG_COLOR) espelha o valor
+     em JS pro WebGL — mudar aqui = mudar lá. */
+  --surface-canvas: #0c0c10;
+
+  /* -- tema: fundo e grain tokenizados (gradiente calmo da direção A) -- */
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 30% 0%, rgba(124, 58, 237, 0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 88% 100%, rgba(94, 234, 212, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
+  --grain-opacity: 0.22;
+
+  /* -- escalas: espaçamento base 4px, tipografia pareada, densidade -- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --text-xs: 11px;
+  --leading-xs: 1.45;
+  --text-sm: 13px;
+  --leading-sm: 1.5;
+  --text-md: 15px;
+  --leading-md: 1.6;
+  --text-lg: 18px;
+  --leading-lg: 1.45;
+  --text-xl: 22px;
+  --leading-xl: 1.3;
+  --text-2xl: 28px;
+  --leading-2xl: 1.15;
+  --density: 1;
+}
+`;
+
+// ---------------------------------------------------------------------------
+// BASE_CSS — reset, foco, html/body (fundo + grain via token), links, seleção.
+// ---------------------------------------------------------------------------
+export const BASE_CSS = `
 * { box-sizing: border-box; }
 *:focus { outline: none; }
 *:focus-visible { outline: 2px solid var(--accent-lav); outline-offset: 2px; border-radius: 4px; }
+
+/* Acessibilidade: usuário pediu menos movimento no SO = zera animação/transição
+   em tudo (spec 67). Regras locais (ex: .skeleton) podem complementar o visual
+   estático, mas a garantia global mora aqui. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 
 html, body {
   margin: 0;
@@ -55,10 +161,7 @@ html, body {
   /* Mobile: evita swipe-from-edge disparar back-nav do browser e impede
      bounce/overscroll vertical interferindo nos gestos do canvas. */
   overscroll-behavior: contain;
-  background:
-    radial-gradient(ellipse 90% 60% at 30% 0%, rgba(124, 58, 237, 0.22) 0%, transparent 60%),
-    radial-gradient(ellipse 80% 70% at 85% 100%, rgba(94, 234, 212, 0.09) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
+  background: var(--bg-gradient);
   background-attachment: fixed;
 }
 
@@ -69,7 +172,7 @@ body::before {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.22;
+  opacity: var(--grain-opacity);
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.08 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
@@ -78,7 +181,17 @@ a { color: var(--accent-lav); text-decoration: none; transition: color 180ms var
 a:hover { color: var(--text); }
 
 ::selection { background: rgba(167, 139, 250, 0.4); color: var(--text); }
+`;
 
+// ---------------------------------------------------------------------------
+// SHELL_CSS — moldura do console logado: .shell, sidebar (+ modo recolhido),
+// .main e page-header. Bottom-nav mobile e as regras responsivas do shell
+// seguem em SURFACES_CSS até a Onda 5, pra preservar a ordem de cascata.
+// Na cascata, SHELL vem ANTES de COMPONENTS: tipografia genérica do shell
+// (ex. .main h2) não pode vencer componente (ex. .card h2) em especificidade
+// igual — componente é mais específico em intenção.
+// ---------------------------------------------------------------------------
+export const SHELL_CSS = `
 /* ---- Shell ---- */
 .shell { display: flex; min-height: 100vh; position: relative; z-index: 1; }
 
@@ -145,29 +258,33 @@ a:hover { color: var(--text); }
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-.sidebar .bottom { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-faint); }
-.sidebar .bottom > div { margin-bottom: 6px; font-family: var(--font-body); }
+/* Rodapé da sidebar (Onda 5, decisão do gate): grupo coeso Recolher → Configurações
+   → bloco do usuário (avatar + e-mail + Sair), separado da navegação por borda. */
+.sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-subtle); display: flex; flex-direction: column; gap: 2px; }
 .sidebar .bottom form { margin: 0; }
-.sidebar .bottom button {
-  background: none;
-  border: none;
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: 4px 0;
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 500;
-  transition: color 180ms var(--ease);
+
+/* Badge numérico de pendências na nav (inbox) — antes vivia inline no <head> */
+.nav-badge, .bottom-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  background: var(--accent-lav); color: var(--accent-contrast);
 }
-.sidebar .bottom button:hover { color: var(--accent-lav); }
+.nav-item .nav-badge { margin-left: auto; }
+.sidebar-collapsed .nav-item .nav-badge {
+  position: absolute; top: 4px; right: 4px; margin-left: 0;
+  min-width: 16px; height: 16px; font-size: 10px;
+}
+.sidebar-collapsed .nav-item { position: relative; }
+.bottom-nav-item { position: relative; }
+.bottom-nav-badge { position: absolute; top: 3px; right: 22%; min-width: 16px; height: 16px; font-size: 10px; }
 
 /* nav-item agora carrega ícone + label. Ícone fixo, label some no modo recolhido. */
 .sidebar .nav-item svg { flex-shrink: 0; }
 .sidebar .nav-label { white-space: nowrap; overflow: hidden; }
 
-/* Botão de recolher + logout viram linha de ícone+texto no rodapé do menu. */
-.sidebar .bottom .sidebar-toggle,
-.sidebar .bottom .sidebar-logout {
+/* Botão de recolher: linha de ícone+texto, mesmo desenho dos nav-item. */
+.sidebar .bottom .sidebar-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -183,12 +300,31 @@ a:hover { color: var(--text); }
   font-weight: 500;
   transition: color 180ms var(--ease), background 180ms var(--ease);
 }
-.sidebar .bottom .sidebar-toggle { margin-bottom: 8px; }
 .sidebar .bottom .sidebar-toggle svg { transition: transform 220ms var(--ease); flex-shrink: 0; }
-.sidebar .bottom .sidebar-toggle:hover,
-.sidebar .bottom .sidebar-logout:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
-.sidebar .bottom .sidebar-logout:hover { color: var(--danger); }
-.sidebar .sidebar-email { font-family: var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .bottom .sidebar-toggle:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
+
+/* Bloco do usuário: avatar com a inicial + e-mail truncado + Sair (ícone) */
+.sidebar .sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 10px 4px 14px;
+}
+.sidebar .sidebar-avatar {
+  width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(167, 139, 250, 0.22);
+  color: var(--accent-lav); font-size: 11px; font-weight: 700;
+}
+.sidebar .sidebar-email { flex: 1; min-width: 0; font-family: var(--font-body); font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar .sidebar-logout {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  background: none; border: none; padding: 6px; border-radius: var(--radius-sm);
+  color: var(--text-dim); cursor: pointer;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
+}
+.sidebar .sidebar-logout:hover { color: var(--danger); background: rgba(167, 139, 250, 0.08); }
 
 /* ---- Sidebar recolhida (régua de ícones, desktop) ---- */
 .sidebar { transition: width 200ms var(--ease), padding 200ms var(--ease); }
@@ -213,8 +349,8 @@ a:hover { color: var(--text); }
   width: 44px;
 }
 .shell.sidebar-collapsed .sidebar .nav-item::before { display: none; }
-.shell.sidebar-collapsed .sidebar .bottom { align-items: center; display: flex; flex-direction: column; }
-.shell.sidebar-collapsed .sidebar .bottom form { width: 44px; }
+.shell.sidebar-collapsed .sidebar .bottom { align-items: center; }
+.shell.sidebar-collapsed .sidebar .sidebar-user { flex-direction: column; gap: 6px; padding: 8px 0 0; width: 44px; justify-content: center; }
 /* Chevron aponta pra fora (expandir) quando recolhido. */
 .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
@@ -255,7 +391,301 @@ a:hover { color: var(--text); }
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
 }
+`;
 
+// ---------------------------------------------------------------------------
+// COMPONENTS_CSS — biblioteca de componentes global (Onda 3, specs/60-ux-reforma/64).
+// Só consome tokens da Onda 2. As telas ADOTAM esses componentes na Onda 5 via
+// co-classe (ex. class="task-btn btn btn-sm") — classes protegidas por teste
+// (task-tag-chip, task-detail-sidebar, nav-badge) nunca são renomeadas.
+// CSS por página (SURFACES e folhas de cada tela) vem DEPOIS na cascata; a
+// Onda 5 removeu as duplicatas que venciam empates (.btn-primary/.btn-danger).
+// ---------------------------------------------------------------------------
+export const COMPONENTS_CSS = `
+/* ---- Card ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-5) 22px;
+  margin-bottom: var(--space-4);
+}
+.card h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  margin: 0 0 10px;
+}
+.card pre {
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+.card--interactive {
+  cursor: pointer;
+  transition: transform 160ms var(--ease), border-color 180ms var(--ease), background 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+.card--interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  background: var(--surface-1);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- Botões: hierarquia única (primary > secondary > ghost; danger; -sm) ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 180ms var(--ease), color 180ms var(--ease), border-color 180ms var(--ease), transform 150ms var(--ease), box-shadow 180ms var(--ease);
+}
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+/* Direção A (Onda 6): primário é acento SÓLIDO com texto escuro (--accent-contrast,
+   AA 7.2:1) — o gradiente lavanda->violeta com texto branco reprovava AA (2.2:1). */
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.45);
+}
+.btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.6); }
+.btn-primary:active { filter: none; transform: translateY(0); }
+.btn-secondary {
+  background: rgba(var(--accent-lav-rgb), 0.12);
+  color: var(--accent);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover { background: rgba(var(--accent-lav-rgb), 0.22); }
+.btn-ghost {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.btn-ghost:hover { color: var(--text); border-color: var(--border-strong); background: var(--surface-0); }
+.btn-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+.btn-danger:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+.btn-sm { padding: 6px 10px; font-size: var(--text-xs); border-radius: 6px; }
+
+/* ---- Chips: pill compacta de metadado. Cor dinâmica via --chip (spec 54). ---- */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  --chip: var(--accent-lav);
+  color: var(--chip);
+  background: color-mix(in srgb, var(--chip) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--chip) 32%, transparent);
+}
+.chip--tag { --chip: var(--accent-cyan); }
+.chip--project { --chip: var(--accent-pink); }
+.chip--prio-1 { --chip: var(--prio-1); }
+.chip--prio-2 { --chip: var(--prio-2); }
+.chip--prio-3 { --chip: var(--prio-3); }
+.chip--prio-4 { --chip: var(--text-dim); }
+.chip--due { --chip: var(--text-dim); }
+.chip--due.overdue { --chip: var(--danger); }
+.chip--privacy { --chip: var(--warning); }
+.chip--status { --chip: var(--info); }
+.chip--kind { --chip: var(--accent-lav); }
+
+/* ---- Estados vazios / carregando / erro ---- */
+.empty-state {
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.skeleton {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(100deg, var(--surface-0) 40%, var(--surface-1) 50%, var(--surface-0) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  color: transparent;
+  user-select: none;
+  pointer-events: none;
+}
+@keyframes skeleton-pulse {
+  0% { background-position: 120% 0; }
+  100% { background-position: -80% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; background: var(--surface-1); }
+}
+.error-state {
+  padding: var(--space-3) 14px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+/* ---- Formulário ---- */
+.field { display: block; margin-bottom: var(--space-4); }
+.field > .field-label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.input, .textarea, .select {
+  width: 100%;
+  padding: var(--space-3) 14px;
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-md);
+  font-family: inherit;
+  transition: border-color 180ms var(--ease), background 180ms var(--ease);
+}
+.input:focus, .textarea:focus, .select:focus {
+  border-color: var(--accent);
+  background: rgba(var(--accent-lav-rgb), 0.05);
+}
+.textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+.select { cursor: pointer; }
+
+/* ---- Modal genérico (task-modal e palette consomem na Onda 5) ---- */
+.modal { position: fixed; inset: 0; z-index: 1000; }
+.modal[hidden] { display: none; }
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--backdrop);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.modal-dialog {
+  position: relative;
+  max-width: 620px;
+  margin: 10vh auto 0;
+  background: var(--bg-accent);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow-3);
+  overflow: hidden;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) 18px;
+  border-bottom: 1px solid var(--border);
+}
+.modal-x {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
+}
+.modal-x:hover { color: var(--text); background: var(--surface-1); }
+.modal-body { padding: var(--space-4) 18px; }
+
+/* ---- Banner informativo (banner Novidades sai do style inline na Onda 5) ---- */
+.banner-info {
+  display: block;
+  margin: 0 0 var(--space-4);
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.14), rgba(var(--accent-lav-rgb), 0.14));
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+/* ---- Note body (markdown) ----
+   Componente compartilhado: detalhe de nota (/app) E página pública /s/ (PUBLIC_CSS). */
+.note-body {
+  line-height: 1.75;
+  font-size: 16px;
+  color: rgba(248, 250, 252, 0.86);
+  max-width: 68ch;
+}
+.note-body h1, .note-body h2, .note-body h3 {
+  font-family: var(--font-display);
+  color: var(--text);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+}
+.note-body h1 { font-size: 28px; }
+.note-body h2 { font-size: 22px; }
+.note-body h3 { font-size: 18px; }
+.note-body p { margin: 0 0 1em; }
+.note-body ul, .note-body ol { padding-left: 1.3em; margin: 0 0 1em; }
+.note-body li { margin-bottom: 4px; }
+.note-body blockquote {
+  margin: 1em 0;
+  padding: 4px 0 4px 18px;
+  border-left: 2px solid var(--accent-lav);
+  color: var(--text-dim);
+  font-style: italic;
+}
+.note-body pre {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border);
+  padding: 14px 18px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.note-body code {
+  background: rgba(255, 255, 255, 0.07);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.note-body pre code { background: none; padding: 0; }
+.note-body a { color: var(--accent-cyan); border-bottom: 1px solid rgba(140, 200, 255, 0.3); }
+.note-body a:hover { border-bottom-color: var(--accent-cyan); }
+.note-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+`;
+
+// ---------------------------------------------------------------------------
+// SURFACES_CSS — CSS restante das superfícies do console (notas, login, config,
+// grafo, palette, bottom-nav mobile, ...). Categoria "resto" desta onda; as
+// Ondas 3-5 promovem o que for componente e enxugam o que for por página.
+// ---------------------------------------------------------------------------
+export const SURFACES_CSS = `
 /* ---- Note cards ---- */
 .note-card {
   display: block;
@@ -308,55 +738,6 @@ a:hover { color: var(--text); }
   margin-right: 6px;
 }
 
-/* ---- Note body (markdown) ---- */
-.note-body {
-  line-height: 1.75;
-  font-size: 16px;
-  color: rgba(248, 250, 252, 0.86);
-  max-width: 68ch;
-}
-.note-body h1, .note-body h2, .note-body h3 {
-  font-family: var(--font-display);
-  color: var(--text);
-  font-weight: 500;
-  letter-spacing: -0.015em;
-  margin-top: 1.8em;
-  margin-bottom: 0.5em;
-}
-.note-body h1 { font-size: 28px; }
-.note-body h2 { font-size: 22px; }
-.note-body h3 { font-size: 18px; }
-.note-body p { margin: 0 0 1em; }
-.note-body ul, .note-body ol { padding-left: 1.3em; margin: 0 0 1em; }
-.note-body li { margin-bottom: 4px; }
-.note-body blockquote {
-  margin: 1em 0;
-  padding: 4px 0 4px 18px;
-  border-left: 2px solid var(--accent-lav);
-  color: var(--text-dim);
-  font-style: italic;
-}
-.note-body pre {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border);
-  padding: 14px 18px;
-  border-radius: var(--radius-sm);
-  overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.note-body code {
-  background: rgba(255, 255, 255, 0.07);
-  padding: 1.5px 6px;
-  border-radius: 4px;
-  font-size: 13px;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-}
-.note-body pre code { background: none; padding: 0; }
-.note-body a { color: var(--accent-cyan); border-bottom: 1px solid rgba(140, 200, 255, 0.3); }
-.note-body a:hover { border-bottom-color: var(--accent-cyan); }
-.note-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
-
 /* ---- Login ---- */
 .login-wrap {
   max-width: 400px;
@@ -408,12 +789,13 @@ a:hover { color: var(--text); }
   border-color: var(--accent-lav);
   background: rgba(167, 139, 250, 0.05);
 }
+/* Direção A (Onda 6): mesma receita do .btn-primary — acento sólido + texto escuro AA */
 .login-wrap button {
   width: 100%;
   padding: 13px;
   margin-top: 8px;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  color: #ffffff;
+  background: var(--accent);
+  color: var(--accent-contrast);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 14px;
@@ -422,10 +804,10 @@ a:hover { color: var(--text); }
   cursor: pointer;
   font-family: inherit;
   transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-  box-shadow: 0 8px 24px -6px rgba(167, 139, 250, 0.55);
+  box-shadow: 0 8px 24px -6px rgba(var(--accent-lav-rgb), 0.45);
 }
-.login-wrap button:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(167, 139, 250, 0.7); }
-.login-wrap button:active { transform: translateY(0); }
+.login-wrap button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -6px rgba(var(--accent-lav-rgb), 0.6); }
+.login-wrap button:active { filter: none; transform: translateY(0); }
 
 .error { color: var(--danger); font-size: 13px; margin-bottom: 14px; text-align: center; }
 
@@ -466,9 +848,12 @@ a:hover { color: var(--text); }
   color: var(--text);
 }
 .row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
-.row button {
+/* Look default pra botões SEM classe dentro de .row (Salvar, Copiar, ↑↓...).
+   O :not(.btn) evita atropelar a hierarquia .btn-* (Onda 5): .row button tinha
+   especificidade (0,1,1) e vencia .btn-primary (0,1,0) — o backup ficava sem gradiente. */
+.row button:not(.btn) {
   padding: 10px 14px;
-  background: rgba(167, 139, 250, 0.12);
+  background: rgba(var(--accent-lav-rgb), 0.12);
   color: var(--accent-lav);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
@@ -478,7 +863,7 @@ a:hover { color: var(--text); }
   cursor: pointer;
   transition: background 180ms var(--ease);
 }
-.row button:hover { background: rgba(167, 139, 250, 0.22); }
+.row button:not(.btn):hover { background: rgba(var(--accent-lav-rgb), 0.22); }
 
 .badge-pill {
   display: inline-block;
@@ -490,8 +875,8 @@ a:hover { color: var(--text); }
   vertical-align: middle;
   margin-left: 12px;
 }
-.badge-ok { background: rgba(111, 227, 154, 0.12); color: #6fe39a; border: 1px solid rgba(111, 227, 154, 0.3); }
-.badge-warn { background: rgba(255, 184, 112, 0.12); color: #ffb870; border: 1px solid rgba(255, 184, 112, 0.3); }
+.badge-ok { background: var(--success-bg); color: var(--success); border: 1px solid var(--success-border); }
+.badge-warn { background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning-border); }
 
 /* ---- Config page: disclosure progressivo (2 passos + gaveta avancada + rodape) ---- */
 .config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 12px; }
@@ -499,6 +884,29 @@ a:hover { color: var(--text); }
 /* Grupo "Conexoes": heading + abas-acordeao (reusa .disclosure-advanced) */
 .conn-heading { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 36px 0 2px; }
 .conn-section { margin-top: 12px; }
+
+/* Abas segmentadas da config (spec 69): Conexoes / Organizacao / Sistema */
+.config-tabs {
+  display: flex; gap: 4px; margin: 2px 0 18px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.config-tabs::-webkit-scrollbar { display: none; }
+.config-tabs [role="tab"] {
+  appearance: none; background: none; border: none; cursor: pointer;
+  font-family: var(--font-display); font-size: 14.5px; font-weight: 500;
+  color: var(--text-subtle);
+  padding: 10px 16px 12px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  white-space: nowrap;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.config-tabs [role="tab"]:hover { color: var(--text); }
+.config-tabs [role="tab"][aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent-lav); }
+.config-panel { display: none; }
+.config-panel.active { display: block; }
+/* Dentro de um painel o respiro entre gavetas e menor que o default de 32px */
+.config-panel .disclosure-advanced { margin-top: 12px; }
 
 /* Cards de passo numerado (trilha essencial) */
 .card-step { border-left: 3px solid var(--accent-lav); }
@@ -527,22 +935,13 @@ a:hover { color: var(--text); }
   margin-top: 16px; padding: 12px 14px;
   border-radius: var(--radius-sm);
   font-size: 13px; line-height: 1.55; color: var(--text-dim);
-  background: rgba(94, 234, 212, 0.06);
-  border: 1px solid rgba(94, 234, 212, 0.20);
+  background: color-mix(in srgb, var(--accent-cyan) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 20%, transparent);
 }
 .callout-info strong { color: var(--accent-cyan); }
 .callout-info em { font-style: italic; color: var(--text); }
 
-/* Acao primaria (Salvar prompt) — gradiente lavanda->violeta */
-.btn-primary {
-  padding: 10px 18px; border: none; border-radius: var(--radius-sm); cursor: pointer;
-  font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; color: #fff;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
-  transition: transform 150ms var(--ease), box-shadow 180ms var(--ease);
-}
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
-.btn-primary:active { transform: translateY(0); }
+/* Acao primaria (Salvar prompt): .btn .btn-primary do COMPONENTS_CSS (Onda 5) */
 
 /* Textarea do prompt */
 .prefs-textarea {
@@ -587,7 +986,7 @@ a:hover { color: var(--text); }
 }
 .disclosure-advanced[open] > summary .adv-title::before { transform: rotate(90deg); }
 .disclosure-advanced > summary .adv-sub {
-  font-size: 12.5px; color: var(--text-faint); padding-left: 22px;
+  font-size: 12.5px; color: var(--text-subtle); padding-left: 22px;
 }
 .disclosure-advanced .adv-body {
   padding: 4px 20px 22px;
@@ -620,7 +1019,7 @@ a:hover { color: var(--text); }
 .keys-table th {
   text-align: left; padding: 8px 10px;
   font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--text-faint); border-bottom: 1px solid var(--border);
+  color: var(--text-subtle); border-bottom: 1px solid var(--border);
 }
 .keys-table td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
 .keys-table tr:last-child td { border-bottom: none; }
@@ -628,22 +1027,7 @@ a:hover { color: var(--text); }
   background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
 }
-.btn-danger {
-  padding: 6px 12px;
-  background: rgba(255, 122, 144, 0.12); color: var(--danger);
-  border: 1px solid rgba(255, 122, 144, 0.3); border-radius: var(--radius-sm);
-  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-  transition: background 160ms var(--ease);
-}
-.btn-danger:hover { background: rgba(255, 122, 144, 0.22); }
-
-/* Coluna vazia do kanban (spec 72) — placeholder que dá alvo visual pro drop. */
-.task-col-empty {
-  margin: 4px 2px; padding: 18px 10px;
-  border: 1px dashed var(--border); border-radius: var(--radius-sm);
-  color: var(--text-faint); font-size: 12px; text-align: center;
-  user-select: none;
-}
+/* Acoes destrutivas (Arquivar/Revogar): .btn .btn-danger .btn-sm do COMPONENTS_CSS (Onda 5) */
 
 /* Toast global dos bundles do /app (spec 72) — feedback de erro/sucesso de ações client. */
 .app-toast {
@@ -659,8 +1043,8 @@ a:hover { color: var(--text); }
   z-index: 300;
 }
 .app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-.app-toast[data-kind='error'] { border-color: rgba(255, 122, 144, 0.5); color: var(--danger); }
-.app-toast[data-kind='ok'] { border-color: rgba(94, 234, 212, 0.4); }
+.app-toast[data-kind='error'] { border-color: var(--danger-border); color: var(--danger); }
+.app-toast[data-kind='ok'] { border-color: var(--success-border); }
 
 /* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
 .tax-swatch {
@@ -674,17 +1058,17 @@ a:hover { color: var(--text); }
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
 .key-flash {
   margin-bottom: 18px; padding: 16px 18px;
-  border: 1px solid rgba(111, 227, 154, 0.4);
-  background: rgba(111, 227, 154, 0.08);
+  border: 1px solid var(--success-border);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
   border-radius: var(--radius);
-  box-shadow: 0 0 24px -10px rgba(111, 227, 154, 0.3);
+  box-shadow: 0 0 24px -10px color-mix(in srgb, var(--success) 30%, transparent);
 }
-.key-flash h2 { font-family: var(--font-display); font-weight: 500; font-size: 16px; margin: 0 0 6px; color: #6fe39a; }
+.key-flash h2 { font-family: var(--font-display); font-weight: 500; font-size: 16px; margin: 0 0 6px; color: var(--success); }
 .key-flash p { color: var(--text-dim); font-size: 13px; margin: 0 0 10px; }
 .key-flash input.key-flash-value {
   width: 100%; box-sizing: border-box; padding: 12px 14px;
   background: rgba(0, 0, 0, 0.4); color: #b9f6ca;
-  border: 1px solid rgba(111, 227, 154, 0.3); border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: var(--radius-sm);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
 }
 
@@ -704,8 +1088,8 @@ a:hover { color: var(--text); }
   font-family: var(--font-display); font-size: 18px; font-weight: 600;
   color: var(--text); font-variant-numeric: tabular-nums;
 }
-.stat-pill .k { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-faint); }
-.vault-stats-foot .links { margin-top: 16px; font-size: 13px; color: var(--text-faint); }
+.stat-pill .k { font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-subtle); }
+.vault-stats-foot .links { margin-top: 16px; font-size: 13px; color: var(--text-subtle); }
 .vault-stats-foot .links a { color: var(--accent-lav); }
 .vault-stats-foot .empty-hint { margin-top: 10px; font-size: 13px; color: var(--text-dim); }
 
@@ -781,7 +1165,7 @@ a:hover { color: var(--text); }
   left: 10px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-subtle);
   display: inline-flex;
 }
 .graph-search-input {
@@ -795,7 +1179,7 @@ a:hover { color: var(--text); }
   font-size: 12.5px;
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
-.graph-search-input::placeholder { color: var(--text-faint); }
+.graph-search-input::placeholder { color: var(--text-subtle); }
 .graph-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
 .graph-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 
@@ -817,11 +1201,11 @@ a:hover { color: var(--text); }
 }
 .graph-search-counter {
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   letter-spacing: 0.04em;
   padding: 4px 8px 6px;
 }
-.graph-search-empty { font-size: 12px; color: var(--text-faint); padding: 8px 10px; }
+.graph-search-empty { font-size: 12px; color: var(--text-subtle); padding: 8px 10px; }
 .graph-search-item {
   display: flex;
   align-items: center;
@@ -843,14 +1227,14 @@ a:hover { color: var(--text); }
 .graph-search-item-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .graph-search-item-tldr {
   font-size: 10.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .graph-search-item-chip {
   font-size: 9.5px;
-  color: var(--text-muted);
+  color: var(--text-dim);
   border: 1px solid var(--border);
   padding: 1px 7px;
   border-radius: 999px;
@@ -873,7 +1257,7 @@ a:hover { color: var(--text); }
   font-size: 9.5px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-field dd { margin: 1px 0 0; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
 .panel-field dd a { color: var(--accent-lav); text-decoration: none; }
@@ -884,7 +1268,7 @@ a:hover { color: var(--text); }
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-conns { display: flex; flex-direction: column; gap: 6px; }
 .panel-conn {
@@ -906,12 +1290,12 @@ a:hover { color: var(--text); }
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
-.panel-conn-why { display: block; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.panel-conn-why { display: block; font-size: 11px; color: var(--text-subtle); margin-top: 2px; }
 .panel-events { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.panel-events li { font-size: 12px; color: var(--text-muted); }
+.panel-events li { font-size: 12px; color: var(--text-dim); }
 .panel-event-kind { font-weight: 600; color: var(--text); }
-.panel-event-ts { color: var(--text-faint); margin-left: 6px; font-size: 10.5px; }
-.panel-event-ctx { font-size: 11px; color: var(--text-faint); margin-top: 1px; }
+.panel-event-ts { color: var(--text-subtle); margin-left: 6px; font-size: 10.5px; }
+.panel-event-ctx { font-size: 11px; color: var(--text-subtle); margin-top: 1px; }
 .panel-empty { color: var(--text-dim); font-size: 13px; margin: 0; list-style: none; }
 .panel-timeline-wrap { margin-top: 16px; }
 
@@ -972,7 +1356,7 @@ a:hover { color: var(--text); }
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-form-input,
 .panel-form-textarea {
@@ -997,6 +1381,7 @@ select.panel-form-input { cursor: pointer; }
 .panel-form-feedback.ok { color: var(--accent-cyan); }
 .panel-form-feedback:empty { display: none; }
 
+/* Direção A (Onda 6): mesma receita do .btn-primary — acento sólido + texto escuro AA */
 .panel-form-submit {
   padding: 10px 16px;
   border: none;
@@ -1006,18 +1391,18 @@ select.panel-form-input { cursor: pointer; }
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #fff;
-  background: linear-gradient(135deg, var(--accent-lav), var(--accent-violet));
-  box-shadow: 0 8px 24px -8px rgba(167, 139, 250, 0.55);
+  color: var(--accent-contrast);
+  background: var(--accent);
+  box-shadow: 0 8px 24px -8px rgba(var(--accent-lav-rgb), 0.45);
   transition: transform 150ms var(--ease), box-shadow 180ms var(--ease), opacity 150ms var(--ease);
 }
-.panel-form-submit:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(167, 139, 250, 0.7); }
-.panel-form-submit:active { transform: translateY(0); }
+.panel-form-submit:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 12px 32px -8px rgba(var(--accent-lav-rgb), 0.6); }
+.panel-form-submit:active { filter: none; transform: translateY(0); }
 .panel-form-submit:disabled { opacity: 0.55; cursor: progress; transform: none; box-shadow: none; }
 
 .graph-status {
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   letter-spacing: 0.015em;
   padding: 2px 0;
 }
@@ -1031,7 +1416,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   margin-top: 2px;
 }
 .graph-reset-btn {
@@ -1084,7 +1469,7 @@ select.panel-form-input { cursor: pointer; }
 .graph-chip .label { font-weight: 500; }
 .graph-chip .count {
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-variant-numeric: tabular-nums;
 }
 .graph-chip.graph-chip-kind { padding-left: 8px; }
@@ -1108,7 +1493,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .graph-slider-label input[type="range"] {
   width: 100%;
@@ -1131,7 +1516,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 10px;
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
@@ -1213,7 +1598,7 @@ select.panel-form-input { cursor: pointer; }
   height: 30px;
   background: transparent;
   border: none;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -1227,7 +1612,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 10px;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .panel-kind {
   display: inline-block;
@@ -1242,7 +1627,7 @@ select.panel-form-input { cursor: pointer; }
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.panel-degree { font-size: 11.5px; color: var(--text-faint); }
+.panel-degree { font-size: 11.5px; color: var(--text-subtle); }
 
 .panel-title {
   font-family: var(--font-display);
@@ -1325,7 +1710,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 6px 4px;
   background: none;
   border: none;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   text-decoration: none;
   font: inherit;
   font-size: 10.5px;
@@ -1334,11 +1719,15 @@ select.panel-form-input { cursor: pointer; }
   cursor: pointer;
   transition: color 140ms var(--ease);
 }
-.bottom-nav-item span {
-  white-space: nowrap;
+/* Onda 5: com 9 destinos a label textual truncava ("Jour…", "Cont…") — a barra é
+   icon-only; o nome segue lendo pra leitores de tela (clip) e no aria-label. */
+.bottom-nav-item span:not(.bottom-nav-badge) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .bottom-nav-item:hover { color: var(--text-dim); }
 .bottom-nav-item.active { color: var(--accent-lav); }
@@ -1442,7 +1831,7 @@ select.panel-form-input { cursor: pointer; }
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--text-faint);
+  color: var(--text-subtle);
   display: inline-flex;
   pointer-events: none;
 }
@@ -1457,7 +1846,7 @@ select.panel-form-input { cursor: pointer; }
   font-size: 14px;
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
-.notes-search-input::placeholder { color: var(--text-faint); }
+.notes-search-input::placeholder { color: var(--text-subtle); }
 .notes-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
 
 .notes-toolbar-actions { display: flex; gap: 8px; }
@@ -1487,7 +1876,7 @@ select.panel-form-input { cursor: pointer; }
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   min-width: 64px;
 }
 .notes-chips { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -1517,7 +1906,7 @@ select.panel-form-input { cursor: pointer; }
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
-.notes-chip .count { font-size: 10.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.notes-chip .count { font-size: 10.5px; color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 
 /* Notes list layout variants */
 /* Lista de notas usa a largura toda da tela (detalhe da nota e config seguem
@@ -1549,7 +1938,7 @@ select.panel-form-input { cursor: pointer; }
   gap: 8px;
   margin-bottom: 8px;
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .note-card-date { margin-left: auto; font-variant-numeric: tabular-nums; }
 .note-card-tldr {
@@ -1616,7 +2005,7 @@ select.panel-form-input { cursor: pointer; }
   color: var(--text-dim);
   flex-wrap: wrap;
 }
-.note-row-date { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.note-row-date { color: var(--text-subtle); font-variant-numeric: tabular-nums; }
 
 .notes-empty {
   padding: 32px 20px;
@@ -1644,13 +2033,13 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .local-graph-hops input[type=range] { width: 120px; }
 .local-graph-hops #local-graph-hops-value {
   min-width: 48px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
+  color: var(--text-dim);
 }
 .local-graph-wrap .local-graph {
   border-radius: 0 0 var(--radius) var(--radius);
@@ -1671,7 +2060,7 @@ select.panel-form-input { cursor: pointer; }
   justify-content: center;
   height: 100%;
   margin: 0;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 13px;
 }
 
@@ -1688,8 +2077,8 @@ select.panel-form-input { cursor: pointer; }
   border-bottom-color: var(--text);
 }
 .wikilink.broken {
-  color: #ff7a90;
-  border-bottom-color: rgba(255, 122, 144, 0.4);
+  color: var(--danger);
+  border-bottom-color: color-mix(in srgb, var(--danger) 40%, transparent);
   cursor: help;
 }
 
@@ -1730,7 +2119,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
-.cmd-input-icon { color: var(--text-faint); display: inline-flex; }
+.cmd-input-icon { color: var(--text-subtle); display: inline-flex; }
 .cmd-input {
   flex: 1;
   background: transparent;
@@ -1740,7 +2129,7 @@ select.panel-form-input { cursor: pointer; }
   font-size: 16px;
   letter-spacing: 0;
 }
-.cmd-input::placeholder { color: var(--text-faint); }
+.cmd-input::placeholder { color: var(--text-subtle); }
 .cmd-input:focus { outline: none; }
 .cmd-esc {
   font-size: 11px;
@@ -1748,7 +2137,7 @@ select.panel-form-input { cursor: pointer; }
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -1783,7 +2172,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-label { flex: 1; }
 .cmd-hint {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   text-transform: lowercase;
 }
@@ -1792,7 +2181,7 @@ select.panel-form-input { cursor: pointer; }
    (role="presentation") — a navegação por setas pula direto pros .cmd-row. */
 .cmd-group-header {
   padding: 10px 18px 4px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
@@ -1801,7 +2190,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-group-header:first-child { padding-top: 6px; }
 .cmd-empty {
   padding: 20px 18px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
   text-align: center;
   font-size: 13px;
   font-style: italic;
@@ -1819,7 +2208,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 10px 18px;
   border-top: 1px solid var(--border);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-subtle);
 }
 .cmd-help kbd {
   display: inline-block;
@@ -1846,33 +2235,19 @@ select.panel-form-input { cursor: pointer; }
   .notes-toolbar-actions { width: 100%; }
   .notes-select { flex: 1; }
 
-  /* Sidebar collapses: compact width, icon-ish nav */
-  .sidebar {
-    width: 64px;
-    padding: 20px 6px;
-  }
-  .sidebar .logo {
-    font-size: 0;
-    gap: 0;
-    justify-content: center;
-    margin-bottom: 20px;
-  }
-  .sidebar .logo::before {
-    width: 24px;
-    height: 24px;
-  }
-  .sidebar .nav-item {
-    padding: 10px 0;
-    justify-content: center;
-    font-size: 11.5px;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .sidebar .nav-item::before { display: none; }
-  .sidebar .bottom {
-    display: none;
-  }
+  /* Sidebar mobile: NADA aqui — ela é display:none no bloco @media do shell
+     (a navegação mobile é a bottom-nav). O bloco de "sidebar 64px" que vivia
+     aqui era CSS morto contraditório (Onda 5, specs/60-ux-reforma/66): nunca
+     tinha efeito porque display:none vence sem depender de ordem. */
   .main { padding: 24px 18px 80px; }
 }
 `;
+
+// ---------------------------------------------------------------------------
+// Folhas servidas. NEBULA_CSS é o /app/styles.css completo do console logado
+// (test/web/polish.test.ts asserta byte-a-byte contra este export). PUBLIC_CSS
+// é o subconjunto pras páginas públicas /s/ (sem shell nem superfícies do
+// console) — consumida por share.ts a partir da Onda 5.
+// ---------------------------------------------------------------------------
+export const NEBULA_CSS = TOKENS_CSS + BASE_CSS + SHELL_CSS + COMPONENTS_CSS + SURFACES_CSS;
+export const PUBLIC_CSS = TOKENS_CSS + BASE_CSS + COMPONENTS_CSS;

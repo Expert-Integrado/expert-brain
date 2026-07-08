@@ -1,21 +1,21 @@
 // AUTO-GERADO por scripts/build-bundles.ts — não editar à mão.
 // Hash de conteúdo de cada bundle pra cache-busting estável (?v=).
 export const ASSET_HASHES: Record<string, string> = {
-  "graph.bundle.js": "19d21685055f",
+  "graph.bundle.js": "1d8d1da051cb",
   "graph3d.bundle.js": "d30be7348c1c",
   "notes.bundle.js": "ca6128e2374f",
   "local-graph.bundle.js": "018d84c6b2ca",
   "note-media.bundle.js": "24c52523002f",
-  "note-edit.bundle.js": "23df109db29c",
+  "note-edit.bundle.js": "2adc231224e4",
   "shell.bundle.js": "75aebd3ba9af",
-  "tasks.bundle.js": "caffb336b020",
-  "task-edit.bundle.js": "a5eb9cdfe557",
-  "contact-page.bundle.js": "4d43b9fa16a3",
+  "tasks.bundle.js": "f0a7b8bd0133",
+  "task-edit.bundle.js": "2eb9aa0b7beb",
+  "contact-page.bundle.js": "d5d48a5c04f2",
   "sim-worker.bundle.js": "2b1cd681554f",
-  "home.bundle.js": "3e7c2a90d12b",
-  "journal.bundle.js": "6741a0a12767",
-  "styles.css": "89a9bd102502",
-  "config.bundle.js": "0711d0d07351"
+  "home.bundle.js": "729e30f7c8e3",
+  "journal.bundle.js": "c2dded04f4a4",
+  "styles.css": "39e24d563a01",
+  "config.bundle.js": "159edb1c711e"
 };
 
 export function assetVersion(name: string): string {

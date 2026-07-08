@@ -11,7 +11,7 @@
 
 import { appFetch } from './http.js';
 import { createSaveQueue, type SaveResult } from './save-queue.js';
-import { initShareUi } from './share-ui.js';
+import { initVisibilityUi } from './visibility-ui.js';
 
 const root = document.querySelector<HTMLElement>('.task-edit');
 
@@ -22,7 +22,7 @@ if (root) {
   let expectedUpdatedAt: number | null = root.dataset.updatedAt ? Number(root.dataset.updatedAt) : null;
 
   const statusEl = document.querySelector<HTMLElement>('[data-editstatus]');
-  const titleInput = root.querySelector<HTMLInputElement>('[data-field="title"]');
+  const titleInput = root.querySelector<HTMLTextAreaElement>('[data-field="title"]');
   const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-field="body"]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
   const columnSel = root.querySelector<HTMLSelectElement>('[data-field="column"]');
@@ -250,9 +250,23 @@ if (root) {
     if (await save({ title: v })) { titleSaved = titleInput.value; markDirty(titleSaveBtn, false); }
   }
   titleSaveBtn?.addEventListener('click', saveTitle);
-  titleInput?.addEventListener('input', () => markDirty(titleSaveBtn, titleInput.value !== titleSaved));
+  // Textarea de 1 linha: cresce com o conteúdo (título nunca corta) e nunca
+  // aceita quebra de linha — Enter salva, \n de paste vira espaço.
+  function fitTitle() {
+    if (!titleInput) return;
+    if (titleInput.value.includes('\n')) titleInput.value = titleInput.value.replace(/\n+/g, ' ');
+    titleInput.style.height = 'auto';
+    // border-box: scrollHeight não inclui as bordas — soma (offsetHeight - clientHeight)
+    // pra última linha não ficar 2px clipada pelo overflow:hidden.
+    titleInput.style.height = `${titleInput.scrollHeight + titleInput.offsetHeight - titleInput.clientHeight}px`;
+  }
+  fitTitle();
+  titleInput?.addEventListener('input', () => {
+    fitTitle();
+    markDirty(titleSaveBtn, titleInput.value !== titleSaved);
+  });
   titleInput?.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveTitle(); }
+    if (e.key === 'Enter') { e.preventDefault(); if (titleInput.value !== titleSaved) saveTitle(); }
   });
 
   // ── Save por botão: corpo/descrição ──
@@ -276,9 +290,9 @@ if (root) {
   });
 }
 
-// ── Compartilhamento público (spec 33) ──
-// Wiring extraído pro módulo compartilhado (share-ui.ts) — a mesma seção existe no
-// detalhe de NOTA (note-edit.ts). O endpoint vem do data-share-endpoint da seção.
-initShareUi();
+// ── Visibilidade (spec 65) ──
+// Wiring no módulo compartilhado (visibility-ui.ts) — a mesma seção existe no
+// detalhe de NOTA (note-edit.ts). Endpoints vêm dos data-attributes da seção.
+initVisibilityUi();
 
 export {};

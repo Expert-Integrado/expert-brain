@@ -2,16 +2,19 @@
 // - Busca /app/tasks/data e renderiza as colunas CUSTOMIZÁVEIS vindas do banco
 //   (fonte única = kanban_columns; não há mais array fixo aqui nem no SSR — spec 51).
 // - Filtros (todas/hoje/semana/atrasadas) aplicam-se às colunas open/in_progress.
-// - Drag-drop entre colunas → POST /app/tasks/move { id, column_id }.
-// - Botão "concluir" → POST /app/tasks/complete.
-// Sem dependências externas (DnD nativo do HTML5).
+// - Drag-drop entre colunas → POST /app/tasks/move { id, column_id }. A mecânica
+//   de arrasto vive em board-dnd.ts (Pointer Events, spec 65) — delegada no
+//   container #task-board, então sobrevive aos re-renders daqui.
+// - Card inteiro clicável (abre o detalhe); botão "concluir" → POST /app/tasks/complete.
+// Sem dependências externas.
 
 import { appFetch } from './http.js';
+import { initBoardDnd } from './board-dnd.js';
 import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectChipHtml } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -164,24 +167,32 @@ function prioOptions(p: number | null): string {
   return opts.join('');
 }
 
-// Chip de projeto do card (spec 58): resolve o project_id no BoardProject do payload.
-function projectChip(t: TaskView): string {
+// Breadcrumb de projeto do card (Onda 5): resolve o project_id no BoardProject do payload.
+function projectCrumb(t: TaskView): string {
   if (!t.project_id) return '';
   const p = projectsById.get(t.project_id);
-  return p ? projectChipHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
+  return p ? projectCrumbHtml({ label: p.label, color: p.color, archived: p.archived }) : '';
 }
 
 // Badge 🔒 do card (spec 59) — mesma classe global .private-badge das notas/SSR.
 const PRIVATE_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
 
+// Anatomia do card no padrão ClickUp (Onda 5, decisão do gate da Onda 1): título
+// PRIMEIRO (clamp 2 linhas, com o ✎ de edição rápida ao lado), breadcrumb de
+// projeto muted, UMA linha de meta (prio + prazo + comentários + selo privada +
+// link) e UMA linha de tags sem wrap. Mesma estrutura do renderCardSSR
+// (src/web/tasks.ts) — manter em sincronia.
 function cardHTML(t: TaskView): string {
   const canClose = t.status === 'open' || t.status === 'in_progress';
-  return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}"${t.project_id ? ` data-project="${esc(t.project_id)}"` : ''} data-updated-at="${t.updated_at}" draggable="true">
-    <div class="task-card-head">${t.private ? PRIVATE_BADGE : ''}${projectChip(t)}${prioPill(t.priority)}${tagChipsHtml(t.tags)}${shareIconHtml(t.share_expires_brt)}
+  const tags = tagChipsHtml(t.tags);
+  return `<div class="task-card" data-id="${esc(t.id)}" data-status="${esc(t.status)}"${t.project_id ? ` data-project="${esc(t.project_id)}"` : ''} data-updated-at="${t.updated_at}">
+    <div class="task-card-top">
+      <a class="task-card-title" href="/app/tasks/${esc(t.id)}" draggable="false">${esc(t.title)}</a>
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
-    <a class="task-card-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
-    <div class="task-card-meta">${dueBadge(t)}${commentBadge(t.comment_count)}</div>
+    ${projectCrumb(t)}
+    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}</div>
+    ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     <div class="task-card-edit" data-editpanel hidden>
       <label class="task-card-edit-ctl">Prioridade
         <select class="task-card-prio" data-qe-prio>${prioOptions(t.priority)}</select>
@@ -197,10 +208,7 @@ function cardHTML(t: TaskView): string {
         <span class="task-card-edit-msg" data-qe-msg></span>
       </div>
     </div>
-    <div class="task-card-actions">
-      ${canClose ? `<button class="task-btn task-complete" data-id="${esc(t.id)}" type="button">✓ concluir</button>` : ''}
-      <a class="task-btn task-open" href="/app/tasks/${esc(t.id)}">abrir</a>
-    </div>
+    ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(t.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
 }
 
@@ -295,7 +303,6 @@ function render() {
   if (countEl) countEl.textContent = `${totalOpen} aberta${totalOpen === 1 ? '' : 's'}`;
 
   wireCards();
-  wireDropzones();
   wireCollapseToggles();
   wireInlineCreate();
 }
@@ -479,45 +486,6 @@ function wireCards() {
       if (dueTime) dueTime.value = '';
       quickUpdate(card, { due: null }, msg);
     });
-
-    card.addEventListener('dragstart', (e) => {
-      card.classList.add('dragging');
-      document.body.classList.add('task-dragging');
-      (e as DragEvent).dataTransfer?.setData('text/plain', card.dataset.id || '');
-      if ((e as DragEvent).dataTransfer) (e as DragEvent).dataTransfer!.effectAllowed = 'move';
-    });
-    card.addEventListener('dragend', () => {
-      card.classList.remove('dragging');
-      document.body.classList.remove('task-dragging');
-      document.querySelectorAll('.task-col-body.drag-over').forEach((z) => z.classList.remove('drag-over'));
-    });
-  });
-}
-
-function wireDropzones() {
-  document.querySelectorAll<HTMLElement>('.task-col-body').forEach((zone) => {
-    zone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      // Cursor "move" (não "copy") durante o arrasto sobre um alvo válido.
-      const dt = (e as DragEvent).dataTransfer;
-      if (dt) dt.dropEffect = 'move';
-      zone.classList.add('drag-over');
-    });
-    // dragleave dispara ao entrar num filho; só limpa se o ponteiro saiu de fato da zona.
-    zone.addEventListener('dragleave', (e) => {
-      const rel = (e as DragEvent).relatedTarget as Node | null;
-      if (!rel || !zone.contains(rel)) zone.classList.remove('drag-over');
-    });
-    zone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      zone.classList.remove('drag-over');
-      const id = (e as DragEvent).dataTransfer?.getData('text/plain');
-      const columnId = zone.dataset.dropzone;
-      if (!id || !columnId) return;
-      // O servidor deriva status + completed_at da categoria da coluna destino —
-      // inclusive done (grava completed_at). Um único caminho pra todas as colunas.
-      move(id, columnId);
-    });
   });
 }
 
@@ -642,6 +610,19 @@ function wireProjectFilter() {
 wireFilters();
 wireProjectFilter();
 wireCreateModal();
+// DnD + card clicável (spec 65): delegado no container, wired UMA vez — os
+// re-renders trocam o innerHTML mas o listener fica no #task-board.
+{
+  const boardEl = document.getElementById('task-board');
+  if (boardEl) {
+    initBoardDnd(boardEl, {
+      // O servidor deriva status + completed_at da categoria da coluna destino —
+      // inclusive done (grava completed_at). Um único caminho pra todas as colunas.
+      onDrop: (id, columnId) => move(id, columnId),
+      onOpen: (id) => location.assign(`/app/tasks/${encodeURIComponent(id)}`),
+    });
+  }
+}
 load();
 
 export {};

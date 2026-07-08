@@ -1,0 +1,41 @@
+/* Direção C — "Claro ClickUp" (specs/60-ux-reforma/62)
+   Tema claro default, provando o mecanismo [data-theme] da Onda 2. Superfícies
+   brancas sobre página lavanda-acinzentada, status como pills de cor cheia
+   (padrão do ClickUp real do dono), acento roxo da marca preservado.
+   Mantém Poppins/Manrope (identidade Expert Integrado). */
+:root {
+  --font-display: "Poppins", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Manrope", "Segoe UI", system-ui, sans-serif;
+
+  --bg-0: #f4f3f9;
+  --bg-image: none;
+
+  --surface-0: #fbfaff;
+  --surface-1: #ffffff;
+  --surface-2: #f1effa;
+  --surface-3: #e7e4f5;
+
+  --border: #e3e0ef;
+  --border-strong: #c6c0e0;
+
+  --text: #211f33;
+  --text-dim: #514d68;    /* AA: 8.0:1 sobre --surface-1 */
+  --text-subtle: #6f6a8a; /* AA: 5.1:1 sobre --surface-1 */
+  --text-faint: #aca7c4;  /* SÓ decorativo */
+
+  --accent: #6d4de0;
+  --accent-2: #0f9d94;
+  --accent-contrast: #ffffff;
+
+  --danger: #c81e4d;  --danger-bg: rgba(200, 30, 77, 0.08);
+  --warning: #995e04; --warning-bg: rgba(180, 83, 9, 0.10);
+  --success: #13703c; --success-bg: rgba(21, 128, 61, 0.10);
+  --info: #1d5fd6;    --info-bg: rgba(29, 111, 235, 0.08);
+
+  --prio-1: #c81e4d; --prio-2: #995e04; --prio-3: #1d5fd6; --prio-4: #6f6a8a;
+
+  --radius-sm: 8px; --radius: 12px; --radius-lg: 16px;
+  --shadow-1: 0 1px 3px rgba(43, 36, 84, 0.08);
+  --shadow-2: 0 8px 22px rgba(43, 36, 84, 0.13);
+  --density: 1;
+}

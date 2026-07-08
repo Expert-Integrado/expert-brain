@@ -90,11 +90,18 @@ describe('detalhe de task — sidebar de metadados em duas colunas (spec 52)', (
     expect(html).toContain('Concluída');
   });
 
-  it('bloco de compartilhamento continua presente na sidebar', async () => {
+  it('seletor único de visibilidade presente na sidebar (spec 65)', async () => {
     await seedTask('t1');
     const html = await detail('t1');
-    expect(html).toContain('task-share');
-    expect(html).toContain('Compartilhamento público');
+    expect(html).toContain('data-visibility');
+    expect(html).toContain('<h2>Visibilidade</h2>');
+    // 3 níveis no radiogroup; default do sistema = normal
+    expect(html).toContain('value="private"');
+    expect(html).toContain('value="normal" checked');
+    expect(html).toContain('value="link"');
+    // as duas seções antigas morreram
+    expect(html).not.toContain('Compartilhamento público</h2>');
+    expect(html).not.toContain('data-task-private-toggle');
   });
 
   it('não sobra select de status cru (substituído pelo select de coluna)', async () => {
