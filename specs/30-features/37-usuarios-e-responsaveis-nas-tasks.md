@@ -1,6 +1,6 @@
 # Usuários (pessoa + agente) e responsáveis nas tasks
 
-> **Status:** implemented (09/07/2026 — código + testes verdes; aguardando deploy) · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
+> **Status:** shipped (09/07/2026 — deploy 7580fc7c; migration 0017 aplicada no D1 de produção e verificada via get_task real: `assignees`/`created_by` no payload) · **Prioridade:** P1 · **Esforço:** L · **Repo:** expert-brain
 > **Depende de:** 10-backend/17 (autoria created_by/updated_by), 50-console-v2 (board/projetos/config)
 
 ## Contexto
@@ -149,7 +149,7 @@ entraram no `TABLE_ORDER` do runbook e o passo 5 do `docs/restore.md` limpa os s
 
 ## Validação
 
-```
+```bash
 npm run typecheck
 npm test
 npm run build:bundles   # + git diff --exit-code assets/ (só EOL = restaurar)
