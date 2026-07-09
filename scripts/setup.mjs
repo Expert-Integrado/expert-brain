@@ -114,6 +114,20 @@ async function askCaptureKeywords() {
   return raw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 20);
 }
 
+// Pergunta opcional do quadro de tarefas (kanban): por padrao nascem 3 etapas
+// (A fazer / Em progresso / Concluido — seeds da migration). Oferecemos SO uma
+// etapa extra, Backlog, antes de "A fazer"; mais que isso o dono cria depois
+// direto no console (/app/tasks). TTY-gated: em pipe/CI segue com as 3 padrao.
+async function askKanbanBacklog() {
+  if (!process.stdin.isTTY) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  console.log(`\n${DIM}Por padrão, seu quadro de tarefas nasce com 3 etapas: A fazer, Em progresso e Concluído — recomendamos começar só com essas.${RESET}`);
+  console.log(`${DIM}Se quiser, dá pra adicionar uma etapa Backlog antes de "A fazer" (outras etapas você cria depois direto no console, em /app/tasks).${RESET}`);
+  const raw = (await rl.question('  Adicionar a etapa Backlog? (s/N): ')).trim();
+  rl.close();
+  return /^(s|sim|y|yes)$/i.test(raw);
+}
+
 async function askHidden(question) {
   // Esconde echo via raw mode do stdin. Trata Enter / Ctrl+C / backspace.
   // Se stdin nao for TTY (pipe, CI, etc), faz fallback pra readline visivel
@@ -415,6 +429,10 @@ ${updHooksOk
   if (passphrase !== passphrase2) die('Senhas nao bateram.');
   log.ok('Credenciais coletadas.');
 
+  // Etapas do quadro de tarefas: pergunta agora (junto dos outros prompts),
+  // cria depois do provision (passo 9), quando kanban_columns ja existe no D1.
+  const wantBacklog = await askKanbanBacklog();
+
   // 4. cria recursos Cloudflare
   log.step(4, 'Provisionando recursos na Cloudflare');
 
@@ -557,6 +575,17 @@ ${updHooksOk
   log.step(9, 'Aplicando schema do D1');
   const setupToken = await ensureSetupToken();
   await provisionWorker(workerUrl, setupToken);
+
+  // Etapa extra do kanban escolhida no passo 3 — so agora a tabela existe.
+  // INSERT OR IGNORE: idempotente se o setup rodar de novo. position 0 poe o
+  // Backlog antes de "A fazer" (colunas ordenam por position ASC).
+  if (wantBacklog) {
+    log.info('Criando a etapa Backlog no quadro de tarefas...');
+    const kb = runWrangler(['d1', 'execute', 'DB', '--remote', '--yes', '--command',
+      "INSERT OR IGNORE INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_backlog','Backlog',NULL,0,'open',NULL)"], { allowFail: true });
+    if (kb.status === 0) log.ok('Etapa Backlog criada (antes de "A fazer").');
+    else log.warn(`Nao consegui criar a etapa Backlog (nao critico — crie depois no console, em /app/tasks): ${(kb.stderr || kb.stdout || '').trim()}`);
+  }
 
   // 10. instala a camada cliente (hooks do Claude Code) — captura proativa
   log.step(10, 'Ativando captura automatica (hooks do Claude Code)');

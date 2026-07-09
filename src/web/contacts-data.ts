@@ -426,6 +426,31 @@ export async function handleContactsWhatsappAllowlist(req: Request, env: Env): P
   });
 }
 
+// Toggle "membro desconhecido de grupo vira contato" (default OFF) — grava só o
+// flag no servidor de contatos; a criação em si acontece no import autenticado
+// do script de push, nunca por esta rota.
+export async function handleContactsWhatsappCreateMembers(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  if (!env.CONTACTS || !env.CONTACTS_WRITE_TOKEN) {
+    return new Response(JSON.stringify({ ok: false, error: 'contacts write binding/token not configured' }), {
+      status: 503, headers: { 'content-type': 'application/json' },
+    });
+  }
+  let bodyText: string;
+  try { bodyText = await req.text(); } catch { bodyText = ''; }
+  const res = await env.CONTACTS.fetch(new Request('https://contacts/whatsapp/create-members', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`, 'content-type': 'application/json' },
+    body: bodyText || '{}',
+  }));
+  const resBody = await res.text();
+  return new Response(resBody, {
+    status: res.status,
+    headers: { 'content-type': res.headers.get('content-type') || 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  });
+}
+
 // ── Instagram Agent conversas (expert-contacts specs/instagram-contacts-sync.md) ──
 // Painel em /app/config#instagram-contatos, mesmo desenho do WhatsApp: leitura de
 // estado via CONTACTS_PROXY_TOKEN (GET), gravação da allowlist de conversas via

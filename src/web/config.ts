@@ -640,6 +640,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <p>Requer o <strong>WhatsApp Agent conectado</strong> — é ele quem fornece a lista de grupos e participantes; sem essa conexão este módulo não funciona. Só entram os <strong>grupos que você marcar</strong> abaixo (por padrão todos vêm marcados; desmarque o que não quiser). Participante só vira vínculo se <strong>já existe</strong> como contato no vault (match por telefone) — número desconhecido não cria contato novo. Quem sai do grupo perde o vínculo criado pelo sync; vínculos manuais ficam. A lista de grupos e os membros são empurrados por um script na sua máquina (peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo").</p>
           <p id="wa-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
         </div>
+        <div class="adv-section" id="wa-create-section" hidden>
+          <h3>Membros de grupo viram contatos</h3>
+          <p style="margin-top:0">Desligado (padrão), participante desconhecido de grupo marcado <strong>não</strong> vira contato — só aparece como contador. Ligado, cada membro desconhecido dos grupos marcados <strong>vira um contato novo</strong> no vault (nome do WhatsApp + telefone) já vinculado ao grupo. Grupos grandes criam muitos contatos de uma vez — ligue só se quiser o grupo inteiro no grafo.</p>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="wa-create-members">
+            <span>Criar contato pra membro desconhecido dos grupos marcados</span>
+          </label>
+          <p id="wa-create-status" style="color:var(--text-dim);margin-bottom:0"></p>
+        </div>
         <div class="adv-section" id="wa-groups-section" hidden>
           <h3>Grupos sincronizados</h3>
           <div class="row" style="gap:8px;margin-bottom:8px">

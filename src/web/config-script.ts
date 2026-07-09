@@ -413,6 +413,12 @@ export function configPageScript(): string {
       }
       waStatusEl.textContent = parts.join(' · ') + '.';
       waGroupsSection.hidden = false;
+      var waCreateSection = document.getElementById('wa-create-section');
+      var waCreateBox = document.getElementById('wa-create-members');
+      if (waCreateSection && waCreateBox) {
+        waCreateSection.hidden = false;
+        waCreateBox.checked = !!st.create_members;
+      }
       var chosen = {};
       (st.allowlist || []).forEach(function (id) { chosen[id] = true; });
       // Nunca salvou (allowlist_set false) → todos vêm pré-marcados; o dono desmarca
@@ -434,6 +440,29 @@ export function configPageScript(): string {
     document.getElementById('wa-clear-all').addEventListener('click', function () { waSetAll(false); });
 
     waJson('/app/config/whatsapp/status').then(waRender);
+
+    var waCreateToggle = document.getElementById('wa-create-members');
+    if (waCreateToggle) {
+      waCreateToggle.addEventListener('change', function () {
+        var on = waCreateToggle.checked;
+        var stEl = document.getElementById('wa-create-status');
+        stEl.textContent = 'Salvando…';
+        waJson('/app/config/whatsapp/create-members', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled: on }),
+        }).then(function (r) {
+          if (!r.ok) {
+            waCreateToggle.checked = !on;
+            stEl.textContent = 'Erro ao salvar (' + (r.error || r._status) + ').';
+            return;
+          }
+          stEl.textContent = on
+            ? 'Ligado. A próxima rodada do script cria os contatos que faltam (em levas, se o grupo for grande).'
+            : 'Desligado. Contatos já criados continuam no vault.';
+        });
+      });
+    }
 
     var waSave = document.getElementById('wa-save-groups');
     waSave.addEventListener('click', function () {

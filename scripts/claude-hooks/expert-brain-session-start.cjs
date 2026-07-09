@@ -32,7 +32,8 @@ Rotina de início de sessão:
 Comportamento esperado nesta sessão:
 - ANTES de perguntar contexto ao usuário, rodar mcp__expert-brain__recall
 - Ao aprender algo novo (decisão, métrica, feedback, contexto relevante), rodar mcp__expert-brain__save_note — NA HORA, não espere a compactação (a maioria das sessões nunca compacta)
-- Ação acionável (tarefa, com ou sem prazo) → mcp__expert-brain__save_task; to-do do dia = task com due hoje, concluída no dia. Rode list_tasks ANTES pra não duplicar. Task NÃO é nota: task tem status/prazo, nota é conhecimento
+- Tudo que o usuário pedir pra fazer vira task ANTES de começar (mcp__expert-brain__save_task, nasce em "A fazer") — é a trilha de auditoria do trabalho. Rode list_tasks ANTES pra não duplicar. Task NÃO é nota: task tem status/prazo, nota é conhecimento
+- Ciclo de vida AUTOMÁTICO: quando VOCÊ começar a executar a task → mcp__expert-brain__update_task com status in_progress ("Em execução"); quando terminar → mcp__expert-brain__complete_task ("Concluído"). Não deixe task que você executou parada em "A fazer" — o board é o retrato do que está andando; to-do do dia = task com due hoje, concluída no dia
 - Ao salvar nota nova que se relaciona com outra, rodar mcp__expert-brain__link com justificativa explícita (POR QUÊ se conectam) — Latticework
 - Notas atômicas: 1 ideia por nota, não bloco gigante`;
 
