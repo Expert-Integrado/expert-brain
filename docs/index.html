@@ -275,6 +275,34 @@
   .release-list b{ color: var(--ink); }
   .release-list span.d{ color: var(--ink-dim); font-size:.92rem; }
 
+  /* ---------- PARA A IA ---------- */
+  .ai-prompt{
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 8px 10px;
+  }
+  .ai-prompt pre{
+    margin: 0;
+    padding: 20px 22px;
+    font-family: var(--mono);
+    font-size: .84rem;
+    line-height: 1.62;
+    color: var(--ink-dim);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .copy-btn{
+    position: absolute; top: 14px; right: 14px;
+    font-family: var(--mono); font-size: .78rem; font-weight: 600;
+    color: var(--accent); background: rgba(110,231,196,.08);
+    border: 1px solid rgba(110,231,196,.3); border-radius: 8px;
+    padding: 6px 14px; cursor: pointer;
+    transition: background .15s ease;
+  }
+  .copy-btn:hover{ background: rgba(110,231,196,.16); }
+
   /* ---------- FOOTER ---------- */
   footer{ padding: 60px 0 80px; border-top: 1px solid var(--line-soft); }
   .footer-grid{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap: 18px; }
@@ -311,6 +339,7 @@
       <a href="#console">Console</a>
       <a href="#v3">Versão 3.0</a>
       <a href="#hooks">Automação</a>
+      <a href="#para-ia">Para a IA</a>
     </div>
   </div>
 </nav>
@@ -651,6 +680,48 @@
   </div>
 </section>
 
+<section id="para-ia" class="wrap">
+  <div class="section-head reveal">
+    <div class="eyebrow">07 · Para a sua IA</div>
+    <h2>Acabou de instalar? Cole isto na sua IA.</h2>
+    <p class="section-sub">
+      O bloco abaixo deixa a instalação em dia e ensina a disciplina de trabalho: a IA atualiza
+      o Brain pra última versão, confere os hooks, abre o kanban — e daí em diante tudo que ela
+      fizer vira task com responsável (agente ou pessoa), atualizada conforme executa. O que for
+      trabalho manual seu vira task sua, pra você concluir no kanban.
+    </p>
+  </div>
+  <div class="ai-prompt reveal">
+    <button class="copy-btn" onclick="copyAiPrompt(this)">copiar</button>
+    <pre id="ai-prompt-text">Você cuida do meu Expert Brain (https://github.com/Expert-Integrado/expert-brain).
+Antes de qualquer tarefa nesta sessão, execute nesta ordem:
+
+1. ATUALIZAR PRA ÚLTIMA VERSÃO (tem interface nova de responsáveis nas tasks):
+   na pasta da instalação — clone git: git pull; veio do scaffolder (npm create):
+   baixe https://github.com/Expert-Integrado/expert-brain/archive/refs/heads/main.zip
+   por cima preservando o wrangler.toml. Depois:
+   npm install &amp;&amp; npm run setup
+   (idempotente: redescobre os recursos e redeploya sem pedir e-mail/senha de novo)
+
+2. HOOKS: verifique se os hooks de captura do Claude Code estão ativos. Se não
+   estiverem, ou se a instalação for antiga:
+   node scripts/install-claude-hooks.mjs &lt;url-do-worker&gt;
+
+3. PAINEL: o console fica em &lt;url-do-worker&gt;/app — o kanban de tasks é a fonte de
+   verdade do trabalho. Task tem responsável: pessoa ou agente.
+
+4. DISCIPLINA DE TASKS, daqui pra frente e sempre:
+   - Tudo que você for executar vira task ANTES de começar (save_task, responsável
+     = você, agente). Atualize nos marcos (update_task) e conclua ao entregar
+     (complete_task).
+   - O que EU tiver que fazer manualmente vira task com responsável = eu (pessoa),
+     pra eu acompanhar e concluir no kanban.
+   - Trabalho fora do kanban não existe: se não está em task, não aconteceu.
+
+Troque &lt;url-do-worker&gt; pela URL da minha instalação antes de executar.</pre>
+  </div>
+</section>
+
 <footer>
   <div class="wrap footer-grid">
     <div>
@@ -665,6 +736,13 @@
 </footer>
 
 <script>
+  function copyAiPrompt(btn){
+    var text = document.getElementById('ai-prompt-text').innerText;
+    navigator.clipboard.writeText(text).then(function(){
+      btn.textContent = 'copiado';
+      setTimeout(function(){ btn.textContent = 'copiar'; }, 1800);
+    });
+  }
   (function(){
     var els = document.querySelectorAll('.reveal');
     if (!('IntersectionObserver' in window)) {
