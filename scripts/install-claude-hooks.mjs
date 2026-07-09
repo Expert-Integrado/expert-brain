@@ -6,13 +6,17 @@
 // hooks client-side do Claude Code. Este script instala essa camada na maquina do
 // usuario — e o que faz o Brain "salvar sozinho".
 //
-// Pipeline instalado (6 hooks):
-//   SessionStart      -> prime de comportamento (recall-first, save_note na hora, save_task)
+// Pipeline instalado (7 hooks):
+//   SessionStart      -> prime de comportamento (recall-first, save_note na hora, save_task).
+//                        Matcher startup|resume|clear: NAO roda na retomada pos-compactacao —
+//                        cobranca de task vencida e exclusiva da ABERTURA da sessao.
 //   UserPromptSubmit  -> capture-nudge: sinais de prazo/decisao/insight/metrica/contato
+//   UserPromptSubmit  -> overdue-nudge: sessao aberta ha 5h+ -> lembrar SO task VENCIDA
+//                        (nunca "vence hoje"), no maximo 1x a cada 2h
 //   PostToolUse       -> audit: registra cada save_* (alimenta a varredura)
 //   Stop              -> varredura de silencio: sessao longa sem nenhum save -> 1 lembrete
 //   PreCompact        -> ultima chance com contexto inteiro
-//   PostCompact       -> salvar o que sobrou + reancorar tasks
+//   PostCompact       -> salvar o que sobrou + ciclo de vida das tasks (SEM cobranca de atraso)
 //
 // Chamado pelo setup.mjs (nos DOIS caminhos: instalacao nova e atualizacao) e
 // rodavel standalone:
@@ -40,10 +44,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, 'claude-hooks');
 
 // template a copiar -> evento do Claude Code que dispara o hook
-// matcher: so pra eventos que filtram por tool (PostToolUse)
+// matcher: filtra por tool (PostToolUse) ou por source (SessionStart) — o do
+// session-start EXCLUI 'compact' de proposito: sem ele, o hook roda de novo na
+// retomada pos-compactacao e re-injeta a cobranca de tasks no meio da sessao.
 const HOOKS = [
-  { file: 'expert-brain-session-start.cjs', event: 'SessionStart' },
+  { file: 'expert-brain-session-start.cjs', event: 'SessionStart', matcher: 'startup|resume|clear' },
   { file: 'expert-brain-capture-nudge.cjs', event: 'UserPromptSubmit' },
+  { file: 'expert-brain-overdue-nudge.cjs', event: 'UserPromptSubmit' },
   {
     file: 'expert-brain-audit.cjs',
     event: 'PostToolUse',

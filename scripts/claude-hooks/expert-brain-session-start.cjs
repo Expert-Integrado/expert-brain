@@ -26,8 +26,9 @@ process.stdin.on('end', () => {
 
   const reminder = `Expert Brain ativo ({{WORKER_URL}}). Tools: mcp__expert-brain__{recall, save_note, update_note, get_note, expand, link, delete_note, stats, reembed, list_tasks_due_today, save_task, complete_task}.
 
-Rotina de início de sessão:
-- Rodar mcp__expert-brain__list_tasks_due_today e mostrar em bullets curtos as tasks que vencem hoje (ou atrasadas). Se não houver nenhuma, dizer numa linha que está zerado.
+Rotina de início de sessão — o aviso de tasks é a PRIMEIRA coisa da PRIMEIRA resposta:
+- Rodar mcp__expert-brain__list_tasks_due_today e ABRIR a resposta com "Antes de começarmos:" + as tasks que vencem hoje ou estão atrasadas (1 linha por task). SÓ DEPOIS responder o que o usuário pediu. Nunca responder primeiro e listar as tasks depois. Se não houver nenhuma, dizer numa linha que está zerado.
+- Cobrança de task vencida acontece SÓ AQUI, na abertura. Não relistar tasks pendentes no meio da sessão sem o usuário pedir.
 
 Comportamento esperado nesta sessão:
 - ANTES de perguntar contexto ao usuário, rodar mcp__expert-brain__recall

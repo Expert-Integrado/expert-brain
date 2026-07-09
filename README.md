@@ -115,6 +115,8 @@ Isso roda `scripts/setup.mjs`, que faz em um comando o que seria um runbook de 1
 
 Pra reprovisionar do zero (trocar senha, recriar recursos): `npm run setup -- --reinstall`.
 
+**Como os hooks avisam de tarefas (política de cobrança).** Os 7 hooks instalados seguem uma regra única: **cobrança de tarefa vencida acontece só na abertura da sessão** — o agente abre a primeira resposta com "Antes de começarmos:" + as tasks do dia/atrasadas e só então responde o pedido. Na compactação o hook lembra de salvar aprendizados e de manter o ciclo de vida das tasks (criar/atualizar/concluir), **sem** relistar pendências. A única exceção é o `overdue-nudge`: sessão aberta há 5h+ ganha no máximo 1 lembrete a cada 2h, e só de task **vencida** (nunca "vence hoje"). Instalação antiga cobrando tasks no meio da sessão? Rode `node scripts/install-claude-hooks.mjs <url do worker>` de novo — ele regrava os hooks e o matcher corretos.
+
 ### 4. Primeiro acesso
 
 Abra a URL impressa pelo setup (`https://<seu-worker>.workers.dev/app/login`) e entre com o e-mail e a senha que você definiu.
