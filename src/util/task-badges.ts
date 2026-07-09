@@ -62,11 +62,21 @@ function dotInitials(name: string): string {
 
 const MAX_VISIBLE_DOTS = 3;
 
+// Ícone de pessoa (outline) pro slot vazio — inline pra não depender de asset.
+const PERSON_ICON =
+  '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+  '<circle cx="8" cy="5.2" r="2.7" stroke="currentColor" stroke-width="1.3"/>' +
+  '<path d="M2.8 13.6c.9-2.4 2.9-3.6 5.2-3.6s4.3 1.2 5.2 3.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
 // Até 3 bolinhas (foto quando tem, senão iniciais+cor) + "+N". Agente ganha a
 // classe assignee-dot-agent (anel tracejado — diferencia máquina de pessoa).
-// Lista vazia → string vazia (card sem responsável não ganha a faixa).
+// Lista vazia → slot VAZIO tracejado ("sem responsável"): o campo aparece SEMPRE
+// no card — a premissa do dono é que toda tarefa tem responsável, então a
+// ausência precisa ser visível, não invisível (padrão ClickUp).
 export function assigneeDotsHtml(assignees: AssigneeDot[]): string {
-  if (!assignees || assignees.length === 0) return '';
+  if (!assignees || assignees.length === 0) {
+    return `<span class="task-assignees" aria-label="Sem responsável"><span class="assignee-dot assignee-dot-empty" title="Sem responsável — atribua no detalhe da task">${PERSON_ICON}</span></span>`;
+  }
   const visible = assignees.slice(0, MAX_VISIBLE_DOTS);
   const extra = assignees.length - visible.length;
   const dots = visible

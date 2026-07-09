@@ -198,7 +198,7 @@ describe('POST /app/tasks/assignees (sidebar do detalhe)', () => {
     expect(deny.status).toBe(400);
   });
 
-  it('task inexistente → 404; detalhe da task renderiza o picker e o Criado por', async () => {
+  it('task inexistente → 404; detalhe da task renderiza o picker de responsáveis', async () => {
     const ck = await cookie();
     const notFound = await formPost('/app/tasks/assignees', [['task_id', 'nada'], ['user_ids', 'x']], ck);
     expect(notFound.status).toBe(404);
@@ -211,6 +211,26 @@ describe('POST /app/tasks/assignees (sidebar do detalhe)', () => {
     expect(html).toContain('Responsáveis');
     expect(html).toContain('Ana Almeida');
     expect(html).toContain('/app/tasks/assignees');
+  });
+
+  it('Criado por: carimbo read-only com o usuário resolvido do PAT criador', async () => {
+    const ck = await cookie();
+    await seedKey('key_vps', 'claude-vps');
+    await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: 'key_vps' }, 1);
+    await insertTask(E, {
+      id: 'tcb', title: 'Task com autoria', body: 'b', tldr: 'Task com autoria',
+      domains: '["operations"]', status: 'open' as any, due_at: null, priority: null,
+      created_at: 1, updated_at: 1,
+    }, 'key_vps');
+    const page = await SELF.fetch('https://x/app/tasks/tcb', { headers: { cookie: ck } });
+    const html = await page.text();
+    expect(html).toContain('class="task-createdby"');
+    expect(html).toContain('Claude VPS');
+    expect(html).toContain('não editável'); // tooltip: carimbo automático, sem form
+    // task SEM created_by (pré-0012) omite a seção (o seletor no CSS inline não conta)
+    await seedTask('t2');
+    const old = await (await SELF.fetch('https://x/app/tasks/t2', { headers: { cookie: ck } })).text();
+    expect(old).not.toContain('class="task-createdby"');
   });
 });
 
@@ -232,5 +252,18 @@ describe('board /app/tasks/data ecoa assignees', () => {
     const data = (await res.json()) as any;
     const card = data.columns.flatMap((c: any) => c.tasks).find((t: any) => t.id === 't1');
     expect(card.assignees).toEqual([{ id: 'user_a', name: 'Ana Almeida', type: 'person', avatar: false }]);
+  });
+
+  it('card SSR sem responsável mostra o slot vazio (campo sempre visível)', async () => {
+    const ck = await cookie();
+    await E.DB.exec('DELETE FROM kanban_columns');
+    await E.DB.prepare(
+      `INSERT INTO kanban_columns (id, label, color, position, category, archived_at) VALUES ('col_aberto','A fazer',NULL,1,'open',NULL)`
+    ).run();
+    await seedTask('t1'); // sem assignee
+    const page = await SELF.fetch('https://x/app/tasks', { headers: { cookie: ck } });
+    const html = await page.text();
+    expect(html).toContain('assignee-dot-empty');
+    expect(html).toContain('Sem responsável');
   });
 });

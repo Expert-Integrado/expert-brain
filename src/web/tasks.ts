@@ -1366,6 +1366,8 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .assignee-dot-initials { color: #fff; font-size: 9px; font-weight: 600; letter-spacing: 0.3px; line-height: 1; }
 .assignee-dot-agent { outline: 1px dashed var(--text-dim); outline-offset: 1px; }
 .assignee-dot-more { background: var(--surface-raised); color: var(--text-dim); }
+/* Slot vazio (sem responsável): tracejado, sempre visível — ausência é informação */
+.assignee-dot-empty { border: 1.5px dashed var(--border-strong); background: transparent; color: var(--text-dim); }
 
 /* Tags no card (spec 52): até 3 chips + "+N", cor neutra — nunca dedupe:* */
 .task-tag-chip {

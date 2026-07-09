@@ -979,15 +979,45 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
         <span style="color:var(--text-dim);font-size:13px">Nenhum usuário cadastrado — crie em <a href="/app/config?saved=users#users">Configurações → Usuários</a>.</span>
       </div>`;
 
-  // "Criado por" (spec 37): a CREDENCIAL que criou (auditoria automática) — campo
-  // distinto de responsáveis (decisão de quem cria). Null em task pré-migration 0012.
-  const createdByLabel = createdBy
-    ? createdBy.user
-      ? `${createdBy.user.name}${createdBy.user.type === 'agent' ? ' (agente)' : ''}`
-      : createdBy.key_name
-        ? `chave ${createdBy.key_name}`
-        : createdBy.actor.startsWith('oauth:') ? 'dono (login)' : createdBy.actor
-    : null;
+  // "Criado por" (spec 37): a CREDENCIAL que criou — carimbo automático de
+  // auditoria, distinto de responsáveis (decisão). NUNCA editável: não há form,
+  // não há endpoint de escrita; é assinatura da infra. Bloco próprio com a
+  // bolinha do usuário resolvido (ou o nome da chave). Null em task pré-0012 → omite.
+  let createdBySection = '';
+  if (createdBy) {
+    const cbUser = createdBy.user;
+    let dot: string;
+    let label: string;
+    let via = '';
+    if (cbUser) {
+      let h = 0;
+      for (let i = 0; i < cbUser.id.length; i++) h = (h * 31 + cbUser.id.charCodeAt(i)) % 360;
+      const parts = cbUser.name.trim().split(/\s+/).filter(Boolean);
+      const initials = ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
+      dot = cbUser.avatar
+        ? `<img class="task-createdby-dot" src="/app/users/${esc(cbUser.id)}/avatar" alt="">`
+        : `<span class="task-createdby-dot task-createdby-initials" style="background:hsl(${h},42%,36%)">${esc(initials)}</span>`;
+      label = cbUser.name;
+      if (cbUser.type === 'agent') via = createdBy.key_name ? `agente · chave ${createdBy.key_name}` : 'agente';
+      else if (createdBy.key_name) via = `chave ${createdBy.key_name}`;
+    } else if (createdBy.key_name) {
+      dot = `<span class="task-createdby-dot task-createdby-key" title="Chave de API sem usuário vinculado">🔑</span>`;
+      label = createdBy.key_name;
+      via = 'chave de API';
+    } else {
+      dot = `<span class="task-createdby-dot task-createdby-key">🔑</span>`;
+      label = createdBy.actor.startsWith('oauth:') ? 'dono (login)' : createdBy.actor;
+    }
+    createdBySection = `
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Criado por</span>
+            <div class="task-createdby" title="Carimbo automático da credencial que criou a task — não editável">
+              ${dot}
+              <span class="task-createdby-name">${esc(label)}</span>
+              ${via ? `<span class="task-createdby-via">${esc(via)}</span>` : ''}
+            </div>
+          </div>`;
+  }
 
   // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
   // sem unsafe-inline/script-src-attr — ver src/web/render.ts:115) BLOQUEIA
@@ -1049,11 +1079,10 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     ...PRIORITIES.map((m) => `<option value="${m.value}"${task.priority === m.value ? ' selected' : ''}>${esc(m.label)}</option>`),
   ].join('');
 
-  // Datas read-only da sidebar, sempre BRT. "Criado por" = credencial (auditoria).
+  // Datas read-only da sidebar, sempre BRT.
   const datesHtml = `
     <div class="task-sidebar-field task-sidebar-dates">
       <div><span class="task-sidebar-lbl">Criada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.created_at))}</span></div>
-      ${createdByLabel ? `<div><span class="task-sidebar-lbl">Criado por</span><span class="task-sidebar-val">${esc(createdByLabel)}</span></div>` : ''}
       <div><span class="task-sidebar-lbl">Atualizada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.updated_at))}</span></div>
       ${task.completed_at !== null ? `<div><span class="task-sidebar-lbl">Concluída</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.completed_at))}</span></div>` : ''}
     </div>`;
@@ -1136,6 +1165,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>` : ''}
 
           ${assigneesSection}
+
+          ${createdBySection}
 
           ${datesHtml}
 
@@ -1273,6 +1304,13 @@ const TASK_DETAIL_CSS = `
 .task-assignees-form { display:flex; flex-direction:column; gap:4px; }
 .task-assignee-opt { display:flex; align-items:center; gap:7px; font-size:13px; cursor:pointer; }
 .task-assignee-type { color:var(--text-dim); font-size:11px; border:1px dashed var(--border); border-radius:5px; padding:0 5px; margin-left:2px; }
+/* Criado por (spec 37): carimbo read-only da credencial criadora, com avatar */
+.task-createdby { display:flex; align-items:center; gap:8px; }
+.task-createdby-dot { width:22px; height:22px; border-radius:50%; object-fit:cover; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+.task-createdby-initials { color:#fff; font-size:10px; font-weight:600; }
+.task-createdby-key { background:var(--surface-raised); font-size:11px; }
+.task-createdby-name { font-size:13px; }
+.task-createdby-via { color:var(--text-dim); font-size:11px; }
 .task-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-edit-select {
   width:100%; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);
