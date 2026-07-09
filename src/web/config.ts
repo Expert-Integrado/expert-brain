@@ -12,6 +12,8 @@ import { formatBrtDateTime } from '../util/time.js';
 import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject, KNOWLEDGE_KINDS, listDomainCounts } from '../db/queries.js';
 import { resolveDomainMeta, resolveKindMeta } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
+import { listUsers } from '../db/queries.js';
+import { renderUsersSection, USERS_SECTION_CSS } from './users.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -386,6 +388,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedProjects = url.searchParams.get('saved') === 'projects';
   // Idem pra taxonomia de áreas/kinds (?saved=taxonomy reabre "Áreas e tipos").
   const savedTaxonomy = url.searchParams.get('saved') === 'taxonomy';
+  // Idem pra usuários/responsáveis (?saved=users reabre "Usuários" — spec 37).
+  const savedUsers = url.searchParams.get('saved') === 'users';
   // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
   const savedOwner = url.searchParams.get('saved') === 'owner';
 
@@ -410,6 +414,11 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     getTaxonomyConfig(env),
   ]);
   const taxonomySection = renderTaxonomySection(domainCounts, taxonomyConfig, savedTaxonomy);
+
+  // Seção "Usuários" (spec 37): perfis de atribuição (pessoa/agente) + vínculo
+  // com PAT. A lista de chaves alimenta o dropdown de vínculo — reusa a mesma
+  // query da seção API Keys logo abaixo (o custo é uma leitura pequena a mais).
+  const allUsers = await listUsers(env, true);
 
   const prefsPrompt = await getPersonalizationPrompt(env);
   // Seção "Instruções pros agentes (MCP)" (spec 70): valor cru da meta (vazio
@@ -440,6 +449,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
   const keys = await listApiKeys(env, session.email);
+  const usersSection = renderUsersSection(allUsers, keys, savedUsers, !!env.MEDIA);
   const keyRows = keys
     .map((k) => {
       const created = new Date(k.created_at).toLocaleString('pt-BR');
@@ -485,7 +495,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // (#backup, #board...) são resolvidos no client — o servidor não vê o fragment.
   const savedBackup = url.searchParams.get('saved') === 'backup';
   const activeTab: 'conexoes' | 'organizacao' | 'sistema' =
-    savedBoard || savedProjects || savedTaxonomy ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
+    savedBoard || savedProjects || savedTaxonomy || savedUsers ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
 
@@ -716,6 +726,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     ${projectsSection}
 
+    ${usersSection}
+
     ${taxonomySection}
     </section>
 
@@ -747,7 +759,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   `;
 
   return htmlResponse(
-    await renderShell({ title: 'Configurações', active: 'config', email: session.email, env, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({ title: 'Configurações', active: 'config', email: session.email, env, body, extraHead: `<style>${USERS_SECTION_CSS}</style>`, sidebarCollapsed: sidebarCollapsedFromReq(req) })
   );
 }
 

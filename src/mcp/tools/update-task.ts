@@ -5,6 +5,8 @@ import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTas
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef } from './user-ref.js';
+import { setTaskAssignees, listAssigneesForTask, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
@@ -34,6 +36,9 @@ const inputSchema = {
   mentions_remove: z.array(z.string().min(1)).optional().describe(
     'CONTACT entity ids to REMOVE from this task\'s mentions. Does NOT delete the timeline event already fired on the contact.'
   ),
+  assignees: z.array(z.string().min(1)).max(16).optional().describe(
+    'New RESPONSIBLE users — REPLACES the whole set (pass [] to clear). Refs by user id (user_...), name (case-insensitive), or "me" (the profile linked to this credential). Users are never auto-created; unknown ref errors listing the available users (see list_users).'
+  ),
   allow_new_domain: z.boolean().optional(),
 };
 
@@ -43,7 +48,7 @@ Use this to reopen a task to attach context, reschedule, reprioritize, rename, c
 
 Behavior:
 - At least one editable field besides id must be provided.
-- \`details\` REPLACES the body (not append). \`tags\` REPLACES all tags ([] clears them).
+- \`details\` REPLACES the body (not append). \`tags\` REPLACES all tags ([] clears them). \`assignees\` REPLACES the responsible users ([] clears; refs by id/name/"me"; never auto-creates — see list_users).
 - Move to a project with \`project\` (id or label; a new label auto-creates it); remove from its project with \`project: ""\`. Projects are single-valued, distinct from tags.
 - Remove a due date with \`due: "none"\` (or "clear"); remove a priority with \`priority: null\`.
 - Pass either \`due\` (BRT string) or \`due_at\` (unix ms), never both — passing both errors.
@@ -70,6 +75,7 @@ interface UpdateTaskInput {
   private?: boolean;
   mentions?: string[];
   mentions_remove?: string[];
+  assignees?: string[];
   allow_new_domain?: boolean;
 }
 
@@ -102,14 +108,25 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       const wantsPrivate = input.private === true;
 
       const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
+      // Responsáveis (spec 37): replace-set. `[]` limpa; undefined não toca.
+      const touchesAssignees = input.assignees !== undefined;
       const hasFieldEdit =
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
         input.domains !== undefined || input.tags !== undefined ||
         input.project !== undefined;
-      if (!hasFieldEdit && !wantsPrivate && !touchesMentions) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, private (true only), mentions, mentions_remove.');
+      if (!hasFieldEdit && !wantsPrivate && !touchesMentions && !touchesAssignees) {
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, assignees, private (true only), mentions, mentions_remove.');
+      }
+
+      // Resolve os responsáveis ANTES de qualquer escrita — ref inválida aborta
+      // o update inteiro (nunca aplica metade). Nunca auto-cria usuário.
+      let newAssignees: BrainUser[] | null = null;
+      if (touchesAssignees) {
+        const ar = await resolveAssigneeRefs(env, input.assignees ?? [], auth);
+        if (!ar.ok) return toolError(ar.error);
+        newAssignees = ar.users;
       }
 
       const patch: TaskPatch = {};
@@ -160,11 +177,11 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         }
       }
 
-      // Se não há edição de campo (só private:true e/ou menções), valida existência/
-      // visibilidade aqui (espelha mark_private de nota): caller sem escopo não enxerga
-      // task privada → "not found", e nunca marca/menciona uma task que não pode ver.
+      // Se não há edição de campo (só private:true, menções e/ou responsáveis), valida
+      // existência/visibilidade aqui (espelha mark_private de nota): caller sem escopo
+      // não enxerga task privada → "not found", e nunca mexe numa task que não pode ver.
       let task: TaskRow | undefined;
-      if (!hasFieldEdit && (wantsPrivate || touchesMentions)) {
+      if (!hasFieldEdit && (wantsPrivate || touchesMentions || touchesAssignees)) {
         const visible = await getTaskById(env, input.id, canSeePrivate(auth));
         if (!visible) return toolError(notFoundMsg());
         task = visible;
@@ -197,6 +214,11 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
 
       if (!task) return toolError(notFoundMsg());
 
+      // Responsáveis (spec 37): replace-set DEPOIS do patch (task já validada/atualizada).
+      if (newAssignees !== null) {
+        await setTaskAssignees(env, task.id, newAssignees.map((u) => u.id), now);
+      }
+
       // Menções (spec 62): add/remove. DEPOIS do patch/privacidade — o retorno reflete o
       // estado final. Tolerante a falha do contacts. Usa o título final da task no contexto.
       let mentionsChanged: { created: number; removed: number } | undefined;
@@ -214,6 +236,10 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       }
 
       const proj = task.project_id ? await getProjectById(env, task.project_id) : null;
+      // Eco do estado FINAL dos responsáveis (novo set quando trocado; atual quando não).
+      const assigneesOut = newAssignees !== null
+        ? newAssignees.map(toAssigneeRef)
+        : await listAssigneesForTask(env, task.id);
 
       const out: Record<string, unknown> = {
         id: task.id,
@@ -225,6 +251,7 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
         project: proj ? { id: proj.id, label: proj.label } : null,
         private: task.private === 1,
+        assignees: assigneesOut,
         updated_at: task.updated_at,
         ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
       };

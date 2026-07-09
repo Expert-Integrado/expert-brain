@@ -19,6 +19,7 @@ import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete
 import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
 import { handleContactsSso } from './contacts-sso.js';
 import { handleReleasesPage } from './releases.js';
+import { handleUserCreatePost, handleUserUpdatePost, handleUserArchivePost, handleUserAvatarPost, handleUserAvatarGet, handleTaskAssigneesPost } from './users.js';
 import { NEBULA_CSS } from './styles.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
@@ -115,6 +116,8 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // sessão de browser). Vêm ANTES do taskMatch (que só casa GET) — paths exatos.
   if (path === '/app/tasks/comment' && req.method === 'POST') return handleTaskCommentPost(req, env);
   if (path === '/app/tasks/comment/delete' && req.method === 'POST') return handleTaskCommentDeletePost(req, env);
+  // Responsáveis da task (spec 37): replace-set via checkboxes da sidebar do detalhe.
+  if (path === '/app/tasks/assignees' && req.method === 'POST') return handleTaskAssigneesPost(req, env);
 
   // Detalhe de uma task (superfície própria — NÃO o editor de nota). Vem DEPOIS dos
   // paths exatos acima pra não capturar /data /status /complete. /bundle.js tem ponto,
@@ -238,6 +241,10 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/api-keys/create' && req.method === 'POST') return handleApiKeyCreate(req, env);
   if (path === '/app/api-keys/revoke' && req.method === 'POST') return handleApiKeyRevoke(req, env);
 
+  // Foto de perfil de usuário (spec 37): servida do R2, sessão obrigatória.
+  const userAvatarMatch = path.match(/^\/app\/users\/([A-Za-z0-9_-]+)\/avatar$/);
+  if (userAvatarMatch && req.method === 'GET') return handleUserAvatarGet(req, env, userAvatarMatch[1]);
+
   // Novidades / release notes (spec 50-console-v2/71): visitar marca como vista.
   if (path === '/app/novidades' && req.method === 'GET') return handleReleasesPage(req, env);
   if (path === '/app/config' && req.method === 'GET') return handleConfigPage(req, env);
@@ -271,6 +278,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // Pipedrive (painel em /app/config#pipedrive-crm): mesmo desenho.
   if (path === '/app/config/pipedrive/status' && req.method === 'GET') return handleContactsPipedriveStatus(req, env);
   if (path === '/app/config/pipedrive/sync' && req.method === 'POST') return handleContactsPipedriveSync(req, env);
+  // Usuários/responsáveis (spec 37): CRUD dos perfis de atribuição (seção "Usuários"
+  // de /app/config, aba Organização) + foto no R2. Sessão obrigatória em todos.
+  if (path === '/app/config/users/create' && req.method === 'POST') return handleUserCreatePost(req, env);
+  if (path === '/app/config/users/update' && req.method === 'POST') return handleUserUpdatePost(req, env);
+  if (path === '/app/config/users/archive' && req.method === 'POST') return handleUserArchivePost(req, env);
+  if (path === '/app/config/users/avatar' && req.method === 'POST') return handleUserAvatarPost(req, env);
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);

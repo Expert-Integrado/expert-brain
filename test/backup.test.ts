@@ -30,9 +30,12 @@ async function wipeData(): Promise<void> {
   // storage é compartilhado entre arquivos no singleWorker — sem wipe explícito,
   // resíduo de OUTRO arquivo (ex.: teste que descarta item de inbox sem apagar a
   // linha) vaza pra cá e quebra as contagens do manifest.
-  for (const t of ['note_media', 'similar_edges', 'edges', 'tags', 'mentions', 'inbox_items', 'notes', 'api_keys', 'meta', 'kanban_columns', 'task_projects']) {
+  for (const t of ['task_assignees', 'note_media', 'similar_edges', 'edges', 'tags', 'mentions', 'inbox_items', 'notes', 'api_keys', 'meta', 'kanban_columns', 'task_projects']) {
     await E.DB.exec(`DELETE FROM ${t}`);
   }
+  // users (spec 37): preserva o seed user_owner (FIXTURE_COUNTS espera 1) e remove
+  // resíduo criado por outros arquivos da suíte (storage compartilhado no singleWorker).
+  await E.DB.exec('DELETE FROM users WHERE is_owner = 0');
 }
 
 async function wipeBucket(): Promise<void> {
@@ -95,7 +98,9 @@ const FIXTURE_COUNTS: Record<string, number> = {
   task_projects: 0,
   inbox_items: 0,
   mentions: 0,
-  _migrations: 16,
+  users: 1, // seed user_owner da 0017 (o wipe preserva o dono)
+  task_assignees: 0,
+  _migrations: 17,
 };
 
 beforeAll(async () => {
@@ -127,7 +132,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0016_share_note_media');
+    expect(manifest.schema_version).toBe('0017_users');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });
@@ -135,6 +140,10 @@ describe('snapshot — dump e manifest (spec 67)', () => {
   it('round-trip: restore num banco limpo bate as contagens do manifest', async () => {
     const { tables, manifest } = await buildSnapshot(E, NOW);
     await wipeData();
+    // Banco LIMPO de verdade: o wipe padrão preserva o user_owner (seed da 0017),
+    // mas o dump o contém — no runbook de restore a tabela users é esvaziada antes
+    // do import (docs/restore.md), senão o INSERT colide com o seed do provision.
+    await E.DB.exec('DELETE FROM users');
 
     // _migrations fica de fora do import (no runbook, o provision já a populou).
     const order = sortTablesForRestore(tables.map((t) => t.name).filter((n) => n !== '_migrations'));

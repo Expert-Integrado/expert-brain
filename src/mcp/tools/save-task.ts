@@ -6,6 +6,8 @@ import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskB
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef } from './user-ref.js';
+import { setTaskAssignees, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
@@ -34,6 +36,9 @@ const inputSchema = {
   origin_note_id: z.string().min(1).optional().describe(
     'Optional id of the NOTE that originated this task ("create a task from this note"). Records provenance (why this task exists). When set and `mentions` is omitted, the task INHERITS the origin note\'s mentions. The note must exist.'
   ),
+  assignees: z.array(z.string().min(1)).max(16).optional().describe(
+    'Optional RESPONSIBLE users (assignees): refs by user id (user_...), name (case-insensitive), or "me" (the profile linked to the credential making this call). Decide per task: a manual human errand → the person; agent work → the agent; both when they share it. Users are NEVER auto-created (the owner manages them at /app/config); an unknown ref errors listing the available users. Discover them via list_users.'
+  ),
   allow_new_domain: z.boolean().optional(),
 };
 
@@ -47,6 +52,7 @@ Behavior:
 - Optional \`project\` (folder): a single-valued grouping (id or label). A new label auto-creates the project; REUSE existing labels. Distinct from tags (multi/transversal). The response echoes the resolved project.
 - Pass the due date in BRT via \`due\` (e.g. "2026-06-22 14:00"). Date-only means "by end of that day".
 - Tasks do NOT get embedded — they never show up in recall(), the graph, or the notes list. Manage them on the /app/tasks board or via list_tasks_due_today / complete_task.
+- Optional \`assignees\` (responsible users): refs by id/name/"me". Decide per task — human errand → the person; agent work → the agent; both when shared. The creator credential is always recorded separately (created_by audit trail), independent of assignees. Discover users via list_users.
 
 DEDUPE:
 - Pass a stable \`dedupe_key\` (derived from the source, e.g. an email/card id) when the same task could be created twice (across sessions or on retries). If an ACTIVE task with that key exists, save_task returns it with deduped:true instead of creating a duplicate. The key is stored as a reserved dedupe: tag and survives update_task retags.
@@ -68,6 +74,7 @@ interface SaveTaskInput {
   private?: boolean;
   mentions?: string[];
   origin_note_id?: string;
+  assignees?: string[];
   allow_new_domain?: boolean;
 }
 
@@ -193,6 +200,16 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         }
       }
 
+      // Responsáveis (spec 37): resolve ANTES do insert — ref inválida (typo,
+      // usuário arquivado, 'me' sem perfil vinculado) aborta sem criar a task.
+      // NUNCA auto-cria usuário (identidade é ato deliberado do dono no console).
+      let assignedUsers: BrainUser[] = [];
+      if (input.assignees !== undefined && input.assignees.length > 0) {
+        const ar = await resolveAssigneeRefs(env, input.assignees, auth);
+        if (!ar.ok) return toolError(ar.error);
+        assignedUsers = ar.users;
+      }
+
       const id = newId();
       // Task nascendo fechada (done/canceled) stampa completed_at — preserva o
       // invariante "fechada ⇒ completed_at preenchido". Ver spec 14 item 4 (opção A).
@@ -221,6 +238,11 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       if (dedupeTag) allTags.push(dedupeTag);
       if (allTags.length > 0) await insertTags(env, id, allTags);
 
+      // Responsáveis (spec 37): grava os vínculos resolvidos acima.
+      if (assignedUsers.length > 0) {
+        await setTaskAssignees(env, id, assignedUsers.map((u) => u.id), now);
+      }
+
       // Menções (spec 62): explícitas ou herdadas da nota de origem. Tolerante a falha
       // do contacts (a menção D1 grava; o evento na timeline é eco).
       let mentionsCreated = 0;
@@ -248,6 +270,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         project: resolvedProject,
         private: input.private === true,
         origin_note_id: originNoteId,
+        assignees: assignedUsers.map(toAssigneeRef),
         mentions_created: mentionsCreated,
         updated_at: now,
       };

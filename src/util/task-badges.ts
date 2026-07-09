@@ -38,6 +38,51 @@ export function projectCrumbHtml(
   return `<div class="${cls}" title="Projeto: ${label}"><span class="task-project-dot"${dot}></span>Em ${label}</div>`;
 }
 
+// ─────────── Bolinhas de responsável no card (spec 37) ───────────
+// Shape enxuto que o payload do board ecoa (AssigneeRef de queries.ts sem o import,
+// pra este módulo continuar folha e importável pelo bundle client).
+export interface AssigneeDot { id: string; name: string; type: 'person' | 'agent'; avatar: boolean }
+
+// Cor determinística por id (hash simples → hue) — mesmo usuário, mesma cor em
+// qualquer superfície, sem persistir nada.
+function dotHue(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
+  return h;
+}
+
+// Iniciais: 1ª letra dos dois primeiros nomes ("Ana Almeida" → "AA"; "openclaw" → "O").
+function dotInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = parts[0][0] ?? '';
+  const second = parts.length > 1 ? parts[1][0] ?? '' : '';
+  return (first + second).toUpperCase();
+}
+
+const MAX_VISIBLE_DOTS = 3;
+
+// Até 3 bolinhas (foto quando tem, senão iniciais+cor) + "+N". Agente ganha a
+// classe assignee-dot-agent (anel tracejado — diferencia máquina de pessoa).
+// Lista vazia → string vazia (card sem responsável não ganha a faixa).
+export function assigneeDotsHtml(assignees: AssigneeDot[]): string {
+  if (!assignees || assignees.length === 0) return '';
+  const visible = assignees.slice(0, MAX_VISIBLE_DOTS);
+  const extra = assignees.length - visible.length;
+  const dots = visible
+    .map((a) => {
+      const title = a.type === 'agent' ? `${a.name} (agente)` : a.name;
+      const agentCls = a.type === 'agent' ? ' assignee-dot-agent' : '';
+      if (a.avatar) {
+        return `<img class="assignee-dot${agentCls}" src="/app/users/${escBadge(a.id)}/avatar" alt="${escBadge(title)}" title="${escBadge(title)}" loading="lazy">`;
+      }
+      return `<span class="assignee-dot assignee-dot-initials${agentCls}" style="background:hsl(${dotHue(a.id)},42%,36%)" title="${escBadge(title)}" aria-label="${escBadge(title)}">${escBadge(dotInitials(a.name))}</span>`;
+    })
+    .join('');
+  const more = extra > 0 ? `<span class="assignee-dot assignee-dot-initials assignee-dot-more" title="+${extra} responsáveis">+${extra}</span>` : '';
+  return `<span class="task-assignees" aria-label="Responsáveis">${dots}${more}</span>`;
+}
+
 const LINK_ICON =
   '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="flex-shrink:0;vertical-align:-1px">' +
   '<path d="M6.5 9.5 9.5 6.5M6.8 4.2 8 3a2.5 2.5 0 0 1 3.5 3.5L10 8M9.2 11.8 8 13a2.5 2.5 0 0 1-3.5-3.5L6 8" ' +

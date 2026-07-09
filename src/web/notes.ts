@@ -21,6 +21,9 @@ import {
   listTaskProjects,
   listMentionsForNote,
   listTasksFromOrigin,
+  listUsers,
+  listAssigneesForTask,
+  resolveActorProfile,
   TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
@@ -901,11 +904,15 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
   // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
   // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
-  const [comments, taxonomy, taskMentions] = await Promise.all([
+  const [comments, taxonomy, taskMentions, allUsers, taskAssignees, createdBy] = await Promise.all([
     listTaskComments(env, task.id, 500, 0),
     getTaxonomyConfig(env),
     // Menções (spec 62): contatos que esta task cita (chips de leitura + link).
     listMentionsForNote(env, task.id),
+    // Responsáveis (spec 37): usuários pro picker + assignees atuais + autoria.
+    listUsers(env, true),
+    listAssigneesForTask(env, task.id),
+    resolveActorProfile(env, task.created_by),
   ]);
   // Origem (spec 62): nota que originou a task ("Criar task desta nota").
   const originNote = task.origin_note_id
@@ -941,6 +948,46 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     expiresBrt: shareStatus?.expires_brt ?? '',
     includeMedia: null,
   });
+
+  // Responsáveis (spec 37): checkboxes form+redirect (padrão CSP dos demais POSTs).
+  // Ativos sempre aparecem; arquivado SÓ se já é assignee desta task (marcado e
+  // esmaecido — dá pra manter ou remover, não pra atribuir novo arquivado).
+  const assignedIds = new Set(taskAssignees.map((a) => a.id));
+  const pickerUsers = allUsers.filter((u) => u.archived_at === null || assignedIds.has(u.id));
+  const assigneeChecks = pickerUsers
+    .map((u) => {
+      const checked = assignedIds.has(u.id) ? ' checked' : '';
+      const archived = u.archived_at !== null;
+      const typeTag = u.type === 'agent' ? ' <span class="task-assignee-type">agente</span>' : '';
+      return `<label class="task-assignee-opt"${archived ? ' style="opacity:0.55"' : ''}>
+        <input type="checkbox" name="user_ids" value="${esc(u.id)}"${checked}>
+        <span>${esc(u.name)}${typeTag}${archived ? ' (arquivado)' : ''}</span>
+      </label>`;
+    })
+    .join('');
+  const assigneesSection = pickerUsers.length
+    ? `<div class="task-sidebar-field">
+        <span class="task-sidebar-lbl">Responsáveis</span>
+        <form method="post" action="/app/tasks/assignees" class="task-assignees-form">
+          <input type="hidden" name="task_id" value="${esc(task.id)}">
+          ${assigneeChecks}
+          <button type="submit" class="btn task-d-btn" style="margin-top:6px">Salvar responsáveis</button>
+        </form>
+      </div>`
+    : `<div class="task-sidebar-field">
+        <span class="task-sidebar-lbl">Responsáveis</span>
+        <span style="color:var(--text-dim);font-size:13px">Nenhum usuário cadastrado — crie em <a href="/app/config?saved=users#users">Configurações → Usuários</a>.</span>
+      </div>`;
+
+  // "Criado por" (spec 37): a CREDENCIAL que criou (auditoria automática) — campo
+  // distinto de responsáveis (decisão de quem cria). Null em task pré-migration 0012.
+  const createdByLabel = createdBy
+    ? createdBy.user
+      ? `${createdBy.user.name}${createdBy.user.type === 'agent' ? ' (agente)' : ''}`
+      : createdBy.key_name
+        ? `chave ${createdBy.key_name}`
+        : createdBy.actor.startsWith('oauth:') ? 'dono (login)' : createdBy.actor
+    : null;
 
   // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
   // sem unsafe-inline/script-src-attr — ver src/web/render.ts:115) BLOQUEIA
@@ -1002,10 +1049,11 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     ...PRIORITIES.map((m) => `<option value="${m.value}"${task.priority === m.value ? ' selected' : ''}>${esc(m.label)}</option>`),
   ].join('');
 
-  // Datas read-only da sidebar, sempre BRT.
+  // Datas read-only da sidebar, sempre BRT. "Criado por" = credencial (auditoria).
   const datesHtml = `
     <div class="task-sidebar-field task-sidebar-dates">
       <div><span class="task-sidebar-lbl">Criada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.created_at))}</span></div>
+      ${createdByLabel ? `<div><span class="task-sidebar-lbl">Criado por</span><span class="task-sidebar-val">${esc(createdByLabel)}</span></div>` : ''}
       <div><span class="task-sidebar-lbl">Atualizada</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.updated_at))}</span></div>
       ${task.completed_at !== null ? `<div><span class="task-sidebar-lbl">Concluída</span><span class="task-sidebar-val">${esc(formatBrtDateTime(task.completed_at))}</span></div>` : ''}
     </div>`;
@@ -1086,6 +1134,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
             <span class="task-sidebar-lbl">Contatos</span>
             <div class="mention-chips">${taskMentions.map((m) => `<span class="mention-chip"><a href="/app/contacts/${esc(m.entity_id)}">${esc(m.entity_label || m.entity_id)}</a></span>`).join('')}</div>
           </div>` : ''}
+
+          ${assigneesSection}
 
           ${datesHtml}
 
@@ -1219,6 +1269,10 @@ const TASK_DETAIL_CSS = `
 .task-sidebar-val { font-size:13px; color:var(--text); }
 .task-sidebar-dates { gap:10px; }
 .task-sidebar-dates > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+/* Picker de responsáveis (spec 37) */
+.task-assignees-form { display:flex; flex-direction:column; gap:4px; }
+.task-assignee-opt { display:flex; align-items:center; gap:7px; font-size:13px; cursor:pointer; }
+.task-assignee-type { color:var(--text-dim); font-size:11px; border:1px dashed var(--border); border-radius:5px; padding:0 5px; margin-left:2px; }
 .task-edit-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-edit-select {
   width:100%; background:var(--bg-accent); border:1px solid var(--border); color:var(--text);

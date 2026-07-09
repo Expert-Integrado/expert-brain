@@ -29,6 +29,7 @@ import { registerGetNoteMedia } from './tools/get-note-media.js';
 import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
 import { registerContactsTools } from './tools/contacts.js';
 import { registerDigest } from './tools/digest.js';
+import { registerListUsers } from './tools/list-users.js';
 
 // Gate de escopo (spec 17): num PAT com scopes='read', envolve o server num Proxy
 // que só deixa passar `registerTool` de tools com `annotations.readOnlyHint === true`.
@@ -83,6 +84,9 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   registerCompleteTask(reg, env, auth);
   registerUpdateTask(reg, env, auth);
   registerGetTask(reg, env, auth);
+  // Usuários/responsáveis (spec 37): lista os perfis atribuíveis (pessoa e agente).
+  // readOnlyHint:true — passa pelo guarda de escopo read. Recebe `auth` pro is_me.
+  registerListUsers(reg, env, auth);
   // Comentários em task (thread): agente anota progresso sem sobrescrever o body.
   registerCommentTask(reg, env);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.

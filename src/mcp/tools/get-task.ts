@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
-import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById } from '../../db/queries.js';
+import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById, listAssigneesForTask, resolveActorProfile } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 import { mentionsForOutput } from '../mentions.js';
 
@@ -13,7 +13,7 @@ const DESCRIPTION = `Reads a single TASK by id, with its full task state.
 
 get_note returns a NOTE shape (title/body/tldr/domains) WITHOUT status/due/priority — it does NOT serve tasks. Use get_task to read a task's status, due date, priority, completed_at, tags and body in one call.
 
-Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_name, body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
+Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, assignees, created_by, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`assignees\` is who is RESPONSIBLE for the task ([{id,name,type}], set via save_task/update_task). \`created_by\` is which credential CREATED it ({actor, user, key_name} | null — automatic audit trail, distinct from assignees). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_name, body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
 
 interface GetTaskInput { id: string; }
 
@@ -51,6 +51,10 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       // Menções (spec 62): contatos que esta task cita. Label omitido pra contato privado
       // quando o caller não tem escopo `private`.
       const mentions = await mentionsForOutput(env, input.id, seePrivate);
+      // Responsáveis + autoria (spec 37): quem É responsável (decisão de quem criou) vs
+      // qual credencial CRIOU (automático). Campos distintos por design.
+      const assignees = await listAssigneesForTask(env, input.id);
+      const createdBy = t.created_by ? await resolveActorProfile(env, t.created_by) : null;
       const now = Date.now();
       return toolSuccess({
         id: t.id,
@@ -68,6 +72,8 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
         tags,
         column: col ? { id: col.id, label: col.label } : null,
         project: proj ? { id: proj.id, label: proj.label } : null,
+        assignees: assignees.map((a) => ({ id: a.id, name: a.name, type: a.type })),
+        created_by: createdBy,
         private: t.private === 1,
         origin_note_id: t.origin_note_id ?? null,
         mentions,

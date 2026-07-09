@@ -58,8 +58,12 @@
    respeita as FKs — `notes` antes de `tags`/`edges`/`note_media`). A tabela
    `_migrations` NÃO é importada: o provision do passo 2 já a populou.
 
-5. **Importe** (o script executa os lotes na ordem e para no primeiro erro):
+5. **Limpe os seeds do provision e importe** (o script executa os lotes na
+   ordem e para no primeiro erro). O provision do passo 2 SEMEIA linhas em
+   `kanban_columns` (4 colunas) e `users` (perfil do dono) que também existem no
+   dump — esvazie essas duas tabelas antes do import, senão o INSERT colide:
    ```bash
+   npx wrangler d1 execute expert-brain --remote --command "DELETE FROM task_assignees; DELETE FROM users; DELETE FROM kanban_columns"
    node scripts/restore-from-snapshot.mjs ./snapshot --db expert-brain --run --remote --verify
    ```
    - Sem `--remote` executa no D1 local do wrangler (bom pra ensaiar o runbook).

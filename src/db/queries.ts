@@ -550,6 +550,10 @@ export interface TaskRow {
   // Nota que originou a task (migration 0015, spec 62). NULL = task avulsa. Só tasks
   // usam; preenchido por "Criar task desta nota" pra auditar a origem da task.
   origin_note_id?: string | null;
+  // Autoria (migration 0012, spec 17): id do PAT ou 'oauth:<email>'. Opcional no tipo
+  // porque selects parciais antigos não trazem a coluna. Resolver pra perfil legível
+  // via resolveActorProfile (spec 37).
+  created_by?: string | null;
   created_at: number; updated_at: number;
   // Compartilhamento público read-only (migration 0008). share_token guarda o HASH
   // sha256 do token (nunca o plaintext); NULL = task não compartilhada. Opcionais no
@@ -579,7 +583,7 @@ export interface InsertTaskInput {
   origin_note_id?: string | null;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_by, created_at, updated_at, share_token, share_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
@@ -1644,4 +1648,211 @@ export async function listTaskCompletedActivity(
      ORDER BY completed_at DESC, id DESC LIMIT ?`
   ).bind(...binds).all<JournalTaskActivityRow>();
   return r.results ?? [];
+}
+
+// ───────────────────────── usuários e responsáveis (spec 37) ─────────────────────────
+// `users` é perfil de ATRIBUIÇÃO (pessoa ou agente), não login. Um usuário-agente
+// aponta pro PAT que o identifica (api_key_id). `task_assignees` é N:N com notes
+// (kind='task'). Mesmo desenho de cap/resolução dos projetos (spec 58).
+
+export const USER_CAP = 64;
+export const USER_TYPES = ['person', 'agent'] as const;
+export type UserType = (typeof USER_TYPES)[number];
+
+export interface BrainUser {
+  id: string;
+  name: string;
+  type: UserType;
+  bio: string | null;
+  api_key_id: string | null;   // PAT que identifica o usuário-agente ('me' resolve por aqui)
+  avatar_key: string | null;   // objeto R2 (avatars/<id>); null = sem foto (render usa iniciais)
+  avatar_mime: string | null;
+  is_owner: number;            // 1 só no perfil-pessoa do dono (seed user_owner)
+  archived_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+// Shape enxuto que as superfícies ecoam (cards, tools, picker).
+export interface AssigneeRef { id: string; name: string; type: UserType; avatar: boolean }
+
+const USER_COLS = `id, name, type, bio, api_key_id, avatar_key, avatar_mime, is_owner, archived_at, created_at, updated_at`;
+
+// Lista usuários. Default só ATIVOS, donos primeiro, depois por criação (estável).
+export async function listUsers(env: Env, includeArchived = false): Promise<BrainUser[]> {
+  const where = includeArchived ? '' : ' WHERE archived_at IS NULL';
+  const r = await env.DB.prepare(
+    `SELECT ${USER_COLS} FROM users${where} ORDER BY is_owner DESC, created_at ASC`
+  ).all<BrainUser>();
+  return r.results ?? [];
+}
+
+export async function getUserById(env: Env, id: string): Promise<BrainUser | null> {
+  return env.DB.prepare(`SELECT ${USER_COLS} FROM users WHERE id = ?`).bind(id).first<BrainUser>();
+}
+
+// Resolve por id EXATO ou nome (case-insensitive Unicode em JS — lower() do SQLite
+// só cobre ASCII e nomes têm acento). Mesmo racional do getProjectByIdOrLabel.
+export async function getUserByIdOrName(env: Env, ref: string, activesOnly: boolean): Promise<BrainUser | null> {
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+  const all = await listUsers(env, true);
+  const pool = activesOnly ? all.filter((u) => u.archived_at === null) : all;
+  const byId = pool.find((u) => u.id === trimmed);
+  if (byId) return byId;
+  const wanted = trimmed.toLowerCase();
+  return pool.find((u) => u.name.trim().toLowerCase() === wanted) ?? null;
+}
+
+// Identidade por PAT: o usuário-agente cujo api_key_id é a credencial que chamou.
+export async function getUserByApiKeyId(env: Env, keyId: string): Promise<BrainUser | null> {
+  return env.DB.prepare(
+    `SELECT ${USER_COLS} FROM users WHERE api_key_id = ? AND archived_at IS NULL LIMIT 1`
+  ).bind(keyId).first<BrainUser>();
+}
+
+// Identidade da sessão OAuth do dono: o perfil-pessoa marcado is_owner.
+export async function getOwnerUser(env: Env): Promise<BrainUser | null> {
+  return env.DB.prepare(
+    `SELECT ${USER_COLS} FROM users WHERE is_owner = 1 AND archived_at IS NULL LIMIT 1`
+  ).bind().first<BrainUser>();
+}
+
+export async function countUsers(env: Env): Promise<number> {
+  const r = await env.DB.prepare(`SELECT count(*) AS c FROM users`).first<{ c: number }>();
+  return r?.c ?? 0;
+}
+
+export async function createUser(
+  env: Env,
+  input: { id: string; name: string; type: UserType; bio: string | null; api_key_id: string | null },
+  now: number
+): Promise<BrainUser> {
+  await env.DB.prepare(
+    `INSERT INTO users (id, name, type, bio, api_key_id, is_owner, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?)`
+  ).bind(input.id, input.name, input.type, input.bio, input.api_key_id, now, now).run();
+  return {
+    id: input.id, name: input.name, type: input.type, bio: input.bio,
+    api_key_id: input.api_key_id, avatar_key: null, avatar_mime: null,
+    is_owner: 0, archived_at: null, created_at: now, updated_at: now,
+  };
+}
+
+export async function updateUser(
+  env: Env, id: string,
+  patch: { name?: string; type?: UserType; bio?: string | null; api_key_id?: string | null },
+  now: number
+): Promise<boolean> {
+  const sets: string[] = [];
+  const binds: unknown[] = [];
+  if (patch.name !== undefined) { sets.push('name = ?'); binds.push(patch.name); }
+  if (patch.type !== undefined) { sets.push('type = ?'); binds.push(patch.type); }
+  if (patch.bio !== undefined) { sets.push('bio = ?'); binds.push(patch.bio); }
+  if (patch.api_key_id !== undefined) { sets.push('api_key_id = ?'); binds.push(patch.api_key_id); }
+  if (sets.length === 0) return false;
+  sets.push('updated_at = ?');
+  binds.push(now, id);
+  const res = await env.DB.prepare(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).bind(...binds).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+export async function setUserAvatar(
+  env: Env, id: string, avatarKey: string | null, mime: string | null, now: number
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE users SET avatar_key = ?, avatar_mime = ?, updated_at = ? WHERE id = ?`
+  ).bind(avatarKey, mime, now, id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Arquiva/desarquiva. Vínculos task_assignees FICAM (histórico); usuário arquivado só
+// deixa de ser atribuível/listável no default. O perfil do dono não é arquivável.
+export async function setUserArchived(env: Env, id: string, archivedAt: number | null): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE users SET archived_at = ?, updated_at = ? WHERE id = ? AND is_owner = 0`
+  ).bind(archivedAt, archivedAt ?? Date.now(), id).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
+// Replace-set dos responsáveis de UMA task ([] limpa). Batch atômico: DELETE + INSERTs.
+export async function setTaskAssignees(env: Env, noteId: string, userIds: string[], now: number): Promise<void> {
+  const stmts = [env.DB.prepare(`DELETE FROM task_assignees WHERE note_id = ?`).bind(noteId)];
+  const uniq = [...new Set(userIds)];
+  for (const uid of uniq) {
+    stmts.push(
+      env.DB.prepare(`INSERT OR IGNORE INTO task_assignees (note_id, user_id, created_at) VALUES (?, ?, ?)`)
+        .bind(noteId, uid, now)
+    );
+  }
+  await env.DB.batch(stmts);
+}
+
+export async function listAssigneesForTask(env: Env, noteId: string): Promise<AssigneeRef[]> {
+  const r = await env.DB.prepare(
+    `SELECT u.id, u.name, u.type, (u.avatar_key IS NOT NULL) AS avatar
+     FROM task_assignees ta JOIN users u ON u.id = ta.user_id
+     WHERE ta.note_id = ? ORDER BY u.is_owner DESC, u.created_at ASC`
+  ).bind(noteId).all<{ id: string; name: string; type: UserType; avatar: number }>();
+  return (r.results ?? []).map((row) => ({ ...row, avatar: !!row.avatar }));
+}
+
+// Batch pro board/list_tasks: responsáveis de VÁRIAS tasks numa query (evita N+1).
+export async function listAssigneesForTasks(env: Env, noteIds: string[]): Promise<Map<string, AssigneeRef[]>> {
+  const out = new Map<string, AssigneeRef[]>();
+  if (noteIds.length === 0) return out;
+  // D1 tem teto de binds por statement; 500 (teto do listActiveTasks) cabe, mas
+  // fatiar em 90 mantém folga em qualquer caminho.
+  for (let i = 0; i < noteIds.length; i += 90) {
+    const chunk = noteIds.slice(i, i + 90);
+    const placeholders = chunk.map(() => '?').join(',');
+    const r = await env.DB.prepare(
+      `SELECT ta.note_id, u.id, u.name, u.type, (u.avatar_key IS NOT NULL) AS avatar
+       FROM task_assignees ta JOIN users u ON u.id = ta.user_id
+       WHERE ta.note_id IN (${placeholders}) ORDER BY u.is_owner DESC, u.created_at ASC`
+    ).bind(...chunk).all<{ note_id: string; id: string; name: string; type: UserType; avatar: number }>();
+    for (const row of r.results ?? []) {
+      const list = out.get(row.note_id) ?? [];
+      list.push({ id: row.id, name: row.name, type: row.type, avatar: !!row.avatar });
+      out.set(row.note_id, list);
+    }
+  }
+  return out;
+}
+
+// Ids das tasks atribuídas a um usuário — base do filtro `assignee` do list_tasks.
+export async function taskIdsAssignedTo(env: Env, userId: string): Promise<Set<string>> {
+  const r = await env.DB.prepare(
+    `SELECT note_id FROM task_assignees WHERE user_id = ?`
+  ).bind(userId).all<{ note_id: string }>();
+  return new Set((r.results ?? []).map((row) => row.note_id));
+}
+
+// Traduz o `created_by` cru (id de PAT ou 'oauth:<email>') num perfil legível:
+// o usuário vinculado (mesmo arquivado — é display histórico, não atribuição),
+// senão o NOME do PAT, senão só o marcador. Null pra linhas antigas sem autoria.
+export interface ActorProfile {
+  actor: string;
+  user: AssigneeRef | null;
+  key_name: string | null;
+}
+export async function resolveActorProfile(env: Env, actor: string | null | undefined): Promise<ActorProfile | null> {
+  if (!actor) return null;
+  if (actor.startsWith('oauth:')) {
+    const owner = await getOwnerUser(env);
+    return {
+      actor,
+      user: owner ? { id: owner.id, name: owner.name, type: owner.type, avatar: owner.avatar_key !== null } : null,
+      key_name: null,
+    };
+  }
+  const [user, key] = await Promise.all([
+    env.DB.prepare(`SELECT ${USER_COLS} FROM users WHERE api_key_id = ? LIMIT 1`).bind(actor).first<BrainUser>(),
+    env.DB.prepare(`SELECT name FROM api_keys WHERE id = ?`).bind(actor).first<{ name: string }>(),
+  ]);
+  return {
+    actor,
+    user: user ? { id: user.id, name: user.name, type: user.type, avatar: user.avatar_key !== null } : null,
+    key_name: key?.name ?? null,
+  };
 }

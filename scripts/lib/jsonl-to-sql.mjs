@@ -6,10 +6,11 @@
 
 // Ordem de import que respeita as FKs do schema: kanban_columns antes de notes
 // (notes.column_id referencia kanban_columns.id), e notes antes de tudo que
-// referencia notes (tags/edges/similar_edges/note_media). Tabelas desconhecidas
-// (migrations futuras) vão pro final, em ordem alfabética — se referenciarem
-// notes, já estarão depois dela.
-const TABLE_ORDER = ['_migrations', 'meta', 'api_keys', 'kanban_columns', 'notes', 'tags', 'edges', 'similar_edges', 'note_media'];
+// referencia notes (tags/edges/similar_edges/note_media). users depois de
+// api_keys (users.api_key_id) e task_assignees por último (FK pra notes E users
+// — spec 37). Tabelas desconhecidas (migrations futuras) vão pro final, em
+// ordem alfabética — se referenciarem notes, já estarão depois dela.
+const TABLE_ORDER = ['_migrations', 'meta', 'api_keys', 'users', 'kanban_columns', 'notes', 'tags', 'edges', 'similar_edges', 'note_media', 'task_assignees'];
 
 export function sortTablesForRestore(names) {
   return [...names].sort((a, b) => {

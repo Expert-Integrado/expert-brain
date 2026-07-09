@@ -43,13 +43,14 @@ import {
   setProjectArchived,
   countTaskProjects,
   TASK_PROJECT_CAP,
+  listAssigneesForTasks,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, type AssigneeDot } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -88,6 +89,7 @@ interface TaskView {
   project_id: string | null; // pasta/projeto (spec 58); null = "Sem projeto". Chip resolvido via board.projects
   private: boolean; // selo de privacidade (spec 59): badge 🔒 no card + detalhe
   search_text: string; // título + descrição + tags, minúsculo e sem acento — busca client-side (Onda 8)
+  assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
 }
 
 // Texto de busca do card (Onda 8): título + corpo (quando não é eco do título) +
@@ -104,7 +106,7 @@ export function visibleTags(tags: string[]): string[] {
   return tags.filter((t) => !t.startsWith('dedupe:'));
 }
 
-function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []): TaskView {
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = []): TaskView {
   const due = t.due_at ?? null;
   const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
@@ -131,6 +133,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = []):
     search_text: foldSearchText(
       `${t.title}\n${t.body && t.body !== t.title ? t.body : ''}\n${tags.join(' ')}`
     ).slice(0, 800),
+    assignees,
   };
 }
 
@@ -185,9 +188,11 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
   // renderizadas. Tags reservadas dedupe:* são filtradas AQUI — nunca chegam ao
   // TaskView (defesa única, board e nenhum outro read path de card as vaza).
   const allIds = [...active, ...closed].map((t) => t.id);
-  const [commentCounts, tagsById] = await Promise.all([
+  const [commentCounts, tagsById, assigneesById] = await Promise.all([
     countTaskCommentsBatch(env, allIds),
     getTagsForNotes(env, allIds),
+    // Responsáveis em lote (spec 37): bolinhas do card, 1 query chunked.
+    listAssigneesForTasks(env, allIds),
   ]);
 
   const buckets = new Map<string, TaskView[]>();
@@ -200,7 +205,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     if (assigned && assigned.category === status) colId = assigned.id;
     else colId = defaultByCat.get(status)?.id ?? null;
     const tags = visibleTags(tagsById.get(t.id) ?? []);
-    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags));
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? []));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -1031,7 +1036,7 @@ function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): st
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''}>
     <div class="task-card-top"><a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a></div>
     ${cardProjectCrumb(v, projectsById)}
-    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}</div>
+    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}${assigneeDotsHtml(v.assignees)}</div>
     ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
@@ -1346,6 +1351,21 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
 .task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
 .task-comments-n { font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Responsáveis (spec 37): bolinhas empilhadas no fim da linha de meta, estilo
+   ClickUp. Foto quando tem; senão iniciais sobre cor derivada do id. Agente
+   ganha anel tracejado (máquina ≠ pessoa à primeira vista). */
+.task-assignees { display: inline-flex; align-items: center; margin-left: auto; }
+.task-assignees .assignee-dot { margin-left: -6px; }
+.task-assignees .assignee-dot:first-child { margin-left: 0; }
+.assignee-dot {
+  width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+  border: 1.5px solid var(--bg-accent); box-sizing: content-box;
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.assignee-dot-initials { color: #fff; font-size: 9px; font-weight: 600; letter-spacing: 0.3px; line-height: 1; }
+.assignee-dot-agent { outline: 1px dashed var(--text-dim); outline-offset: 1px; }
+.assignee-dot-more { background: var(--surface-raised); color: var(--text-dim); }
 
 /* Tags no card (spec 52): até 3 chips + "+N", cor neutra — nunca dedupe:* */
 .task-tag-chip {

@@ -359,6 +359,38 @@ const MIGRATION_0016_STMTS: string[] = [
   `ALTER TABLE notes ADD COLUMN share_include_media INTEGER NOT NULL DEFAULT 0`,
 ];
 
+// 0017 (specs/30-features/37) — USUÁRIOS (pessoa + agente) E RESPONSÁVEIS NAS TASKS.
+// `users` NÃO é login (o vault segue single-owner: sessão + PATs) — é perfil de
+// ATRIBUIÇÃO: nome, foto (R2), tipo. Um usuário-agente aponta pro PAT que o
+// identifica (api_key_id) — é assim que `assignee: 'me'` resolve. `task_assignees`
+// é N:N (uma task pode ser do humano, de um agente, ou de ambos). O seed
+// `user_owner` garante que o dono é atribuível desde o primeiro dia (rename/foto
+// no console). Tudo aditivo; nenhuma linha existente tocada.
+const MIGRATION_0017_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    type        TEXT NOT NULL DEFAULT 'person',
+    bio         TEXT,
+    api_key_id  TEXT REFERENCES api_keys(id),
+    avatar_key  TEXT,
+    avatar_mime TEXT,
+    is_owner    INTEGER NOT NULL DEFAULT 0,
+    archived_at INTEGER,
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS task_assignees (
+    note_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    user_id    TEXT NOT NULL REFERENCES users(id),
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (note_id, user_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id)`,
+  `INSERT OR IGNORE INTO users (id, name, type, is_owner, created_at, updated_at)
+   VALUES ('user_owner', 'Dono', 'person', 1, 0, 0)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -376,6 +408,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0014_inbox', stmts: MIGRATION_0014_STMTS },
   { id: '0015_mentions', stmts: MIGRATION_0015_STMTS },
   { id: '0016_share_note_media', stmts: MIGRATION_0016_STMTS },
+  { id: '0017_users', stmts: MIGRATION_0017_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor
