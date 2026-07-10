@@ -22,16 +22,20 @@ const MANUAL_EVENT_KINDS: Array<{ value: string; label: string }> = [
 ];
 const CONTACT_EVENTS_PAGE_SIZE = 20;
 
-function formatContactEventTs(ts: string): string {
+function formatContactEventTs(ts: string, source?: string | null): string {
   if (!ts) return '';
   const iso = ts.includes('T') ? ts : `${ts.replace(' ', 'T')}Z`;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return ts.slice(0, 16);
   try {
-    return d.toLocaleString('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-    });
+    const opts: Intl.DateTimeFormatOptions = { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' };
+    // Backfill do WhatsApp (10.415 eventos, verificado 10/07): a fonte extraída só
+    // tinha o DIA da conversa — a hora foi gravada como 12:00 BRT fixo. Hora
+    // sintética não é informação: nesses eventos, exibe só a data.
+    const syntheticNoon = source === 'whatsapp' &&
+      d.toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false }) === '12:00:00';
+    if (!syntheticNoon) { opts.hour = '2-digit'; opts.minute = '2-digit'; }
+    return d.toLocaleString('pt-BR', opts);
   } catch {
     return ts.slice(0, 16);
   }

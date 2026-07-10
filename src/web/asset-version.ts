@@ -10,7 +10,7 @@ export const ASSET_HASHES: Record<string, string> = {
   "shell.bundle.js": "75aebd3ba9af",
   "tasks.bundle.js": "d2090783b091",
   "task-edit.bundle.js": "0dd825243b66",
-  "contact-page.bundle.js": "8f9084dde7d4",
+  "contact-page.bundle.js": "7573416f4b5c",
   "sim-worker.bundle.js": "2b1cd681554f",
   "home.bundle.js": "519965cc9ad9",
   "journal.bundle.js": "c2dded04f4a4",
