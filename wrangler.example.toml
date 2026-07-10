@@ -21,8 +21,11 @@ account_id = "REPLACE_ME_ACCOUNT_ID"
 #   (`wrangler secret put ...`).
 # - "0 5 * * 1" (segunda, 02:00 BRT): snapshot semanal de backup D1→R2 no bucket
 #   MEDIA, prefixo backups/<YYYY-MM-DD>/ (mantém os últimos 8). Ver docs/restore.md.
+# - "0 8 * * *" (05:00 BRT): re-pass diário das similar_edges das notas tocadas
+#   nas últimas 48h (spec 70-grafo-higiene/72) — corrige vizinhança computada
+#   contra índice defasado em import em lote.
 [triggers]
-crons = ["0 11 * * *", "0 5 * * 1"]
+crons = ["0 11 * * *", "0 5 * * 1", "0 8 * * *"]
 
 # Workers Logs (spec 40-ops/43): persiste logs de request/cron no dashboard
 # (Workers & Pages > seu worker > Logs) — sem isso, qualquer diagnóstico

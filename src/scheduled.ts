@@ -2,6 +2,7 @@ import type { Env } from './env.js';
 import { runDueReminder, sendTelegram } from './notify.js';
 import { runSnapshot } from './backup/snapshot.js';
 import { runTaskAutocancel } from './task-lifecycle.js';
+import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
 // wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
@@ -53,6 +54,16 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
           )
         )
         .catch((e) => console.error('backup failed', e))
+    );
+    return;
+  }
+  // Re-pass das similar_edges (spec 70-grafo-higiene/72): braço próprio, ANTES
+  // do fail-safe diário. Expressão tem que existir no toml no MESMO deploy.
+  if (cron === REPASS_CRON) {
+    ctx.waitUntil(
+      runSimilarRepass(env, Date.now())
+        .then((r) => console.log('similar-repass', JSON.stringify(r)))
+        .catch((e) => console.error('similar-repass failed', e))
     );
     return;
   }
