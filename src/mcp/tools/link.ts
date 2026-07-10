@@ -3,6 +3,7 @@ import type { Env } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { EDGE_TYPES, type EdgeType, getNoteById, insertEdge } from '../../db/queries.js';
 import { newId } from '../../util/id.js';
+import { isLazyWhy, lazyWhyError } from '../why-quality.js';
 
 const inputSchema = {
   from_id: z.string().min(1),
@@ -48,6 +49,10 @@ export function registerLink(server: any, env: Env): void {
           `The why field has only ${input.why.length} characters — minimum is 20. ` +
           `Explain the shared MECHANISM, not just that the notes are related.`
         );
+      }
+      // Segunda régua (spec 71): tamanho ok mas conteúdo só-genérico é rejeitado igual.
+      if (isLazyWhy(input.why)) {
+        return toolError(lazyWhyError());
       }
       const [from, to] = await Promise.all([
         getNoteById(env, input.from_id),
