@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNoteCreatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
 import { handleHomePage } from './home.js';
@@ -63,6 +63,11 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // path exato /update não colide com o regex de id (que não tem barra interna
   // depois de notes/, mas 'update' casaria como id num GET — aqui é POST).
   if (path === '/app/notes/update' && req.method === 'POST') return handleNoteUpdatePost(req, env);
+
+  // "+ Nova nota" da lista (audit ui-audit/RELATORIO.md item N2): título+corpo mínimo,
+  // espelha /app/tasks/create. Path exato, mesma posição que /update acima (ANTES do
+  // noteMatch, que só casa GET — 'create' casaria como id num GET).
+  if (path === '/app/notes/create' && req.method === 'POST') return handleNoteCreatePost(req, env);
 
   // Criar task a partir de uma nota (spec 62 §2): task com origin_note_id + menções
   // herdadas. Path exato, vem ANTES do noteMatch (que só casa GET, mas 'task-from-note'

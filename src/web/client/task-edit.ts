@@ -1,7 +1,9 @@
 // Client do editor inline de task (/app/tasks/<id>) — spec 36, fase 1.
 // - Autosave em status/prioridade/prazo (eventos `change` discretos dos selects
 //   e do datetime-local). Sem debounce: são pickers, não texto contínuo.
-// - Título salva por botão "Salvar" + atalho Ctrl/Cmd+Enter. Texto livre NÃO
+// - Título: textarea de 1 linha com auto-grow via JS (cresce com o conteúdo,
+//   título longo nunca corta/colide com "Salvar"). Salva por botão + Enter (sem
+//   quebra de linha); Esc cancela e volta pro valor salvo. Texto livre NÃO
 //   autosalva no meio da digitação (spec: destrutivo).
 // - Descrição: campo único (spec 74) — LEITURA por padrão (prévia + botão "Editar");
 //   clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Ctrl/Cmd+Enter salva, Esc
@@ -276,6 +278,13 @@ if (root) {
   });
   titleInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); if (titleInput.value !== titleSaved) saveTitle(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      titleInput.value = titleSaved;
+      fitTitle();
+      markDirty(titleSaveBtn, false);
+      titleInput.blur();
+    }
   });
 
   // ── Descrição: campo único (spec 74) — LEITURA (prévia + Editar) ↔ EDIÇÃO

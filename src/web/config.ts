@@ -10,7 +10,7 @@ import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
 import { formatBrtDateTime } from '../util/time.js';
 import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject, KNOWLEDGE_KINDS, listDomainCounts } from '../db/queries.js';
-import { resolveDomainMeta, resolveKindMeta } from './domain-colors.js';
+import { resolveDomainMeta, resolveKindMeta, DOMAIN_FALLBACK } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { listUsers } from '../db/queries.js';
 import { renderUsersSection, USERS_SECTION_CSS } from './users.js';
@@ -58,6 +58,11 @@ const categoryOptions = (selected?: TaskStatus): string =>
 function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: KanbanColumn[]): string {
   const archived = col.archived_at !== null;
   const colorVal = col.color ?? '';
+  // Swatch precisa de um #rrggbb válido pro <input type="color"> (não aceita
+  // vazio) — usa o mesmo neutro de fallback das Áreas/Tipos (DOMAIN_FALLBACK)
+  // quando a coluna não tem cor própria (ui-audit item CF1: antes era um input de
+  // texto vazio, sem a cor atual pré-preenchida).
+  const swatchVal = colorVal || DOMAIN_FALLBACK;
   // Destino pras tasks ao arquivar uma coluna ATIVA que tem tasks (mesma categoria).
   const destOptions = activeSameCat
     .filter((c) => c.id !== col.id)
@@ -80,7 +85,10 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
       <form method="post" action="/app/tasks/columns/update" class="row" style="gap:6px;align-items:center">
         <input type="hidden" name="id" value="${esc(col.id)}">
         <input type="text" name="label" value="${esc(col.label)}" maxlength="40" class="input-text" style="width:150px">
-        <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <input type="color" name="color" value="${esc(swatchVal)}" class="tax-swatch" aria-label="Cor da coluna ${esc(col.label)}">
+          <code style="font-size:11px;color:var(--text-dim)">${colorVal ? esc(colorVal) : 'sem cor'}</code>
+        </span>
         <button type="submit">Salvar</button>
       </form>
     </td>

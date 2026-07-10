@@ -484,13 +484,57 @@ async function renderGraphLikePage(
         justify-content: center;
       }
       .graph-wrap.mode-3d.mode-3d-loading #graph3d-loading { display: flex; }
+
+      /* Estado de erro do grafo (auditoria UI 2026-07, item P1): /meta ou /data
+         falharam (ex. worker de contatos fora do ar em dev local, 503). Reaproveita
+         o mesmo #graph-center-loading do spinner — troca pra mensagem + motivo
+         resumido + "Tentar novamente". O spinner some (girando pra sempre lia como
+         "ainda carregando", não "quebrou"). Vale pro /app/graph E pro /app/contacts
+         (mesmo renderer). */
+      #graph-center-loading.error .center-loading-spinner { display: none; }
+      #graph-center-loading .center-loading-reason {
+        max-width: 300px;
+        text-align: center;
+        font-size: 12px;
+        color: rgba(255,255,255,0.45);
+        line-height: 1.4;
+      }
+      .graph-retry-btn {
+        pointer-events: auto;
+        margin-top: 2px;
+        padding: 7px 16px;
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 500;
+        color: #f4ecff;
+        background: rgba(167, 139, 250, 0.16);
+        border: 1px solid rgba(167, 139, 250, 0.45);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .graph-retry-btn:hover { background: rgba(167, 139, 250, 0.26); }
+      /* Sem dados (erro, ou recarregando após erro): overlay de filtros/busca e
+         controles de zoom ficam atenuados e inertes — não fazem sentido sobre um
+         canvas vazio. O client reabilita (remove a classe) assim que o fetch
+         funcionar. */
+      .graph-overlay.data-unavailable,
+      .graph-zoom-controls.data-unavailable {
+        opacity: 0.4;
+        pointer-events: none;
+        filter: saturate(0.5);
+      }
     </style>
 
     <div class="graph-wrap${can3D && initialMode === '3d' ? ' mode-3d mode-3d-loading' : ''}" data-graph-initial-mode="${initialMode}">
-      <!-- Loading centralizado sobre o canvas — escondido após primeiro render. -->
+      <!-- Loading centralizado sobre o canvas — escondido após primeiro render.
+           Reaproveitado como estado de ERRO (classe .error) quando /meta ou /data
+           falham: título vira "Falha ao carregar grafo", motivo resumido aparece
+           embaixo e o botão "Tentar novamente" refaz o fetch (ver graph.ts client). -->
       <div id="graph-center-loading" class="center-loading" role="status" aria-live="polite">
         <div class="center-loading-spinner" aria-hidden="true"></div>
-        <div>Carregando grafo...</div>
+        <div id="graph-center-loading-title">Carregando grafo...</div>
+        <div id="graph-center-loading-reason" class="center-loading-reason" hidden></div>
+        <button id="graph-retry-btn" type="button" class="graph-retry-btn" hidden>Tentar novamente</button>
       </div>
       ${can3D ? `<!-- Palco 3D — preenchido pelo bundle graph3d lazy-load. Mesmo payload
            /app/graph/data do 2D; os controles do painel esquerdo comandam os dois. -->

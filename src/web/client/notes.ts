@@ -80,6 +80,14 @@ async function main() {
   // NÃO re-renderizar quando a busca de fundo (server FTS) devolve o mesmo conjunto.
   let lastRenderedSig = '';
 
+  // IntersectionObserver do "Mostrar mais" (scroll infinito) — declarado AQUI, antes
+  // da 1ª chamada de apply() logo abaixo: apply()→syncShowMore() já lê esta variável
+  // na primeira renderização, e uma `let` só é utilizável DEPOIS do statement que a
+  // declara (temporal dead zone) — declará-la perto de syncShowMore (mais abaixo no
+  // arquivo) quebrava com "Cannot access before initialization" assim que a lista
+  // montava, porque apply() roda antes desse ponto do código ser alcançado.
+  let showMoreObserver: IntersectionObserver | null = null;
+
   // Reseta a janela e re-renderiza. Chamado por toda mudança de query/filtro/sort.
   function resetWindow() {
     state.renderLimit = RENDER_WINDOW;
@@ -102,6 +110,7 @@ async function main() {
 
   renderChips();
   apply();
+  wireCreateModal();
 
   if (searchEl) {
     let t: number | null = null;
@@ -245,14 +254,17 @@ async function main() {
       });
     }
 
-    if (countEl) countEl.textContent = `${pool.length} ${pool.length === 1 ? 'note' : 'notes'}`;
+    // "mostrando X de Y notas de conhecimento" (audit ui-audit/RELATORIO.md item N1/N3):
+    // X = quantas o render window vai efetivamente desenhar do pool JÁ filtrado (não do
+    // vault inteiro) — filtro/busca ativos mudam Y também, de propósito.
+    if (countEl) countEl.textContent = formatCountLabel(Math.min(state.renderLimit, pool.length), pool.length);
 
     if (listEl!.dataset.layout !== state.layout) {
       listEl!.dataset.layout = state.layout;
     }
 
     if (pool.length === 0) {
-      listEl!.innerHTML = `<p class="notes-empty">No notes match your filters.</p>`;
+      listEl!.innerHTML = `<p class="notes-empty">Nenhuma nota corresponde aos filtros.</p>`;
       lastRenderedSig = 'empty';
       syncShowMore(0, 0);
       return;
@@ -272,6 +284,27 @@ async function main() {
     syncShowMore(pool.length, state.renderLimit);
   }
 
+  // Scroll infinito (audit ui-audit/RELATORIO.md item N1: "rolar até o fim não carrega
+  // mais nada"): observa o botão "Mostrar mais" via IntersectionObserver — quando ele
+  // entra na viewport (rootMargin antecipa antes de bater no fundo de verdade), cresce
+  // a janela sozinho, sem precisar de clique. O botão continua existindo (não é só um
+  // sentinel invisível): clique manual e leitor de tela seguem funcionando idêntico a
+  // antes — a IntersectionObserver é aditiva, não substitui o fallback. (showMoreObserver
+  // é declarada lá em cima, perto de lastRenderedSig — ver o comentário lá.)
+  function observeShowMore(btn: HTMLElement) {
+    if (typeof IntersectionObserver === 'undefined') return; // sem suporte: só o clique manual funciona
+    showMoreObserver?.disconnect();
+    showMoreObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          state.renderLimit += RENDER_WINDOW;
+          apply();
+        }
+      }
+    }, { rootMargin: '600px 0px' });
+    showMoreObserver.observe(btn);
+  }
+
   // Mostra/atualiza/esconde o botão "Mostrar mais" logo após #notes-list.
   function syncShowMore(poolLen: number, limit: number) {
     let btn = document.getElementById('notes-show-more') as HTMLButtonElement | null;
@@ -283,9 +316,11 @@ async function main() {
         btn.className = 'notes-show-more';
         btn.type = 'button';
         listEl!.insertAdjacentElement('afterend', btn);
+        observeShowMore(btn);
       }
       btn.textContent = `Mostrar mais (${remaining} restantes)`;
     } else if (btn) {
+      showMoreObserver?.disconnect();
       btn.remove();
     }
   }
@@ -323,6 +358,78 @@ async function main() {
   }
 }
 
+// "+ Nova nota" (audit ui-audit/RELATORIO.md item N2) — modal mínimo (título + corpo
+// opcional) espelhando o "Modal 'Nova task'" de client/tasks.ts: POST /app/notes/create
+// (título+corpo, ver handleNoteCreatePost em src/web/notes.ts) e navega pra nota nova
+// (a lista não tem card local pra atualizar in-place como o board de tasks — o editor
+// completo da nota é o próximo passo natural, igual ao redirect do inbox to-note).
+function wireCreateModal() {
+  const modal = document.getElementById('notes-create-modal');
+  const openBtn = document.getElementById('notes-new-btn');
+  const form = document.getElementById('notes-create-form') as HTMLFormElement | null;
+  if (!modal || !openBtn || !form) return;
+
+  const titleInput = form.querySelector<HTMLInputElement>('#notes-create-title-input');
+  const msg = form.querySelector<HTMLElement>('[data-create-msg]');
+  const submitBtn = form.querySelector<HTMLButtonElement>('.notes-create-submit');
+
+  function openModal() {
+    modal!.hidden = false;
+    modal!.setAttribute('aria-hidden', 'false');
+    setTimeout(() => titleInput?.focus(), 20);
+  }
+  function closeModal() {
+    modal!.hidden = true;
+    modal!.setAttribute('aria-hidden', 'true');
+    form!.reset();
+    if (msg) { msg.textContent = ''; msg.className = 'notes-create-msg'; }
+  }
+
+  openBtn.addEventListener('click', openModal);
+  modal.querySelectorAll('[data-close-modal]').forEach((el) =>
+    el.addEventListener('click', (e) => { e.preventDefault(); closeModal(); })
+  );
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modal.hidden) closeModal();
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(form);
+    const title = String(data.get('title') || '').trim();
+    if (!title) {
+      if (msg) { msg.textContent = 'Título é obrigatório'; msg.className = 'notes-create-msg err'; }
+      titleInput?.focus();
+      return;
+    }
+
+    const payload: Record<string, unknown> = { title };
+    const bodyVal = String(data.get('body') || '').trim();
+    if (bodyVal) payload.body = bodyVal;
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (msg) { msg.textContent = 'Criando...'; msg.className = 'notes-create-msg saving'; }
+    try {
+      const res = await appFetch('/app/notes/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const out = (await res.json().catch(() => ({}))) as { id?: string; dup?: string | null; error?: string };
+      if (!res.ok || !out.id) {
+        if (msg) { msg.textContent = 'Erro: ' + (out.error || res.status); msg.className = 'notes-create-msg err'; }
+        if (submitBtn) submitBtn.disabled = false;
+        return;
+      }
+      const dupParam = out.dup ? `?dup=${encodeURIComponent(out.dup)}` : '';
+      window.location.href = `/app/notes/${encodeURIComponent(out.id)}${dupParam}`;
+    } catch (err) {
+      if (msg) { msg.textContent = 'Falha de conexão'; msg.className = 'notes-create-msg err'; }
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+}
+
 function isTypingInInput(): boolean {
   const el = document.activeElement;
   if (!el) return false;
@@ -345,6 +452,18 @@ function esc(s: string): string {
 
 function formatDate(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
+}
+
+// Espelha formatCountLabel de src/web/notes.ts (SSR) — mesma regra pt-BR + "notas de
+// conhecimento" + "mostrando X de Y" (audit ui-audit/RELATORIO.md itens N1/N3/N4).
+// Duplicado (não importado do server) porque client e server bundles não compartilham
+// módulo hoje — ver o comentário equivalente no server pela mesma razão de design.
+function formatCountLabel(shown: number, total: number): string {
+  const noun = total === 1 ? 'nota de conhecimento' : 'notas de conhecimento';
+  if (total === 0) return `0 ${noun}`;
+  const totalFmt = total.toLocaleString('pt-BR');
+  if (shown <= 0 || shown >= total) return `${totalFmt} ${noun}`;
+  return `mostrando ${shown.toLocaleString('pt-BR')} de ${totalFmt} ${noun}`;
 }
 
 main().catch((err) => console.error('notes client: fatal', err));

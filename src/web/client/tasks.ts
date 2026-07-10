@@ -189,7 +189,7 @@ function projectCrumb(t: TaskView): string {
 }
 
 // Badge 🔒 do card (spec 59) — mesma classe global .private-badge das notas/SSR.
-const PRIVATE_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
+const PRIVATE_BADGE = '<span class="private-badge" title="Tarefa privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
 
 // Anatomia do card no padrão ClickUp (Onda 5, decisão do gate da Onda 1): título
 // PRIMEIRO (clamp 2 linhas, com o ✎ de edição rápida ao lado), breadcrumb de
@@ -663,30 +663,132 @@ function wirePrioFilter() {
   });
 }
 
-function wireTagFilter() {
-  const sel = document.getElementById('task-tag-filter') as HTMLSelectElement | null;
-  if (!sel) return;
-  sel.addEventListener('change', () => {
-    tagFilter = sel.value || 'all';
-    render();
+// ── Filtro de tag (P1 audit item T1): popover com busca no lugar do <select>
+// nativo — o vocabulário de tags do dono passa de centenas de itens, inviável sem
+// typeahead. Trigger mostra "Todas as tags" ou o nome da tag ativa (virando chip
+// com × pra limpar, estilo ClickUp); painel tem busca no topo + lista filtrada.
+let tagOptionsCache: string[] = [];
+
+function updateTagTriggerUI() {
+  const wrap = document.getElementById('task-tag-filter');
+  const label = document.getElementById('task-tag-trigger-label');
+  const clearBtn = document.getElementById('task-tag-clear') as HTMLButtonElement | null;
+  if (!wrap || !label || !clearBtn) return;
+  const hasValue = tagFilter !== 'all';
+  label.textContent = hasValue ? tagFilter : 'Todas as tags';
+  wrap.classList.toggle('has-value', hasValue);
+  clearBtn.hidden = !hasValue;
+}
+
+function renderTagOptions(query: string) {
+  const list = document.getElementById('task-tag-list');
+  if (!list) return;
+  const q = fold(query.trim());
+  const filtered = tagOptionsCache.filter((t) => !q || fold(t).includes(q));
+  const rows = [
+    `<button type="button" class="task-tag-opt${tagFilter === 'all' ? ' selected' : ''}" data-tag-value="all">Todas as tags</button>`,
+  ];
+  if (filtered.length === 0 && q) {
+    rows.push(`<div class="task-tag-empty">Nenhuma tag encontrada</div>`);
+  } else {
+    for (const t of filtered) {
+      rows.push(`<button type="button" class="task-tag-opt${tagFilter === t ? ' selected' : ''}" data-tag-value="${esc(t)}">${esc(t)}</button>`);
+    }
+  }
+  list.innerHTML = rows.join('');
+  list.querySelectorAll<HTMLButtonElement>('.task-tag-opt[data-tag-value]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tagFilter = btn.dataset.tagValue || 'all';
+      updateTagTriggerUI();
+      closeTagPanel();
+      render();
+    });
   });
 }
 
-// Re-popula as options do select de tag com a união das tags do board recém-carregado
+function onTagOutsideClick(e: MouseEvent) {
+  const wrap = document.getElementById('task-tag-filter');
+  if (wrap && !wrap.contains(e.target as Node)) closeTagPanel();
+}
+
+function onTagPanelKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    closeTagPanel();
+    document.getElementById('task-tag-trigger')?.focus();
+  }
+}
+
+function openTagPanel() {
+  const panel = document.getElementById('task-tag-panel');
+  const trigger = document.getElementById('task-tag-trigger');
+  const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
+  if (!panel || !trigger) return;
+  panel.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  if (search) search.value = '';
+  renderTagOptions('');
+  setTimeout(() => search?.focus(), 10);
+  document.addEventListener('click', onTagOutsideClick, true);
+  document.addEventListener('keydown', onTagPanelKeydown);
+}
+
+function closeTagPanel() {
+  const panel = document.getElementById('task-tag-panel');
+  const trigger = document.getElementById('task-tag-trigger');
+  if (!panel || !trigger || panel.hidden) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('click', onTagOutsideClick, true);
+  document.removeEventListener('keydown', onTagPanelKeydown);
+}
+
+function wireTagFilter() {
+  const trigger = document.getElementById('task-tag-trigger');
+  const clearBtn = document.getElementById('task-tag-clear');
+  const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
+  const panel = document.getElementById('task-tag-panel');
+  if (!trigger || !clearBtn || !search || !panel) return;
+
+  trigger.addEventListener('click', () => {
+    if (panel.hidden) openTagPanel(); else closeTagPanel();
+  });
+  clearBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    tagFilter = 'all';
+    updateTagTriggerUI();
+    if (!panel.hidden) renderTagOptions(search.value);
+    render();
+  });
+  search.addEventListener('input', () => renderTagOptions(search.value));
+  // Enter na busca aplica o único resultado filtrado (fluxo rápido de teclado).
+  search.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const q = fold(search.value.trim());
+    const matches = tagOptionsCache.filter((t) => !q || fold(t).includes(q));
+    if (matches.length === 1) {
+      tagFilter = matches[0];
+      updateTagTriggerUI();
+      closeTagPanel();
+      render();
+    }
+  });
+
+  updateTagTriggerUI();
+}
+
+// Re-popula a lista de tags do popover com a união das tags do board recém-carregado
 // (edição inline muda tags sem reload de página). Preserva a seleção quando a tag
 // ainda existe; senão volta pra 'all'.
 function refreshTagFilterOptions() {
-  const sel = document.getElementById('task-tag-filter') as HTMLSelectElement | null;
-  if (!sel || !board) return;
+  if (!board) return;
   const tags = new Set<string>();
   for (const col of board.columns) for (const t of col.tasks) for (const tag of t.tags) tags.add(tag);
-  const current = tagFilter;
-  sel.innerHTML = [
-    `<option value="all">Todas as tags</option>`,
-    ...[...tags].sort((a, b) => a.localeCompare(b)).map((t) => `<option value="${esc(t)}">${esc(t)}</option>`),
-  ].join('');
-  if (current !== 'all' && !tags.has(current)) tagFilter = 'all';
-  sel.value = tagFilter;
+  tagOptionsCache = [...tags].sort((a, b) => a.localeCompare(b));
+  if (tagFilter !== 'all' && !tags.has(tagFilter)) tagFilter = 'all';
+  updateTagTriggerUI();
+  const panel = document.getElementById('task-tag-panel');
+  const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
+  if (panel && !panel.hidden) renderTagOptions(search?.value ?? '');
 }
 
 wireFilters();

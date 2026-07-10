@@ -744,7 +744,7 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   if (!body) return htmlResponse('Comentário vazio', 400);
 
   const task = await getTaskById(env, taskId);
-  if (!task) return htmlResponse('Task não encontrada', 404);
+  if (!task) return htmlResponse('Tarefa não encontrada', 404);
 
   await addTaskComment(env, {
     id: `cmt_${newId()}`, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
@@ -887,7 +887,7 @@ export async function handleColumnArchivePost(req: Request, env: Env): Promise<R
   const taskCount = await countTasksInColumn(env, id);
   if (taskCount > 0) {
     const to = String(form.get('to') ?? '').trim();
-    if (!to) return htmlResponse('Escolha uma coluna destino pras tasks antes de arquivar', 400);
+    if (!to) return htmlResponse('Escolha uma coluna destino pras tarefas antes de arquivar', 400);
     if (to === id) return htmlResponse('A coluna destino não pode ser a própria coluna arquivada', 400);
     const dest = await getColumnById(env, to);
     if (!dest || dest.archived_at !== null || dest.category !== col.category) {
@@ -1024,7 +1024,7 @@ function cardProjectCrumb(v: TaskView, projectsById: Map<string, BoardProject>):
 }
 
 // Badge 🔒 do card/detalhe (spec 59) — mesma classe global .private-badge das notas.
-const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
+const PRIVATE_TASK_BADGE = '<span class="private-badge" title="Tarefa privada — invisível pra credenciais sem escopo private">🔒 privada</span>';
 
 // Anatomia do card no padrão ClickUp (Onda 5, decisão do gate da Onda 1): título
 // PRIMEIRO (clamp 2 linhas), breadcrumb de projeto muted, UMA linha de meta
@@ -1106,14 +1106,17 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     `<option value="none">Sem prioridade</option>`,
   ].join('');
 
-  // Filtro por tag (Onda 8): união das tags visíveis de todos os cards do board.
-  // O client re-popula o select a cada load() (tags mudam com edição inline).
+  // Filtro por tag (Onda 8 → P1 audit ui-audit/RELATORIO.md item T1): união das
+  // tags visíveis de todos os cards do board, num popover com busca (o vocabulário
+  // de tags do dono passa de centenas de itens — um <select> nativo era inviável
+  // sem typeahead). O client re-popula a lista a cada load() (tags mudam com edição
+  // inline) e refaz a busca client-side (fold, sem acento/caixa).
   const allTags = new Set<string>();
   for (const col of columns) for (const t of col.tasks) for (const tag of t.tags) allTags.add(tag);
-  const tagFilterOptions = [
-    `<option value="all" selected>Todas as tags</option>`,
-    ...[...allTags].sort((a, b) => a.localeCompare(b)).map((t) => `<option value="${esc(t)}">${esc(t)}</option>`),
-  ].join('');
+  const sortedTags = [...allTags].sort((a, b) => a.localeCompare(b));
+  const tagOptionsHtml = sortedTags
+    .map((t) => `<button type="button" class="task-tag-opt" data-tag-value="${esc(t)}">${esc(t)}</button>`)
+    .join('');
 
   const body = `
     <div class="page-header">
@@ -1133,7 +1136,20 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
       <span class="task-toolbar-spacer"></span>
       <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
-      <select class="task-project-filter" id="task-tag-filter" aria-label="Filtrar por tag">${tagFilterOptions}</select>
+      <div class="task-tag-filter" id="task-tag-filter">
+        <button type="button" class="task-tag-trigger" id="task-tag-trigger" aria-haspopup="true" aria-expanded="false">
+          <span id="task-tag-trigger-label">Todas as tags</span>
+        </button>
+        <button type="button" class="task-tag-clear" id="task-tag-clear" hidden aria-label="Limpar filtro de tag" title="Limpar filtro de tag">✕</button>
+        <div class="task-tag-panel" id="task-tag-panel" hidden>
+          <input type="search" class="task-tag-search" id="task-tag-search" placeholder="Buscar tag…"
+            autocomplete="off" aria-label="Buscar tag" />
+          <div class="task-tag-list" id="task-tag-list" role="listbox" aria-label="Tags">
+            <button type="button" class="task-tag-opt selected" data-tag-value="all">Todas as tags</button>
+            ${tagOptionsHtml}
+          </div>
+        </div>
+      </div>
       ${renderProjectFilter(projects, initialProject)}
     </div>
 
@@ -1176,7 +1192,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
             <span class="task-create-msg" data-create-msg role="status" aria-live="polite"></span>
             <div class="task-create-actions">
               <button class="task-d-btn" type="button" data-close-modal>Cancelar</button>
-              <button class="btn btn-primary task-create-submit" type="submit">Criar task</button>
+              <button class="btn btn-primary task-create-submit" type="submit">Criar tarefa</button>
             </div>
           </div>
         </form>
@@ -1245,9 +1261,11 @@ export const TASKS_CSS = `
   border-radius: 999px; padding: 2px 9px; min-width: 24px; text-align: center;
   font-variant-numeric: tabular-nums;
 }
-/* Colapsar coluna (spec 52): estado persiste em localStorage (kanban_collapsed) */
+/* Colapsar coluna (spec 52): estado persiste em localStorage (kanban_collapsed).
+   --text-dim no lugar de --text-subtle (P2 audit item 4/T4): o botão fica ao lado
+   da contagem da coluna — apagado demais deixava a dupla contagem+chevron ilegível. */
 .task-col-collapse-btn {
-  background: none; border: none; color: var(--text-subtle); font-size: 11px; line-height: 1;
+  background: none; border: none; color: var(--text-dim); font-size: 11px; line-height: 1;
   cursor: pointer; padding: 3px 5px; border-radius: 5px; transition: color 140ms var(--ease), background 140ms var(--ease);
 }
 .task-col-collapse-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
@@ -1339,8 +1357,11 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-card-tags { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
 /* "concluir" gruda no rodapé do card — cards curtos ficam com altura consistente */
 .task-card-actions { display: flex; gap: 12px; margin-top: auto; }
+/* --text-dim no lugar de --text-subtle (P2 audit item 4): "concluir", o ✎ de edição
+   rápida e "limpar prazo" são controles funcionais sobre metadados do card, não
+   decoração — mereciam mais contraste que o texto auxiliar puro. */
 .task-btn {
-  background: none; border: none; color: var(--text-subtle); font-size: 12px;
+  background: none; border: none; color: var(--text-dim); font-size: 12px;
   cursor: pointer; padding: 0; transition: color 140ms var(--ease);
 }
 .task-btn:hover { color: var(--accent-lav); }
@@ -1374,7 +1395,11 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   display: inline-flex; align-items: center; font-size: 10.5px; font-weight: 500;
   color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 7px;
 }
-.task-tag-more { color: var(--text-subtle); }
+/* Contraste (P2 audit item 4): "+N" é contagem informativa (quantas tags o card
+   esconde) — --text-subtle (6.0:1) é passável mas apagado demais pra um número que
+   importa; --text-dim (9.7:1, mesma escala das demais contagens do board) resolve
+   sem mexer em layout. */
+.task-tag-more { color: var(--text-dim); }
 /* Ícone de link público ativo (spec 52) — discreto, só title explica a validade */
 .task-share-icon { display: inline-flex; align-items: center; color: var(--accent-lav); }
 
@@ -1389,6 +1414,60 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   transition: border-color 160ms var(--ease);
 }
 .task-project-filter:focus { outline: none; border-color: var(--accent-lav); }
+
+/* Filtro de tag (P1 audit item T1): popover com busca no lugar do <select> nativo
+   de centenas de opções — padrão ClickUp (botão abre painel com input no topo +
+   lista filtrada; tag selecionada vira chip com × pra limpar). */
+.task-tag-filter { position: relative; display: inline-flex; align-items: stretch; }
+.task-tag-trigger {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-family: inherit; cursor: pointer;
+  transition: border-color 160ms var(--ease), color 160ms var(--ease), background 160ms var(--ease);
+  display: inline-flex; align-items: center; gap: 6px; max-width: 160px;
+}
+.task-tag-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-tag-trigger:hover { border-color: var(--border-strong); }
+.task-tag-trigger[aria-expanded="true"] { border-color: var(--accent-lav); }
+/* Tag ativa: o gatilho vira o "corpo" do chip — a cor lavanda comunica filtro ligado */
+.task-tag-filter.has-value .task-tag-trigger {
+  border-radius: 999px 0 0 999px; border-right: none; color: var(--accent-lav);
+  border-color: var(--accent-lav); background: rgba(167,139,250,0.1);
+}
+.task-tag-clear {
+  background: var(--surface); border: 1px solid var(--border); border-left: none; color: var(--text-dim);
+  border-radius: 0 999px 999px 0; padding: 6px 10px; font-size: 12px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.task-tag-filter.has-value .task-tag-clear {
+  border-color: var(--accent-lav); color: var(--accent-lav); background: rgba(167,139,250,0.1); border-left: none;
+}
+.task-tag-clear:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.task-tag-clear[hidden] { display: none; }
+.task-tag-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  width: 240px; max-height: 320px;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
+  box-shadow: 0 16px 40px -12px rgba(0,0,0,0.6);
+  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.task-tag-panel[hidden] { display: none; }
+.task-tag-search {
+  background: var(--bg-accent); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; font-family: inherit;
+  transition: border-color 160ms var(--ease);
+}
+.task-tag-search::placeholder { color: var(--text-subtle); }
+.task-tag-search:focus { outline: none; border-color: var(--accent-lav); }
+.task-tag-list { display: flex; flex-direction: column; gap: 1px; max-height: 240px; overflow-y: auto; }
+.task-tag-opt {
+  background: none; border: none; color: var(--text); text-align: left;
+  font-size: 13px; padding: 7px 9px; border-radius: var(--radius-sm); cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background 120ms var(--ease);
+}
+.task-tag-opt:hover { background: rgba(167,139,250,0.12); }
+.task-tag-opt.selected { color: var(--accent-lav); font-weight: 600; }
+.task-tag-empty { padding: 10px 9px; font-size: 12.5px; color: var(--text-dim); text-align: center; }
 
 /* Bandeirinha de prioridade estilo ClickUp: flag colorida + rótulo, fundo tênue */
 .task-prio {
@@ -1484,5 +1563,6 @@ body.task-dragging .task-col-body { min-height: 90px; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
   .task-search { flex-basis: 100%; max-width: none; }
+  .task-tag-panel { width: min(240px, calc(100vw - 32px)); }
 }
 `;

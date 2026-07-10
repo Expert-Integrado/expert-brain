@@ -56,12 +56,23 @@ interface NoteMeta {
 // Main
 // ──────────────────────────────────────────────────────────────────────────────
 
+// main() é re-invocado pelo botão "Tentar novamente" (showGraphError) quando o
+// /data falha ANTES de qualquer construção do grafo — nesse ponto é seguro
+// rodar main() de novo do zero. wireOverlayToggle/wirePanelToggle registram
+// listener em botões fixos do shell (não recriados por retry); chamá-los 2x
+// duplicaria o listener e quebraria o toggle (2 cliques = 1 efeito líquido).
+// A guarda abaixo garante que só rodam na 1ª execução.
+let overlayWired = false;
+
 async function main() {
   // Mobile overlay toggle — abre/fecha o painel de controles pra liberar o
   // canvas em telas pequenas. Em desktop o botão fica escondido via CSS e
   // o overlay continua sempre visível.
-  wireOverlayToggle();
-  wirePanelToggle();
+  if (!overlayWired) {
+    wireOverlayToggle();
+    wirePanelToggle();
+    overlayWired = true;
+  }
 
   // Fonte de dados parametrizável: o /app/graph usa /app/graph/{data,meta} (Brain);
   // o /app/contacts (mesmo renderer embutido no shell do Brain) usa /app/contacts/*,
@@ -95,11 +106,13 @@ async function main() {
     taxonomyP,
   ]);
   if (!graphRes.ok) {
-    setStatus('Falha ao carregar grafo');
-    const loading = document.getElementById('graph-center-loading');
-    if (loading) loading.textContent = 'Falha ao carregar grafo';
+    const reason = await readErrorReason(graphRes);
+    showGraphError(reason, () => { hideGraphError(); void main(); });
     return;
   }
+  // Fetch OK — se essa era uma 2ª tentativa (retry), limpa o estado de erro e
+  // reabilita o overlay de filtros/busca antes de seguir montando o grafo.
+  hideGraphError();
   const payload = (await graphRes.json()) as Payload;
   const meta: Map<string, NoteMeta> = new Map();
   // Guarda de shape: meta é camada ADITIVA — nunca pode derrubar o boot do grafo.
@@ -2371,6 +2384,81 @@ function setStatus(text: string) {
   if (el) el.textContent = text;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Estado de erro do grafo (auditoria UI 2026-07, item P1) — quando /meta ou
+// /data falham (ex. worker externo fora do ar em dev local, 503), mostra
+// mensagem central clara + motivo resumido + "Tentar novamente", e apaga/
+// desabilita o overlay de filtros+busca e os controles de zoom enquanto não há
+// dado pra filtrar. Vale pro grafo do Brain (/app/graph) E pro /app/contacts
+// (mesmo renderer embutido no shell, ver graphSrc em main()).
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Liga/desliga a classe que atenua e desativa (pointer-events:none) o overlay
+// de filtros/busca e os controles de zoom — eles não fazem sentido sobre um
+// canvas sem dado. Chamado por showGraphError(false-path)/hideGraphError.
+function setDataAvailable(available: boolean) {
+  document.getElementById('graph-overlay')?.classList.toggle('data-unavailable', !available);
+  document.querySelector('.graph-zoom-controls')?.classList.toggle('data-unavailable', !available);
+}
+
+function showGraphError(reason: string, retry: () => void) {
+  const box = document.getElementById('graph-center-loading');
+  const title = document.getElementById('graph-center-loading-title');
+  const reasonEl = document.getElementById('graph-center-loading-reason') as HTMLElement | null;
+  const btn = document.getElementById('graph-retry-btn') as HTMLButtonElement | null;
+  // remove 'hidden' pro caso raro de a exceção estourar DEPOIS do 1º frame
+  // (afterRender já tinha escondido a caixa via classList 'hidden').
+  box?.classList.remove('hidden');
+  box?.classList.add('error');
+  if (title) title.textContent = 'Falha ao carregar grafo';
+  if (reasonEl) {
+    reasonEl.textContent = reason ? `Motivo: ${reason}` : '';
+    reasonEl.hidden = !reason;
+  }
+  if (btn) {
+    btn.hidden = false;
+    // Reatribuir .onclick é idempotente (substitui, não empilha) — seguro
+    // chamar showGraphError() de novo numa 2ª tentativa sem duplicar listener.
+    btn.onclick = retry;
+  }
+  setStatus('Falha ao carregar grafo');
+  setDataAvailable(false);
+}
+
+function hideGraphError() {
+  const box = document.getElementById('graph-center-loading');
+  const title = document.getElementById('graph-center-loading-title');
+  const reasonEl = document.getElementById('graph-center-loading-reason') as HTMLElement | null;
+  const btn = document.getElementById('graph-retry-btn') as HTMLButtonElement | null;
+  box?.classList.remove('error');
+  if (title) title.textContent = 'Carregando grafo...';
+  if (reasonEl) { reasonEl.textContent = ''; reasonEl.hidden = true; }
+  if (btn) btn.hidden = true;
+  setDataAvailable(true);
+}
+
+// Motivo curto e legível do corpo de erro: tenta JSON {error|message} (formato
+// dos endpoints próprios do Brain/proxy de contatos); se o corpo for texto puro
+// (caso real: wrangler dev devolve "Worker \"expert-contacts\" not found..." em
+// text/plain quando o service binding não resolve local, mesmo com content-type
+// application/json no header — ver src/web/contacts-data.ts), usa o texto cru.
+// Trunca pra não estourar o layout da caixa central.
+async function readErrorReason(res: Response): Promise<string> {
+  let text = '';
+  try { text = await res.text(); } catch { /* corpo vazio/indisponível */ }
+  const truncate = (s: string) => (s.length > 160 ? s.slice(0, 160) + '…' : s);
+  if (text) {
+    try {
+      const j = JSON.parse(text) as { error?: string; message?: string };
+      const msg = j?.error || j?.message;
+      if (msg) return truncate(msg);
+    } catch { /* não é JSON — cai pro texto cru abaixo */ }
+    const trimmed = text.trim();
+    if (trimmed) return truncate(trimmed);
+  }
+  return `HTTP ${res.status}`;
+}
+
 function hexWithAlpha(color: string, alpha: number): string {
   // Accepts '#rrggbb' or 'rgb(a)(...)'
   if (color.startsWith('#')) {
@@ -2715,5 +2803,10 @@ function wireOverlayToggle() {
 
 main().catch((err) => {
   console.error(err);
-  setStatus('Erro ao carregar grafo');
+  // Exceção fora do fetch em si (ex. worker de simulação, JSON malformado) —
+  // pode ter acontecido no meio da construção do grafo, então retry por
+  // location.reload() em vez de chamar main() de novo (evita Sigma/worker
+  // duplicado se a falha ocorreu depois do boot bem-sucedido do fetch).
+  const reason = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : String(err);
+  showGraphError(reason, () => location.reload());
 });

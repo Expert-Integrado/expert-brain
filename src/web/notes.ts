@@ -13,7 +13,9 @@ import {
   getEdgesTo,
   updateNote,
   setNotePrivate,
+  insertNote,
   insertTask,
+  getNotesByIds,
   listTaskComments,
   listKanbanColumns,
   resolveTaskColumn,
@@ -41,6 +43,8 @@ import { assigneeDotsHtml } from '../util/task-badges.js';
 import { resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { readCachedResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from '../digest/resurface.js';
+import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../vector/index.js';
+import { SIMILARITY_TOP_K, DEDUP_MIN_SCORE, persistSimilarEdgesFromMatches } from './similarity.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -61,6 +65,28 @@ interface NoteListItem {
 // updated_at / created_at are stored as milliseconds (Date.now()) — not seconds.
 function formatDate(ts: number): string {
   return new Date(ts).toISOString().slice(0, 10);
+}
+
+// Primeira linha (título/tldr derivado), truncada. Vazia → cai no corpo inteiro.
+// Duplica o helper de mesmo nome em inbox.ts/home.ts (nenhum util compartilhado
+// pra isto no repo — ver comentário equivalente nesses arquivos).
+function firstLine(body: string, max: number): string {
+  const line = body.split('\n')[0]?.trim() || body.trim();
+  return line.slice(0, max);
+}
+
+// Rótulo do contador da lista (audit ui-audit/RELATORIO.md itens N1/N3/N4): pt-BR
+// com separador de milhar + "notas de conhecimento" (explícito, em vez de só
+// "notas") porque este total exclui tasks — diverge de propósito do "Notas" cru
+// do /app/config "Status do vault" (esse conta TUDO, incl. tasks). "mostrando X
+// de Y" só aparece quando há mais pra ver que o já exibido; quando shown >= total
+// (tudo visível) cai no rótulo simples.
+function formatCountLabel(shown: number, total: number): string {
+  const noun = total === 1 ? 'nota de conhecimento' : 'notas de conhecimento';
+  if (total === 0) return `0 ${noun}`;
+  const totalFmt = total.toLocaleString('pt-BR');
+  if (shown <= 0 || shown >= total) return `${totalFmt} ${noun}`;
+  return `mostrando ${shown.toLocaleString('pt-BR')} de ${totalFmt} ${noun}`;
 }
 
 // Card "Do seu cérebro" (specs/50-console-v2/64-resurfacing-digest.md §2): fallback
@@ -217,10 +243,20 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
         ? `<a id="notes-load-more" class="notes-load-more" href="/app/notes">← Voltar pro início</a>`
         : '');
 
+  // Contador (audit ui-audit/RELATORIO.md item N1): "mostrando X de Y" no no-JS
+  // também — shownCount é cumulativo através das páginas por offset (cada "Carregar
+  // mais" leva pra uma página nova com o offset seguinte), não só o tamanho desta
+  // página. offset além do fim (page vazia) cai no rótulo simples (nada "mostrando").
+  const shownCount = page.length === 0 ? total : offset + page.length;
+  const countLabel = formatCountLabel(shownCount, total);
+
   const body = `
     <div class="page-header">
       <h1>Notas</h1>
-      <span class="count" id="notes-count">${total} ${total === 1 ? 'nota' : 'notas'}</span>
+      <span class="count" id="notes-count">${countLabel}</span>
+      <button class="btn btn-primary notes-new-btn" id="notes-new-btn" type="button">
+        <span class="notes-new-plus" aria-hidden="true">+</span> Nova nota
+      </button>
     </div>
 
     ${digestCardHtml}
@@ -271,12 +307,163 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
     <div id="notes-list" data-layout="cards">${ssrItems}</div>
     ${loadMoreHtml}
 
+    <div class="modal" id="notes-create-modal" hidden aria-hidden="true">
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="notes-create-title">
+        <div class="modal-head">
+          <h2 id="notes-create-title">Nova nota</h2>
+          <button class="modal-x" data-close-modal type="button" aria-label="Fechar">✕</button>
+        </div>
+        <div class="modal-body">
+          <form class="notes-create-form" id="notes-create-form">
+            <label class="field">
+              <span class="field-label">Título <span class="notes-create-req">obrigatório</span></span>
+              <input type="text" name="title" id="notes-create-title-input" class="input" maxlength="200"
+                placeholder="Sobre o que é a nota?" autocomplete="off" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Corpo <span class="notes-create-opt">opcional</span></span>
+              <textarea name="body" class="textarea" rows="5" placeholder="Conteúdo em markdown"></textarea>
+            </label>
+            <div class="notes-create-foot">
+              <span class="notes-create-msg" data-create-msg role="status" aria-live="polite"></span>
+              <div class="notes-create-actions">
+                <button class="btn" type="button" data-close-modal>Cancelar</button>
+                <button class="btn btn-primary notes-create-submit" type="submit">Criar nota</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <script src="/app/notes/bundle.js?v=${assetVersion('notes.bundle.js')}" defer></script>
   `;
 
   return htmlResponse(
-    await renderShell({ title: 'Notas', active: 'notes', email: session.email, env, body, sidebarCollapsed: sidebarCollapsedFromReq(req) })
+    await renderShell({
+      title: 'Notas',
+      active: 'notes',
+      email: session.email,
+      env,
+      body,
+      extraHead: `<style>${NOTES_LIST_CSS}</style>`,
+      sidebarCollapsed: sidebarCollapsedFromReq(req),
+    })
   );
+}
+
+// CSS mínimo da lista/criação (audit ui-audit/RELATORIO.md item N2) — o modal em si
+// (.modal/.modal-backdrop/.modal-dialog/.modal-head/.modal-x/.modal-body) e os campos
+// (.field/.field-label/.input/.textarea/.btn/.btn-primary) reusam a biblioteca global
+// (COMPONENTS_CSS, styles.ts); só o layout específico do form de criação mora aqui,
+// espelhando .task-create-* (src/web/tasks.ts) reduzido a título+corpo.
+const NOTES_LIST_CSS = `
+.notes-new-btn { margin-left: auto; }
+.notes-new-plus { font-size: 17px; line-height: 1; font-weight: 400; }
+.notes-create-form { display: flex; flex-direction: column; gap: 16px; }
+.notes-create-req { color: var(--danger); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.notes-create-opt { color: var(--text-subtle); text-transform: none; letter-spacing: 0; opacity: 0.8; }
+.notes-create-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.notes-create-msg { font-size: 12px; color: var(--text-subtle); }
+.notes-create-msg.saving { color: var(--text-dim); }
+.notes-create-msg.err { color: var(--danger); }
+.notes-create-actions { display: flex; gap: 10px; align-items: center; }
+`;
+
+// POST /app/notes/create — cria uma nota MÍNIMA (título + corpo opcional) direto da
+// lista (audit ui-audit/RELATORIO.md item N2: assimetria com "+ Nova tarefa", que já
+// tem /app/tasks/create). Espelha a FORMA de handleTaskCreatePost (mesmos 2 campos,
+// mesmo contrato JSON de resposta) e reusa o MECANISMO de handleInboxToNotePost
+// (src/web/inbox.ts): embed best-effort ANTES do insert + upsertNoteVector +
+// persistSimilarEdgesFromMatches a partir dos MESMOS matches da pré-consulta de
+// dedupe — zero segunda query ao Vectorize. Curadoria (kind/áreas/tldr) fica pro
+// editor da nota depois de criada, igual ao fluxo do inbox — este endpoint não pede
+// mais que o mínimo pra não duplicar o editor completo num modal.
+export async function handleNoteCreatePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  let body: { title?: unknown; body?: unknown };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+
+  // title — obrigatório, 1..200 (mesma faixa do title de update_note/tasks/create).
+  if (typeof body.title !== 'string') return json({ error: 'title must be a string' }, 400);
+  const title = body.title.trim();
+  if (title.length < 1 || title.length > 200) return json({ error: 'title must be 1-200 chars' }, 400);
+
+  // body — opcional, texto livre (markdown). Vazio/ausente → cai no título (igual
+  // tasks/create: `details || title`) — o body de nota não pode ficar vazio (regra
+  // do update_note/handleNoteUpdatePost).
+  let noteBody = title;
+  if (body.body !== undefined) {
+    if (typeof body.body !== 'string') return json({ error: 'body must be a string' }, 400);
+    const b = body.body.trim();
+    if (b) noteBody = b;
+  }
+
+  const tldr = firstLine(noteBody, 280) || title.slice(0, 280);
+  // domains default (mesmo valor default de handleTaskCreatePost) — kind fica NULL
+  // (sem badge na lista) até o dono curar no editor, igual a uma nota legada sem kind.
+  const domains = ['operations'];
+  const actor = `oauth:${session.email}`;
+  const now = Date.now();
+  const id = newId();
+
+  // Embedding best-effort (mesmo padrão do inbox to-note, ver handleInboxToNotePost):
+  // falha do Workers AI não derruba a criação — a nota nasce sem vetor e reembeda na
+  // próxima curadoria (update_note/PATCH detecta tldr sem embedding correspondente).
+  let vec: number[] | null = null;
+  try {
+    vec = await embed(env, tldr);
+  } catch (err) {
+    console.error('notes create: embed falhou, criando nota sem vetor (re-embeda na curadoria)', err);
+  }
+
+  // Pré-consulta de vizinhança best-effort — falha aqui não impede a criação, só
+  // deixa a lista de matches vazia (sem dup check, sem similar_edges deste create).
+  let matches: VectorMatch[] = [];
+  if (vec) {
+    try {
+      matches = await queryVector(env, vec, SIMILARITY_TOP_K + 2);
+    } catch (err) {
+      console.error('notes create: pré-consulta de vizinhança falhou (segue sem dup check)', err);
+    }
+  }
+
+  await insertNote(env, {
+    id,
+    title,
+    body: noteBody,
+    tldr,
+    domains: JSON.stringify(domains),
+    kind: null,
+    created_at: now,
+    updated_at: now,
+  }, actor);
+
+  if (vec) {
+    try {
+      await upsertNoteVector(env, id, vec, { domains, kind: null, created_at: now });
+      // Reusa os matches da pré-consulta — mesma economia de 1-query-N-consumidores
+      // do save_note/inbox to-note (nunca uma SEGUNDA query idêntica ao Vectorize).
+      await persistSimilarEdgesFromMatches(env, id, matches);
+    } catch (err) {
+      console.error('notes create: upsert vetor/edges falhou (nota persistida)', err);
+    }
+  }
+
+  // Melhor match do gate de dedup (mesmo limiar do inbox to-note/save_note): se bater,
+  // devolve o id do candidato pro client redirecionar com ?dup=<id> — aviso PÓS-criação
+  // no editor da nota nova, nunca tela de confirmação (a nota já existe).
+  let dup: string | null = null;
+  const best = matches[0];
+  if (best && best.score >= DEDUP_MIN_SCORE) {
+    const [candidate] = await getNotesByIds(env, [best.id], true);
+    if (candidate) dup = candidate.id;
+  }
+
+  return json({ ok: true, id, title, dup }, 201);
 }
 
 // Banner de possível duplicata (spec 70-grafo-higiene/75 §2): o to-note do inbox
@@ -406,7 +593,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     <section class="note-origin-tasks" data-origin-tasks="${esc(note.id)}">
       <h2>Tasks originadas desta nota</h2>
       <div class="note-edges" data-origin-tasks-list>${tasksFromNote.length
-        ? tasksFromNote.map((t) => `<a class="note-card" href="/app/tasks/${esc(t.id)}"><div class="title">${esc(t.title)}</div><div class="meta"><span class="badge">${esc(t.status ?? 'open')}</span></div></a>`).join('')
+        ? tasksFromNote.map((t) => `<a class="note-card" href="/app/tasks/${esc(t.id)}"><div class="title">${esc(t.title)}</div><div class="meta"><span class="badge">${esc(TASK_STATUS_LABELS[t.status ?? 'open'] ?? (t.status ?? 'open'))}</span></div></a>`).join('')
         : '<p class="note-origin-empty">Nenhuma task nasceu desta nota ainda.</p>'}</div>
       <button type="button" class="note-edit-copy" data-create-task-from-note="${esc(note.id)}">Criar task desta nota</button>
     </section>`;
@@ -451,7 +638,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ${dupBannerHtml}
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
       <div class="note-edit-titlerow">
-        <input type="text" class="note-edit-title" data-field="title" value="${esc(note.title)}" maxlength="200" placeholder="Título da nota" aria-label="Título da nota" />
+        <textarea class="note-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da nota" aria-label="Título da nota">${esc(note.title)}</textarea>
         ${isPrivate ? '<span class="private-badge" title="Nota privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
         <button type="button" class="note-edit-save" data-save="title">Salvar</button>
       </div>
@@ -476,6 +663,27 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
       </div>
     </div>
 
+    <div class="note-edit-bodyrow note-edit" data-note-id="${esc(note.id)}">
+      <div class="note-edit-bodyview" data-bodyview>
+        <div class="note-edit-bodyhead">
+          <span class="note-edit-lbl">Corpo</span>
+          <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
+        </div>
+        <div class="note-body note-edit-preview${note.body.trim() ? '' : ' note-edit-preview-empty'}" data-preview>${note.body.trim()
+          ? renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })
+          : '<span class="note-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
+        <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
+      </div>
+      <div class="note-edit-bodyedit" data-bodyedit hidden>
+        <textarea class="note-edit-body" data-field="body" rows="12" aria-label="Corpo em markdown">${esc(note.body)}</textarea>
+        <div class="note-edit-bodyedit-actions">
+          <button type="button" class="note-edit-save" data-save="body">Salvar</button>
+          <button type="button" class="note-edit-cancel" data-cancel-body>Cancelar</button>
+        </div>
+      </div>
+      <div class="note-edit-status" data-editstatus role="status" aria-live="polite"></div>
+    </div>
+
     ${relatedIds.length > 0 ? `
       <div class="local-graph-wrap">
         <div class="local-graph-controls">
@@ -493,23 +701,6 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
         </div>
       </div>
     ` : ''}
-
-    <div class="note-edit-bodyrow note-edit" data-note-id="${esc(note.id)}">
-      <div class="note-edit-bodyview" data-bodyview>
-        <div class="note-body note-edit-preview${note.body.trim() ? '' : ' note-edit-preview-empty'}" data-preview>${note.body.trim()
-          ? renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })
-          : '<span class="note-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
-        <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
-      </div>
-      <div class="note-edit-bodyedit" data-bodyedit hidden>
-        <textarea class="note-edit-body" data-field="body" rows="12" aria-label="Corpo em markdown">${esc(note.body)}</textarea>
-        <div class="note-edit-bodyedit-actions">
-          <button type="button" class="note-edit-save" data-save="body">Salvar</button>
-          <button type="button" class="note-edit-cancel" data-cancel-body>Cancelar</button>
-        </div>
-      </div>
-      <div class="note-edit-status" data-editstatus role="status" aria-live="polite"></div>
-    </div>
 
     <section class="note-media" data-note-id="${esc(note.id)}">
       <h2>Mídia</h2>
@@ -993,13 +1184,15 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const assignedIds = new Set(taskAssignees.map((a) => a.id));
   const pickerUsers = allUsers.filter((u) => u.archived_at === null || assignedIds.has(u.id));
   const assigneeOptionAvatar = (u: (typeof pickerUsers)[number]): string => {
-    if (u.avatar_key) {
-      return `<img class="task-assignees-opt-avatar" src="/app/users/${esc(u.id)}/avatar" alt="">`;
-    }
     let h = 0;
     for (let i = 0; i < u.id.length; i++) h = (h * 31 + u.id.charCodeAt(i)) % 360;
     const parts = u.name.trim().split(/\s+/).filter(Boolean);
     const initials = ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
+    if (u.avatar_key) {
+      // avatar_key com blob sumido (404) cai no fallback global de iniciais do
+      // task-badges via data-hue/data-initials — sem ícone quebrado no picker.
+      return `<img class="task-assignees-opt-avatar" src="/app/users/${esc(u.id)}/avatar" alt="" data-hue="${h}" data-initials="${esc(initials)}" data-fallback-class="task-assignees-opt-avatar">`;
+    }
     return `<span class="task-assignees-opt-avatar" style="background:hsl(${h},42%,36%)">${esc(initials)}</span>`;
   };
   const assigneeChecks = pickerUsers
@@ -1058,7 +1251,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       const parts = cbUser.name.trim().split(/\s+/).filter(Boolean);
       const initials = ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
       dot = cbUser.avatar
-        ? `<img class="task-createdby-dot" src="/app/users/${esc(cbUser.id)}/avatar" alt="">`
+        ? `<img class="task-createdby-dot" src="/app/users/${esc(cbUser.id)}/avatar" alt="" data-hue="${h}" data-initials="${esc(initials)}" data-fallback-class="task-createdby-dot task-createdby-initials">`
         : `<span class="task-createdby-dot task-createdby-initials" style="background:hsl(${h},42%,36%)">${esc(initials)}</span>`;
       label = cbUser.name;
       if (cbUser.type === 'agent') via = createdBy.key_name ? `agente · chave ${createdBy.key_name}` : 'agente';
@@ -1158,7 +1351,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const body = `
     <div class="task-d-banner">
       <a href="/app/tasks" class="task-d-back">← Tarefas</a>
-      <span class="task-d-tag">Task</span>
+      <span class="task-d-tag">Tarefa</span>
       ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
       ${originNote ? `<span class="task-d-origin">de <a href="/app/notes/${esc(originNote.id)}">${esc(originNote.title)}</a></span>` : ''}
       <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="btn task-d-btn">Abrir no board</a></div>
@@ -1174,6 +1367,10 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
 
           <div class="task-edit-bodyrow">
             <div class="task-edit-bodyview" data-bodyview>
+              <div class="task-edit-bodyhead">
+                <span class="task-edit-lbl">Descrição</span>
+                <button type="button" class="btn task-d-btn task-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
+              </div>
               <div class="note-body task-edit-preview${task.body.trim() ? '' : ' task-edit-preview-empty'}" data-preview>${task.body.trim()
                 ? renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })
                 : '<span class="task-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
@@ -1473,6 +1670,12 @@ const TASK_DETAIL_CSS = `
    discreto "Editar"); clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). */
 .task-edit-bodyrow { margin-bottom:8px; }
 .task-edit-bodyview { display:flex; flex-direction:column; gap:10px; }
+/* [hidden] precisa de display:none EXPLÍCITO: CSS de autor (.task-edit-bodyview
+   { display:flex }) ganha do [hidden] do UA stylesheet no empate de origem —
+   sem isto, JS setar .hidden=true não escondia a view (prévia duplicada ao
+   lado da textarea de edição). Mesmo fix do note-edit-bodyview. */
+.task-edit-bodyview[hidden] { display:none; }
+.task-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .task-edit-editbtn { align-self:flex-end; }
 .task-edit-preview-empty { color:var(--text-subtle); }
 .task-edit-empty-trigger { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
@@ -1543,10 +1746,13 @@ ${SHARE_SECTION_CSS}
 const NOTE_EDIT_CSS = `
 .note-edit { margin-bottom: 8px; }
 .note-edit-titlerow { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+/* Textarea de 1 linha com auto-grow via JS (note-edit.ts) — título longo quebra
+   em vez de cortar/colidir com "Salvar" (o antigo input de linha única truncava). */
 .note-edit-title {
   flex:1; min-width:0; font-family:var(--font-display); font-size:30px; font-weight:600; letter-spacing:-0.02em;
   color:var(--text); background:transparent; border:1px solid transparent;
   border-radius:var(--radius-sm); padding:6px 10px; transition:border-color 160ms var(--ease), background 160ms var(--ease);
+  resize:none; overflow:hidden; line-height:1.25;
 }
 .note-edit-title:hover { border-color:var(--border); }
 .note-edit-title:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
@@ -1608,11 +1814,20 @@ const NOTE_EDIT_CSS = `
 .note-edit-tldr-count { position:absolute; right:4px; bottom:-16px; font-size:11px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
 .note-edit-tldr-count.bad { color:var(--danger); }
 
-.note-edit-bodyrow { margin-top:26px; }
+.note-edit-bodyrow { margin-top:26px; margin-bottom:28px; }
 /* Campo único de corpo (spec 74): LEITURA por padrão (prévia + botão discreto
    "Editar"); clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Os antigos
-   rótulos de cabeçalho separados sumiram — o botão já diz o que faz. */
+   rótulos de cabeçalho separados sumiram — o botão já diz o que faz. Rótulo
+   "Corpo" + Editar TAMBÉM no topo do bloco (não só no rodapé — corpo longo não
+   deve exigir rolar tudo pra achar a edição). */
 .note-edit-bodyview { display:flex; flex-direction:column; gap:10px; }
+/* [hidden] precisa de display:none EXPLÍCITO: a regra .note-edit-bodyview
+   { display:flex } (CSS de autor) tem prioridade sobre o [hidden] do UA
+   stylesheet (também autor-normal, mas o UA perde no empate de origem) — sem
+   isto, JS setar .hidden=true NÃO escondia a view (prévia + textarea duplicadas
+   visíveis ao mesmo tempo durante a edição). */
+.note-edit-bodyview[hidden] { display:none; }
+.note-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .note-edit-editbtn {
   align-self:flex-end; font-size:12px; padding:5px 12px; border-radius:var(--radius-sm);
   border:1px solid var(--border); background:none; color:var(--text-dim); cursor:pointer;

@@ -84,7 +84,16 @@ export function assigneeDotsHtml(assignees: AssigneeDot[]): string {
       const title = a.type === 'agent' ? `${a.name} (agente)` : a.name;
       const agentCls = a.type === 'agent' ? ' assignee-dot-agent' : '';
       if (a.avatar) {
-        return `<img class="assignee-dot${agentCls}" src="/app/users/${escBadge(a.id)}/avatar" alt="${escBadge(title)}" title="${escBadge(title)}" loading="lazy">`;
+        // Fallback pra 404 (usuário sem blob de avatar, ou blob apagado): NÃO dá
+        // pra usar onerror="" inline — a CSP do app é script-src 'self' sem
+        // unsafe-inline/script-src-attr (ver src/web/render.ts), que bloqueia
+        // atributos de evento inline (mesma razão que já bloqueia onclick em
+        // notes.ts/config-script.ts). O listener delegado que troca a <img> pela
+        // bolinha de iniciais mora em wireAssigneeAvatarFallback() (fim do
+        // arquivo), auto-registrado quando este módulo carrega no browser.
+        // hue/iniciais viajam em data-attribute pro listener ler no momento do
+        // erro, sem precisar recalcular nem embutir texto no HTML gerado aqui.
+        return `<img class="assignee-dot${agentCls}" src="/app/users/${escBadge(a.id)}/avatar" alt="${escBadge(title)}" title="${escBadge(title)}" loading="lazy" data-hue="${dotHue(a.id)}" data-initials="${escBadge(dotInitials(a.name))}">`;
       }
       return `<span class="assignee-dot assignee-dot-initials${agentCls}" style="background:hsl(${dotHue(a.id)},42%,36%)" title="${escBadge(title)}" aria-label="${escBadge(title)}">${escBadge(dotInitials(a.name))}</span>`;
     })
@@ -105,3 +114,53 @@ export function shareIconHtml(expiresBrt: string | null): string {
   const label = `Link público ativo até ${expiresBrt}`;
   return `<span class="task-share-icon" title="${escBadge(label)}" aria-label="${escBadge(label)}">${LINK_ICON}</span>`;
 }
+
+// ─────────── Fallback de avatar 404 (auditoria UI 2026-07, item P2) ───────────
+// Troca a <img> de assignee-dot pela bolinha de iniciais+cor quando a foto não
+// carrega (404/blob apagado). Delegado (1 listener pra página inteira) porque o
+// evento 'error' de <img> NÃO faz bubble — só é observável via captura (3º
+// argumento `true`) num ancestral. Isso também cobre de graça os dots
+// RECONSTRUÍDOS pelo client depois do boot (task-edit.ts reatribui
+// dotsEl.outerHTML com o mesmo assigneeDotsHtml — replaceWith troca só o nó, o
+// listener no document continua valendo pro nó novo).
+//
+// Tipado como `any`/via `globalThis` de propósito: este arquivo é compilado
+// pelo tsconfig RAIZ (sem lib DOM — é importado server-side por
+// src/web/notes.ts e src/web/tasks.ts pro SSR, sob @cloudflare/workers-types)
+// E pelo tsconfig do client (com DOM), então não dá pra referenciar
+// `HTMLImageElement`/`document`/`Event` do DOM como tipo — o compilador raiz
+// não os conhece (viraria erro de build). Duck-typing (tagName/dataset) evita
+// os nomes de tipo; o guard `!doc` no boot faz o no-op limpo no Workers.
+function onAssigneeAvatarError(e: any): void {
+  const img = e && e.target;
+  if (!img || img.tagName !== 'IMG' || !img.classList) return;
+  // Qualquer avatar marcado com data-hue+data-initials entra no fallback (dots
+  // do helper, opção do picker, createdby); data-fallback-class permite ao
+  // caller ditar a classe do span quando não é um assignee-dot.
+  if (img.dataset.hue === undefined || img.dataset.initials === undefined) return;
+  const doc = img.ownerDocument;
+  const span = doc.createElement('span');
+  span.className = img.dataset.fallbackClass || `${img.className} assignee-dot-initials`;
+  span.style.background = `hsl(${img.dataset.hue},42%,36%)`;
+  span.title = img.title;
+  span.setAttribute('aria-label', img.getAttribute('alt') || img.title);
+  span.textContent = img.dataset.initials || '?';
+  img.replaceWith(span);
+}
+
+// Auto-registra quando o módulo carrega NO BROWSER. Guard via globalThis (não
+// `typeof document`, que também esbarra na ausência do tipo no tsconfig raiz)
+// — no Workers (SSR) `globalThis.document` simplesmente não existe, no-op
+// limpo. Guard de "já registrado" TAMBÉM em globalThis (não módulo-local)
+// porque tasks.bundle.js e task-edit.bundle.js são bundles esbuild SEPARADOS
+// (cada um com sua própria cópia deste módulo) — sem isso, uma página que
+// carregasse os dois registraria o listener 2x.
+function wireAssigneeAvatarFallback(): void {
+  const g = globalThis as any;
+  const doc = g.document;
+  if (!doc || typeof doc.addEventListener !== 'function') return;
+  if (g.__ebAssigneeAvatarFallbackWired) return;
+  g.__ebAssigneeAvatarFallbackWired = true;
+  doc.addEventListener('error', onAssigneeAvatarError, true);
+}
+wireAssigneeAvatarFallback();

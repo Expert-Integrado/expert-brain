@@ -1,5 +1,7 @@
 // Client do editor inline de NOTA de conhecimento (/app/notes/<id>) — spec 36 fase 2.
-// - title: input borderless (parece texto até hover/focus). Salva por botão + Ctrl/Cmd+Enter.
+// - title: textarea de 1 linha com auto-grow via JS (cresce com o conteúdo, título
+//   longo nunca corta/colide com "Salvar" — mesmo padrão do task-edit.ts). Salva por
+//   botão + Enter (sem quebra de linha); Esc cancela e volta pro valor salvo.
 // - body: campo único (spec 74) — LEITURA por padrão (prévia renderizada + botão "Editar");
 //   clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Ctrl/Cmd+Enter salva, Esc cancela.
 //   Salvar re-renderiza a prévia com o renderer leve client-side (renderPreview) e volta
@@ -24,7 +26,7 @@ if (root) {
   let expectedUpdatedAt: number | null = root.dataset.updatedAt ? Number(root.dataset.updatedAt) : null;
 
   const statusEl = document.querySelector<HTMLElement>('[data-editstatus]');
-  const titleInput = root.querySelector<HTMLInputElement>('[data-field="title"]');
+  const titleInput = root.querySelector<HTMLTextAreaElement>('[data-field="title"]');
   const titleSaveBtn = root.querySelector<HTMLButtonElement>('[data-save="title"]');
   const tldrInput = root.querySelector<HTMLTextAreaElement>('[data-field="tldr"]');
   const tldrCount = root.querySelector<HTMLElement>('[data-tldr-count]');
@@ -176,7 +178,7 @@ if (root) {
   });
   if (domainsBox) domainsBox.classList.toggle('at-max', selectedDomains().length >= 3);
 
-  // ── title: botão + Ctrl/Cmd+Enter ──
+  // ── title: botão + Enter (Esc cancela) ──
   async function saveTitle() {
     if (!titleInput) return;
     const v = titleInput.value.trim();
@@ -184,9 +186,30 @@ if (root) {
     if (await saveDirect({ title: v })) { titleSaved = titleInput.value; markDirty(titleSaveBtn, false); }
   }
   titleSaveBtn?.addEventListener('click', saveTitle);
-  titleInput?.addEventListener('input', () => markDirty(titleSaveBtn, titleInput.value !== titleSaved));
+  // Textarea de 1 linha: cresce com o conteúdo (título nunca corta) e nunca
+  // aceita quebra de linha — Enter salva, \n de paste vira espaço.
+  function fitTitle() {
+    if (!titleInput) return;
+    if (titleInput.value.includes('\n')) titleInput.value = titleInput.value.replace(/\n+/g, ' ');
+    titleInput.style.height = 'auto';
+    // border-box: scrollHeight não inclui as bordas — soma (offsetHeight - clientHeight)
+    // pra última linha não ficar 2px clipada pelo overflow:hidden.
+    titleInput.style.height = `${titleInput.scrollHeight + titleInput.offsetHeight - titleInput.clientHeight}px`;
+  }
+  fitTitle();
+  titleInput?.addEventListener('input', () => {
+    fitTitle();
+    markDirty(titleSaveBtn, titleInput.value !== titleSaved);
+  });
   titleInput?.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveTitle(); }
+    if (e.key === 'Enter') { e.preventDefault(); if (titleInput.value !== titleSaved) saveTitle(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      titleInput.value = titleSaved;
+      fitTitle();
+      markDirty(titleSaveBtn, false);
+      titleInput.blur();
+    }
   });
 
   // ── body: campo único (spec 74) — LEITURA (prévia + Editar) ↔ EDIÇÃO (textarea +

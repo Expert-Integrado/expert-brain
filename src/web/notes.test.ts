@@ -80,7 +80,7 @@ describe('/app/tasks/:id (task tem superfície própria, não é nota)', () => {
     const res = await SELF.fetch('https://x.test/app/tasks/t1', { headers: { cookie: await authCookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain('class="task-d-tag">Task'); // banner marca como task (não nota)
+    expect(html).toContain('class="task-d-tag">Tarefa'); // banner marca como task (não nota), em PT-BR
     expect(html).toContain('Ligar pro PSP');
     expect(html).toContain('A fazer');           // status label
     expect(html).toContain('detalhe da task');   // body

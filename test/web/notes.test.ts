@@ -53,20 +53,26 @@ describe('/app/notes — paginação SSR (spec 23)', () => {
     expect(countMatches(html, /class="note-card"/g)).toBe(100);
     expect(html).toContain('id="notes-load-more"');
     expect(html).toContain('href="/app/notes?offset=100"');
-    // Contador mostra o TOTAL (250), não o tamanho da página. Tasks não contam.
-    expect(html).toContain('>250 notas<');
+    // Contador mostra "mostrando X de Y notas de conhecimento" em pt-BR (audit
+    // ui-audit/RELATORIO.md itens N1/N3/N4) — X é cumulativo (offset+página), Y é o
+    // TOTAL de notas de conhecimento (tasks não contam).
+    expect(html).toContain('>mostrando 100 de 250 notas de conhecimento<');
     // Task não vaza pra lista de notas.
     expect(html).not.toContain('Task 0');
+    // "+ Nova nota" (audit item N2): botão + modal mínimo sempre presentes no SSR.
+    expect(html).toContain('id="notes-new-btn"');
+    expect(html).toContain('id="notes-create-modal"');
+    expect(html).toContain('id="notes-create-form"');
   });
 
-  it('segunda página (offset=100): cards 101–200, contador ainda mostra total', async () => {
+  it('segunda página (offset=100): cards 101–200, contador cumulativo', async () => {
     const res = await SELF.fetch('https://x.test/app/notes?offset=100', { headers: { cookie: await authCookie() } });
     const html = await res.text();
     expect(countMatches(html, /class="note-card"/g)).toBe(100);
     // updated_at desc: as maiores primeiro. Página 2 começa na 150ª maior (i=149..50).
     expect(html).toContain('>Nota 149<'); // topo da página 2
     expect(html).toContain('href="/app/notes?offset=200"');
-    expect(html).toContain('>250 notas<');
+    expect(html).toContain('>mostrando 200 de 250 notas de conhecimento<');
   });
 
   it('offset inválido (negativo / não-numérico) → tratado como 0, sem 500', async () => {
@@ -83,7 +89,8 @@ describe('/app/notes — paginação SSR (spec 23)', () => {
     const html = await res.text();
     expect(countMatches(html, /class="note-card"/g)).toBe(0);
     expect(html).toContain('Voltar pro início');
-    expect(html).toContain('>250 notas<'); // total continua correto
+    // Nada "mostrando" nesta página específica (vazia) — cai no rótulo simples com o total.
+    expect(html).toContain('>250 notas de conhecimento<');
     // NÃO é o empty-state de vault vazio.
     expect(html).not.toContain('Nenhuma nota ainda');
   });
