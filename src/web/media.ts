@@ -1,6 +1,8 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { authorizeBearer } from './bearer-auth.js';
+import { validateApiKey, hasScope } from '../auth/api-keys.js';
+import { getNoteById } from '../db/queries.js';
 import {
   attachMedia, listMediaViews, removeMedia, fetchBlob, getMediaById, verifyMediaToken,
   MediaError, MAX_BYTES, type AttachInput,
@@ -12,12 +14,39 @@ const json = (data: unknown, status = 200): Response =>
     status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-// Bearer escopo 'media' (só GRAPH_EXPORT_TOKEN — o TASK_REMINDER_TOKEN do cron NÃO
-// autoriza mídia, spec 17) OU sessão de browser. null = autorizado.
-async function authReq(req: Request, env: Env): Promise<Response | null> {
-  if (await authorizeBearer(req, env, 'media')) return null;
+// Resultado da auth: 'owner' = sessão de browser ou GRAPH_EXPORT_TOKEN (nível dono,
+// comportamento histórico intacto); 'pat' carrega os escopos pro gate de privacidade.
+type MediaAuth = { level: 'owner' } | { level: 'pat'; scopes: string };
+
+// Auth da superfície de mídia. Além de sessão/GRAPH_EXPORT (o TASK_REMINDER_TOKEN do
+// cron NÃO autoriza mídia, spec 17), aceita PAT eb_pat_* (spec 10-backend/25) — é o
+// canal de upload DIRETO dos agentes (curl -F com o mesmo Bearer do MCP), que elimina
+// base64 gerado como texto pelo modelo (perda silenciosa de bytes em payload grande).
+// PAT read-only não muta (403); eb_pat_ inválido = 401 JSON, sem redirect de login.
+async function authReq(req: Request, env: Env, write = false): Promise<MediaAuth | Response> {
+  const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i);
+  if (m && m[1].trim().startsWith('eb_pat_')) {
+    const v = await validateApiKey(env, m[1].trim());
+    if (!v) return json({ error: 'invalid or revoked API key' }, 401);
+    if (write && !hasScope(v.scopes, 'full')) return json({ error: "write requires a 'full'-scope key" }, 403);
+    return { level: 'pat', scopes: v.scopes };
+  }
+  if (await authorizeBearer(req, env, 'media')) return { level: 'owner' };
   const s = await requireSession(req, env);
-  return s.ok ? null : s.response;
+  return s.ok ? { level: 'owner' } : s.response;
+}
+
+function canSeePrivate(auth: MediaAuth): boolean {
+  return auth.level === 'owner' || hasScope(auth.scopes, 'private');
+}
+
+// Gate de privacidade do caminho PAT (fail-closed, espelha recall/get_note): nota
+// privada sem escopo 'private' → "não existe" (404). Só roda pra PAT — o fluxo do
+// dono não paga a query extra nem muda de comportamento.
+async function patNoteDenied(env: Env, auth: MediaAuth, noteId: string): Promise<Response | null> {
+  if (auth.level !== 'pat') return null;
+  const note = await getNoteById(env, noteId, false, canSeePrivate(auth));
+  return note ? null : json({ error: `note '${noteId}' not found` }, 404);
 }
 
 function originOf(req: Request): string {
@@ -26,8 +55,10 @@ function originOf(req: Request): string {
 
 // POST /app/notes/{id}/media — JSON {base64|url, mime_type, kind, filename} OU multipart (file).
 export async function handleMediaUpload(req: Request, env: Env, noteId: string): Promise<Response> {
-  const denied = await authReq(req, env);
-  if (denied) return denied;
+  const auth = await authReq(req, env, true);
+  if (auth instanceof Response) return auth;
+  const privDenied = await patNoteDenied(env, auth, noteId);
+  if (privDenied) return privDenied;
 
   const ct = (req.headers.get('content-type') || '').toLowerCase();
   let input: AttachInput;
@@ -61,7 +92,7 @@ export async function handleMediaUpload(req: Request, env: Env, noteId: string):
   }
 
   try {
-    const r = await attachMedia(env, noteId, input, Date.now(), originOf(req));
+    const r = await attachMedia(env, noteId, input, Date.now(), originOf(req), canSeePrivate(auth));
     return json(r, 201);
   } catch (e) {
     if (e instanceof MediaError) return json({ error: e.message }, e.status);
@@ -71,8 +102,10 @@ export async function handleMediaUpload(req: Request, env: Env, noteId: string):
 
 // GET /app/notes/{id}/media — lista as mídias da nota (com signed URLs frescas).
 export async function handleMediaList(req: Request, env: Env, noteId: string): Promise<Response> {
-  const denied = await authReq(req, env);
-  if (denied) return denied;
+  const auth = await authReq(req, env);
+  if (auth instanceof Response) return auth;
+  const privDenied = await patNoteDenied(env, auth, noteId);
+  if (privDenied) return privDenied;
   const views = await listMediaViews(env, noteId, Date.now(), originOf(req));
   return json({ note_id: noteId, count: views.length, media: views });
 }
@@ -82,16 +115,22 @@ export async function handleMediaServe(req: Request, env: Env, mediaId: string):
   const url = new URL(req.url);
   const t = Number(url.searchParams.get('t') || '0');
   const sig = url.searchParams.get('sig') || '';
-  let authed = false;
+  // Token assinado (link com TTL) autoriza sozinho — inclusive mídia de nota privada,
+  // por design (quem tem o link temporário vê). Sem token, cai na auth normal, e o
+  // caminho PAT ainda passa pelo gate de privacidade da nota dona da mídia.
+  let auth: MediaAuth | null = null;
   if (sig && await verifyMediaToken(env, mediaId, t, sig, Date.now())) {
-    authed = true;
+    auth = { level: 'owner' };
   } else {
-    authed = (await authReq(req, env)) === null;
+    const a = await authReq(req, env);
+    if (a instanceof Response) return a.status === 401 || a.status === 403 ? a : json({ error: 'unauthorized' }, 401);
+    auth = a;
   }
-  if (!authed) return json({ error: 'unauthorized' }, 401);
 
   const media = await getMediaById(env, mediaId);
   if (!media) return json({ error: 'media not found' }, 404);
+  const privDenied = await patNoteDenied(env, auth, media.note_id);
+  if (privDenied) return json({ error: 'media not found' }, 404);
   const res = await fetchBlob(env, media);
   if (!res) return json({ error: 'blob missing in R2' }, 404);
   return res;
@@ -99,8 +138,12 @@ export async function handleMediaServe(req: Request, env: Env, mediaId: string):
 
 // DELETE /app/media/{id} — remove registro; blob R2 só se for a última referência.
 export async function handleMediaDelete(req: Request, env: Env, mediaId: string): Promise<Response> {
-  const denied = await authReq(req, env);
-  if (denied) return denied;
+  const auth = await authReq(req, env, true);
+  if (auth instanceof Response) return auth;
+  const media = await getMediaById(env, mediaId);
+  if (!media) return json({ error: 'media not found' }, 404);
+  const privDenied = await patNoteDenied(env, auth, media.note_id);
+  if (privDenied) return json({ error: 'media not found' }, 404);
   const r = await removeMedia(env, mediaId);
   if (!r) return json({ error: 'media not found' }, 404);
   return json({ ok: true, id: mediaId, blob_removed: r.removedBlob });

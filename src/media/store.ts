@@ -195,10 +195,13 @@ export interface AttachResult {
   signed_url: string;
 }
 
-export async function attachMedia(env: Env, noteId: string, input: AttachInput, now: number, origin?: string): Promise<AttachResult> {
+// canSeePrivate (spec 10-backend/25): default false mantém o contrato histórico
+// (nota privada = "not found"); a sessão do dono e PAT com escopo 'private' passam
+// true — sem isso nem o DONO conseguia anexar mídia em nota privada pelo console.
+export async function attachMedia(env: Env, noteId: string, input: AttachInput, now: number, origin?: string, canSeePrivate = false): Promise<AttachResult> {
   if (!env.MEDIA) throw new MediaError(503, 'R2 bucket not configured (MEDIA binding missing)');
 
-  const note = await getNoteById(env, noteId);
+  const note = await getNoteById(env, noteId, false, canSeePrivate);
   if (!note) throw new MediaError(404, `note '${noteId}' not found`);
 
   const { bytes, mime, filename } = await ingest(input);

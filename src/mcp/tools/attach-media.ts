@@ -16,6 +16,8 @@ const DESCRIPTION = `Attaches a media file (image, video, document, audio) to an
 
 The blob is stored in R2 with SHA-256 dedup (the same file attached to many notes uses one blob). \`source\` is EITHER a base64 string (a raw base64 or a data: URL) OR an http(s) URL to download (fetched with a browser User-Agent to dodge WAFs). Max 50MB.
 
+IMPORTANT — for LOCAL files, do NOT generate base64 as text: for payloads over a few KB the model reproduces it lossily and the file corrupts SILENTLY. Prefer the direct upload endpoint (bytes never pass through the model): \`curl -sS -X POST <worker-url>/app/notes/<note_id>/media -H "Authorization: Bearer <the same eb_pat_ key used for this MCP>" -F file=@/path/to/file\` — returns the same shape (id, content_hash, signed_url); verify fidelity by comparing content_hash with your local sha256sum. A read-only key cannot upload; private notes require the 'private' scope.
+
 Returns the media id and a signed URL (valid ~1h) to view it. Use get_note_media to list a note's media, delete_note_media to remove.
 
 Works for tasks (kind='task') too — attaching media to a task is a legitimate operation.`;
