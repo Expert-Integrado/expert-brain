@@ -3,6 +3,7 @@ import { runDueReminder, sendTelegram } from './notify.js';
 import { runSnapshot } from './backup/snapshot.js';
 import { runTaskAutocancel } from './task-lifecycle.js';
 import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
+import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
 // wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
@@ -74,6 +75,16 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
       .then((r) => console.log('task-autocancel', JSON.stringify(r)))
       .catch((e) => console.error('task-autocancel failed', e))
   );
+  // Digest de higiene do grafo (spec 70-grafo-higiene/73): só segunda, mensagem
+  // PRÓPRIA no Telegram (sendTelegram é no-op seguro sem os secrets). Braço
+  // isolado — falha aqui não derruba o lembrete de tasks nem o resurface.
+  if (shouldSendHygieneDigest(cron, Date.now())) {
+    ctx.waitUntil(
+      buildHygieneDigest(env, Date.now())
+        .then((text) => sendTelegram(env, text))
+        .catch((e) => console.error('hygiene-digest failed', e))
+    );
+  }
   ctx.waitUntil(
     runDueReminder(env, Date.now())
       .then(async (r) => {
