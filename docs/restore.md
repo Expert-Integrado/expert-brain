@@ -103,3 +103,13 @@
 O restore acontece numa instância/banco NOVOS — a origem (se ainda existir) não
 é tocada. Descartar um restore malfeito = deletar o D1 novo e repetir. Os
 snapshots no R2 são dados do dono: nunca os apague como parte de uma reversão.
+
+## Restore a partir do off-site (spec 50-console-v2/69)
+
+Os snapshots também são espelhados semanalmente pra FORA da Cloudflare (VPS do
+dono em `/var/backups/offsite/expert-brain/` + Google Drive, pasta
+`Backups/expert-brain/`, via `backup-offsite.sh` — cron de terça na VPS). O
+runbook acima funciona **igual** a partir dessa cópia: baixe o diretório do
+snapshot (`<YYYY-MM-DD>/` com `manifest.json` + os `.jsonl`) do Drive ou da VPS
+e aponte o `restore-from-snapshot.mjs` pra ele. Nenhum passo de LEITURA do
+backup depende da Cloudflare.

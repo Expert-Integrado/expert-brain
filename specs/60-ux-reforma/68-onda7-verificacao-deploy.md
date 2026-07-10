@@ -1,7 +1,24 @@
 # Onda 7 — Verificação final e deploy único
 
-> **Status:** ready · **Prioridade:** P0 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** done (10/07/2026 — ver "Fechamento" abaixo: o desenho original de deploy único foi superado pelos deploys incrementais autorizados pelo dono; bateria automatizada verde nesta data) · **Prioridade:** P0 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/67-onda6-identidade-a11y.md`
+
+## Fechamento (10/07/2026)
+
+O "deploy único ao final" foi superado pelos fatos: entre 06 e 09/07 o dono autorizou
+deploys incrementais (Console v2+v3, grupo 70-grafo-higiene em ce412aab) que levaram TODO
+o código da reforma pra produção — main já estava com as ondas 0-9b mergeadas. Em 10/07 o
+dono deu o OK explícito de encerramento ("pode fazer deploy de tudo, quero zerar todas as
+pendências"). O que restou desta onda foi executado assim:
+
+- Bateria automatizada (10/07): typecheck verde, suíte server verde, suíte client verde,
+  `build:bundles` com `git diff --exit-code assets/` limpo, e2e 13 passed / 0 failed.
+- Harness visual audit/contact-sheet: não executado — o insumo que ele gerava (aprovação
+  visual PRÉ-deploy) perdeu o objeto; a validação visual é o uso real do console pelo dono
+  desde 08/07 + o checklist manual abaixo.
+- Checklist manual de `docs/ux-reform-verificacao.md`: entregue ao dono como checklist de
+  navegador no fechamento da janela (drag de card desktop/mobile, detalhe do card, concluir
+  sem navegar, 3 estados de visibilidade, home em 320px).
 
 ## Contexto
 

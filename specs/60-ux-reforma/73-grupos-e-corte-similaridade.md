@@ -1,6 +1,6 @@
 # Spec 73 — Grupos no grafo de contatos + corte de exibição de similaridade
 
-- **Status:** implementado (aguardando deploy)
+- **Status:** shipped (10/07/2026 — em produção nos DOIS workers: expert-brain deploy ce412aab, expert-contacts deployment de 09/07 13:13 BRT. Verificado no ar: graph.bundle.js servido por prod contém a cor #a855f7 do kind group e os labels PT "Membros"/"Membro de"/"Amigo(a)"; QA funcional feita em dev com fixtures seed-grp-* conforme seção Verificação)
 - **Repos:** expert-brain (grafo/painel) + expert-contacts (payload/vizinhos)
 - **Origem:** feedback do dono — "fica criando muitos vínculos só por sobrenome" + "grupo teria que ser de outra cor, clicar no grupo e ver quem está dentro"
 

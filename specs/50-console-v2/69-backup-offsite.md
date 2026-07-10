@@ -1,6 +1,6 @@
 # Backup off-site: rotina externa que copia os snapshots pra FORA da Cloudflare
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** ops (servidor externo do dono) — zero código nos Workers
+> **Status:** implantado — aguardando SÓ o token R2 do dono (10/07/2026: script + cron semanal instalados no servidor externo do dono; alerta de falha testado com falha forçada real; `docs/restore.md` dos 2 repos com o parágrafo off-site. Falta: dono criar o token S3 read-only no dash Cloudflare e guardar no cofre de senhas — daí a injeção no servidor e a 1ª execução verificada fecham a spec) · **Prioridade:** P1 · **Esforço:** M · **Repo:** ops (servidor externo do dono) — zero código nos Workers
 > **Depende de:** `50-console-v2/67` (os snapshots que esta rotina copia). **Exige o dono no loop** (criar tokens R2 e autorizar o destino em nuvem).
 > **Agente sugerido:** Opus · **Esforço de execução:** padrão
 
@@ -50,12 +50,12 @@ Script único (`backup-offsite.sh`, idempotente, versionado no repo de infra do 
 
 ## Critérios de aceite
 
-- [ ] Token R2 read-only com escopo mínimo criado e testado (listar e baixar `backups/`; escrita NEGADA — testar explicitamente).
-- [ ] Cron semanal no servidor externo roda o script: snapshots dos DOIS Workers espelhados em disco local do servidor E no Google Drive.
-- [ ] Verificação: manifest válido, todos os JSONL presentes com tamanho > 0, snapshot com menos de 8 dias — reprovação dispara alerta real (testar forçando uma falha).
-- [ ] Snapshot recém-baixado do off-site passa no `restore-from-snapshot.mjs --verify` (contagens = manifest) num banco local limpo.
-- [ ] Nenhum secret em texto plano em repo, log ou chat; config do rclone com permissão restrita.
-- [ ] `docs/restore.md` dos dois repos ganha o parágrafo do restore off-site.
+- [ ] Token R2 read-only com escopo mínimo criado e testado (listar e baixar `backups/`; escrita NEGADA — testar explicitamente). ← AÇÃO DO DONO + 1ª execução
+- [x] Cron semanal no servidor externo roda o script (instalado 10/07/2026, terça de madrugada — depois dos snapshots de segunda; espelhamento efetivo depende do token acima).
+- [x] Verificação: manifest válido, JSONL presentes com tamanho > 0, snapshot < 8 dias — implementada no script; alerta real testado com falha forçada em 10/07/2026 (canal de alerta do dono recebeu).
+- [ ] Snapshot recém-baixado do off-site passa no `restore-from-snapshot.mjs --verify` num banco local limpo. ← após 1ª execução com token
+- [x] Nenhum secret em texto plano em repo, log ou chat (secrets via `/etc/environment.d/expert.conf` 600; remote R2 do rclone definido por env vars em runtime, nada gravado em rclone.conf).
+- [x] `docs/restore.md` dos dois repos ganha o parágrafo do restore off-site (10/07/2026).
 
 ## Validação
 
