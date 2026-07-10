@@ -1,6 +1,6 @@
 # Custo em tokens no Claude
 
-Expert Brain roda no free tier da Cloudflare ([veja o README](../README.md#-custo-r-0--roda-inteiro-no-free-tier-da-cloudflare)), então a infra é grátis. Mas conectar o servidor MCP ao Claude *adiciona* tokens em toda conversa. Essa página é o breakdown honesto pra você decidir se a troca vale pro seu uso.
+Expert Brain roda no free tier da Cloudflare ([veja o README](../README.md)), então a infra é grátis. Mas conectar o servidor MCP ao Claude *adiciona* tokens em toda conversa. Essa página é o breakdown honesto pra você decidir se a troca vale pro seu uso.
 
 > Os números abaixo são estimados a partir dos arquivos-fonte em `~4 chars/token`. Tokenização real varia ±15%. Metodologia no final.
 

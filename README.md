@@ -73,7 +73,25 @@ Dois crons (`[triggers]` no `wrangler.toml`): digest diário de tasks vencendo/a
 
 ## Instalação
 
-> **O caminho ideal: deixe o Claude Code instalar pra você.** Abra o [Claude Code](https://claude.com/claude-code) numa pasta vazia e peça: *"clone `https://github.com/Expert-Integrado/expert-brain` e faça o setup completo na minha conta Cloudflare — inclusive os passos de navegador"*. Ele roda os comandos abaixo, e o que for de browser (criar a conta Cloudflare, habilitar billing pro R2, autorizar o `wrangler login`) ele faz junto com você via automação de navegador (Playwright ou similar) ou te guia clique a clique. Os passos manuais desta seção continuam valendo pra quem prefere fazer à mão.
+> **O caminho ideal: deixe o Claude Code instalar pra você.** Abra o [Claude Code](https://claude.com/claude-code) numa pasta vazia e cole o prompt abaixo. Ele confere os pré-requisitos, roda os comandos desta seção e, a cada etapa que acontece no navegador, pergunta se você quer que ele mesmo faça (dirigindo o browser) ou se prefere fazer à mão com ele guiando clique a clique. Os passos manuais desta seção continuam valendo pra quem prefere fazer tudo sozinho.
+
+```text
+Clone https://github.com/Expert-Integrado/expert-brain e faça a instalação guiada completa do Expert Brain na minha conta Cloudflare, seguindo este protocolo:
+
+1. PRÉ-REQUISITOS: confira Node 18+ (node --version) e o wrangler (npx wrangler --version). Se faltar algo, resolva comigo antes de seguir.
+
+2. ETAPAS DE NAVEGADOR: o setup tem etapas que acontecem num navegador real — criar a conta Cloudflare (https://dash.cloudflare.com/sign-up), autorizar o "npx wrangler login" (abre o browser pra clicar Allow), conferir o account_id no dash se não der pra extrair do "npx wrangler whoami", criar um API token em https://dash.cloudflare.com/profile/api-tokens (só na rota alternativa via CLOUDFLARE_API_TOKEN, em vez do login), habilitar o billing pro R2 (opcional, mídia/backup) e autorizar o OAuth na primeira conexão do MCP. Para CADA uma delas, me pergunte com botões (AskUserQuestion): "Essa etapa é no navegador. Quer que eu faça pra você?"
+   - Rota padrão: você dirige o navegador via Playwright MCP. Se não estiver instalado: claude mcp add playwright -- npx -y @playwright/mcp@latest
+   - Alternativa: Claude in Chrome, no meu Chrome com as minhas sessões.
+   - Login e senha quem digita sou EU, no navegador — nunca me peça senha de conta no chat.
+   - Se eu preferir manual, me guie passo a passo e aguarde eu confirmar cada clique.
+
+3. VALIDAÇÃO: valide cada etapa com um comando real antes de ir pra próxima (npx wrangler whoami depois do login; deploy e curl <worker-url>/status depois do provision). Falhou, pare e me mostre o erro — não siga por cima.
+
+4. SEGREDOS: valores sensíveis só via wrangler secret put ou .env local — nunca em arquivo commitado, nunca colados no chat.
+
+5. TESTE FINAL: conecte o MCP (claude mcp add --transport http expert-brain <worker-url>/mcp), salve uma nota de teste e faça um recall que a encontre, provando o ciclo de ponta a ponta. Termine com um resumo: URL do Worker, endpoint MCP, o que ficou configurado e próximos passos.
+```
 
 O Expert Brain completo são **dois Workers** na sua conta Cloudflare, os dois dentro do free tier:
 

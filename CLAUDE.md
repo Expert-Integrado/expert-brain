@@ -6,6 +6,20 @@ Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a 
 
 > **Se você é mantenedor (não usuário final)** e precisa publicar uma nova versão do pacote npm `@expertintegrado/create-expert-brain`, o runbook é outro: [RELEASING.md](RELEASING.md). Esse arquivo aqui é só pra setup da instalação do Expert Brain em si.
 
+## Onboarding assistido (instruções para o Claude)
+
+Ao conduzir qualquer setup ou atualização deste runbook com um usuário, siga este protocolo por cima dos passos:
+
+1. **Pré-requisitos primeiro**: `node --version` (18+) e `npx wrangler --version`. Faltou algo, resolve com o usuário antes de qualquer outro passo.
+2. **Etapa de navegador nunca é silenciosa.** As etapas deste repo que acontecem num navegador real são: criar a conta Cloudflare (`https://dash.cloudflare.com/sign-up`), autorizar o `npx wrangler login` (abre o browser, botão "Allow"), conferir o `account_id` no dash quando não der pra extrair do `npx wrangler whoami`, criar um API token em `https://dash.cloudflare.com/profile/api-tokens` (apenas na rota alternativa via `CLOUDFLARE_API_TOKEN`, em vez do login), habilitar o billing pro R2 (opcional, mídia/backup) e autorizar o OAuth na primeira conexão do MCP. Em CADA uma delas, pergunte com botões (AskUserQuestion): **"Essa etapa é no navegador. Quer que eu faça pra você?"**, com estas rotas:
+   - **Padrão — Playwright MCP**: você dirige o navegador pro usuário. Se o Playwright MCP não estiver disponível: `claude mcp add playwright -- npx -y @playwright/mcp@latest` e reconecte.
+   - **Alternativa — Claude in Chrome**: no Chrome do próprio usuário, aproveitando as sessões logadas dele.
+   - **Manual**: guia o usuário clique a clique e aguarda a confirmação dele em cada passo.
+3. **Login é sempre do usuário.** Você pode navegar até a tela de login, mas quem digita e-mail/senha/2FA de conta de terceiros (Cloudflare, Google etc.) é ELE, no navegador — NUNCA peça essas senhas no chat. (A passphrase do próprio vault, pedida no passo 1 do runbook, é a exceção por design: vira hash PBKDF2 local e nunca é armazenada em claro.) Isso refina o "não tenta autenticar no lugar dele" do Preflight: dirigir o navegador pode; digitar credencial do usuário, jamais.
+4. **Valida cada etapa com comando real** antes de avançar: `npx wrangler whoami` depois do login, deploy + `curl <worker-url>/setup/provision` + `curl <worker-url>/status` conforme o runbook. Falhou = para e reporta, nunca segue por cima.
+5. **Segredos só em `wrangler secret put` ou `.env` local** (gitignored). Nunca em arquivo commitado, nunca ecoados no chat ou em log.
+6. **Teste E2E final**: conecta o MCP (`claude mcp add --transport http expert-brain <worker-url>/mcp`), salva uma nota de teste e roda um `recall` que a encontre. Fecha com um resumo: URL do Worker, endpoint MCP, hooks instalados (ou o comando pra ativar depois) e próximos passos.
+
 ## Atualizar uma instalação existente
 
 Se o usuário já tem o Expert Brain rodando e quer a última versão, o trabalho é seu (agente) — ele não precisa digitar comando nenhum. **A regra de ouro: os dados dele (notas, ligações) vivem no D1/Vectorize da conta Cloudflare dele, NUNCA no código. Atualizar é só trocar o código e redeployar — nada de nota se perde.**
@@ -109,11 +123,12 @@ O Vectorize não retorna ID — ele é referenciado pelo nome no `wrangler.toml`
 
 ### 3. Atualiza o `wrangler.toml`
 
-Abre o `wrangler.toml` e troca os três placeholders `REPLACE_ME_*` pelos IDs do passo 2:
+Abre o `wrangler.toml` e troca os quatro placeholders `REPLACE_ME_*`:
 
-- `database_id = "REPLACE_ME_D1_ID"` → o ID do D1
-- O bloco `[[kv_namespaces]]` com `binding = "OAUTH_KV"` — define `id` como o ID do OAUTH_KV
-- O bloco `[[kv_namespaces]]` com `binding = "GRAPH_CACHE"` — define `id` como o ID do GRAPH_CACHE
+- `account_id = "REPLACE_ME_ACCOUNT_ID"` → o Account ID da conta (sai no `npx wrangler whoami`; também aparece no dash da Cloudflare)
+- `database_id = "REPLACE_ME_D1_ID"` → o ID do D1 (passo 2)
+- O bloco `[[kv_namespaces]]` com `binding = "OAUTH_KV"` — define `id` como o ID do OAUTH_KV (passo 2)
+- O bloco `[[kv_namespaces]]` com `binding = "GRAPH_CACHE"` — define `id` como o ID do GRAPH_CACHE (passo 2)
 
 Não mexe em nenhum outro campo. Especificamente: não adiciona um bloco `[[routes]]` customizado a menos que o usuário tenha pedido explicitamente um domínio próprio.
 
@@ -177,13 +192,13 @@ Esperado: `{"configured":true,"notes":0,"edges":0,...}`. Se `configured` vier `f
 
 ### 8.5. Instala a camada cliente (captura automática)
 
-Sem este passo o Brain fica **reativo** (só salva quando o usuário pede). Instala os 6 hooks do Claude Code que fazem o salvar/lembrar proativo:
+Sem este passo o Brain fica **reativo** (só salva quando o usuário pede). Instala os 7 hooks do Claude Code que fazem o salvar/lembrar proativo:
 
 ```bash
 node scripts/install-claude-hooks.mjs "<worker-url>"
 ```
 
-O instalador grava os hooks em `~/.claude/hooks/`, faz merge idempotente no `~/.claude/settings.json` (com backup antes) e nunca toca em outras configurações do usuário. Detalhes na seção "Captura automática" do README.
+O instalador grava os hooks em `~/.claude/hooks/`, faz merge idempotente no `~/.claude/settings.json` (com backup antes) e nunca toca em outras configurações do usuário. Detalhes na seção "Instalação" do README (política de cobrança dos hooks).
 
 ### 9. Entrega pro usuário
 
@@ -194,7 +209,7 @@ Imprime um resumo curto com:
 - O comando de instalação do Claude Code: `claude mcp add --transport http expert-brain <worker-url>/mcp`
 - Um lembrete pra abrir `<worker-url>/app/config` depois de logar pra copiar o bloco de personalização pra Claude → Settings → Personalization
 - A confirmação de que a captura automática (hooks) foi ativada — ou, se o passo 8.5 falhou, o comando pra ativar depois
-- Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja a seção "O custo real: tokens do Claude" no README pra impacto por plano)
+- Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja [docs/token-cost.md](docs/token-cost.md) pra impacto por plano)
 
 Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele sabe colar uma URL.
 
