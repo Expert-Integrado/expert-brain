@@ -1,6 +1,6 @@
 # Cron de re-pass das similar_edges (janela de 48h)
 
-> **Status:** ready · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 7/7 verdes — aguardando deploy com OK do dono; toml + braço vão juntos) · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** nada em código; em VALOR depende da 71 (é a rede de segurança dela). PR 2 do grupo 70.
 
 ## Contexto

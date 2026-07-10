@@ -1,6 +1,6 @@
 # save_note com gate soft de duplicatas, sugestões de link e dedupe_key
 
-> **Status:** ready · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 9/9 verdes — aguardando deploy com OK do dono; Passo 0 só depois) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nada (PR independente). É o PR 1 do grupo 70 — deploy dele destrava o "Passo 0" (instruções do dono).
 
 ## Contexto
@@ -90,7 +90,7 @@ Texto pronto pro dono colar em `/app/config` > Instruções do dono (entra no ha
 26 contas). Entregar junto com o report do deploy — NÃO antes (referencia campos que só
 existem depois do PR1 no ar):
 
-```
+```text
 Higiene do grafo: ao usar save_note, leia a resposta. Se vier possible_duplicates,
 compare com a nota existente antes de qualquer outra ação (update_note nela OU manter as
 duas se forem teses distintas — nunca mesclar sem confirmar com o usuário). Se vier

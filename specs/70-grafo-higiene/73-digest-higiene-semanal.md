@@ -1,6 +1,6 @@
 # Digest de higiene do grafo — segunda-feira no Telegram
 
-> **Status:** ready · **Prioridade:** P3 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 8/8 verdes — aguardando deploy com OK do dono) · **Prioridade:** P3 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** 72 (sem o re-pass, os "pares suspeitos" e "órfãs" reportados estão desatualizados). PR 3 do grupo 70 — o ÚLTIMO a entrar.
 
 ## Contexto

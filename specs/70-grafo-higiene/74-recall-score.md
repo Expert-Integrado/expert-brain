@@ -1,6 +1,6 @@
 # recall expõe o score de similaridade
 
-> **Status:** ready · **Prioridade:** P3 · **Esforço:** XS · **Repo:** expert-brain
+> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 3/3 verdes — aguardando deploy com OK do dono) · **Prioridade:** P3 · **Esforço:** XS · **Repo:** expert-brain
 > **Depende de:** nada — carona de qualquer deploy do grupo. PR 4 do grupo 70.
 
 ## Contexto
