@@ -66,6 +66,13 @@ export async function handleRoot(_req: Request, env: Env): Promise<Response> {
   return new Response(null, { status: 302, headers: { location: '/app/login' } });
 }
 
+// Jobs observados por trackCronOutcome (spec 70-grafo-higiene/76) — mesma lista
+// dos 4 braços wireados em src/scheduled.ts (task-autocancel fica de fora, é
+// no-op opcional sem instrumentação).
+const CRON_JOBS = ['backup', 'similar-repass', 'hygiene-digest', 'due-reminder'] as const;
+
+interface CronJobStatus { consecutive_failures: number; last_error: string | null; }
+
 export async function handleStatus(env: Env): Promise<Response> {
   if (!isSetup(env)) {
     return new Response(JSON.stringify({ configured: false }), {
@@ -73,13 +80,11 @@ export async function handleStatus(env: Env): Promise<Response> {
     });
   }
   const status = await getVaultStatus(env);
-  // Bloco cron (spec 40-ops/43): expõe o contador de falhas do scheduled pro
-  // health-check externo. Aditivo — nenhum campo existente muda; falha de KV
-  // degrada pro default em vez de derrubar o /status.
-  let cron: { consecutive_failures: number; last_error: string | null } = {
-    consecutive_failures: 0,
-    last_error: null,
-  };
+  // Bloco cron LEGADO (spec 40-ops/43): espelho do due-reminder, mantido pro
+  // health-check externo que já lê estas chaves sem sufixo. Aditivo — nenhum
+  // campo existente muda; falha de KV degrada pro default em vez de derrubar
+  // o /status.
+  let cron: CronJobStatus = { consecutive_failures: 0, last_error: null };
   try {
     const [cf, le] = await Promise.all([
       env.GRAPH_CACHE.get('cron:consecutive_failures'),
@@ -89,7 +94,25 @@ export async function handleStatus(env: Env): Promise<Response> {
   } catch {
     // KV transiente: /status responde mesmo assim, com o default.
   }
-  return new Response(JSON.stringify({ configured: true, ...status, cron }), {
+  // Bloco cron_jobs (spec 76): um por job instrumentado, cada um com sua PRÓPRIA
+  // chave `cron:<job>:*` (ver trackCronOutcome). Cada job degrada pro default
+  // isoladamente — uma falha de KV lendo o job X não derruba os demais.
+  const cronJobs: Record<string, CronJobStatus> = Object.fromEntries(
+    await Promise.all(
+      CRON_JOBS.map(async (job): Promise<[string, CronJobStatus]> => {
+        try {
+          const [cf, le] = await Promise.all([
+            env.GRAPH_CACHE.get(`cron:${job}:consecutive_failures`),
+            env.GRAPH_CACHE.get(`cron:${job}:last_error`),
+          ]);
+          return [job, { consecutive_failures: parseInt(cf ?? '0', 10) || 0, last_error: le }];
+        } catch {
+          return [job, { consecutive_failures: 0, last_error: null }];
+        }
+      })
+    )
+  );
+  return new Response(JSON.stringify({ configured: true, ...status, cron, cron_jobs: cronJobs }), {
     headers: { 'content-type': 'application/json' },
   });
 }

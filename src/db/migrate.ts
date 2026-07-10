@@ -391,6 +391,15 @@ const MIGRATION_0017_STMTS: string[] = [
    VALUES ('user_owner', 'Dono', 'person', 1, 0, 0)`,
 ];
 
+// 0018 — ÍNDICE EM similar_edges.score (specs/70-grafo-higiene/76). O digest de
+// segunda (buildHygieneDigest, seção de pares suspeitos) e o /app/graph filtram
+// `WHERE score >= ?` sobre similar_edges sem índice na coluna — full scan que já
+// cobre ~27k linhas e cresce linear com o grafo. CREATE INDEX IF NOT EXISTS é
+// puramente aditivo (não recria a tabela, que cascatearia via FK) e idempotente.
+const MIGRATION_0018_STMTS: string[] = [
+  `CREATE INDEX IF NOT EXISTS idx_similar_edges_score ON similar_edges(score)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -409,6 +418,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0015_mentions', stmts: MIGRATION_0015_STMTS },
   { id: '0016_share_note_media', stmts: MIGRATION_0016_STMTS },
   { id: '0017_users', stmts: MIGRATION_0017_STMTS },
+  { id: '0018_similar_edges_score_idx', stmts: MIGRATION_0018_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

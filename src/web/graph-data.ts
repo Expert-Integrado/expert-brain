@@ -7,6 +7,7 @@ import { computeLayout, type LayoutEdge, type LayoutNode } from './layout.js';
 import { explicitPairKey } from './similarity.js';
 import { getTopSimilarEdges, listAllMentions, EDGE_TYPES } from '../db/queries.js';
 import { NON_TASK_FILTER } from '../db/queries.js';
+import { isLazyWhy, lazyWhyError } from '../mcp/why-quality.js';
 
 // Auth das rotas /app/graph/*: escopo 'graph' (só GRAPH_EXPORT_TOKEN) via o helper
 // compartilhado authorizeBearer — a cópia local authorizeGraphExport foi removida
@@ -436,9 +437,15 @@ export async function handleGraphLink(req: Request, env: Env): Promise<Response>
   if (!source || !target || source === target) {
     return new Response(JSON.stringify({ error: 'source and target required and must differ' }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
-  // Mesma régua do MCP (src/mcp/tools/link.ts): why nomeia o MECANISMO, mínimo 20.
+  // Mesma régua do MCP (src/mcp/tools/link.ts) — DE FATO idêntica agora (spec 75):
+  // tamanho mínimo 20 E isLazyWhy (why-quality.ts) rodam nos dois lugares. Antes só
+  // o tamanho era checado aqui, então um why genérico de 25+ chars passava na web e
+  // era rejeitado no MCP — duas réguas diferentes disfarçadas de uma.
   if (why.length < 20) {
     return new Response(JSON.stringify({ error: 'why minimum 20 characters — nomeie o mecanismo compartilhado' }), { status: 400, headers: { 'content-type': 'application/json' } });
+  }
+  if (isLazyWhy(why)) {
+    return new Response(JSON.stringify({ error: lazyWhyError() }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
   // relation_type opcional (spec 20-frontend/25); default preserva clients antigos
   // (Expert Console usa este endpoint via Bearer sem mandar o campo).

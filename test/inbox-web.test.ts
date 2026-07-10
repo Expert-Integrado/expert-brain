@@ -181,6 +181,57 @@ describe('POST /app/inbox/to-note (virar nota)', () => {
     expect(item?.triage_action).toBe('note');
     expect(item?.result_id).toBe(noteId);
   });
+
+  // TDD spec 70-grafo-higiene/75: aviso de duplicata no to-note — pré-consulta de
+  // vizinhança IGUAL ao save_note, reusando os matches pra similar_edges (sem 2ª
+  // query ao Vectorize) e redirecionando com ?dup= quando bate o gate de dedup.
+  it('melhor match >= 0.80 (DEDUP_MIN_SCORE): redireciona com ?dup=<id> e consulta o Vectorize só 1x', async () => {
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at)
+       VALUES ('dup-1','Nota já existente sobre o mesmo tema','corpo','tldr da existente','["operations"]','concept',500,500,NULL)`
+    ).run();
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'dup-1', score: 0.86 }] }));
+    await insertInboxItem(E, { id: 'ibx_dup', body: 'ideia repetida\ndetalhe', source: 'mcp', created_at: 1000 });
+    const res = await handleInboxToNotePost(req('POST', '/app/inbox/to-note', { cookie: await cookie(), form: { id: 'ibx_dup' } }), E);
+    expect(res.status).toBe(302);
+    const loc = res.headers.get('location')!;
+    expect(loc).toMatch(/^\/app\/notes\/[^/]+\?dup=dup-1$/);
+    // consulta ao Vectorize ocorreu 1x só — persistSimilarEdgesFromMatches reusa os
+    // mesmos matches (nunca uma 2ª query idêntica, era o refreshSimilarEdges antigo).
+    expect(E.VECTORIZE.query).toHaveBeenCalledTimes(1);
+    const noteId = loc.split('/').pop()!.split('?')[0];
+    const edges = await E.DB.prepare('SELECT to_id FROM similar_edges WHERE from_id = ?').bind(noteId).all();
+    expect((edges.results ?? []).map((e: any) => e.to_id)).toContain('dup-1');
+  });
+
+  it('sem candidata acima do gate (score < 0.80 ou sem matches): redirect limpo, sem ?dup=', async () => {
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'vizinha', score: 0.5 }] }));
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at)
+       VALUES ('vizinha','Vizinha distante','corpo','tldr','["operations"]','concept',500,500,NULL)`
+    ).run();
+    await insertInboxItem(E, { id: 'ibx_sem_dup', body: 'ideia nova de verdade', source: 'mcp', created_at: 1000 });
+    const res = await handleInboxToNotePost(req('POST', '/app/inbox/to-note', { cookie: await cookie(), form: { id: 'ibx_sem_dup' } }), E);
+    expect(res.status).toBe(302);
+    const loc = res.headers.get('location')!;
+    expect(loc).toMatch(/^\/app\/notes\/[^/]+$/);
+    expect(loc).not.toContain('?dup=');
+  });
+
+  it('falha do Vectorize na pré-consulta: a nota é criada mesmo assim, sem dup e sem derrubar o fluxo', async () => {
+    E.VECTORIZE.query = vi.fn(async () => { throw new Error('vectorize indisponível'); });
+    await insertInboxItem(E, { id: 'ibx_vecfail', body: 'ideia apesar da falha', source: 'mcp', created_at: 1000 });
+    const res = await handleInboxToNotePost(req('POST', '/app/inbox/to-note', { cookie: await cookie(), form: { id: 'ibx_vecfail' } }), E);
+    expect(res.status).toBe(302);
+    const loc = res.headers.get('location')!;
+    expect(loc).toMatch(/^\/app\/notes\/[^/]+$/);
+    expect(loc).not.toContain('?dup=');
+    const noteId = loc.split('/').pop()!;
+    const note = await E.DB.prepare('SELECT title FROM notes WHERE id = ?').bind(noteId).first();
+    expect(note.title).toBe('ideia apesar da falha');
+    const item = await getInboxItem(E, 'ibx_vecfail');
+    expect(item?.result_id).toBe(noteId);
+  });
 });
 
 describe('página /app/inbox + badge na navegação', () => {

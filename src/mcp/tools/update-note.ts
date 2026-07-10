@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, writeActor, noteUrl, canSeePrivate } from '../helpers.js';
-import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, updateNote, replaceTags } from '../../db/queries.js';
+import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, getNotesByIds, updateNote, replaceTags } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
+import { DEDUP_MIN_SCORE } from '../../web/similarity.js';
 import { applyMentions } from '../mentions.js';
 
 const inputSchema = {
@@ -39,6 +40,8 @@ FLOW: call recall() or get_note() first to confirm the id. Do not call update_no
 
 REEMBEDDING: the vector index is updated automatically when tldr, domains, or kind changes (the embedding is computed from tldr and the metadata carries domains+kind). If only title/body/tags changes, no Workers AI call happens — cheap edit.
 
+POSSIBLE_DUPLICATES IN THE RESPONSE (spec 76 — additive, only present when non-empty): if the edit re-embedded the note (tldr/domains/kind changed) and the new vector landed close (score >= 0.80) to another existing note, the response carries a possible_duplicates array — same shape as save_note's. This means your edit made the note read as a near-clone of something already in the vault; show it to the user and consider merging or clarifying the distinction. An edit that does NOT change tldr/domains/kind never queries the Vectorize index and never returns this field.
+
 VALIDATION: domains must be one of the 12 canonical domains (management, sales, marketing, education, ai-applied, leadership, product, operations, personal-development, entrepreneurship, music, cognitive-science). To intentionally introduce a non-canonical domain, pass allow_new_domain: true. tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
 
 KIND VALUES: the kind field is optional here (omit to keep existing), but if provided must be one of the 7 canonical values — pick the one that best fits the note's epistemic status:
@@ -55,6 +58,14 @@ DOMAIN ORDER IS SIGNIFICANT: reordering domains counts as a change and triggers 
 TAGS: passing an empty array (\`tags: []\`) clears all tags on the note. Omitting the tags field leaves existing tags untouched.
 
 INDEXING LATENCY: if tldr/domains/kind changed, recall may take ~1-2 minutes to reflect the new content. get_note returns the fresh values immediately.`;
+
+// Mesmo shape do possible_duplicates do save_note (spec 71) — reason é sempre
+// 'vector' aqui: update_note não tem candidato por título (o gate de FTS é
+// coisa do write de nota NOVA).
+interface DuplicateCandidate {
+  id: string; title: string; tldr: string;
+  score: number; reason: 'vector';
+}
 
 interface UpdateNoteInput {
   id: string;
@@ -163,10 +174,31 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
         fieldsChanged.push('tags');
       }
 
-      // Re-embeda pela função compartilhada (só se tldr/domains/kind mudou).
-      const reembedded = await reembedNoteIfNeeded(env, existing, {
+      // Re-embeda pela função compartilhada (só se tldr/domains/kind mudou). Os
+      // matches vêm da MESMA consulta que já persistiu as similar edges — zero
+      // segunda chamada ao Vectorize (spec 76).
+      const { reembedded, matches } = await reembedNoteIfNeeded(env, existing, {
         title, body, tldr, domains, kind,
       });
+
+      // possible_duplicates (spec 76): só quando o re-embed achou vizinho >= o
+      // gate de duplicata. Filtra a própria nota (o Vectorize já reindexou o
+      // vetor NOVO dela antes desta consulta, então ela pode aparecer como seu
+      // próprio match) e hidrata com o selo de privacidade do CALLER — mesmo
+      // padrão do save_note (candidato privado some pra credencial sem escopo).
+      let possibleDuplicates: DuplicateCandidate[] = [];
+      if (matches.length > 0) {
+        const candidates = matches.filter((m) => m.id !== id && m.score >= DEDUP_MIN_SCORE);
+        if (candidates.length > 0) {
+          const hydrated = await getNotesByIds(env, candidates.map((m) => m.id), canSeePrivate(auth));
+          const byId = new Map(hydrated.map((r) => [r.id, r]));
+          for (const m of candidates) {
+            const row = byId.get(m.id);
+            if (!row) continue;
+            possibleDuplicates.push({ id: m.id, title: row.title, tldr: row.tldr, score: m.score, reason: 'vector' });
+          }
+        }
+      }
 
       // Menções (spec 62): add/remove. Tolerante a falha do contacts (applyMentions engole
       // tudo — a menção D1 grava, o evento na timeline é eco). O título usado no contexto do
@@ -192,6 +224,7 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
         fields_changed: fieldsChanged,
         reembedded,
         ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
+        ...(possibleDuplicates.length > 0 ? { possible_duplicates: possibleDuplicates } : {}),
       });
     }) as any
   );

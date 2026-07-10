@@ -21,6 +21,24 @@ export function shouldSendHygieneDigest(cron: string, nowMs: number): boolean {
   return cron === DAILY_CRON && new Date(nowMs).getUTCDay() === 1;
 }
 
+// Soma os contadores diários `dedupe:hits:<YYYY-MM-DD>` (spec 76) dos últimos 7
+// dias corridos (hoje + 6 anteriores, mesma janela dos demais radares). Um get
+// por dia — 7 no total, sem varredura de prefixo. KV transiente por dia degrada
+// pra 0 nesse dia isolado (nunca derruba o digest inteiro).
+async function sumDedupeHits(env: Env, nowMs: number): Promise<number> {
+  let total = 0;
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(nowMs - i * 86_400_000).toISOString().slice(0, 10);
+    try {
+      const raw = await env.GRAPH_CACHE.get(`dedupe:hits:${day}`);
+      total += parseInt(raw ?? '0', 10) || 0;
+    } catch (err) {
+      console.error('buildHygieneDigest: leitura do contador dedupe:hits falhou (dia ignorado)', err);
+    }
+  }
+  return total;
+}
+
 export async function buildHygieneDigest(env: Env, nowMs: number): Promise<string> {
   const since = nowMs - WEEK_MS;
   const sections: string[] = [];
@@ -109,6 +127,13 @@ export async function buildHygieneDigest(env: Env, nowMs: number): Promise<strin
   if (whyRows.length > 0) {
     const examples = whyRows.slice(0, 3).map((w) => `- "${w.why}"`).join('\n');
     sections.push(`Whys curtos da semana (${whyRows.length} com menos de 30 chars):\n${examples}`);
+  }
+
+  // 5. Telemetria do gate hard de dedupe_key (spec 76) — adoção invisível até
+  // aqui; só entra quando N > 0 (semana sem hit não polui o digest).
+  const dedupeHits = await sumDedupeHits(env, nowMs);
+  if (dedupeHits > 0) {
+    sections.push(`dedupe_key na semana: ${dedupeHits} hit(s)`);
   }
 
   if (sections.length === 0) {

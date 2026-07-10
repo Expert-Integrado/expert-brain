@@ -128,6 +128,19 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         const existingId = await findActiveNoteIdByTag(env, dedupeTag);
         if (existingId) {
           const existing = await getNoteById(env, existingId);
+          // Telemetria do gate hard (spec 70-grafo-higiene/76): a adoção do
+          // dedupe_key era invisível — log + contador diário em KV alimentam o
+          // digest de higiene (buildHygieneDigest). Best-effort: falha de KV
+          // NUNCA derruba o save (o hit já vai ser retornado de qualquer forma).
+          console.log('save_note dedupe_hit', JSON.stringify({ id: existingId, dedupe_key: input.dedupe_key }));
+          try {
+            const day = new Date(now).toISOString().slice(0, 10); // UTC YYYY-MM-DD
+            const key = `dedupe:hits:${day}`;
+            const prev = parseInt((await env.GRAPH_CACHE.get(key)) ?? '0', 10) || 0;
+            await env.GRAPH_CACHE.put(key, String(prev + 1), { expirationTtl: 8 * 86_400 });
+          } catch (err) {
+            console.error('save_note: contador de dedupe_hit falhou (save segue)', err);
+          }
           return toolSuccess({
             deduped: true,
             id: existingId,

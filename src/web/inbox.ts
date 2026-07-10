@@ -4,8 +4,8 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { renderMarkdown } from './markdown.js';
 import { newId } from '../util/id.js';
-import { embed, upsertNoteVector } from '../vector/index.js';
-import { refreshSimilarEdges } from './similarity.js';
+import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../vector/index.js';
+import { SIMILARITY_TOP_K, DEDUP_MIN_SCORE, persistSimilarEdgesFromMatches } from './similarity.js';
 import {
   insertInboxItem,
   listInboxItems,
@@ -14,6 +14,7 @@ import {
   countPendingInbox,
   insertNote,
   insertTask,
+  getNotesByIds,
   INBOX_BODY_MAX,
 } from '../db/queries.js';
 
@@ -230,6 +231,14 @@ export async function handleInboxResolvePost(req: Request, env: Env): Promise<Re
 // vetor, igual save_note) pré-preenchida com o item, RESOLVE o item com o result_id e
 // redireciona pro editor da nota (pré-preenchido) pra curadoria. Embedding é best-effort:
 // se o Workers AI falhar, a nota é criada mesmo assim (editável; re-embeda na 1ª curadoria).
+//
+// Aviso de duplicata (spec 75-paridade-gate-web): pré-consulta de vizinhança IGUAL ao
+// save_note, ANTES do insert (o noteId ainda não está no índice, então todo match é
+// candidato legítimo). Os MESMOS matches alimentam depois persistSimilarEdgesFromMatches
+// — zero segunda query idêntica ao Vectorize (o antigo refreshSimilarEdges refazia a
+// consulta). Melhor match >= DEDUP_MIN_SCORE redireciona com ?dup=<id> — aviso PÓS-criação
+// (a nota já existe), nunca tela de confirmação. Falha da pré-consulta ou do Vectorize em
+// geral nunca derruba a criação da nota (best-effort do início ao fim).
 export async function handleInboxToNotePost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -257,6 +266,17 @@ export async function handleInboxToNotePost(req: Request, env: Env): Promise<Res
     console.error('inbox to-note: embed falhou, criando nota sem vetor (re-embeda na curadoria)', err);
   }
 
+  // Pré-consulta de vizinhança best-effort — falha aqui não impede a criação, só
+  // deixa a lista de matches vazia (sem dup check, sem similar_edges deste save).
+  let matches: VectorMatch[] = [];
+  if (vec) {
+    try {
+      matches = await queryVector(env, vec, SIMILARITY_TOP_K + 2);
+    } catch (err) {
+      console.error('inbox to-note: pré-consulta de vizinhança falhou (segue sem dup check)', err);
+    }
+  }
+
   await insertNote(env, {
     id: noteId,
     title,
@@ -271,13 +291,27 @@ export async function handleInboxToNotePost(req: Request, env: Env): Promise<Res
   if (vec) {
     try {
       await upsertNoteVector(env, noteId, vec, { domains: NOTE_DEFAULT_DOMAINS, kind: NOTE_DEFAULT_KIND, created_at: now });
-      await refreshSimilarEdges(env, noteId, vec);
+      // Reusa os matches da pré-consulta — substitui o refreshSimilarEdges antigo,
+      // que fazia uma SEGUNDA query idêntica ao Vectorize.
+      await persistSimilarEdgesFromMatches(env, noteId, matches);
     } catch (err) {
       console.error('inbox to-note: upsert vetor/edges falhou (nota persistida)', err);
     }
   }
 
   await resolveInboxItem(env, id, 'note', noteId, now);
+
+  // Melhor match do gate de dedup (spec 71/75): hidrata a candidata pra confirmar que
+  // existe/está viva (sessão é do dono → canSeePrivate=true) antes de linkar no redirect.
+  // Some silenciosamente se o Vectorize apontar pra algo já deletado/inexistente.
+  const best = matches[0];
+  if (best && best.score >= DEDUP_MIN_SCORE) {
+    const [candidate] = await getNotesByIds(env, [best.id], true);
+    if (candidate) {
+      return new Response(null, { status: 302, headers: { location: `/app/notes/${noteId}?dup=${candidate.id}` } });
+    }
+  }
+
   return new Response(null, { status: 302, headers: { location: `/app/notes/${noteId}` } });
 }
 

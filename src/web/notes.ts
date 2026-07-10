@@ -278,6 +278,18 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
   );
 }
 
+// Banner de possível duplicata (spec 70-grafo-higiene/75 §2): o to-note do inbox
+// redireciona pro detalhe com ?dup=<id> quando a pré-consulta de vizinhança bateu o
+// gate de dedup (score >= DEDUP_MIN_SCORE). Aviso PÓS-criação — a nota já existe,
+// isto não é tela de confirmação; o dono decide mesclar ou deletar.
+function renderDupBanner(candidateId: string, candidateTitle: string): string {
+  return `
+    <div class="callout-info dup-banner" data-dup-banner>
+      <strong>Possível duplicata de:</strong> <a href="/app/notes/${esc(candidateId)}">${esc(candidateTitle)}</a>
+      <p style="margin:6px 0 0">Compare as duas — mescle o que faltar numa só e delete a repetida.</p>
+    </div>`;
+}
+
 export async function handleNoteDetail(req: Request, env: Env, id: string): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -304,6 +316,16 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   // list_tasks_due_today) cai no detalhe de task em vez de no editor de nota.
   if (note.kind === 'task') {
     return new Response(null, { status: 302, headers: { location: `/app/tasks/${id}` } });
+  }
+
+  // ?dup=<id> (spec 75): redirect pós-criação do to-note do inbox. Candidata sumida/
+  // deletada/inexistente → banner some silenciosamente, sem 404 nem erro (a nota
+  // principal já existe e é o que importa).
+  const dupId = new URL(req.url).searchParams.get('dup');
+  let dupBannerHtml = '';
+  if (dupId) {
+    const candidate = await getNoteById(env, dupId, false, /* includePrivate */ true);
+    if (candidate) dupBannerHtml = renderDupBanner(candidate.id, candidate.title);
   }
 
   // Build a title-index for wikilink resolution.
@@ -425,6 +447,7 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
   });
 
   const body = `
+    ${dupBannerHtml}
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
       <div class="note-edit-titlerow">
         <input type="text" class="note-edit-title" data-field="title" value="${esc(note.title)}" maxlength="200" placeholder="Título da nota" aria-label="Título da nota" />
@@ -681,9 +704,11 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
   let reembedded = false;
   if (hasFieldEdit) {
     try {
-      reembedded = await reembedNoteIfNeeded(env, existing, {
+      // reembedNoteIfNeeded agora retorna { reembedded, matches } (spec 76) — o
+      // caminho web só consome o flag, sem UI nova pros matches.
+      ({ reembedded } = await reembedNoteIfNeeded(env, existing, {
         title, body: noteBody, tldr, domains, kind,
-      });
+      }));
     } catch (err) {
       console.error('handleNoteUpdatePost: reembed failed (edit persisted anyway)', err);
     }
