@@ -144,4 +144,44 @@ describe('save_note', () => {
     const count = await E.DB.prepare('SELECT count(*) c FROM notes').first();
     expect(count.c).toBe(0);
   });
+
+  it('coalesces an over-280-char tldr: saves truncated + returns warning (audit 07/2026)', async () => {
+    const { server, registered } = makeServer();
+    registerSaveNote(server, E, AUTH);
+    const longTldr = 'z'.repeat(400);
+    const r = await registered.save_note({
+      title: 'Long tldr note',
+      body: 'full content stays intact in the body',
+      tldr: longTldr,
+      domains: ['operations'],
+      kind: 'fact',
+    });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.tldr_truncated).toBe(true);
+    expect(parsed.warning).toContain('400');
+    expect(parsed.warning).toContain('update_note');
+    const row = await E.DB.prepare('SELECT tldr FROM notes').first();
+    expect(row.tldr.length).toBe(280);
+    expect(row.tldr.endsWith('...')).toBe(true);
+  });
+
+  it('tldr at exactly 280 chars saves untouched, no warning', async () => {
+    const { server, registered } = makeServer();
+    registerSaveNote(server, E, AUTH);
+    const exact = 'y'.repeat(280);
+    const r = await registered.save_note({
+      title: 'Exact tldr note',
+      body: 'b',
+      tldr: exact,
+      domains: ['operations'],
+      kind: 'fact',
+    });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.tldr_truncated).toBeUndefined();
+    expect(parsed.warning).toBeUndefined();
+    const row = await E.DB.prepare('SELECT tldr FROM notes').first();
+    expect(row.tldr).toBe(exact);
+  });
 });

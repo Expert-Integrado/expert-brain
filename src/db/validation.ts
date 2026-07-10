@@ -2,6 +2,36 @@
 // This is a SYNTACTIC check used by both layers below.
 export const DOMAIN_SLUG_REGEX = /^[a-z][a-z0-9-]{1,39}$/;
 
+// Hard ceiling for the tldr (Feynman test: one concrete sentence).
+export const TLDR_MAX = 280;
+
+export interface CoalescedTldr {
+  tldr: string;
+  warning: string | null;
+}
+
+/**
+ * Coalesce an over-long tldr instead of rejecting the whole call.
+ *
+ * Config audit 07/2026: 108 agent calls died on the zod `.max(280)` schema
+ * rejection — the note was lost and the agent usually did NOT retry. A tldr
+ * 300 chars long is a style problem, not a data-integrity problem, so we
+ * accept the write, truncate to 277 chars + "..." (= exactly 280) and return
+ * a warning the caller can act on (update_note with a tighter sentence).
+ */
+export function coalesceTldr(tldr: string): CoalescedTldr {
+  if (tldr.length <= TLDR_MAX) return { tldr, warning: null };
+  const truncated = tldr.slice(0, TLDR_MAX - 3) + '...';
+  return {
+    tldr: truncated,
+    warning:
+      `tldr had ${tldr.length} chars (max ${TLDR_MAX}) — SAVED anyway, truncated to ` +
+      `${TLDR_MAX} chars ending in "...". The note is fine, but the tldr fails the Feynman ` +
+      `test (one concrete sentence). If the cut hurts the meaning, call update_note on this ` +
+      `id with a tldr under ${TLDR_MAX} chars.`,
+  };
+}
+
 // The 12 canonical domains of the Expert Brain vault. By default save_note and
 // update_note reject anything outside this list — the canon is a hard rail to
 // prevent drift (back when the validator was only syntactic, 46 domains piled

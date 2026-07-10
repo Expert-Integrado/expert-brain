@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, writeActor, noteUrl, canSeePrivate } from '../helpers.js';
 import { KNOWLEDGE_KINDS, type NoteKind, getNoteById, getNotesByIds, updateNote, replaceTags } from '../../db/queries.js';
-import { validateDomains } from '../../db/validation.js';
+import { validateDomains, coalesceTldr } from '../../db/validation.js';
 import { diffNoteFields, reembedNoteIfNeeded } from '../../db/note-write.js';
 import { DEDUP_MIN_SCORE } from '../../web/similarity.js';
 import { applyMentions } from '../mentions.js';
@@ -11,7 +11,9 @@ const inputSchema = {
   id: z.string().min(1),
   title: z.string().min(1).max(200).optional(),
   body: z.string().min(1).optional(),
-  tldr: z.string().min(10).max(280).optional(),
+  tldr: z.string().min(10).optional().describe(
+    'One sentence. Feynman test. Target <= 280 chars — anything longer is ACCEPTED but auto-truncated to 280 (277 + "...") with a warning in the response.'
+  ),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
   kind: z.enum(KNOWLEDGE_KINDS).optional().describe(
     'concept | decision | insight | fact | pattern | principle | question'
@@ -42,7 +44,7 @@ REEMBEDDING: the vector index is updated automatically when tldr, domains, or ki
 
 POSSIBLE_DUPLICATES IN THE RESPONSE (spec 76 — additive, only present when non-empty): if the edit re-embedded the note (tldr/domains/kind changed) and the new vector landed close (score >= 0.80) to another existing note, the response carries a possible_duplicates array — same shape as save_note's. This means your edit made the note read as a near-clone of something already in the vault; show it to the user and consider merging or clarifying the distinction. An edit that does NOT change tldr/domains/kind never queries the Vectorize index and never returns this field.
 
-VALIDATION: domains must be one of the 12 canonical domains (management, sales, marketing, education, ai-applied, leadership, product, operations, personal-development, entrepreneurship, music, cognitive-science). To intentionally introduce a non-canonical domain, pass allow_new_domain: true. tldr stays under the Feynman test — one concrete sentence, 10-280 chars.
+VALIDATION: domains must be one of the 12 canonical domains (management, sales, marketing, education, ai-applied, leadership, product, operations, personal-development, entrepreneurship, music, cognitive-science). To intentionally introduce a non-canonical domain, pass allow_new_domain: true. tldr stays under the Feynman test — one concrete sentence, 10-280 chars (over 280 is ACCEPTED but auto-truncated to 280 with a warning in the response).
 
 KIND VALUES: the kind field is optional here (omit to keep existing), but if provided must be one of the 7 canonical values — pick the one that best fits the note's epistemic status:
 - 'concept'   — an abstract idea, model, or framework (most common default)
@@ -96,7 +98,17 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
       },
     },
     safeToolHandler(async (input: UpdateNoteInput) => {
-      const { id, title, body, tldr, domains, kind, tags } = input;
+      const { id, title, body, domains, kind, tags } = input;
+      // Coalescing em vez de rejeição (auditoria 07/2026): tldr acima de 280
+      // chars era rejeitado pelo schema e a edição se perdia. Agora trunca em
+      // 277+"..." e devolve warning.
+      let tldr = input.tldr;
+      let tldrWarning: string | null = null;
+      if (tldr !== undefined) {
+        const coalesced = coalesceTldr(tldr);
+        tldr = coalesced.tldr;
+        tldrWarning = coalesced.warning;
+      }
       // Selo de privacidade (spec 31): desmarcar (private: false) é PROIBIDO via tool —
       // só a UI logada do dono (POST /app/notes/{id}/private) torna pública, pra um
       // agente comprometido/enganado não des-privatizar em massa. Marcar (true) é ok.
@@ -225,6 +237,8 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
         reembedded,
         ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
         ...(possibleDuplicates.length > 0 ? { possible_duplicates: possibleDuplicates } : {}),
+        // Coalescing de tldr (auditoria 07/2026): presente SÓ quando truncou.
+        ...(tldrWarning ? { tldr_truncated: true, warning: tldrWarning } : {}),
       });
     }) as any
   );

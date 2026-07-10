@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   validateDomains,
   suggestCanonical,
+  coalesceTldr,
   CANONICAL_DOMAINS,
   DOMAIN_SLUG_REGEX,
+  TLDR_MAX,
 } from '../../src/db/validation.js';
 
 describe('validateDomains — canon (default behavior)', () => {
@@ -123,6 +125,37 @@ describe('validateDomains — syntactic checks (always on)', () => {
     expect(DOMAIN_SLUG_REGEX).toBeInstanceOf(RegExp);
     expect('evolutionary-biology').toMatch(DOMAIN_SLUG_REGEX);
     expect('INVALID').not.toMatch(DOMAIN_SLUG_REGEX);
+  });
+});
+
+describe('coalesceTldr — truncamento em vez de rejeição (auditoria 07/2026)', () => {
+  it('tldr dentro do limite passa intocado, sem warning', () => {
+    const r = coalesceTldr('one concrete sentence under the limit');
+    expect(r.tldr).toBe('one concrete sentence under the limit');
+    expect(r.warning).toBeNull();
+  });
+
+  it('tldr com exatamente 280 chars passa intocado', () => {
+    const exact = 'x'.repeat(TLDR_MAX);
+    const r = coalesceTldr(exact);
+    expect(r.tldr).toBe(exact);
+    expect(r.warning).toBeNull();
+  });
+
+  it('tldr acima de 280 trunca em 277 + "..." (total exatamente 280)', () => {
+    const long = 'a'.repeat(400);
+    const r = coalesceTldr(long);
+    expect(r.tldr.length).toBe(TLDR_MAX);
+    expect(r.tldr.endsWith('...')).toBe(true);
+    expect(r.tldr.slice(0, TLDR_MAX - 3)).toBe('a'.repeat(TLDR_MAX - 3));
+  });
+
+  it('warning informa o tamanho original e aponta pro update_note', () => {
+    const long = 'b'.repeat(300);
+    const r = coalesceTldr(long);
+    expect(r.warning).toContain('300');
+    expect(r.warning).toContain('280');
+    expect(r.warning).toContain('update_note');
   });
 });
 

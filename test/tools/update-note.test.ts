@@ -262,3 +262,34 @@ describe('update_note with embed failure (spec 23)', () => {
     expect(row.tldr).toBe('a freshly rewritten tldr that qualifies');
   });
 });
+
+describe('update_note — coalescing de tldr (auditoria 07/2026)', () => {
+  beforeEach(async () => {
+    E.AI = fakeAI();
+    E.VECTORIZE = fakeVectorize();
+    await runMigrations(E);
+    await resetDb();
+  });
+
+  it('tldr acima de 280 salva truncado + devolve warning', async () => {
+    await seed('abc', 'old tldr long enough', '["operations"]', 'concept');
+    const longTldr = 'w'.repeat(350);
+    const r = await reg().update_note({ id: 'abc', tldr: longTldr });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.tldr_truncated).toBe(true);
+    expect(parsed.warning).toContain('350');
+    const row = await E.DB.prepare('SELECT tldr FROM notes WHERE id = ?').bind('abc').first();
+    expect(row.tldr.length).toBe(280);
+    expect(row.tldr.endsWith('...')).toBe(true);
+  });
+
+  it('tldr dentro do limite: sem warning, sem tldr_truncated', async () => {
+    await seed('abc', 'old tldr long enough', '["operations"]', 'concept');
+    const r = await reg().update_note({ id: 'abc', tldr: 'a normal new tldr that fits fine' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.tldr_truncated).toBeUndefined();
+    expect(parsed.warning).toBeUndefined();
+  });
+});

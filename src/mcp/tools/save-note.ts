@@ -7,7 +7,7 @@ import {
   insertEdge, insertNote, insertTags, getNoteById, getNotesByIds,
   findSimilarActiveNotesByTitle, findActiveNoteIdByTag,
 } from '../../db/queries.js';
-import { validateDomains } from '../../db/validation.js';
+import { validateDomains, coalesceTldr } from '../../db/validation.js';
 import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../../vector/index.js';
 import {
   DEDUP_MIN_SCORE, LINK_SUGGESTION_MIN_SCORE, SIMILARITY_TOP_K,
@@ -25,7 +25,9 @@ const edgeSchema = z.object({
 const inputSchema = {
   title: z.string().min(1).max(200).describe('Atomic title. No "and".'),
   body: z.string().min(1).describe('Body in markdown'),
-  tldr: z.string().min(10).max(280).describe('One sentence. Feynman test.'),
+  tldr: z.string().min(10).describe(
+    'One sentence. Feynman test. Target <= 280 chars — anything longer is ACCEPTED but auto-truncated to 280 (277 + "...") with a warning in the response.'
+  ),
   domains: z.array(z.string().min(1)).min(1).max(3).describe('Canonical English slugs (1-3). Must be one of the 12 canonical domains unless allow_new_domain is set.'),
   kind: z.enum(KNOWLEDGE_KINDS).describe(
     'concept | decision | insight | fact | pattern | principle | question'
@@ -117,6 +119,11 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         return toolError(domainError);
       }
 
+      // Coalescing em vez de rejeição (auditoria 07/2026): tldr acima de 280
+      // chars era rejeitado pelo schema e a nota se perdia. Agora trunca em
+      // 277+"..." e devolve warning — o conteúdo íntegro continua no body.
+      const { tldr, warning: tldrWarning } = coalesceTldr(input.tldr);
+
       const now = Date.now();
       const id = newId();
 
@@ -182,7 +189,7 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
 
       // Embed FIRST — if Workers AI fails we bail before any D1 write, so the
       // caller sees a clean error and no phantom notes are left in the database.
-      const vec = await embed(env, input.tldr);
+      const vec = await embed(env, tldr);
 
       // UMA consulta de vizinhança pré-insert alimenta os 3 consumidores (spec 71):
       // possible_duplicates (>= 0.80), link_suggestions (0.60-0.79) e as
@@ -251,7 +258,7 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         id,
         title: input.title,
         body: input.body,
-        tldr: input.tldr,
+        tldr,
         domains: JSON.stringify(input.domains),
         kind: input.kind,
         // Selo de privacidade (spec 31): qualquer caller com a tool registrada pode
@@ -326,6 +333,8 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         // caller deve LER (dup => comparar antes de seguir; sugestão => avaliar link()).
         possible_duplicates: possibleDuplicates,
         link_suggestions: linkSuggestions,
+        // Coalescing de tldr (auditoria 07/2026): presente SÓ quando truncou.
+        ...(tldrWarning ? { tldr_truncated: true, warning: tldrWarning } : {}),
       });
     }) as any
   );
