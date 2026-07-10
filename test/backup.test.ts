@@ -100,7 +100,10 @@ const FIXTURE_COUNTS: Record<string, number> = {
   mentions: 0,
   users: 1, // seed user_owner da 0017 (o wipe preserva o dono)
   task_assignees: 0,
-  _migrations: 17,
+  // spec 70-grafo-higiene/76 adicionou a migration 0018 (índice em
+  // similar_edges.score) — puramente aditiva, não muda nenhuma das contagens
+  // acima, só o total de linhas em _migrations.
+  _migrations: 18,
 };
 
 beforeAll(async () => {
@@ -132,7 +135,8 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    expect(manifest.schema_version).toBe('0017_users');
+    // Bump pra 0018 (spec 70-grafo-higiene/76 — índice em similar_edges.score).
+    expect(manifest.schema_version).toBe('0018_similar_edges_score_idx');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

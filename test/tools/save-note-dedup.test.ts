@@ -156,6 +156,78 @@ describe('save_note — gate soft de duplicatas (spec 71)', () => {
     expect(count.n).toBe(1);
   });
 
+  describe('telemetria do dedupe_key (spec 70-grafo-higiene/76)', () => {
+    beforeEach(async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      await E.GRAPH_CACHE.delete(`dedupe:hits:${today}`);
+    });
+
+    it('hit incrementa o contador diario dedupe:hits:<YYYY-MM-DD> em GRAPH_CACHE', async () => {
+      const { server, registered } = makeServer();
+      registerSaveNote(server, E, OWNER_AUTH);
+      const today = new Date().toISOString().slice(0, 10);
+
+      const first = await registered.save_note({
+        ...BASE_INPUT,
+        title: 'Item importado telemetria',
+        tldr: 'primeiro save do item de telemetria',
+        dedupe_key: 'import-telemetria-001',
+      });
+      expect(first.isError).toBeUndefined();
+      expect(payload(first).deduped).toBeUndefined();
+      // 1o save é o CRIADOR da chave — não é hit, contador segue ausente.
+      expect(await E.GRAPH_CACHE.get(`dedupe:hits:${today}`)).toBeNull();
+
+      const second = await registered.save_note({
+        ...BASE_INPUT,
+        title: 'Item importado telemetria (re-run)',
+        tldr: 'segundo save do mesmo item de telemetria',
+        dedupe_key: 'import-telemetria-001',
+      });
+      expect(payload(second).deduped).toBe(true);
+      expect(await E.GRAPH_CACHE.get(`dedupe:hits:${today}`)).toBe('1');
+
+      const third = await registered.save_note({
+        ...BASE_INPUT,
+        title: 'Item importado telemetria (re-run 2)',
+        tldr: 'terceiro save do mesmo item de telemetria',
+        dedupe_key: 'import-telemetria-001',
+      });
+      expect(payload(third).deduped).toBe(true);
+      expect(await E.GRAPH_CACHE.get(`dedupe:hits:${today}`)).toBe('2');
+    });
+
+    it('falha do GRAPH_CACHE no hit do dedupe_key não derruba o save (best-effort)', async () => {
+      const creator = makeServer();
+      registerSaveNote(creator.server, E, OWNER_AUTH);
+      const first = await creator.registered.save_note({
+        ...BASE_INPUT,
+        title: 'Item com kv quebrado',
+        tldr: 'primeiro save antes da falha simulada de kv',
+        dedupe_key: 'import-kv-quebrado',
+      });
+      expect(first.isError).toBeUndefined();
+
+      const brokenEnv = {
+        ...E,
+        GRAPH_CACHE: {
+          get: async () => { throw new Error('kv down'); },
+          put: async () => { throw new Error('kv down'); },
+        },
+      };
+      const hitter = makeServer();
+      registerSaveNote(hitter.server, brokenEnv, OWNER_AUTH);
+      const second = await hitter.registered.save_note({
+        ...BASE_INPUT,
+        title: 'Item com kv quebrado (re-run)',
+        tldr: 'segundo save com o kv fora do ar',
+        dedupe_key: 'import-kv-quebrado',
+      });
+      expect(second.isError).toBeUndefined();
+      expect(payload(second).deduped).toBe(true);
+    });
+  });
+
   it('nota privada não vaza em possible_duplicates pra PAT sem escopo private; dono vê', async () => {
     await seedNote('priv-1', 'Nota privada sensivel', 'conteudo que nao pode vazar', { private: true });
     E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'priv-1', score: 0.9 }] }));

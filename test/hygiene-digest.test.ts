@@ -42,10 +42,20 @@ beforeAll(async () => {
   await runMigrations(E);
 });
 
+async function clearDedupeHitsAround(nowMs: number): Promise<void> {
+  // Limpa os 7 dias que buildHygieneDigest soma MAIS 1 de folga (evita
+  // vazamento entre testes que usam datas vizinhas a MONDAY).
+  for (let i = -1; i < 8; i++) {
+    const day = new Date(nowMs - i * DAY).toISOString().slice(0, 10);
+    await E.GRAPH_CACHE.delete(`dedupe:hits:${day}`);
+  }
+}
+
 beforeEach(async () => {
   await E.DB.prepare('DELETE FROM edges').run();
   await E.DB.prepare('DELETE FROM similar_edges').run();
   await E.DB.prepare('DELETE FROM notes').run();
+  await clearDedupeHitsAround(MONDAY);
 });
 
 describe('shouldSendHygieneDigest (spec 73)', () => {
@@ -116,6 +126,27 @@ describe('buildHygieneDigest (spec 73)', () => {
     await seedEdge('w1', 'w2', 'mecanismo raso xy', MONDAY - 1 * DAY); // 17 chars
     const text = await buildHygieneDigest(E, MONDAY);
     expect(text).toContain('mecanismo raso xy');
+  });
+
+  it('dedupe_key: soma os hits dos últimos 7 dias e mostra a seção quando N > 0 (spec 76)', async () => {
+    const dayOfMonday = new Date(MONDAY).toISOString().slice(0, 10);
+    const day3Before = new Date(MONDAY - 3 * DAY).toISOString().slice(0, 10);
+    await E.GRAPH_CACHE.put(`dedupe:hits:${dayOfMonday}`, '2');
+    await E.GRAPH_CACHE.put(`dedupe:hits:${day3Before}`, '3');
+    const text = await buildHygieneDigest(E, MONDAY);
+    expect(text).toContain('dedupe_key na semana: 5 hit(s)');
+  });
+
+  it('dedupe_key: hit fora da janela de 7 dias não entra na soma nem aparece', async () => {
+    const day8Before = new Date(MONDAY - 8 * DAY).toISOString().slice(0, 10);
+    await E.GRAPH_CACHE.put(`dedupe:hits:${day8Before}`, '9');
+    const text = await buildHygieneDigest(E, MONDAY);
+    expect(text).not.toContain('dedupe_key na semana');
+  });
+
+  it('dedupe_key: N = 0 omite a seção (não polui o digest de semana limpa)', async () => {
+    const text = await buildHygieneDigest(E, MONDAY);
+    expect(text).not.toContain('dedupe_key');
   });
 
   it('nunca excede HYGIENE_MAX_CHARS (mensagem própria, teto Telegram com folga)', async () => {

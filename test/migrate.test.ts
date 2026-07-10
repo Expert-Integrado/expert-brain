@@ -113,4 +113,15 @@ describe('runMigrations — transacional e idempotente (spec 10-backend/13)', ()
     expect(ids).toContain('0004_soft_delete');
     expect(ids.length).toBe(MIGRATIONS.length);
   });
+
+  it('0018: provision novo cria idx_similar_edges_score (spec 70-grafo-higiene/76)', async () => {
+    await runMigrations(E);
+    const idx = await E.DB.prepare(
+      `SELECT name, tbl_name FROM sqlite_master WHERE type='index' AND name = 'idx_similar_edges_score'`
+    ).first();
+    expect(idx).not.toBeNull();
+    expect((idx as any).tbl_name).toBe('similar_edges');
+    const ids = await appliedIds();
+    expect(ids).toContain('0018_similar_edges_score_idx');
+  });
 });

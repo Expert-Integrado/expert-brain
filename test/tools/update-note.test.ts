@@ -148,6 +148,90 @@ describe('update_note', () => {
   });
 });
 
+// spec 70-grafo-higiene/76: update_note passa a devolver possible_duplicates
+// (mesmo shape do save_note, spec 71) quando o re-embed aproxima a nota editada
+// de outra já existente — a MESMA consulta que persiste as similar_edges agora
+// alimenta o caller, sem uma segunda chamada ao Vectorize.
+describe('update_note — possible_duplicates via reembed (spec 76)', () => {
+  const PAT_AUTH = { email: 'pat@example.com', loggedInAt: 0, keyId: 'key_test_pat', scopes: 'full' };
+
+  beforeEach(async () => {
+    E.AI = fakeAI();
+    E.VECTORIZE = fakeVectorize();
+    await runMigrations(E);
+    await resetDb();
+  });
+
+  async function seedTarget(
+    id: string, title: string, tldr: string, opts: { private?: boolean } = {}
+  ): Promise<void> {
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,private,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)`
+    ).bind(id, title, 'corpo de teste', tldr, '["operations"]', 'concept', opts.private ? 1 : 0, 1000, 1000).run();
+  }
+
+  it('reembed que aproxima de nota existente (score >= DEDUP_MIN_SCORE) devolve possible_duplicates hidratado', async () => {
+    await seed('abc', 'tldr original suficiente aqui', '["operations"]', 'concept');
+    await seedTarget('dup-1', 'Nota quase igual', 'tldr da nota quase igual ja existente');
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'dup-1', score: 0.86 }] }));
+    const r = await reg().update_note({ id: 'abc', tldr: 'um tldr novo que fica parecido com outra nota' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.reembedded).toBe(true);
+    expect(parsed.possible_duplicates).toEqual([
+      { id: 'dup-1', title: 'Nota quase igual', tldr: 'tldr da nota quase igual ja existente', score: 0.86, reason: 'vector' },
+    ]);
+  });
+
+  it('match abaixo do gate (score < DEDUP_MIN_SCORE) não aparece — campo ausente', async () => {
+    await seed('abc', 'tldr original suficiente aqui', '["operations"]', 'concept');
+    await seedTarget('nb-1', 'Vizinha legitima', 'tldr da vizinha legitima');
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'nb-1', score: 0.72 }] }));
+    const r = await reg().update_note({ id: 'abc', tldr: 'outro tldr novo bem distinto de tudo' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.possible_duplicates).toBeUndefined();
+  });
+
+  it('a própria nota reindexada não aparece como seu próprio possible_duplicate (self filtrado)', async () => {
+    await seed('abc', 'tldr original suficiente aqui', '["operations"]', 'concept');
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'abc', score: 0.99 }] }));
+    const r = await reg().update_note({ id: 'abc', tldr: 'um tldr bem novo e diferente por completo' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.possible_duplicates).toBeUndefined();
+  });
+
+  it('edição sem mudança semântica não consulta o Vectorize e não devolve possible_duplicates', async () => {
+    await seed('abc', 'tldr original suficiente aqui', '["operations"]', 'concept');
+    const r = await reg().update_note({ id: 'abc', title: 'Só o título mudou' });
+    expect(r.isError).toBeUndefined();
+    const parsed = JSON.parse(r.content[0].text);
+    expect(parsed.reembedded).toBe(false);
+    expect(parsed.possible_duplicates).toBeUndefined();
+    expect(E.VECTORIZE.query).not.toHaveBeenCalled();
+  });
+
+  it('candidato privado some pra PAT sem escopo private; dono vê o mesmo candidato', async () => {
+    await seed('abc', 'tldr original suficiente aqui', '["operations"]', 'concept');
+    await seedTarget('priv-1', 'Nota privada', 'tldr da nota privada ja existente', { private: true });
+    E.VECTORIZE.query = vi.fn(async () => ({ matches: [{ id: 'priv-1', score: 0.9 }] }));
+
+    const patHandlers: any = {};
+    registerUpdateNote({ registerTool: (n: string, _m: any, h: any) => { patHandlers[n] = h; } } as any, E, PAT_AUTH);
+    const rPat = await patHandlers.update_note({ id: 'abc', tldr: 'tldr colidindo com a nota privada ja existente' });
+    expect(rPat.isError).toBeUndefined();
+    const pPat = JSON.parse(rPat.content[0].text);
+    expect(pPat.possible_duplicates).toBeUndefined();
+
+    const ownerHandlers: any = {};
+    registerUpdateNote({ registerTool: (n: string, _m: any, h: any) => { ownerHandlers[n] = h; } } as any, E, AUTH);
+    const rOwner = await ownerHandlers.update_note({ id: 'abc', tldr: 'tldr colidindo com a nota privada de novo aqui' });
+    const pOwner = JSON.parse(rOwner.content[0].text);
+    expect((pOwner.possible_duplicates ?? []).map((d: any) => d.id)).toContain('priv-1');
+  });
+});
+
 // spec 10-backend/23: update_note grava o D1 ANTES de embedar — quando o embed
 // estoura, a edição JÁ persistiu e a mensagem de erro não pode dizer o contrário.
 describe('update_note with embed failure (spec 23)', () => {
