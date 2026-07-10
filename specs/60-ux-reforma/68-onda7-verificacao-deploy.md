@@ -18,7 +18,9 @@ pendências"). O que restou desta onda foi executado assim:
   desde 08/07 + o checklist manual abaixo.
 - Checklist manual de `docs/ux-reform-verificacao.md`: entregue ao dono como checklist de
   navegador no fechamento da janela (drag de card desktop/mobile, detalhe do card, concluir
-  sem navegar, 3 estados de visibilidade, home em 320px).
+  sem navegar, 3 estados de visibilidade, home em 320px). Em 10/07/2026 o dono deu o aceite
+  explícito ("considero coberta"), com a validação visual sendo o uso real do console desde
+  08/07 — execução formal do checklist dispensada. Programa da reforma UX encerrado.
 
 ## Contexto
 
