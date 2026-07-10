@@ -124,6 +124,32 @@ async function renderGraphLikePage(
       .graph-section .graph-reset-btn { margin-top: 8px; }
       /* A.29 — Hide orphans + Restore default no fim */
       .graph-orphans-toggle { display: flex; margin: 6px 0 4px; padding: 0 4px; }
+      /* Filtro "Grupo" (Contatos, pedido do dono) — <select> nativo que foca um
+         grupo de WhatsApp + seus membros. Vive direto em #graph-overlay-body
+         (mesmo nível do "Tipo"/"Tipos" acima), fora de qualquer <details>, então
+         ganha estilo PRÓPRIO em vez de herdar .graph-section .graph-slider-label. */
+      .graph-group-select-row {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        margin: 4px 0 6px;
+        padding: 0 4px;
+      }
+      .graph-group-select-row small {
+        font-size: 10px;
+        color: rgba(255,255,255,0.4);
+        line-height: 1.3;
+      }
+      .graph-select {
+        width: 100%;
+        padding: 5px 8px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px;
+        color: inherit;
+        font-family: inherit;
+        font-size: 12px;
+      }
       .graph-reset-all {
         display: block;
         width: 100%;
@@ -542,6 +568,14 @@ async function renderGraphLikePage(
 
         <div class="graph-overlay-row graph-filter-header"${isContacts ? ' style="display:none"' : ''}>Tipos</div>
         <div id="graph-kinds" class="graph-chips" role="group" aria-label="Filtrar por tipo"${isContacts ? ' style="display:none"' : ''}></div>
+
+        ${isContacts ? `<div class="graph-overlay-row graph-filter-header">Grupo</div>
+        <div class="graph-group-select-row">
+          <select id="graph-group-select" class="graph-select" aria-label="Filtrar por grupo do WhatsApp">
+            <option value="">Todos os grupos</option>
+          </select>
+          <small>Foca o grupo escolhido e mostra os membros no painel</small>
+        </div>` : ''}
 
         <label class="graph-check-label graph-orphans-toggle">
           <input type="checkbox" id="hide-orphans" />

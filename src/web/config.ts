@@ -393,46 +393,64 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
   const savedOwner = url.searchParams.get('saved') === 'owner';
 
-  // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
-  const [kanbanColumns, kanbanCounts] = await Promise.all([
+  // As 12 leituras abaixo (Quadro de tarefas, Projetos, Áreas e tipos, Usuários,
+  // API Keys, prompt de personalização, Instruções pros agentes, Status do vault
+  // e Backup) não dependem umas das outras — paralelizadas num único Promise.all
+  // em vez dos ~9 awaits sequenciais de antes (cada seção esperando a anterior
+  // terminar pra só então disparar a query seguinte).
+  const [
+    kanbanColumns,
+    kanbanCounts,
+    taskProjects,
+    projectCounts,
+    domainCounts,
+    taxonomyConfig,
+    allUsers,
+    keys,
+    prefsPrompt,
+    ownerInstructionsRaw,
+    stats,
+    lastBackup,
+  ] = await Promise.all([
     listKanbanColumns(env, true),
     taskCountsByColumn(env),
+    listTaskProjects(env, true),
+    taskCountsByProject(env),
+    listDomainCounts(env),
+    getTaxonomyConfig(env),
+    listUsers(env, true),
+    listApiKeys(env, session.email),
+    getPersonalizationPrompt(env),
+    readOwnerInstructions(env),
+    getVaultStatus(env),
+    readLastBackup(env),
   ]);
+
+  // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
 
   // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58).
-  const [taskProjects, projectCounts] = await Promise.all([
-    listTaskProjects(env, true),
-    taskCountsByProject(env),
-  ]);
   const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
 
   // Seção "Áreas e tipos" (spec 54): contagem por área (NON_TASK_FILTER) + config
   // customizada do dono (cor/label + áreas pré-criadas).
-  const [domainCounts, taxonomyConfig] = await Promise.all([
-    listDomainCounts(env),
-    getTaxonomyConfig(env),
-  ]);
   const taxonomySection = renderTaxonomySection(domainCounts, taxonomyConfig, savedTaxonomy);
 
   // Seção "Usuários" (spec 37): perfis de atribuição (pessoa/agente) + vínculo
   // com PAT. A lista de chaves alimenta o dropdown de vínculo — reusa a mesma
-  // query da seção API Keys logo abaixo (o custo é uma leitura pequena a mais).
-  const allUsers = await listUsers(env, true);
+  // leitura da seção API Keys logo abaixo (o custo é uma leitura pequena a mais).
+  const usersSection = renderUsersSection(allUsers, keys, savedUsers, !!env.MEDIA);
 
-  const prefsPrompt = await getPersonalizationPrompt(env);
   // Seção "Instruções pros agentes (MCP)" (spec 70): valor cru da meta (vazio
   // quando a chave não existe) + estado do accordion.
-  const ownerInstructions = (await readOwnerInstructions(env)) ?? '';
+  const ownerInstructions = ownerInstructionsRaw ?? '';
   const ownerInstructionsSection = renderOwnerInstructionsSection(ownerInstructions, savedOwner);
-  const stats = await getVaultStatus(env);
   const lastWriteStr = stats.lastWrite
     ? new Date(stats.lastWrite).toLocaleString('pt-BR')
     : 'Nunca';
 
   // Seção Backup (spec 67): status do último snapshot lido de meta.last_backup
   // (gravado tanto pelo cron semanal quanto pelo "Fazer backup agora").
-  const lastBackup = await readLastBackup(env);
   let backupStatus: string;
   if (!lastBackup) {
     backupStatus = `<p style="color:var(--text-dim)">Nenhum snapshot ainda. O backup automático roda toda segunda às 02:00 (BRT) — ou dispare um agora.</p>`;
@@ -448,8 +466,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     : `<span class="badge-pill badge-warn">○ Aguardando — conecte numa das opções abaixo</span>`;
 
   // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
-  const keys = await listApiKeys(env, session.email);
-  const usersSection = renderUsersSection(allUsers, keys, savedUsers, !!env.MEDIA);
+  // (leitura já feita no Promise.all acima, junto com usersSection.)
   const keyRows = keys
     .map((k) => {
       const created = new Date(k.created_at).toLocaleString('pt-BR');

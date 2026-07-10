@@ -1948,6 +1948,17 @@ async function main() {
     },
     // Toggle 2D/3D — troca o palco sem recarregar; lazy-load do bundle 3D na 1ª vez.
     onToggle3D: () => { void toggleMode(); },
+    // Filtro "Grupo" (Contatos, pedido do dono: "a tela de contatos não
+    // consegue filtrar por grupos de WhatsApp"). Reusa o MESMO focusNode() que
+    // a busca, a paleta Cmd+K e o deep-link ?focus= já usam — o painel do
+    // grupo já lista "Membros (N)" via /entity (openContactPanel acima), zero
+    // mecanismo novo. "Todos os grupos" (valor vazio) reusa clearSearchState()
+    // — mesma rota do botão "Limpar" e do ✕ da busca — pra devolver o
+    // enquadramento padrão quando a câmera tinha se movido pro foco.
+    onGroupSelect: (id) => {
+      if (id) focusNode(id);
+      else clearSearchState();
+    },
   }, payload.nodes, taxonomy);
 
   // Keyboard: Esc closes panel; / focuses search; Cmd/Ctrl+K opens palette.
@@ -2496,6 +2507,8 @@ interface ControlCallbacks {
   onSavePrefs: () => void;
   // Alterna o palco 2D/3D na mesma tela (lazy-load do bundle 3D na 1ª vez).
   onToggle3D: () => void;
+  // Filtro "Grupo" (Contatos): id do grupo escolhido, ou '' pra "Todos os grupos".
+  onGroupSelect: (id: string) => void;
 }
 
 function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: TaxonomyConfig) {
@@ -2621,6 +2634,28 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: Taxono
       })
       .join('');
   }
+  // Filtro "Grupo" (Contatos): <select> nativo com os nós domain === 'group'
+  // do payload, ordenados por nome. Só existe no HTML de /app/contacts (ver
+  // src/web/graph.ts) — ausente aqui não é bug, é o /app/graph do Brain.
+  populateGroupSelect(nodes);
+  const groupSelect = document.getElementById('graph-group-select') as HTMLSelectElement | null;
+  groupSelect?.addEventListener('change', () => cb.onGroupSelect(groupSelect.value));
+}
+
+// Popula o <select> "Grupo" com os nós domain === 'group', ordenados por nome
+// (pt-BR). Preserva a seleção atual quando o grupo escolhido ainda existe no
+// payload novo — defensivo pra uma recarga futura do grafo; hoje o payload
+// só carrega 1x no boot (main), mas a função é idempotente e reaproveitável.
+function populateGroupSelect(nodes: GraphNode[]) {
+  const sel = document.getElementById('graph-group-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  const prevValue = sel.value;
+  const groups = nodes
+    .filter((n) => n.domain === 'group')
+    .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+  sel.innerHTML = '<option value="">Todos os grupos</option>' +
+    groups.map((n) => `<option value="${esc(n.id)}">${esc(n.label)}</option>`).join('');
+  if (prevValue && groups.some((n) => n.id === prevValue)) sel.value = prevValue;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

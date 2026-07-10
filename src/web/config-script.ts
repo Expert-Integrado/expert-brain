@@ -310,7 +310,18 @@ export function configPageScript(): string {
       gcRenderLabels(st.groups || []);
     }
 
-    gcJson('/app/config/google/status').then(gcRender);
+    // Adia o fetch de status pro 1º OPEN do <details> (evento toggle) — evita
+    // round-trip no primeiro paint quando o painel está fechado. Se o deep-link
+    // por hash já abriu esta seção (resolveHash rodou acima), dispara na hora.
+    // Flag garante no máximo 1 chamada mesmo fechando/reabrindo depois.
+    var gcLoaded = false;
+    function gcLoad() {
+      if (gcLoaded) return;
+      gcLoaded = true;
+      gcJson('/app/config/google/status').then(gcRender);
+    }
+    if (gcRoot.open) gcLoad();
+    gcRoot.addEventListener('toggle', function () { if (gcRoot.open) gcLoad(); });
 
     gcConnect.addEventListener('click', function () {
       gcConnect.disabled = true;
@@ -439,7 +450,16 @@ export function configPageScript(): string {
     document.getElementById('wa-select-all').addEventListener('click', function () { waSetAll(true); });
     document.getElementById('wa-clear-all').addEventListener('click', function () { waSetAll(false); });
 
-    waJson('/app/config/whatsapp/status').then(waRender);
+    // Mesmo gate do painel Google: adia o fetch de status pro 1º OPEN do <details>
+    // (toggle) ou pro deep-link por hash que já abriu a seção antes deste ponto.
+    var waLoaded = false;
+    function waLoad() {
+      if (waLoaded) return;
+      waLoaded = true;
+      waJson('/app/config/whatsapp/status').then(waRender);
+    }
+    if (waRoot.open) waLoad();
+    waRoot.addEventListener('toggle', function () { if (waRoot.open) waLoad(); });
 
     var waCreateToggle = document.getElementById('wa-create-members');
     if (waCreateToggle) {
@@ -548,7 +568,16 @@ export function configPageScript(): string {
     document.getElementById('ig-select-all').addEventListener('click', function () { igSetAll(true); });
     document.getElementById('ig-clear-all').addEventListener('click', function () { igSetAll(false); });
 
-    igJson('/app/config/instagram/status').then(igRender);
+    // Mesmo gate dos painéis Google/WhatsApp: adia o fetch de status pro 1º OPEN
+    // do <details> (toggle) ou pro deep-link por hash que já abriu a seção antes.
+    var igLoaded = false;
+    function igLoad() {
+      if (igLoaded) return;
+      igLoaded = true;
+      igJson('/app/config/instagram/status').then(igRender);
+    }
+    if (igRoot.open) igLoad();
+    igRoot.addEventListener('toggle', function () { if (igRoot.open) igLoad(); });
 
     var igSave = document.getElementById('ig-save-contacts');
     igSave.addEventListener('click', function () {
@@ -604,7 +633,16 @@ export function configPageScript(): string {
       pdSyncBtn.hidden = false;
     }
 
-    pdJson('/app/config/pipedrive/status').then(pdRender);
+    // Mesmo gate dos demais painéis de integração: adia o fetch de status pro 1º
+    // OPEN do <details> (toggle) ou pro deep-link por hash que já abriu antes.
+    var pdLoaded = false;
+    function pdLoad() {
+      if (pdLoaded) return;
+      pdLoaded = true;
+      pdJson('/app/config/pipedrive/status').then(pdRender);
+    }
+    if (pdRoot.open) pdLoad();
+    pdRoot.addEventListener('toggle', function () { if (pdRoot.open) pdLoad(); });
 
     pdSyncBtn.addEventListener('click', function () {
       pdSyncBtn.disabled = true;
