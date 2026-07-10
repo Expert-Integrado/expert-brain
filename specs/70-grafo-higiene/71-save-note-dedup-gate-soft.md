@@ -1,6 +1,6 @@
 # save_note com gate soft de duplicatas, sugestões de link e dedupe_key
 
-> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 9/9 verdes — aguardando deploy com OK do dono; Passo 0 só depois) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (09/07/2026 — deploy ce412aab com OK do dono; verificado em produção via MCP real: link_suggestions com scores 0.63-0.75, duplicata por título reason 'title', dedupe_key devolvendo deduped:true no re-run, why genérico rejeitado. Passo 0 gravado em meta.owner_instructions, 666 chars) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nada (PR independente). É o PR 1 do grupo 70 — deploy dele destrava o "Passo 0" (instruções do dono).
 
 ## Contexto
@@ -112,15 +112,15 @@ de origem do item.
 
 ## Critérios de aceite
 
-- [ ] Match >= 0.80 aparece em `possible_duplicates` com title/tldr/score e o save acontece.
-- [ ] Match 0.60–0.79 aparece em `link_suggestions` com tldr; não aparece como duplicata.
-- [ ] Título quase idêntico gera duplicata `reason: 'title'` mesmo com Vectorize vazio.
-- [ ] `dedupe_key` repetida devolve a nota existente sem chamar `AI.run` e sem criar linha.
-- [ ] PAT sem escopo `private` não vê nota privada em nenhuma das duas listas; sessão do dono vê.
-- [ ] Falha do Vectorize não derruba o save (listas vazias, nota salva).
-- [ ] `VECTORIZE.query` é chamada exatamente 1 vez por save (as similar_edges reusam os matches).
-- [ ] `why` genérico com 20+ chars é rejeitado em save_note e link.
-- [ ] Suite completa verde + typecheck.
+- [x] Match >= 0.80 aparece em `possible_duplicates` com title/tldr/score e o save acontece.
+- [x] Match 0.60–0.79 aparece em `link_suggestions` com tldr; não aparece como duplicata.
+- [x] Título quase idêntico gera duplicata `reason: 'title'` mesmo com Vectorize vazio.
+- [x] `dedupe_key` repetida devolve a nota existente sem chamar `AI.run` e sem criar linha.
+- [x] PAT sem escopo `private` não vê nota privada em nenhuma das duas listas; sessão do dono vê.
+- [x] Falha do Vectorize não derruba o save (listas vazias, nota salva).
+- [x] `VECTORIZE.query` é chamada exatamente 1 vez por save (as similar_edges reusam os matches).
+- [x] `why` genérico com 20+ chars é rejeitado em save_note e link.
+- [x] Suite completa verde + typecheck.
 
 ## Validação
 

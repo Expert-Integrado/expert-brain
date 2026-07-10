@@ -1,6 +1,6 @@
 # Cron de re-pass das similar_edges (janela de 48h)
 
-> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 7/7 verdes — aguardando deploy com OK do dono; toml + braço vão juntos) · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** shipped (09/07/2026 — deploy ce412aab com OK do dono; schedule "0 8 * * *" registrado no deploy junto do braço do dispatch. Observação pendente: conferir o log `similar-repass` após a primeira execução, 10/07 05:00 BRT) · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** nada em código; em VALOR depende da 71 (é a rede de segurança dela). PR 2 do grupo 70.
 
 ## Contexto
@@ -65,14 +65,14 @@ código = digest de tasks disparando 2x/dia.
 
 ## Critérios de aceite
 
-- [ ] `REPASS_CRON === '0 8 * * *'`, igual ao toml, diferente de BACKUP_CRON e do diário.
-- [ ] `runScheduled(REPASS_CRON)` NÃO executa o fluxo diário (nem resurface digest, nem backup).
-- [ ] Nota recente sem similar_edges é reprocessada e ganha linhas; `refreshed` conta.
-- [ ] Task, nota deletada e nota fora da janela de 48h ficam de fora (`scanned` não as inclui).
-- [ ] Sob cap, nota com zero edges tem prioridade sobre nota que já tem.
-- [ ] Falha do Vectorize numa nota não impede as demais (`failed` conta, run segue).
-- [ ] Watermark só avança com `completed: true`; cap atingido mantém a watermark.
-- [ ] Suite completa verde + typecheck.
+- [x] `REPASS_CRON === '0 8 * * *'`, igual ao toml, diferente de BACKUP_CRON e do diário.
+- [x] `runScheduled(REPASS_CRON)` NÃO executa o fluxo diário (nem resurface digest, nem backup).
+- [x] Nota recente sem similar_edges é reprocessada e ganha linhas; `refreshed` conta.
+- [x] Task, nota deletada e nota fora da janela de 48h ficam de fora (`scanned` não as inclui).
+- [x] Sob cap, nota com zero edges tem prioridade sobre nota que já tem.
+- [x] Falha do Vectorize numa nota não impede as demais (`failed` conta, run segue).
+- [x] Watermark só avança com `completed: true`; cap atingido mantém a watermark.
+- [x] Suite completa verde + typecheck.
 
 ## Validação
 

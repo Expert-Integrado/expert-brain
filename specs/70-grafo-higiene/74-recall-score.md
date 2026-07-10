@@ -1,6 +1,6 @@
 # recall expõe o score de similaridade
 
-> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 3/3 verdes — aguardando deploy com OK do dono) · **Prioridade:** P3 · **Esforço:** XS · **Repo:** expert-brain
+> **Status:** shipped (09/07/2026 — deploy ce412aab com OK do dono; verificado em produção: recall real devolvendo score 0.65/0.58/0.57 do índice vivo) · **Prioridade:** P3 · **Esforço:** XS · **Repo:** expert-brain
 > **Depende de:** nada — carona de qualquer deploy do grupo. PR 4 do grupo 70.
 
 ## Contexto
@@ -39,11 +39,11 @@ Sem mudança de ordenação, balanceamento, filtros ou privacidade.
 
 ## Critérios de aceite
 
-- [ ] Hit vindo do vetor traz `score` numérico igual ao do Vectorize.
-- [ ] Hit vindo só do FTS traz `score: null`.
-- [ ] Hit injetado por domains_filter (sem match semântico/keyword) traz `score: null`.
-- [ ] DESCRIPTION explica banda e não-calibração.
-- [ ] Suite completa verde + typecheck.
+- [x] Hit vindo do vetor traz `score` numérico igual ao do Vectorize.
+- [x] Hit vindo só do FTS traz `score: null`.
+- [x] Hit injetado por domains_filter (sem match semântico/keyword) traz `score: null`.
+- [x] DESCRIPTION explica banda e não-calibração.
+- [x] Suite completa verde + typecheck.
 
 ## Validação
 

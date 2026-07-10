@@ -1,6 +1,6 @@
 # Digest de higiene do grafo — segunda-feira no Telegram
 
-> **Status:** in-progress (implementado na branch `feat/70-grafo-higiene`, testes 8/8 verdes — aguardando deploy com OK do dono) · **Prioridade:** P3 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** shipped (09/07/2026 — deploy ce412aab com OK do dono. Observação pendente: primeiro digest real na segunda 13/07 ~08:00 BRT no Telegram do dono) · **Prioridade:** P3 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** 72 (sem o re-pass, os "pares suspeitos" e "órfãs" reportados estão desatualizados). PR 3 do grupo 70 — o ÚLTIMO a entrar.
 
 ## Contexto
@@ -57,14 +57,14 @@ higiene não pode derrubar lembrete de tasks nem resurface), gated por
 
 ## Critérios de aceite
 
-- [ ] Órfãs da semana contadas e tituladas; nota com edge real não conta como órfã.
-- [ ] Par >= 0.80 sem edge real aparece 1x (dedupe simétrico); com edge real não aparece.
-- [ ] Volume por `created_by` presente, NULL rotulado como sessão do dono.
-- [ ] Whys < 30 chars da semana contados.
-- [ ] Digest nunca excede HYGIENE_MAX_CHARS.
-- [ ] `shouldSendHygieneDigest`: true só no cron diário em segunda-feira UTC.
-- [ ] Semana limpa gera mensagem curta de saúde, não mensagem vazia.
-- [ ] Suite completa verde + typecheck.
+- [x] Órfãs da semana contadas e tituladas; nota com edge real não conta como órfã.
+- [x] Par >= 0.80 sem edge real aparece 1x (dedupe simétrico); com edge real não aparece.
+- [x] Volume por `created_by` presente, NULL rotulado como sessão do dono.
+- [x] Whys < 30 chars da semana contados.
+- [x] Digest nunca excede HYGIENE_MAX_CHARS.
+- [x] `shouldSendHygieneDigest`: true só no cron diário em segunda-feira UTC.
+- [x] Semana limpa gera mensagem curta de saúde, não mensagem vazia.
+- [x] Suite completa verde + typecheck.
 
 ## Validação
 
