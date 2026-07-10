@@ -2,10 +2,18 @@ import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
-import { EDGE_TYPES, KNOWLEDGE_KINDS, type EdgeType, type NoteKind, insertEdge, insertNote, insertTags, getNoteById } from '../../db/queries.js';
+import {
+  EDGE_TYPES, KNOWLEDGE_KINDS, type EdgeType, type NoteKind,
+  insertEdge, insertNote, insertTags, getNoteById, getNotesByIds,
+  findSimilarActiveNotesByTitle, findActiveNoteIdByTag,
+} from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
-import { embed, upsertNoteVector } from '../../vector/index.js';
-import { refreshSimilarEdges } from '../../web/similarity.js';
+import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../../vector/index.js';
+import {
+  DEDUP_MIN_SCORE, LINK_SUGGESTION_MIN_SCORE, SIMILARITY_TOP_K,
+  persistSimilarEdgesFromMatches, isNearDuplicateTitle,
+} from '../../web/similarity.js';
+import { isLazyWhy, lazyWhyError } from '../why-quality.js';
 import { applyMentions } from '../mentions.js';
 
 const edgeSchema = z.object({
@@ -33,6 +41,9 @@ const inputSchema = {
   mentions: z.array(z.string().min(1)).optional().describe(
     'Optional CONTACT entity ids this note is about (people/companies from the Contacts vault). Get the id FIRST via get_contact_by_phone / search_contacts / list_contacts — do NOT pass a free-text name (it would create a phantom mention on typo/homonym). Each mention links the note to the contact, fires a `mentioned_in_brain` event on that contact\'s timeline, and shows on the contact\'s page. Passing an id twice is deduped.'
   ),
+  dedupe_key: z.string().min(1).max(120).optional().describe(
+    'Idempotency key for BATCH IMPORTS and re-runs (spec 71). If a live note already carries this key, save_note returns that note ({deduped: true, id}) and saves NOTHING — a hard gate, unlike possible_duplicates which is informational. Use ONLY when the caller controls a stable identity for the item (source id of the import, hash of the source content). NEVER invent a key for a conversational note. Stored as the reserved tag `dedupe:<key>` (normalized lowercase).'
+  ),
 };
 
 const DESCRIPTION = `Saves an atomic note to the vault, optionally with edges to existing notes.
@@ -57,7 +68,11 @@ The kind field is REQUIRED and must be one of 7 values — pick the one that bes
 - 'principle' — a personal rule or axiom the user lives by
 - 'question'  — an open question worth revisiting (not yet answered)
 
-IMPORTANT: the why field of each edge is rejected if it has fewer than 20 characters, and edges pointing to non-existent ids are rejected. Edges pointing to a task (kind='task') are also rejected — tasks live outside the graph; the note is NOT saved, remove the edge and retry. If you do not have the target note id, call recall() first. Domains that do not match the canonical slug format are rejected with an explanation.
+IMPORTANT: the why field of each edge is rejected if it has fewer than 20 characters OR if it only says the notes are related/similar/connected without naming the shared MECHANISM. Edges pointing to non-existent ids are rejected. Edges pointing to a task (kind='task') are also rejected — tasks live outside the graph; the note is NOT saved, remove the edge and retry. If you do not have the target note id, call recall() first. Domains that do not match the canonical slug format are rejected with an explanation.
+
+HYGIENE FIELDS IN THE RESPONSE (spec 71 — read them, they are not decoration):
+- possible_duplicates: notes whose meaning (vector score >= 0.80) or title almost matches what you just saved. The save ALREADY happened (soft gate). If non-empty: show them to the user and either update_note the existing note OR keep both if they are genuinely distinct theses — NEVER merge without confirming. score is cosine similarity (not calibrated); reason 'title' entries have score null.
+- link_suggestions: notes scoring 0.60-0.79 — candidates for a link() edge. Each comes with its tldr so you can judge and write a MECHANISM-based why without an extra get_note. Create the edges that have a real shared mechanism; skip the rest.
 
 INDEXING LATENCY: Cloudflare Vectorize is eventually consistent. After save_note returns successfully, the newly-saved note is immediately queryable via its id (get_note, expand) because D1 is strongly consistent, but the VECTOR may take up to ~1-2 minutes to become queryable via recall. If the user asks you to recall a concept right after saving it and recall returns empty or misses the fresh note, that is NOT a bug — explain the delay to the user and suggest trying again in a minute, or use get_note/expand on the id you just received if you need to reference the content immediately.`;
 
@@ -72,7 +87,14 @@ interface SaveNoteInput {
   allow_new_domain?: boolean;
   private?: boolean;
   mentions?: string[];
+  dedupe_key?: string;
 }
+
+interface DuplicateCandidate {
+  id: string; title: string; tldr: string;
+  score: number | null; reason: 'vector' | 'title';
+}
+interface LinkSuggestion { id: string; title: string; tldr: string; score: number; }
 
 export function registerSaveNote(server: any, env: Env, auth: AuthContext): void {
   server.registerTool(
@@ -98,6 +120,24 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
       const now = Date.now();
       const id = newId();
 
+      // Gate HARD de idempotência (spec 71): identidade declarada PELO caller
+      // (import/re-run). Checado ANTES do embed — o hit não gasta Workers AI
+      // nem toca o banco. Tag normalizada igual ao insertTags (trim+lowercase).
+      const dedupeTag = input.dedupe_key ? `dedupe:${input.dedupe_key.trim().toLowerCase()}` : null;
+      if (dedupeTag) {
+        const existingId = await findActiveNoteIdByTag(env, dedupeTag);
+        if (existingId) {
+          const existing = await getNoteById(env, existingId);
+          return toolSuccess({
+            deduped: true,
+            id: existingId,
+            url: noteUrl(env, existingId),
+            title: existing?.title ?? null,
+            message: 'dedupe_key already present in the vault — returning the existing note; NOTHING was saved. To change it, call update_note on this id.',
+          });
+        }
+      }
+
       if (input.edges) {
         for (const e of input.edges) {
           if (e.why.length < 20) {
@@ -107,6 +147,9 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
               `Good example: "Both are systems with delayed negative feedback, so both oscillate." ` +
               `Bad example: "both are about growth".`
             );
+          }
+          if (isLazyWhy(e.why)) {
+            return toolError(lazyWhyError());
           }
           const target = await getNoteById(env, e.to_id);
           if (!target) {
@@ -128,6 +171,69 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
       // caller sees a clean error and no phantom notes are left in the database.
       const vec = await embed(env, input.tldr);
 
+      // UMA consulta de vizinhança pré-insert alimenta os 3 consumidores (spec 71):
+      // possible_duplicates (>= 0.80), link_suggestions (0.60-0.79) e as
+      // similar_edges persistidas depois do insert — zero segunda chamada ao
+      // Vectorize. Pré-insert o próprio id ainda não está no índice, então todo
+      // match é candidato legítimo. Falha aqui NÃO derruba o save: listas vazias
+      // e as similar_edges ficam pro re-pass diário (spec 72).
+      let matches: VectorMatch[] = [];
+      let vectorLookupFailed = false;
+      try {
+        matches = await queryVector(env, vec, SIMILARITY_TOP_K + 2);
+      } catch (err) {
+        vectorLookupFailed = true;
+        console.error('save_note: pré-consulta de vizinhança falhou (save segue; re-pass cobre)', err);
+      }
+
+      // Candidatos por TÍTULO via FTS (D1, fortemente consistente) — pega a dup
+      // intra-lote que o Vectorize eventual-consistent ainda não indexou. O FTS
+      // só gera candidatos; o veredito é o Jaccard sobre o título hidratado.
+      const titleCandidateIds = await findSimilarActiveNotesByTitle(env, input.title);
+
+      // Hidratação com o selo de privacidade do CALLER (mesmo padrão do recall):
+      // candidato privado simplesmente some da lista pra credencial sem escopo.
+      const seePrivate = canSeePrivate(auth);
+      const hydrateIds = new Set<string>();
+      for (const m of matches) if (m.score >= LINK_SUGGESTION_MIN_SCORE) hydrateIds.add(m.id);
+      for (const cid of titleCandidateIds) hydrateIds.add(cid);
+      const hydrated = hydrateIds.size > 0
+        ? await getNotesByIds(env, Array.from(hydrateIds), seePrivate)
+        : [];
+      const byId = new Map(hydrated.map((r) => [r.id, r]));
+
+      const possibleDuplicates: DuplicateCandidate[] = [];
+      for (const m of matches) {
+        if (m.score < DEDUP_MIN_SCORE) continue;
+        const row = byId.get(m.id);
+        if (!row) continue;
+        possibleDuplicates.push({ id: m.id, title: row.title, tldr: row.tldr, score: m.score, reason: 'vector' });
+      }
+      for (const cid of titleCandidateIds) {
+        if (possibleDuplicates.some((d) => d.id === cid)) continue;
+        const row = byId.get(cid);
+        if (!row) continue;
+        if (!isNearDuplicateTitle(input.title, row.title)) continue;
+        possibleDuplicates.push({ id: cid, title: row.title, tldr: row.tldr, score: null, reason: 'title' });
+      }
+
+      const linkSuggestions: LinkSuggestion[] = [];
+      for (const m of matches) {
+        if (m.score < LINK_SUGGESTION_MIN_SCORE || m.score >= DEDUP_MIN_SCORE) continue;
+        const row = byId.get(m.id);
+        if (!row) continue;
+        linkSuggestions.push({ id: m.id, title: row.title, tldr: row.tldr, score: m.score });
+        if (linkSuggestions.length >= 3) break;
+      }
+
+      // Log dos scores do gate (spec 71) — insumo pra re-medição das bandas
+      // (0.80/0.60) quando a composição do vault mudar.
+      if (matches.length > 0) {
+        console.log('save_note dedup', JSON.stringify({
+          id, top_scores: matches.slice(0, 5).map((m) => ({ id: m.id, score: m.score })),
+        }));
+      }
+
       await insertNote(env, {
         id,
         title: input.title,
@@ -141,7 +247,10 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         created_at: now,
         updated_at: now,
       }, writeActor(auth));
-      if (input.tags?.length) await insertTags(env, id, input.tags);
+      // A tag reservada `dedupe:<key>` entra junto das tags do caller — é ela
+      // que o gate hard consulta no próximo save com a mesma chave.
+      const allTags = [...(input.tags ?? []), ...(dedupeTag ? [dedupeTag] : [])];
+      if (allTags.length > 0) await insertTags(env, id, allTags);
 
       let edgesCreated = 0;
       if (input.edges) {
@@ -166,13 +275,16 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         created_at: now,
       });
 
-      // Pré-computa as similar edges desta nota (top-k vizinhos) e grava no D1, pra
-      // o grafo só ler depois. Best-effort: a nota já está salva — se o Vectorize
-      // falhar aqui, o backfill ou um próximo edit preenche. Não falha o save_note.
-      try {
-        await refreshSimilarEdges(env, id, vec);
-      } catch (err) {
-        console.error('save_note: refreshSimilarEdges failed (note saved anyway)', err);
+      // Persiste as similar edges REUSANDO os matches da consulta pré-insert —
+      // zero segunda chamada ao Vectorize (spec 71). Best-effort: a nota já está
+      // salva; se a consulta falhou lá em cima ou o batch falhar aqui, o re-pass
+      // diário (spec 72) ou o backfill preenchem. Não falha o save_note.
+      if (!vectorLookupFailed) {
+        try {
+          await persistSimilarEdgesFromMatches(env, id, matches);
+        } catch (err) {
+          console.error('save_note: persistSimilarEdges failed (note saved anyway)', err);
+        }
       }
 
       // Menções (spec 62): vínculo first-class nota→contato. Aplicadas DEPOIS do save
@@ -197,6 +309,10 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
         saved: { title: input.title, domains: input.domains },
         edges_created: edgesCreated,
         mentions_created: mentionsCreated,
+        // Gate soft de higiene (spec 71): sempre presentes, mesmo vazios — o
+        // caller deve LER (dup => comparar antes de seguir; sugestão => avaliar link()).
+        possible_duplicates: possibleDuplicates,
+        link_suggestions: linkSuggestions,
       });
     }) as any
   );

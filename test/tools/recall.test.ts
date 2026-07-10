@@ -209,8 +209,9 @@ describe('recall', () => {
     for (const hit of parsed.results) {
       // O essencial: allDomains (campo interno de filtro) NÃO pode vazar.
       expect(hit.allDomains).toBeUndefined();
-      // url é intencional (link clicável da nota, como o save_note) — faz parte do shape externo.
-      expect(Object.keys(hit).sort()).toEqual(['domain', 'id', 'kind', 'title', 'tldr', 'url']);
+      // url é intencional (link clicável da nota, como o save_note) — faz parte do shape
+      // externo. score idem (spec 70-grafo-higiene/74: cosseno do vetor, null em FTS/domínio).
+      expect(Object.keys(hit).sort()).toEqual(['domain', 'id', 'kind', 'score', 'title', 'tldr', 'url']);
     }
   });
 });

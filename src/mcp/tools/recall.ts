@@ -27,6 +27,8 @@ DOMAINS_FILTER SEMANTICS: the filter does TWO things — (a) restricts results t
 
 WHEN domains_filter IS SET, the cross-domain balancing is TURNED OFF (you already scoped the search explicitly): results come strictly ordered by relevance (semantic matches > keyword matches > domain-only matches by recency) and \`limit\` is respected in full — no 3-per-domain / 5-domain cap. To enumerate a whole domain, paginate with \`offset\`: call limit=30, offset=0, then offset=30, then offset=60, until a page returns fewer than \`limit\` results. Up to 200 notes per domain are reachable this way. WITHOUT a filter, the exploratory balancing applies (at most 3 per domain, up to 5 distinct domains, ~15 results) and \`offset\` slices the balanced result.
 
+SCORE (spec 71/74): each result carries \`score\` — the RAW cosine similarity from the vector index (bge-m3), NOT a calibrated probability. Reference bands: >= 0.80 near-duplicate territory (if you are about to save_note something like it, STOP and read that note first), 0.60-0.79 related (link candidate), < 0.60 weak. \`score: null\` means the note entered the results via keyword (FTS) or domain retrieval only — no vector metric available; null is honest, do not invent one.
+
 INDEXING LATENCY: Cloudflare Vectorize is eventually consistent — a note saved via save_note can take up to ~1-2 minutes to become queryable via recall. If a user asks you to find a concept they JUST saved and the recall returns empty, that is probably indexing delay, NOT a missing note. Do NOT tell the user the vault is broken. Either (a) wait and retry, (b) use get_note on the id returned by save_note if you still have it, or (c) explain the delay and ask the user to try again in a minute. FTS5 search is strongly consistent and returns results immediately, so a recall that matches by keyword often still surfaces fresh notes even when the vector side is still indexing.`;
 
 interface RecallHit {
@@ -69,7 +71,15 @@ export function registerRecall(server: any, env: Env, auth?: AuthContext): void 
       ]);
 
       const ids = new Set<string>();
-      for (const m of vectorMatches) ids.add(m.id);
+      // Score por id (spec 74): cosseno cru do Vectorize. Id repetido no top-30
+      // fica com o MAIOR score. Quem entra no pool só via FTS/domínio não tem
+      // métrica vetorial — sai como null no shape final.
+      const scoreById = new Map<string, number>();
+      for (const m of vectorMatches) {
+        ids.add(m.id);
+        const prev = scoreById.get(m.id);
+        if (prev === undefined || m.score > prev) scoreById.set(m.id, m.score);
+      }
       for (const r of ftsRows) ids.add(r.id);
 
       // When a domain filter is set, also pull every note in those domains.
@@ -168,11 +178,13 @@ export function registerRecall(server: any, env: Env, auth?: AuthContext): void 
       }
 
       // Strip allDomains before returning — it's only used internally for
-      // filter matching. External shape is {id, title, domain, kind, tldr, url}
-      // (url is a clickable link to the note, like save_note returns).
+      // filter matching. External shape is {id, title, domain, kind, tldr, url,
+      // score} (url is a clickable link to the note, like save_note returns;
+      // score é o cosseno do vetor, null pra hit só de FTS/domínio — spec 74).
       const results = picked.map(({ allDomains: _drop, ...rest }) => ({
         ...rest,
         url: noteUrl(env, rest.id),
+        score: scoreById.get(rest.id) ?? null,
       }));
       return toolSuccess({ results });
     }) as any

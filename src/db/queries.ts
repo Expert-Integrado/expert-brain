@@ -672,6 +672,41 @@ export async function findSimilarActiveTasksByTitle(
   return r.results ?? [];
 }
 
+// Candidatas a DUPLICATA por título em notas de CONHECIMENTO (spec 70-grafo-
+// higiene/71) — irmã da versão de tasks acima, mesma técnica FTS5 (sanitizeFts-
+// Query prefix, sem o teto de comprimento do LIKE). Devolve SÓ ids: a hidratação
+// (getNotesByIds) aplica o selo de privacidade do caller, e o corte de "quase
+// idêntico" (isNearDuplicateTitle, Jaccard em JS) roda sobre o título hidratado —
+// o OR de prefixos do FTS é largo demais pra ser veredito.
+export async function findSimilarActiveNotesByTitle(env: Env, title: string): Promise<string[]> {
+  const safe = sanitizeFtsQuery(title, true);
+  if (!safe) return [];
+  const r = await env.DB.prepare(
+    `SELECT n.id
+     FROM notes_fts f
+     JOIN notes n ON n.rowid = f.rowid
+     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL
+       AND (n.kind IS NULL OR n.kind <> 'task')
+     ORDER BY rank
+     LIMIT 5`
+  ).bind(safe).all<{ id: string }>();
+  return (r.results ?? []).map((row) => row.id);
+}
+
+// Nota VIVA que carrega uma tag exata — usada pela chave de idempotência do
+// save_note (tag reservada `dedupe:<key>`, spec 71). Tags são normalizadas
+// (trim+lowercase) na escrita; o caller normaliza a chave do mesmo jeito.
+export async function findActiveNoteIdByTag(env: Env, tag: string): Promise<string | null> {
+  const row = await env.DB.prepare(
+    `SELECT n.id
+     FROM tags t
+     JOIN notes n ON n.id = t.note_id
+     WHERE t.tag = ? AND n.deleted_at IS NULL
+     LIMIT 1`
+  ).bind(tag).first<{ id: string }>();
+  return row?.id ?? null;
+}
+
 // Selo de privacidade (spec 59): includePrivate default false appenda `AND private = 0`,
 // então uma credencial sem escopo `private` recebe null numa task privada (indistinguível
 // de inexistente — get_task devolve o MESMO erro de "not found"). A sessão do dono, o
