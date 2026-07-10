@@ -11,6 +11,7 @@ import { newId } from '../util/id.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
 import { listApiKeys, type ApiKeyRow } from '../auth/api-keys.js';
+import { logTaskActivity } from '../db/task-activity.js';
 import {
   USER_CAP, USER_TYPES, type UserType, type BrainUser,
   listUsers, getUserById, countUsers, createUser, updateUser, setUserAvatar,
@@ -334,6 +335,21 @@ export async function handleTaskAssigneesPost(req: Request, env: Env): Promise<R
     if (!allowed.has(uid)) return htmlResponse(`Usuário '${uid}' não existe ou está arquivado`, 400);
   }
 
-  await setTaskAssignees(env, taskId, rawIds, Date.now());
+  const now = Date.now();
+  await setTaskAssignees(env, taskId, rawIds, now);
+
+  // Log de atividade (spec 74): nomes legíveis, ANTES (já lido acima em `current`) vs
+  // DEPOIS (relido pra refletir o replace-set que acabou de gravar, na mesma ordem
+  // canônica dono-primeiro de listAssigneesForTask — mais confiável que remontar a
+  // partir de `rawIds`, cuja ordem é a dos checkboxes do form).
+  const oldLabel = current.length > 0 ? current.map((a) => a.name).join(', ') : 'Sem responsável';
+  const afterList = await listAssigneesForTask(env, taskId);
+  const newLabel = afterList.length > 0 ? afterList.map((a) => a.name).join(', ') : 'Sem responsável';
+  if (oldLabel !== newLabel) {
+    await logTaskActivity(env, taskId, `oauth:${session.email}`, [
+      { field: 'assignees', old_value: oldLabel, new_value: newLabel },
+    ]);
+  }
+
   return new Response(null, { status: 302, headers: { location: `/app/tasks/${taskId}` } });
 }

@@ -26,13 +26,13 @@ import {
   listUsers,
   listAssigneesForTask,
   resolveActorProfile,
-  TASK_STATUSES,
   KNOWLEDGE_KINDS,
   type NoteRow,
   type EdgeRow,
   type NoteKind,
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
+import { listTaskActivity } from '../db/task-activity.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { applyMentions } from '../mcp/mentions.js';
 import { newId } from '../util/id.js';
@@ -1040,11 +1040,12 @@ function renderVisibilitySection(o: {
   const kindLabel = o.kind === 'task' ? 'task' : 'nota';
   const endpoint = o.kind === 'task' ? '/app/tasks' : '/app/notes';
   const privateAction = o.kind === 'task' ? '/app/tasks/private' : `/app/notes/${esc(o.id)}/private`;
+  // Compacto (pedido do dono, 10/07/2026): só o rótulo visível; a explicação
+  // longa vira tooltip (title) — sem legenda ocupando a sidebar.
   const opt = (value: string, icon: string, title: string, desc: string) => `
-      <label class="vis-opt${state === value ? ' selected' : ''}">
+      <label class="vis-opt${state === value ? ' selected' : ''}" title="${esc(desc)}">
         <input type="radio" name="visibility" value="${value}"${state === value ? ' checked' : ''} />
         <span class="vis-opt-head"><span aria-hidden="true">${icon}</span>${title}</span>
-        <span class="vis-opt-desc">${desc}</span>
       </label>`;
   const shareStateHtml = o.shared
     ? (o.expired
@@ -1062,8 +1063,8 @@ function renderVisibilitySection(o: {
       data-state="${state}" data-shared="${o.shared ? '1' : '0'}">
       <h2>Visibilidade</h2>
       <div class="vis-group" role="radiogroup" aria-label="Visibilidade da ${kindLabel}">
-        ${opt('private', '🔒', 'Privado', 'Só você e credenciais com escopo <code>private</code>. Nunca tem link público.')}
-        ${opt('normal', '👥', 'Normal', 'Você + seus agentes. NÃO fica na internet.')}
+        ${opt('private', '🔒', 'Privado', 'Só você e credenciais com escopo private. Nunca tem link público.')}
+        ${opt('normal', '👥', 'Normal', 'Você + seus agentes. Não fica na internet.')}
         ${opt('link', '🔗', 'Link público', 'Além do normal: quem tiver o link abre uma cópia read-only.')}
       </div>
       <div class="vis-panel" data-vis-panel${state === 'link' ? '' : ' hidden'}>
@@ -1091,6 +1092,9 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   done: 'Concluído',
   canceled: 'Cancelado',
 };
+
+// Ícone de lápis inline (CSP sem asset externo; stroke currentColor herda o tema).
+const PENCIL_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
 
 // Detalhe de TASK (/app/tasks/<id>). Task mora na mesma tabela que nota (kind='task'),
 // mas NÃO se apresenta como nota: sem grafo, sem edges, sem "Copiar link" de nota —
@@ -1275,36 +1279,70 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>`;
   }
 
-  // Botão concluir POSTa em /app/tasks/complete. A CSP do app (script-src 'self',
-  // sem unsafe-inline/script-src-attr — ver src/web/render.ts:115) BLOQUEIA
-  // handler inline; o wiring vive em client/note-media.ts, que já é carregado
-  // nesta página, via data-attribute [data-task-complete].
-  const completeBtn = canClose
-    ? `<button type="button" class="btn task-d-btn task-d-complete" data-task-complete data-task-id="${esc(task.id)}">✓ Concluir</button>`
-    : '';
-
-  // Coluna do Kanban (spec 52): a sidebar troca o antigo select cru de "Status" por
-  // um select de COLUNA (mais granular, espelha a interação do board — spec 51).
-  // Só colunas ATIVAS são selecionáveis; muda via POST /app/tasks/move (não
-  // /app/tasks/update), que já deriva status+completed_at da categoria da coluna.
-  // Se a coluna atual da task estiver arquivada (drift raro — ex. seed
-  // col_cancelado nasce arquivado), aparece como opção desabilitada só pra não
-  // mentir o estado — o dono escolhe uma ativa pra sair dali.
+  // Funil de status estilo Pipedrive (pedido do dono, 10/07/2026): as colunas
+  // ATIVAS do kanban viram etapas clicáveis numa barra horizontal no topo do
+  // detalhe — substitui o antigo select "Coluna" da sidebar E o botão "✓ Concluir"
+  // (mover pra coluna de categoria done É o novo concluir; o endpoint
+  // /app/tasks/move já deriva status+completed_at da categoria). Clique numa
+  // etapa → POST /app/tasks/move no client (task-edit.ts), que repinta a barra
+  // sem reload. Coluna atual arquivada (drift raro): etapa extra desabilitada no
+  // fim, só pra não mentir o estado.
   const allColumns = await listKanbanColumns(env, true);
   const activeColumns = allColumns.filter((c) => c.archived_at === null);
   const resolvedCol = resolveTaskColumn(task, allColumns);
-  const columnGroups = TASK_STATUSES.map((cat) => {
-    const cols = activeColumns.filter((c) => c.category === cat);
-    if (cols.length === 0) return '';
-    const opts = cols
-      .map((c) => `<option value="${esc(c.id)}"${resolvedCol?.id === c.id ? ' selected' : ''}>${esc(c.label)}</option>`)
-      .join('');
-    return `<optgroup label="${esc(TASK_STATUS_LABELS[cat] ?? cat)}">${opts}</optgroup>`;
+  const currentColIdx = resolvedCol ? activeColumns.findIndex((c) => c.id === resolvedCol.id) : -1;
+  const funnelSteps = activeColumns.map((c, i) => {
+    const cls = ['task-funnel-step'];
+    if (currentColIdx >= 0 && i <= currentColIdx) cls.push('reached');
+    if (i === currentColIdx) cls.push('current');
+    if (c.category === 'done') cls.push('cat-done');
+    if (c.category === 'canceled') cls.push('cat-canceled');
+    return `<button type="button" class="${cls.join(' ')}" data-funnel-col="${esc(c.id)}" title="Mover pra ${esc(c.label)}"><span class="task-funnel-lbl">${esc(c.label)}</span></button>`;
   }).join('');
-  const archivedCurrentOption = resolvedCol && resolvedCol.archived_at !== null
-    ? `<option value="${esc(resolvedCol.id)}" selected disabled>${esc(resolvedCol.label)} (arquivada)</option>`
+  const archivedFunnelStep = resolvedCol && resolvedCol.archived_at !== null
+    ? `<button type="button" class="task-funnel-step current archived" disabled><span class="task-funnel-lbl">${esc(resolvedCol.label)} (arquivada)</span></button>`
     : '';
-  const columnSelectHtml = `<select class="task-edit-select" data-field="column" aria-label="Coluna">${archivedCurrentOption}${columnGroups}</select>`;
+  const funnelHtml = `<div class="task-funnel" data-funnel role="group" aria-label="Etapa da task">${funnelSteps}${archivedFunnelStep}</div>`;
+
+  // Histórico (pedido do dono, 10/07/2026): toda edição gera log (task_activity,
+  // migration 0019) — aqui é só leitura + tradução pra frases PT. Actors
+  // repetidos resolvem uma vez só (o mesmo resolveActorProfile do "Criado por").
+  const activityLog = await listTaskActivity(env, task.id, 30);
+  const actorNames = new Map<string, string>();
+  for (const entry of activityLog) {
+    const a = entry.actor ?? '';
+    if (actorNames.has(a)) continue;
+    if (!a) { actorNames.set(a, 'sistema'); continue; }
+    const prof = await resolveActorProfile(env, a);
+    actorNames.set(a, prof?.user?.name ?? prof?.key_name ?? 'sistema');
+  }
+  const historyPhrase = (e: { field: string; old_value: string | null; new_value: string | null }): string => {
+    const nv = e.new_value ?? '';
+    const ov = e.old_value ?? '';
+    switch (e.field) {
+      case 'created': return 'criou a task';
+      case 'title': return `renomeou pra "${nv}"`;
+      case 'body': return 'editou a descrição';
+      case 'column': return ov ? `moveu de ${ov} pra ${nv}` : `moveu pra ${nv}`;
+      case 'priority': return `prioridade: ${ov || '(nenhuma)'} → ${nv || '(nenhuma)'}`;
+      case 'due': return `prazo: ${nv}`;
+      case 'tags': return `tags: ${nv}`;
+      case 'project': return `projeto: ${nv || '(nenhum)'}`;
+      case 'assignees': return `responsáveis: ${nv || 'ninguém'}`;
+      case 'visibility': return `visibilidade: ${nv}`;
+      case 'share': return nv;
+      case 'status': return `status: ${nv}`;
+      default: return `${e.field}: ${nv}`;
+    }
+  };
+  const historySection = activityLog.length
+    ? `<details class="task-history">
+        <summary class="task-history-summary">Histórico (${activityLog.length})</summary>
+        <ul class="task-history-list">${activityLog.map((e) => `
+          <li><span class="task-history-when">${esc(formatBrtDateTime(e.at))}</span> · <span class="task-history-who">${esc(actorNames.get(e.actor ?? '') ?? 'sistema')}</span> ${esc(historyPhrase(e))}</li>`).join('')}
+        </ul>
+      </details>`
+    : '';
 
   // Projeto/pasta (spec 58): select na sidebar — projetos ATIVOS + "Sem projeto".
   // Persiste via POST /app/tasks/update (patch.project_id). Se a task está num projeto
@@ -1354,27 +1392,27 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       <span class="task-d-tag">Tarefa</span>
       ${isPrivate ? '<span class="private-badge" title="Task privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
       ${originNote ? `<span class="task-d-origin">de <a href="/app/notes/${esc(originNote.id)}">${esc(originNote.title)}</a></span>` : ''}
-      <div class="task-d-actions">${completeBtn}<a href="/app/tasks" class="btn task-d-btn">Abrir no board</a></div>
+      <div class="task-d-actions"><a href="/app/tasks" class="btn task-d-btn">Abrir no board</a></div>
     </div>
+
+    ${funnelHtml}
 
     <div class="task-edit" data-task-id="${esc(task.id)}" data-updated-at="${task.updated_at}">
       <div class="task-detail-grid">
         <div class="task-detail-main">
           <div class="task-edit-titlerow">
-            <textarea class="task-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da task" aria-label="Título da task">${esc(task.title)}</textarea>
-            <button type="button" class="btn task-d-btn task-edit-save" data-save="title">Salvar</button>
+            <textarea class="task-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da task" aria-label="Título da task" title="Clique pra editar — Enter salva, Esc cancela">${esc(task.title)}</textarea>
           </div>
 
           <div class="task-edit-bodyrow">
             <div class="task-edit-bodyview" data-bodyview>
               <div class="task-edit-bodyhead">
                 <span class="task-edit-lbl">Descrição</span>
-                <button type="button" class="btn task-d-btn task-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
+                <button type="button" class="task-edit-pencil" data-edit-body title="Editar descrição" aria-label="Editar descrição">${PENCIL_SVG}</button>
               </div>
               <div class="note-body task-edit-preview${task.body.trim() ? '' : ' task-edit-preview-empty'}" data-preview>${task.body.trim()
                 ? renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })
                 : '<span class="task-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
-              <button type="button" class="btn task-d-btn task-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
             </div>
             <div class="task-edit-bodyedit" data-bodyedit hidden>
               <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
@@ -1391,10 +1429,6 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
         </div>
 
         <aside class="task-detail-sidebar">
-          <div class="task-sidebar-field">
-            <span class="task-sidebar-lbl">Coluna</span>
-            ${columnSelectHtml}
-          </div>
           <div class="task-sidebar-field">
             <span class="task-sidebar-lbl">Projeto</span>
             ${projectSelectHtml}
@@ -1434,6 +1468,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           ${datesHtml}
 
           ${visibilitySection}
+
+          ${historySection}
         </aside>
       </div>
     </div>
@@ -1506,21 +1542,20 @@ const SHARE_SECTION_CSS = `
 .task-share-status.err { color:var(--danger); }
 .task-share-status.saving { color:var(--text-dim); }
 
-/* Seletor único de visibilidade (spec 65) — radiogroup de 3 níveis, task e nota */
+/* Seletor único de visibilidade (spec 65) — radiogroup de 3 níveis, task e nota.
+   Compacto (10/07/2026): só rótulos, explicação no title (tooltip do browser). */
 .task-visibility h2 { font-size:15px; margin-bottom:10px; }
-.vis-group { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.vis-group { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
 .vis-opt {
-  display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px;
-  align-items:center; border:1px solid var(--border); border-radius:var(--radius-sm);
-  padding:10px 12px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:7px;
+  border:1px solid var(--border); border-radius:999px;
+  padding:5px 12px; cursor:pointer;
   transition:border-color 140ms var(--ease), background 140ms var(--ease);
 }
 .vis-opt:hover { border-color:var(--border-strong); }
 .vis-opt.selected { border-color:var(--accent-lav); background:rgba(var(--accent-lav-rgb),0.08); }
-.vis-opt input[type="radio"] { grid-row:1 / span 2; margin:0; accent-color:var(--accent-lav); }
-.vis-opt-head { display:flex; align-items:center; gap:7px; font-size:13.5px; font-weight:600; color:var(--text); }
-.vis-opt-desc { grid-column:2; font-size:12px; color:var(--text-dim); line-height:1.45; }
-.vis-opt-desc code { font-size:11px; }
+.vis-opt input[type="radio"] { margin:0; accent-color:var(--accent-lav); }
+.vis-opt-head { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:var(--text); white-space:nowrap; }
 .vis-panel { border-top:1px dashed var(--border); padding-top:12px; margin-bottom:10px; }
 .vis-panel[hidden] { display:none; }
 `;
@@ -1533,8 +1568,44 @@ const TASK_DETAIL_CSS = `
 .task-d-tag { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--accent-lav); border:1px solid rgba(var(--accent-lav-rgb),0.35); border-radius:999px; padding:2px 10px; }
 .task-d-actions { display:flex; gap:10px; margin-left:auto; }
 /* .task-d-btn: definição única em SHARE_SECTION_CSS (co-classe do .btn, Onda 5) */
-.task-d-complete { border-color:var(--success-border); color:var(--success); }
-.task-d-complete:hover { background:var(--success-bg); }
+
+/* Funil de status estilo Pipedrive (10/07/2026): etapas em chevron, esquerda →
+   direita, com a etapa atual + anteriores preenchidas. Cada etapa é um <button>
+   (CSP: wiring em task-edit.ts). clip-path desenha a seta; margem negativa
+   encaixa uma etapa na outra. Rola horizontal no mobile. */
+.task-funnel { display:flex; margin:0 0 22px; overflow-x:auto; padding-bottom:2px; }
+.task-funnel-step {
+  position:relative; flex:1 1 0; min-width:92px; height:34px; border:none; cursor:pointer;
+  background:var(--bg-accent); color:var(--text-dim); font-family:inherit; font-size:12px; font-weight:600;
+  display:inline-flex; align-items:center; justify-content:center; padding:0 18px 0 22px;
+  clip-path:polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%, 12px 50%);
+  margin-left:-8px; transition:background 140ms var(--ease), color 140ms var(--ease);
+}
+.task-funnel-step:first-child { clip-path:polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%); margin-left:0; padding-left:16px; }
+.task-funnel-step:hover { background:var(--surface-raised); color:var(--text); }
+.task-funnel-step.reached { background:rgba(var(--accent-lav-rgb),0.28); color:var(--text); }
+.task-funnel-step.current { background:var(--accent-lav); color:#fff; }
+.task-funnel-step.current.cat-done { background:var(--success); }
+.task-funnel-step.reached.cat-done:not(.current) { background:var(--success-bg); }
+.task-funnel-step.current.cat-canceled { background:var(--surface-raised); color:var(--text-dim); }
+.task-funnel-step.archived { cursor:default; opacity:0.6; }
+.task-funnel-lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Histórico (10/07/2026): feed compacto de edições na sidebar */
+.task-history { border-top:1px dashed var(--border); padding-top:12px; }
+.task-history-summary {
+  cursor:pointer; font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--text-subtle); font-weight:600; list-style:none;
+}
+.task-history-summary::-webkit-details-marker { display:none; }
+.task-history-summary::before { content:'▸ '; }
+.task-history[open] .task-history-summary::before { content:'▾ '; }
+.task-history-list {
+  list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:7px;
+  max-height:260px; overflow-y:auto; font-size:12px; color:var(--text-dim); line-height:1.45;
+}
+.task-history-when { color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+.task-history-who { color:var(--text); font-weight:600; }
 
 /* Título: input grande, borda invisível até focar (estilo ClickUp) */
 .task-edit-titlerow { display:flex; gap:12px; align-items:center; margin-bottom:20px; }
@@ -1676,7 +1747,15 @@ const TASK_DETAIL_CSS = `
    lado da textarea de edição). Mesmo fix do note-edit-bodyview. */
 .task-edit-bodyview[hidden] { display:none; }
 .task-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.task-edit-editbtn { align-self:flex-end; }
+/* Botão-ícone de lápis (10/07/2026): único ponto de entrada da edição da
+   descrição — discreto até o hover. */
+.task-edit-pencil {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:28px; height:28px; border-radius:var(--radius-sm);
+  border:1px solid transparent; background:transparent; color:var(--text-dim); cursor:pointer;
+  transition:color 140ms var(--ease), background 140ms var(--ease), border-color 140ms var(--ease);
+}
+.task-edit-pencil:hover { color:var(--text); background:var(--bg-accent); border-color:var(--border); }
 .task-edit-preview-empty { color:var(--text-subtle); }
 .task-edit-empty-trigger { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
 .task-edit-empty-trigger:hover { color:var(--text); }

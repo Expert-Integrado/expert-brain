@@ -674,6 +674,23 @@ export function configPageScript(): string {
     ta.addEventListener('input', render);
     render();
   });
+
+  // ── Seção Tags (pedido 10/07): confirmação no apagar + filtro client-side ──
+  document.querySelectorAll('form.tag-delete-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      var tag = f.getAttribute('data-tag') || 'esta tag';
+      if (!confirm('Apagar a tag "' + tag + '" de todas as notas e tasks? As notas ficam, só o rótulo some.')) e.preventDefault();
+    });
+  });
+  var tagsFilter = document.getElementById('tags-filter');
+  if (tagsFilter) {
+    tagsFilter.addEventListener('input', function () {
+      var q = tagsFilter.value.trim().toLowerCase();
+      document.querySelectorAll('#tags-tbody tr[data-tag-row]').forEach(function (tr) {
+        tr.style.display = !q || (tr.getAttribute('data-tag-row') || '').indexOf(q) !== -1 ? '' : 'none';
+      });
+    });
+  }
 })();
 `;
 }

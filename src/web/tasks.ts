@@ -45,7 +45,9 @@ import {
   TASK_PROJECT_CAP,
   listAssigneesForTasks,
 } from '../db/queries.js';
+import { renameTag, deleteTag } from '../db/tag-admin.js';
 import { validateDomains } from '../db/validation.js';
+import { logTaskActivity } from '../db/task-activity.js';
 import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
@@ -268,7 +270,12 @@ export async function handleTaskMovePost(req: Request, env: Env): Promise<Respon
   const columnId = (body.column_id || '').trim();
   if (!id) return json({ error: 'id required' }, 400);
   if (!columnId) return json({ error: 'column_id required' }, 400);
-  const result = await moveTaskToColumn(env, id, columnId, Date.now());
+  // Autoria (spec 74, log de atividade): authTask aceita Bearer (cron/VPS, sem
+  // identidade individual) OU sessão de browser — resolve o email só quando é sessão;
+  // Bearer loga com actor null (mesmo racional de created_by/updated_by).
+  const moveSession = await requireSession(req, env);
+  const moveActor = moveSession.ok ? `oauth:${moveSession.email}` : null;
+  const result = await moveTaskToColumn(env, id, columnId, Date.now(), moveActor);
   if (result === 'column-not-found') return json({ error: 'column not found' }, 404);
   if (result === 'not-found') return json({ error: 'task not found' }, 404);
   // updated_at aditivo (spec 52): o detalhe da task usa o select de coluna como
@@ -302,11 +309,15 @@ export async function handleTaskCompletePost(req: Request, env: Env): Promise<Re
   try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
   const id = (body.id || '').trim();
   if (!id) return json({ error: 'id required' }, 400);
+  // Autoria (spec 74, log de atividade): idem handleTaskMovePost — Bearer sem
+  // identidade individual loga null, sessão de browser loga oauth:<email>.
+  const completeSession = await requireSession(req, env);
+  const completeActor = completeSession.ok ? `oauth:${completeSession.email}` : null;
   // completeTask agora devolve a task OU um sentinel de controle (spec 14):
   // 'not-found' | 'conflict' | 'already-done'. O board não usa versionamento
   // otimista (sem expected_updated_at), então 'conflict' não ocorre aqui;
   // 'already-done' é um no-op idempotente que também terminou como done.
-  const result = await completeTask(env, id, Date.now(), body.outcome);
+  const result = await completeTask(env, id, Date.now(), body.outcome, undefined, completeActor);
   if (result === 'not-found') return json({ error: 'task not found' }, 404);
   return json({ ok: true, id, status: 'done' });
 }
@@ -578,6 +589,9 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
 
   const now = Date.now();
   const id = newId();
+  // Autoria (spec 74, log de atividade): idem handleTaskMovePost/handleTaskCompletePost.
+  const createSession = await requireSession(req, env);
+  const createActor = createSession.ok ? `oauth:${createSession.email}` : null;
   await insertTask(env, {
     id,
     title,
@@ -591,7 +605,7 @@ export async function handleTaskCreatePost(req: Request, env: Env): Promise<Resp
     created_at: now,
     updated_at: now,
     column_id: columnId,
-  });
+  }, createActor);
 
   return json({
     ok: true,
@@ -638,7 +652,8 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
   const renew = body.renew === true;
   const includeMedia = body.include_media === true;
 
-  const result = await createShare(env, id, { expiresDays, renew, includeMedia }, Date.now());
+  const now = Date.now();
+  const result = await createShare(env, id, { expiresDays, renew, includeMedia }, now);
   if (!result.ok) {
     if (result.reason === 'not-found') return json({ error: 'not found' }, 404);
     // Selo de privacidade (spec 31/59): nota/task privada não pode ter link público.
@@ -652,6 +667,17 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
       expires_at: result.expires_at,
       expires_brt: result.expires_brt,
     });
+  }
+  // Log de atividade (spec 74): só quando o alvo é uma TASK — este handler também
+  // atende nota de conhecimento (alias /app/notes/share), que não tem feed de
+  // atividade de task. createShare não devolve o `kind`, então confirma via getTaskById
+  // (mesma leitura que já filtra kind='task' + viva).
+  const sharedTask = await getTaskById(env, id, true);
+  if (sharedTask) {
+    const days = Math.round((result.expires_at - now) / (24 * 60 * 60 * 1000));
+    await logTaskActivity(env, id, `oauth:${session.email}`, [
+      { field: 'share', old_value: null, new_value: `link público criado (${days}d)` },
+    ]);
   }
   return json({
     ok: true,
@@ -710,11 +736,18 @@ export async function handleTaskUnsharePost(req: Request, env: Env): Promise<Res
   const id = typeof body.id === 'string' ? body.id.trim() : '';
   if (!id) return json({ error: 'id required' }, 400);
 
+  // `kind` já vem nesta MESMA leitura (zero query extra) pra decidir se loga
+  // atividade de task (spec 74) — nota de conhecimento não tem feed de task.
   const note = await env.DB.prepare(
-    `SELECT id FROM notes WHERE id = ? AND deleted_at IS NULL`
-  ).bind(id).first<{ id: string }>();
+    `SELECT id, kind FROM notes WHERE id = ? AND deleted_at IS NULL`
+  ).bind(id).first<{ id: string; kind: string | null }>();
   if (!note) return json({ error: 'not found' }, 404);
   const revoked = await revokeShare(env, id);
+  if (revoked && note.kind === 'task') {
+    await logTaskActivity(env, id, `oauth:${session.email}`, [
+      { field: 'share', old_value: 'ativo', new_value: 'revogado' },
+    ]);
+  }
   return json({ ok: true, revoked });
 }
 
@@ -992,6 +1025,45 @@ export async function handleProjectArchivePost(req: Request, env: Env): Promise<
   return projectsRedirect();
 }
 
+// ─────────────── Gestão global de tags (seção Tags de /app/config) ───────────────
+// Tags são vocabulário aberto (nascem na edição de nota/task); aqui só renomear em
+// massa e apagar. Lógica de banco em db/tag-admin.ts.
+
+const TAGS_REDIRECT = '/app/config?saved=tags#tags';
+const tagsRedirect = (): Response =>
+  new Response(null, { status: 302, headers: { location: TAGS_REDIRECT } });
+
+// POST /app/tasks/tags/rename — form { from, to }. Merge-safe (nota que já tem a
+// tag destino não duplica).
+export async function handleTagRenamePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const from = String(form.get('from') ?? '').trim();
+  const to = String(form.get('to') ?? '').trim();
+  if (!from || !to) return htmlResponse('Tag de origem e novo nome são obrigatórios', 400);
+  if (to.length > 60) return htmlResponse('Nome da tag deve ter até 60 caracteres', 400);
+  if (to.toLowerCase().startsWith('dedupe:')) return htmlResponse('Prefixo dedupe: é reservado', 400);
+
+  const n = await renameTag(env, from, to);
+  if (n === null) return htmlResponse('Tag não encontrada', 404);
+  return tagsRedirect();
+}
+
+// POST /app/tasks/tags/delete — form { tag }. Remove a tag de todas as notas.
+export async function handleTagDeletePost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+
+  const tag = String(form.get('tag') ?? '').trim();
+  if (!tag) return htmlResponse('tag obrigatória', 400);
+
+  await deleteTag(env, tag);
+  return tagsRedirect();
+}
+
 // ───────────────────────── SSR page ─────────────────────────
 
 // Cor de coluna só é aceita como hex #rrggbb (validada na escrita); qualquer outra
@@ -1134,6 +1206,12 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="today" type="button">Vencem hoje</button>
       <button class="task-filter" data-filter="week" type="button">Esta semana</button>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
+      <div class="task-date-filter" id="task-date-filter" title="Filtrar por intervalo de vencimento">
+        <input type="date" class="task-date-input" id="task-date-from" aria-label="Vencimento a partir de" />
+        <span class="task-date-sep">até</span>
+        <input type="date" class="task-date-input" id="task-date-to" aria-label="Vencimento até" />
+        <button type="button" class="task-date-clear" id="task-date-clear" hidden aria-label="Limpar filtro de data" title="Limpar filtro de data">✕</button>
+      </div>
       <span class="task-toolbar-spacer"></span>
       <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
       <div class="task-tag-filter" id="task-tag-filter">
@@ -1406,6 +1484,28 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* Bolinha de cor do projeto — usada pelo breadcrumb do card (Onda 5) */
 .task-project-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); flex: none; }
 
+/* Filtro de vencimento por intervalo (pedido 10/07): pill com dois date inputs */
+.task-date-filter {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 10px;
+  transition: border-color 160ms var(--ease);
+}
+.task-date-filter.has-value { border-color: var(--accent-lav); }
+.task-date-input {
+  background: none; border: none; color: var(--text); font-size: 12.5px; font-family: inherit;
+  padding: 4px 0; width: 118px; cursor: pointer;
+}
+.task-date-input:focus { outline: none; }
+.task-date-input::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
+.task-date-sep { font-size: 11.5px; color: var(--text-subtle); }
+.task-date-clear {
+  background: none; border: none; color: var(--accent-lav); font-size: 12px; line-height: 1;
+  cursor: pointer; padding: 4px 2px; display: inline-flex; align-items: center;
+}
+.task-date-clear:hover { color: var(--text); }
+.task-date-clear[hidden] { display: none; }
+
 /* Filtro de projeto no header do board (spec 58) */
 .task-toolbar-spacer { flex: 1 1 auto; }
 .task-project-filter {
@@ -1464,6 +1564,10 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   font-size: 13px; padding: 7px 9px; border-radius: var(--radius-sm); cursor: pointer;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   transition: background 120ms var(--ease);
+  /* flex:none é o FIX do texto cortado (bug reportado 10/07): a lista é flex column
+     com max-height+overflow, e overflow:hidden no botão zera o min-height automático
+     — sem isso o flex-shrink esmaga cada linha verticalmente quando há muitas tags. */
+  flex: none;
 }
 .task-tag-opt:hover { background: rgba(167,139,250,0.12); }
 .task-tag-opt.selected { color: var(--accent-lav); font-weight: 600; }

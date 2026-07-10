@@ -8,14 +8,14 @@ export const ASSET_HASHES: Record<string, string> = {
   "note-media.bundle.js": "24c52523002f",
   "note-edit.bundle.js": "3415e546670c",
   "shell.bundle.js": "75aebd3ba9af",
-  "tasks.bundle.js": "b06b1e57b8af",
-  "task-edit.bundle.js": "71a0c5a19572",
-  "contact-page.bundle.js": "264fb56c9197",
+  "tasks.bundle.js": "d2090783b091",
+  "task-edit.bundle.js": "0dd825243b66",
+  "contact-page.bundle.js": "8f9084dde7d4",
   "sim-worker.bundle.js": "2b1cd681554f",
   "home.bundle.js": "519965cc9ad9",
   "journal.bundle.js": "c2dded04f4a4",
   "styles.css": "e7283ae54018",
-  "config.bundle.js": "1df1866daba3"
+  "config.bundle.js": "2933f29d8af9"
 };
 
 export function assetVersion(name: string): string {

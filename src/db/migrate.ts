@@ -400,6 +400,32 @@ const MIGRATION_0018_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_similar_edges_score ON similar_edges(score)`,
 ];
 
+// 0019 — LOG DE ATIVIDADE DE TASK (spec 74). Histórico ANTES/DEPOIS por campo editado
+// (título, corpo, coluna, prioridade, prazo, tags, projeto, responsáveis, privacidade,
+// compartilhamento, status), exibido no detalhe da task. Tabela PRÓPRIA (não é nota) —
+// mesma classe de task_comments/task_projects/mentions: não embeda, não entra no
+// grafo/recall/FTS. ON DELETE CASCADE limpa o log quando a task é HARD-deletada; o
+// soft-delete NÃO cascateia (mesma convenção das demais tabelas filhas), então o
+// histórico sobrevive na lixeira e volta junto se a task for restaurada. `actor`
+// espelha notes.created_by/updated_by (id do PAT ou 'oauth:<email>'; NULL quando a
+// escrita não tem credencial identificável, ex. bearer de cron). `field` é um enum
+// fechado em CÓDIGO — não CHECK — pra um campo novo no futuro não exigir migration.
+// O único índice (task_id, at DESC) casa com o único acesso de leitura: listTaskActivity
+// sempre filtra por task, mais recente primeiro. Tudo aditivo: tabela nova + índice,
+// zero linha existente tocada. Ver src/db/task-activity.ts.
+const MIGRATION_0019_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS task_activity (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    at         INTEGER NOT NULL,
+    actor      TEXT,
+    field      TEXT NOT NULL,
+    old_value  TEXT,
+    new_value  TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_id, at DESC)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -419,6 +445,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0016_share_note_media', stmts: MIGRATION_0016_STMTS },
   { id: '0017_users', stmts: MIGRATION_0017_STMTS },
   { id: '0018_similar_edges_score_idx', stmts: MIGRATION_0018_STMTS },
+  { id: '0019_task_activity', stmts: MIGRATION_0019_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

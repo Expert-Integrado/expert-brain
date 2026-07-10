@@ -78,7 +78,7 @@ describe('detalhe de TASK — campo único de corpo (spec 74)', () => {
     });
   }
 
-  it('descrição com texto: view renderizada + botão Editar; textarea escondida; rótulos antigos sumiram', async () => {
+  it('descrição com texto: view renderizada + lápis único de editar; textarea escondida; rótulos antigos sumiram', async () => {
     await seedTask('t1', '# Oi\n\ncorpo da task');
     const res = await SELF.fetch('https://x/app/tasks/t1', { headers: { cookie: await cookie() } });
     expect(res.status).toBe(200);
@@ -87,7 +87,9 @@ describe('detalhe de TASK — campo único de corpo (spec 74)', () => {
     expect(html).toContain('data-bodyedit');
     expect(html).toContain('data-edit-body');
     expect(html).toContain('<h1>Oi</h1>');
-    expect(html).toContain('title="Editar em markdown"');
+    // Reforma 10/07: o botão "Editar" de cima virou UM lápis discreto no canto
+    expect(html).toContain('task-edit-pencil');
+    expect(html).toContain('title="Editar descrição"');
     expect(html).toContain('data-field="body"');
     expect(html).toContain('corpo da task');
     expect(html).not.toContain('Descrição (markdown)');

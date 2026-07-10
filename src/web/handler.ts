@@ -14,7 +14,7 @@ import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from '
 import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost } from './tasks.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost, handleTagRenamePost, handleTagDeletePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost } from './inbox.js';
 import { handleContactsSso } from './contacts-sso.js';
@@ -101,6 +101,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/projects/update' && req.method === 'POST') return handleProjectUpdatePost(req, env);
   if (path === '/app/tasks/projects/reorder' && req.method === 'POST') return handleProjectReorderPost(req, env);
   if (path === '/app/tasks/projects/archive' && req.method === 'POST') return handleProjectArchivePost(req, env);
+  // Gestão global de tags (pedido 10/07): renomear em massa e apagar, via seção Tags de /app/config.
+  if (path === '/app/tasks/tags/rename' && req.method === 'POST') return handleTagRenamePost(req, env);
+  if (path === '/app/tasks/tags/delete' && req.method === 'POST') return handleTagDeletePost(req, env);
   // Edição inline de task pela UI (spec 36): patch de title/body/due/priority/status.
   if (path === '/app/tasks/update' && req.method === 'POST') return handleTaskUpdatePost(req, env);
   // Criação de task pela UI (spec 36 fase 2): title obrigatório + body/priority/due opcionais.

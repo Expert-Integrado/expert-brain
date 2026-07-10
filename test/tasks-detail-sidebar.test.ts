@@ -57,12 +57,35 @@ describe('detalhe de task — sidebar de metadados em duas colunas (spec 52)', (
     expect(html).toContain('task-detail-sidebar');
   });
 
-  it('select de coluna lista as colunas ativas agrupadas por categoria, com a atual selecionada', async () => {
+  it('funil de etapas no topo substitui o select de coluna: chevrons por coluna ativa, atual marcada (spec 74)', async () => {
     await seedTask('t1', 'in_progress');
     const html = await detail('t1');
-    expect(html).toContain('data-field="column"');
-    expect(html).toContain('<optgroup label="Em progresso">');
-    expect(html).toContain('value="col_progresso" selected');
+    // funil presente, com um chevron clicável por coluna ativa e a atual marcada
+    expect(html).toContain('data-funnel');
+    expect(html).toContain('data-funnel-col="col_aberto"');
+    expect(html).toContain('data-funnel-col="col_progresso"');
+    expect(html).toContain('data-funnel-col="col_concluido"');
+    expect(html).not.toContain('data-funnel-col="col_cancelado"'); // arquivada não vira etapa
+    expect(html).toMatch(/task-funnel-step[^"]*current[^"]*"[^>]*data-funnel-col="col_progresso"/);
+    // o select antigo e o botão Concluir morreram
+    expect(html).not.toContain('data-field="column"');
+    expect(html).not.toContain('data-complete');
+  });
+
+  it('descrição tem UM só botão de editar (lápis) e o título não tem botão Salvar (spec 74)', async () => {
+    await seedTask('t1');
+    const html = await detail('t1');
+    expect((html.match(/data-edit-body/g) ?? []).length).toBe(1);
+    expect(html).toContain('task-edit-pencil');
+    expect(html).not.toContain('data-save="title"');
+  });
+
+  it('histórico de atividades aparece na sidebar quando há entradas (spec 74)', async () => {
+    await seedTask('t1');
+    const html = await detail('t1');
+    // insertTask loga 'created' — o histórico já nasce com 1 entrada
+    expect(html).toContain('task-history');
+    expect(html).toContain('criou a task');
   });
 
   it('editor de tags expõe as tags atuais (sem dedupe:) via data-tags', async () => {

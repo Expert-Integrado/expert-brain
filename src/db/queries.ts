@@ -1,4 +1,9 @@
 import type { Env } from '../env.js';
+import { priorityLabel } from '../util/priority.js';
+import {
+  logTaskActivity, truncateForActivity, dueLabelForActivity,
+  statusLabelForActivity, formatTagListForActivity, type TaskActivityInput,
+} from './task-activity.js';
 
 export const EDGE_TYPES = [
   'analogous_to','same_mechanism_as','instance_of','generalizes',
@@ -288,22 +293,31 @@ export async function setTaskPrivate(
   env: Env, id: string, priv: 0 | 1, now: number, actor?: string | null
 ): Promise<{ ok: boolean; shareRevoked: boolean }> {
   const row = await env.DB.prepare(
-    `SELECT share_token FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
-  ).bind(id).first<{ share_token: string | null }>();
+    `SELECT share_token, private FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
+  ).bind(id).first<{ share_token: string | null; private: number | null }>();
   if (!row) return { ok: false, shareRevoked: false };
   const hadShare = row.share_token != null;
+  // Log de atividade (spec 74): só quando o selo REALMENTE muda — reafirmar o mesmo
+  // estado (ex: chamada duplicada) não é uma edição.
+  const changed = (row.private === 1) !== (priv === 1);
   if (priv === 1) {
     await env.DB.prepare(
       `UPDATE notes SET private = 1, share_token = NULL, share_expires_at = NULL,
               updated_at = ?, updated_by = COALESCE(?, updated_by)
        WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
     ).bind(now, actor ?? null, id).run();
+    if (changed) {
+      await logTaskActivity(env, id, actor, [{ field: 'visibility', old_value: 'normal', new_value: 'privada' }]);
+    }
     return { ok: true, shareRevoked: hadShare };
   }
   await env.DB.prepare(
     `UPDATE notes SET private = 0, updated_at = ?, updated_by = COALESCE(?, updated_by)
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
   ).bind(now, actor ?? null, id).run();
+  if (changed) {
+    await logTaskActivity(env, id, actor, [{ field: 'visibility', old_value: 'privada', new_value: 'normal' }]);
+  }
   return { ok: true, shareRevoked: false };
 }
 
@@ -627,6 +641,10 @@ export async function insertTask(env: Env, t: InsertTaskInput, actor?: string | 
     `INSERT INTO notes (id,title,body,tldr,domains,kind,status,due_at,priority,completed_at,column_id,project_id,private,origin_note_id,created_by,updated_by,created_at,updated_at)
      VALUES (?,?,?,?,?,'task',?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(t.id, t.title, t.body, t.tldr, t.domains, t.status, t.due_at, t.priority, t.completed_at ?? null, columnId, t.project_id ?? null, t.private ?? 0, t.origin_note_id ?? null, actor ?? null, actor ?? null, t.created_at, t.updated_at).run();
+  // Log de atividade (spec 74): 'created' popula o feed da task desde o nascimento.
+  // TODOS os callers convergem aqui (save_task, /app/tasks/create, inbox, task-from-note)
+  // — nível mais compartilhado possível, zero duplicação por caller.
+  await logTaskActivity(env, t.id, actor, [{ field: 'created', new_value: truncateForActivity(t.title) }]);
 }
 
 // Procura UMA task ativa (open/in_progress, viva) que carregue a tag dada. Usado
@@ -841,6 +859,12 @@ export async function completeTask(
     return 'conflict';
   }
 
+  // Log de atividade (spec 74): 'status' com o status ANTERIOR (capturado em `before`,
+  // antes do UPDATE) → "concluída". Só roda no ramo que realmente venceu a corrida.
+  await logTaskActivity(env, id, actor, [
+    { field: 'status', old_value: statusLabelForActivity(before.status), new_value: 'concluída' },
+  ]);
+
   const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
 }
@@ -880,6 +904,58 @@ export async function updateTask(
   // na tool/endpoint antes de chamar aqui.
   const task = await getTaskById(env, id, true);
   if (!task) return 'not-found';
+
+  // Log de atividade (spec 74): diff ANTES vs patch, montado ANTES do UPDATE (com o
+  // `task` já lido acima) — só os campos que MUDARAM de fato entram (patch repetindo
+  // o valor vigente não gera ruído no histórico). `project`/`tags` resolvem labels
+  // via lookup e por isso ficam fora deste bloco síncrono (ver abaixo).
+  const activityEntries: TaskActivityInput[] = [];
+  if (patch.title !== undefined && patch.title !== task.title) {
+    activityEntries.push({
+      field: 'title',
+      old_value: truncateForActivity(task.title),
+      new_value: truncateForActivity(patch.title),
+    });
+  }
+  if (patch.body !== undefined && patch.body !== task.body) {
+    // Corpo pode ser longo/sensível — o log não guarda o texto, só sinaliza a edição.
+    activityEntries.push({ field: 'body', old_value: null, new_value: 'editada' });
+  }
+  if (patch.priority !== undefined && (patch.priority ?? null) !== (task.priority ?? null)) {
+    activityEntries.push({
+      field: 'priority',
+      old_value: priorityLabel(task.priority ?? null),
+      new_value: priorityLabel(patch.priority ?? null),
+    });
+  }
+  if (patch.due_at !== undefined && (patch.due_at ?? null) !== (task.due_at ?? null)) {
+    activityEntries.push({
+      field: 'due',
+      old_value: dueLabelForActivity(task.due_at ?? null),
+      new_value: dueLabelForActivity(patch.due_at ?? null),
+    });
+  }
+  if (patch.status !== undefined && patch.status !== task.status) {
+    activityEntries.push({
+      field: 'status',
+      old_value: statusLabelForActivity(task.status),
+      new_value: statusLabelForActivity(patch.status),
+    });
+  }
+  if (patch.project_id !== undefined && (patch.project_id ?? null) !== (task.project_id ?? null)) {
+    const [oldProj, newProj] = await Promise.all([
+      task.project_id ? getProjectById(env, task.project_id) : null,
+      patch.project_id ? getProjectById(env, patch.project_id) : null,
+    ]);
+    activityEntries.push({
+      field: 'project',
+      old_value: oldProj?.label ?? 'Sem projeto',
+      new_value: newProj?.label ?? 'Sem projeto',
+    });
+  }
+  // Tags: snapshot ANTES de tocar a tabela — replaceTaskTagsPreservingDedupe (chamado
+  // mais abaixo) reescreve tudo, então o "antes" precisa ser lido agora.
+  const oldTagsForDiff = patch.tags !== undefined ? await getTagsByNote(env, id) : null;
 
   const sets: string[] = [];
   const binds: unknown[] = [];
@@ -928,7 +1004,16 @@ export async function updateTask(
   // rejeitada por versão não deve tocar tags.
   if (patch.tags !== undefined) {
     await replaceTaskTagsPreservingDedupe(env, id, patch.tags);
+    // Diff de tags (spec 74): ignora as reservadas dedupe:* dos dois lados (nunca
+    // aparecem em nenhuma superfície de UI) e só loga se o conjunto VISÍVEL mudou.
+    const oldVisible = formatTagListForActivity(oldTagsForDiff ?? []);
+    const newVisible = formatTagListForActivity(patch.tags);
+    if (oldVisible !== newVisible) {
+      activityEntries.push({ field: 'tags', old_value: oldVisible, new_value: newVisible });
+    }
   }
+
+  await logTaskActivity(env, id, actor, activityEntries);
 
   const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
@@ -998,15 +1083,31 @@ export type MoveResult = TaskRow | 'not-found' | 'column-not-found';
 // column_id E status = category da coluna, e completed_at quando a categoria fecha
 // (done/canceled) ou limpa ao reabrir — tudo num único UPDATE atômico (mantém o
 // invariante category(column_id)==status). Ver spec 51 item 2.
-export async function moveTaskToColumn(env: Env, id: string, columnId: string, now: number): Promise<MoveResult> {
+export async function moveTaskToColumn(
+  env: Env, id: string, columnId: string, now: number, actor?: string | null
+): Promise<MoveResult> {
   const col = await getColumnById(env, columnId);
   if (!col) return 'column-not-found';
+  // Lido ANTES do UPDATE — dá o column_id/status ANTERIOR pro log de atividade E
+  // adianta o 'not-found' (id inexistente/não-task) sem gastar o UPDATE às cegas.
+  const before = await getTaskById(env, id, true);
+  if (!before) return 'not-found';
   const closing = col.category === 'done' || col.category === 'canceled';
   const res = await env.DB.prepare(
     `UPDATE notes SET column_id = ?, status = ?, completed_at = ${closing ? '?' : 'NULL'}, updated_at = ?
      WHERE id = ? AND kind = 'task' AND deleted_at IS NULL`
   ).bind(...(closing ? [columnId, col.category, now, now, id] : [columnId, col.category, now, id])).run();
   if ((res.meta?.changes ?? 0) === 0) return 'not-found';
+
+  // Log de atividade (spec 74): 'column' com os RÓTULOS visíveis no board. Só loga se
+  // a coluna realmente mudou (arrastar de volta pra mesma coluna não é uma edição).
+  if (before.column_id !== columnId) {
+    const oldCol = before.column_id ? await getColumnById(env, before.column_id) : null;
+    await logTaskActivity(env, id, actor, [
+      { field: 'column', old_value: oldCol?.label ?? statusLabelForActivity(before.status), new_value: col.label },
+    ]);
+  }
+
   const after = await getTaskById(env, id, true);
   return after ?? 'not-found';
 }

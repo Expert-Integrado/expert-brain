@@ -36,13 +36,11 @@ if (root) {
   const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-field="body"]');
   const bodyCancelBtn = root.querySelector<HTMLButtonElement>('[data-cancel-body]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
-  const columnSel = root.querySelector<HTMLSelectElement>('[data-field="column"]');
   const projectSel = root.querySelector<HTMLSelectElement>('[data-field="project"]');
   const prioSel = root.querySelector<HTMLSelectElement>('[data-field="priority"]');
   const dueDateInput = root.querySelector<HTMLInputElement>('[data-field="due-date"]');
   const dueTimeInput = root.querySelector<HTMLInputElement>('[data-field="due-time"]');
   const dueClearBtn = root.querySelector<HTMLButtonElement>('[data-clear="due"]');
-  const titleSaveBtn = root.querySelector<HTMLButtonElement>('[data-save="title"]');
   const bodySaveBtn = root.querySelector<HTMLButtonElement>('[data-save="body"]');
 
   // Baselines pra detectar "dirty" (mudança não salva) em texto livre.
@@ -83,10 +81,6 @@ if (root) {
     if (!statusEl) return;
     statusEl.textContent = msg;
     statusEl.className = 'task-edit-status' + (cls ? ' ' + cls : '');
-  }
-
-  function markDirty(btn: HTMLButtonElement | null, dirty: boolean) {
-    if (btn) btn.classList.toggle('dirty', dirty);
   }
 
   function anyDirty(): boolean {
@@ -150,14 +144,29 @@ if (root) {
     statusEl.appendChild(btn);
   }
 
-  // ── Coluna (spec 52): substitui o antigo select de "Status" — mais granular,
-  // espelha a interação de drag&drop do board (spec 51). Muda via POST
-  // /app/tasks/move (não /app/tasks/update): o servidor deriva status+completed_at
-  // da categoria da coluna. Fora da fila de rajada (endpoint diferente) — atualiza
-  // expectedUpdatedAt direto na resposta.
-  columnSel?.addEventListener('change', async () => {
-    const columnId = columnSel.value;
-    if (!columnId) return;
+  // ── Funil de status (10/07/2026): substitui o select "Coluna" da sidebar.
+  // Clique numa etapa → POST /app/tasks/move (o servidor deriva
+  // status+completed_at da categoria da coluna) e repinta a barra sem reload:
+  // reached = etapa atual + anteriores (ordem do DOM = ordem do board). Fora da
+  // fila de rajada (endpoint diferente) — atualiza expectedUpdatedAt direto.
+  const funnelEl = document.querySelector<HTMLElement>('[data-funnel]');
+  function paintFunnel(currentId: string): void {
+    if (!funnelEl) return;
+    const steps = Array.from(funnelEl.querySelectorAll<HTMLButtonElement>('[data-funnel-col]'));
+    const idx = steps.findIndex((s) => s.dataset.funnelCol === currentId);
+    steps.forEach((s, i) => {
+      s.classList.toggle('current', i === idx);
+      s.classList.toggle('reached', idx >= 0 && i <= idx);
+    });
+    // Se a task estava numa coluna arquivada (etapa extra desabilitada no fim),
+    // mover pra uma ativa resolve o drift — a etapa fantasma some.
+    funnelEl.querySelector('.task-funnel-step.archived')?.remove();
+  }
+  funnelEl?.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-funnel-col]');
+    if (!btn || btn.disabled) return;
+    const columnId = btn.dataset.funnelCol || '';
+    if (!columnId || btn.classList.contains('current')) return;
     setStatus('Salvando...', 'saving');
     try {
       const res = await appFetch('/app/tasks/move', {
@@ -171,6 +180,7 @@ if (root) {
         return;
       }
       if (typeof (data as any).updated_at === 'number') expectedUpdatedAt = (data as any).updated_at;
+      paintFunnel(columnId);
       setStatus('Salvo', 'ok');
     } catch {
       setStatus('Falha de conexão ao salvar', 'err');
@@ -253,14 +263,17 @@ if (root) {
     });
   }
 
-  // ── Save por botão: título ──
+  // ── Título: clica-e-edita, sem botão (10/07/2026) — Enter OU blur salvam
+  // quando o valor mudou; Esc reverte. Vazio não salva.
   async function saveTitle() {
     if (!titleInput) return;
     const v = titleInput.value.trim();
     if (v.length < 1) { setStatus('Título não pode ficar vazio', 'err'); return; }
-    if (await save({ title: v })) { titleSaved = titleInput.value; markDirty(titleSaveBtn, false); }
+    if (await save({ title: v })) { titleSaved = titleInput.value; }
   }
-  titleSaveBtn?.addEventListener('click', saveTitle);
+  titleInput?.addEventListener('blur', () => {
+    if (titleInput.value !== titleSaved) void saveTitle();
+  });
   // Textarea de 1 linha: cresce com o conteúdo (título nunca corta) e nunca
   // aceita quebra de linha — Enter salva, \n de paste vira espaço.
   function fitTitle() {
@@ -272,17 +285,13 @@ if (root) {
     titleInput.style.height = `${titleInput.scrollHeight + titleInput.offsetHeight - titleInput.clientHeight}px`;
   }
   fitTitle();
-  titleInput?.addEventListener('input', () => {
-    fitTitle();
-    markDirty(titleSaveBtn, titleInput.value !== titleSaved);
-  });
+  titleInput?.addEventListener('input', fitTitle);
   titleInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); if (titleInput.value !== titleSaved) saveTitle(); }
     if (e.key === 'Escape') {
       e.preventDefault();
       titleInput.value = titleSaved;
       fitTitle();
-      markDirty(titleSaveBtn, false);
       titleInput.blur();
     }
   });

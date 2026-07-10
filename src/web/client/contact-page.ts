@@ -74,7 +74,9 @@ function renderNotFound(container: HTMLElement): void {
   `;
 }
 
-function renderHeaderAndCartela(container: HTMLElement, id: string, detail: EntityDetail): void {
+// Exportada só pro teste jsdom (test/client/contact-cartela.test.ts) — a página
+// real chama via main() na hidratação.
+export function renderHeaderAndCartela(container: HTMLElement, id: string, detail: EntityDetail): void {
   const name = detail.title || 'Contato';
   const kind = detail.kind || 'other';
   const category = detail.editable?.category?.trim();
@@ -87,12 +89,33 @@ function renderHeaderAndCartela(container: HTMLElement, id: string, detail: Enti
   const categoryChip = category ? `<span class="panel-chip">${esc(category)}</span>` : '';
   const lastContactedChip = lastContacted ? `<span class="panel-degree">Último contato: ${esc(lastContacted)}</span>` : '';
 
-  const fields = (detail.fields ?? []).map((f) => `
+  // Rótulo repetido N vezes (ex.: um field "Grupo em comum" POR grupo, vindo do
+  // worker de contatos) vira UM bloco só de chips com quebra de linha — pedido
+  // 10/07: "tem que dar pra ver que é um bloquinho só de grupos".
+  const PLURAL_LABELS: Record<string, string> = { 'Grupo em comum': 'Grupos em comum' };
+  const fieldsArr = detail.fields ?? [];
+  const labelCounts = new Map<string, number>();
+  for (const f of fieldsArr) labelCounts.set(f.label, (labelCounts.get(f.label) ?? 0) + 1);
+  const grouped = new Set<string>();
+  const fields = fieldsArr.map((f) => {
+    if ((labelCounts.get(f.label) ?? 1) > 1) {
+      if (grouped.has(f.label)) return ''; // já emitido no bloco do primeiro
+      grouped.add(f.label);
+      const chips = fieldsArr.filter((x) => x.label === f.label).map((x) => x.href
+        ? `<a class="contact-page-chip" href="${esc(x.href)}" target="_blank" rel="noopener">${esc(x.value)}</a>`
+        : `<span class="contact-page-chip">${esc(x.value)}</span>`).join('');
+      return `
+    <div class="contact-page-field">
+      <dt>${esc(PLURAL_LABELS[f.label] ?? f.label)}</dt>
+      <dd><div class="contact-page-chips">${chips}</div></dd>
+    </div>`;
+    }
+    return `
     <div class="contact-page-field">
       <dt>${esc(f.label)}${f.primary ? ' ★' : ''}</dt>
       <dd>${f.href ? `<a href="${esc(f.href)}" target="_blank" rel="noopener">${esc(f.value)}</a>` : esc(f.value)}</dd>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 
   container.innerHTML = `
     <div class="contact-page-header">
@@ -133,18 +156,35 @@ interface MentionNote { id: string; title: string; kind: string | null; private?
 interface MentionTask { id: string; title: string; status: string | null; due_at: number | null; priority: number | null; private?: boolean; url: string; }
 interface MentionsResponse { ok?: boolean; notes?: MentionNote[]; tasks_open?: MentionTask[]; tasks_closed_count?: number; }
 
+// Seções de menção VAZIAS somem da página (pedido 10/07: bloco em branco não
+// aparece); com conteúdo viram acordeon fechado com a contagem no summary.
 function renderMentionNotes(section: HTMLElement, notes: MentionNote[]): void {
-  const body = notes.length
-    ? `<div class="contact-page-vinculos">${notes.map((n) => `
+  if (notes.length === 0) {
+    section.hidden = true;
+    section.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
+  section.innerHTML = `
+    <details class="contact-page-acc">
+      <summary>Notas sobre esta pessoa (${notes.length})</summary>
+      <div class="contact-page-acc-body">
+        <div class="contact-page-vinculos">${notes.map((n) => `
         <a class="panel-conn" href="${esc(n.url)}">
           <span class="panel-conn-label">${esc(n.title)}${n.private ? ' 🔒' : ''}</span>
           <span class="panel-conn-rel">${esc(n.kind || 'nota')}</span>
-        </a>`).join('')}</div>`
-    : '<p class="contact-page-empty">Nenhuma nota menciona esta pessoa ainda.</p>';
-  section.innerHTML = `<h2>Notas sobre esta pessoa</h2>${body}`;
+        </a>`).join('')}</div>
+      </div>
+    </details>`;
 }
 
 function renderMentionTasks(section: HTMLElement, tasks: MentionTask[], closedCount: number): void {
+  if (tasks.length === 0 && closedCount === 0) {
+    section.hidden = true;
+    section.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
   const body = tasks.length
     ? `<div class="contact-page-vinculos">${tasks.map((t) => `
         <a class="panel-conn" href="${esc(t.url)}">
@@ -155,7 +195,11 @@ function renderMentionTasks(section: HTMLElement, tasks: MentionTask[], closedCo
   const closed = closedCount > 0
     ? `<p class="contact-page-warn">+ ${closedCount} tarefa${closedCount === 1 ? '' : 's'} concluída${closedCount === 1 ? '' : 's'}.</p>`
     : '';
-  section.innerHTML = `<h2>Tarefas com esta pessoa</h2>${body}${closed}`;
+  section.innerHTML = `
+    <details class="contact-page-acc">
+      <summary>Tarefas com esta pessoa (${tasks.length})</summary>
+      <div class="contact-page-acc-body">${body}${closed}</div>
+    </details>`;
 }
 
 function neighborLine(n: NeighborItem): string {
@@ -199,16 +243,23 @@ function renderNeighbors(section: HTMLElement, data: NeighborsResponse): void {
       `).join('')
     : '<p class="contact-page-empty">Sem rede de 2º nível ainda.</p>';
 
+  // Acordeons (pedido 10/07): lista longa esconde a página inteira — só os
+  // Explícitos curtos (<=6) abrem por padrão; Similares e Rede de 2º nível
+  // nascem fechados com a contagem no summary.
   section.innerHTML = `
     <h2>Vínculos</h2>
-    <h3 class="contact-page-via-label">Explícitos</h3>
-    ${explicitBlock}
-    <h3 class="contact-page-via-label">Similares</h3>
-    ${similarBlock}
-    <div class="contact-page-section">
-      <h2>Rede (2º nível)</h2>
-      ${level2Html}
-    </div>
+    <details class="contact-page-acc"${explicit1.length > 0 && explicit1.length <= 6 ? ' open' : ''}>
+      <summary>Explícitos (${explicit1.length})</summary>
+      <div class="contact-page-acc-body">${explicitBlock}</div>
+    </details>
+    <details class="contact-page-acc">
+      <summary>Similares (${similar1.length})</summary>
+      <div class="contact-page-acc-body">${similarBlock}</div>
+    </details>
+    <details class="contact-page-acc">
+      <summary>Rede de 2º nível (${level2.length})</summary>
+      <div class="contact-page-acc-body">${level2Html}</div>
+    </details>
   `;
   // Navegação contato→contato é via <a href> real (troca de URL + histórico do
   // navegador funciona nativamente) — nenhum JS de roteamento é necessário aqui.

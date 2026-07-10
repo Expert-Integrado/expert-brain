@@ -13,6 +13,7 @@ import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, t
 import { resolveDomainMeta, resolveKindMeta, DOMAIN_FALLBACK } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { listUsers } from '../db/queries.js';
+import { listAllTags, type TagUsage } from '../db/tag-admin.js';
 import { renderUsersSection, USERS_SECTION_CSS } from './users.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
@@ -235,6 +236,52 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
     </details>`;
 }
 
+// ─────────────── Seção "Tags" (gestão global — pedido 10/07) ───────────────
+// Tags são vocabulário aberto (nascem na edição de nota/task, sem cadastro);
+// aqui é só curadoria: renomear em massa (merge-safe) e apagar. A lista vem de
+// db/tag-admin.ts (exclui dedupe:* e notas soft-deletadas).
+function renderTagRow(t: TagUsage): string {
+  return `<tr data-tag-row="${esc(t.tag)}">
+    <td>
+      <form method="post" action="/app/tasks/tags/rename" class="row" style="gap:6px;align-items:center">
+        <input type="hidden" name="from" value="${esc(t.tag)}">
+        <input type="text" name="to" value="${esc(t.tag)}" maxlength="60" class="input-text" style="width:200px" aria-label="Novo nome pra tag ${esc(t.tag)}">
+        <button type="submit">Renomear</button>
+      </form>
+    </td>
+    <td>${t.count}</td>
+    <td>
+      <form method="post" action="/app/tasks/tags/delete" class="tag-delete-form" style="display:inline" data-tag="${esc(t.tag)}">
+        <input type="hidden" name="tag" value="${esc(t.tag)}">
+        <button type="submit" class="btn btn-danger btn-sm">Apagar</button>
+      </form>
+    </td>
+  </tr>`;
+}
+
+function renderTagsSection(tags: TagUsage[], savedTags: boolean): string {
+  const rows = tags.length
+    ? tags.map(renderTagRow).join('')
+    : `<tr><td colspan="3" style="color:var(--text-dim)">Nenhuma tag ainda. Tags nascem na edição de notas e tasks — não há cadastro prévio.</td></tr>`;
+  return `
+    <details class="disclosure-advanced conn-section" id="tags"${savedTags ? ' open' : ''}>
+      <summary>
+        <span class="adv-title">Tags</span>
+        <span class="adv-sub">Vocabulário de rótulos — renomeie em massa ou apague (${tags.length} tag${tags.length === 1 ? '' : 's'})</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <p>Tag é rótulo <strong>transversal e multi</strong> (diferente de projeto, que é pasta). Renomear aplica em <strong>todas</strong> as notas e tasks de uma vez — se o novo nome já existe, as duas tags se fundem. Apagar remove o rótulo das notas, <strong>não</strong> apaga as notas.</p>
+          <input type="search" id="tags-filter" class="input-text" placeholder="Filtrar tags…" aria-label="Filtrar tags" style="width:240px;margin-bottom:10px" autocomplete="off">
+          <table class="keys-table">
+            <thead><tr><th>Tag (renomear e Enter)</th><th>Usos</th><th></th></tr></thead>
+            <tbody id="tags-tbody">${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>`;
+}
+
 // ─────────────── Seção "Áreas e tipos" (taxonomia configurável — spec 54) ───────────────
 function renderDomainRow(slug: string, label: string, color: string, count: number): string {
   return `<tr data-slug="${esc(slug)}">
@@ -396,6 +443,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedProjects = url.searchParams.get('saved') === 'projects';
   // Idem pra taxonomia de áreas/kinds (?saved=taxonomy reabre "Áreas e tipos").
   const savedTaxonomy = url.searchParams.get('saved') === 'taxonomy';
+  // Idem pra gestão de tags (?saved=tags reabre "Tags").
+  const savedTags = url.searchParams.get('saved') === 'tags';
   // Idem pra usuários/responsáveis (?saved=users reabre "Usuários" — spec 37).
   const savedUsers = url.searchParams.get('saved') === 'users';
   // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
@@ -411,6 +460,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     kanbanCounts,
     taskProjects,
     projectCounts,
+    allTags,
     domainCounts,
     taxonomyConfig,
     allUsers,
@@ -424,6 +474,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     taskCountsByColumn(env),
     listTaskProjects(env, true),
     taskCountsByProject(env),
+    listAllTags(env),
     listDomainCounts(env),
     getTaxonomyConfig(env),
     listUsers(env, true),
@@ -439,6 +490,9 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58).
   const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
+
+  // Seção "Tags": vocabulário global com renomear/apagar (pedido 10/07).
+  const tagsSection = renderTagsSection(allTags, savedTags);
 
   // Seção "Áreas e tipos" (spec 54): contagem por área (NON_TASK_FILTER) + config
   // customizada do dono (cor/label + áreas pré-criadas).
@@ -750,6 +804,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ${boardSection}
 
     ${projectsSection}
+
+    ${tagsSection}
 
     ${usersSection}
 

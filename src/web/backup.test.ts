@@ -79,8 +79,8 @@ describe('GET /app/export', () => {
 
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
-    // Bump pra 0018 (spec 70-grafo-higiene/76 — índice em similar_edges.score).
-    expect(manifest.schema_version).toBe('0018_similar_edges_score_idx');
+    // Bump pra 0019 (spec 74 — log de atividade de task).
+    expect(manifest.schema_version).toBe('0019_task_activity');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {

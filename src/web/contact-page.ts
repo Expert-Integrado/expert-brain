@@ -71,6 +71,25 @@ export async function handleContactPage(req: Request, env: Env, id: string): Pro
       .contact-page-via-label { font-size: 12px; opacity: 0.6; margin-bottom: 6px; }
       .contact-page-empty { opacity: 0.6; font-size: 14px; }
       .contact-page-warn { font-size: 13px; opacity: 0.65; margin-top: 8px; }
+      /* Chips de campo agrupado (ex.: Grupos em comum) — um bloco só, com quebra */
+      .contact-page-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .contact-page-chip {
+        display: inline-flex; align-items: center; font-size: 12.5px; line-height: 1.2;
+        padding: 3px 10px; border-radius: 999px; background: rgba(255,255,255,0.07);
+        border: 1px solid rgba(255,255,255,0.12); color: inherit; text-decoration: none;
+      }
+      a.contact-page-chip:hover { border-color: rgba(167,139,250,0.6); }
+      /* Acordeons de Vínculos/Similares/Rede/Notas/Tarefas (pedido 10/07) */
+      .contact-page-acc { margin-top: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; }
+      .contact-page-acc summary {
+        cursor: pointer; padding: 10px 14px; font-size: 13.5px; font-weight: 600;
+        opacity: 0.85; list-style: none; user-select: none;
+      }
+      .contact-page-acc summary::-webkit-details-marker { display: none; }
+      .contact-page-acc summary::before { content: '▸'; margin-right: 8px; opacity: 0.6; }
+      .contact-page-acc[open] summary::before { content: '▾'; }
+      .contact-page-acc summary:hover { opacity: 1; }
+      .contact-page-acc-body { padding: 2px 14px 14px; }
     </style>
     <div class="contact-page" data-contact-id="${esc(id)}">
       <div class="contact-page-loading center-loading" role="status" aria-live="polite">

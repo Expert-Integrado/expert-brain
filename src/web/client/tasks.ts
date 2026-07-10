@@ -77,6 +77,10 @@ let projectFilter = 'all';
 let searchQuery = '';
 let tagFilter = 'all';
 let prioFilter = 'all'; // 'all' | '1'..'4' | 'none'
+// Filtro de vencimento por intervalo (pedido 10/07): "YYYY-MM-DD" ou '' (sem limite).
+// Compara direto com due_date (string ISO, ordem lexicográfica = ordem cronológica).
+let dateFrom = '';
+let dateTo = '';
 // Mapa project_id → BoardProject, reconstruído a cada load (pro chip do card).
 let projectsById = new Map<string, BoardProject>();
 
@@ -272,11 +276,22 @@ function passesPrio(t: TaskView): boolean {
   return t.priority === Number(prioFilter);
 }
 
+// Intervalo de vencimento: com qualquer limite setado, task SEM prazo sai do board
+// (o usuário está explicitamente filtrando por data). Aplica em todas as colunas,
+// como busca/tag/projeto — "o que venceu em junho" também vale pra Concluído.
+function passesDateRange(t: TaskView): boolean {
+  if (!dateFrom && !dateTo) return true;
+  if (!t.due_date) return false;
+  if (dateFrom && t.due_date < dateFrom) return false;
+  if (dateTo && t.due_date > dateTo) return false;
+  return true;
+}
+
 // Filtro de vencimento só se aplica a colunas de categoria open/in_progress; done/
 // canceled mostram sempre o histórico recente, sem filtro. Busca + projeto + tag +
 // prioridade aplicam por cima em TODAS as colunas.
 function columnTasks(col: BoardColumn, now: number): TaskView[] {
-  let items = col.tasks.filter((t) => passesProject(t) && passesSearch(t) && passesTag(t) && passesPrio(t));
+  let items = col.tasks.filter((t) => passesProject(t) && passesSearch(t) && passesTag(t) && passesPrio(t) && passesDateRange(t));
   if (col.category === 'open' || col.category === 'in_progress') {
     items = items.filter((t) => passesFilter(t, now));
   }
@@ -663,6 +678,31 @@ function wirePrioFilter() {
   });
 }
 
+// Filtro de vencimento por intervalo (pedido 10/07): dois <input type="date"> na
+// toolbar + × pra limpar. Compõe por E com os quick-filters/busca/tag/projeto.
+function wireDateFilter() {
+  const wrap = document.getElementById('task-date-filter');
+  const from = document.getElementById('task-date-from') as HTMLInputElement | null;
+  const to = document.getElementById('task-date-to') as HTMLInputElement | null;
+  const clearBtn = document.getElementById('task-date-clear') as HTMLButtonElement | null;
+  if (!wrap || !from || !to || !clearBtn) return;
+  const apply = () => {
+    dateFrom = from.value;
+    dateTo = to.value;
+    const active = dateFrom !== '' || dateTo !== '';
+    clearBtn.hidden = !active;
+    wrap.classList.toggle('has-value', active);
+    render();
+  };
+  from.addEventListener('change', apply);
+  to.addEventListener('change', apply);
+  clearBtn.addEventListener('click', () => {
+    from.value = '';
+    to.value = '';
+    apply();
+  });
+}
+
 // ── Filtro de tag (P1 audit item T1): popover com busca no lugar do <select>
 // nativo — o vocabulário de tags do dono passa de centenas de itens, inviável sem
 // typeahead. Trigger mostra "Todas as tags" ou o nome da tag ativa (virando chip
@@ -795,6 +835,7 @@ wireFilters();
 wireProjectFilter();
 wireSearch();
 wirePrioFilter();
+wireDateFilter();
 wireTagFilter();
 wireCreateModal();
 // DnD + card clicável (spec 65): delegado no container, wired UMA vez — os

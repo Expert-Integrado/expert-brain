@@ -100,10 +100,11 @@ const FIXTURE_COUNTS: Record<string, number> = {
   mentions: 0,
   users: 1, // seed user_owner da 0017 (o wipe preserva o dono)
   task_assignees: 0,
-  // spec 70-grafo-higiene/76 adicionou a migration 0018 (índice em
-  // similar_edges.score) — puramente aditiva, não muda nenhuma das contagens
-  // acima, só o total de linhas em _migrations.
-  _migrations: 18,
+  // spec 74 adicionou a 0019 (task_activity). O fixture semeia por SQL cru (sem
+  // passar pelo insertTask que loga 'created'), então a tabela nova entra no dump
+  // vazia — o que importa é ela EXISTIR no snapshot.
+  task_activity: 0,
+  _migrations: 19,
 };
 
 beforeAll(async () => {
@@ -135,8 +136,8 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    // Bump pra 0018 (spec 70-grafo-higiene/76 — índice em similar_edges.score).
-    expect(manifest.schema_version).toBe('0018_similar_edges_score_idx');
+    // Bump pra 0019 (spec 74 — log de atividade de task).
+    expect(manifest.schema_version).toBe('0019_task_activity');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });
