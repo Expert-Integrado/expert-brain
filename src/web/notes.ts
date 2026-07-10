@@ -37,6 +37,7 @@ import { newId } from '../util/id.js';
 import { getShareStatus } from './share.js';
 import { renderCommentThread } from './comments-render.js';
 import { visibleTags } from './tasks.js';
+import { assigneeDotsHtml } from '../util/task-badges.js';
 import { resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { readCachedResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from '../digest/resurface.js';
@@ -494,13 +495,19 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ` : ''}
 
     <div class="note-edit-bodyrow note-edit" data-note-id="${esc(note.id)}">
-      <div class="note-edit-bodyhead">
-        <span class="note-edit-lbl">Corpo (markdown)</span>
-        <button type="button" class="note-edit-save" data-save="body">Salvar corpo</button>
+      <div class="note-edit-bodyview" data-bodyview>
+        <div class="note-body note-edit-preview${note.body.trim() ? '' : ' note-edit-preview-empty'}" data-preview>${note.body.trim()
+          ? renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })
+          : '<span class="note-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
+        <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
       </div>
-      <textarea class="note-edit-body" data-field="body" rows="12" aria-label="Corpo em markdown">${esc(note.body)}</textarea>
-      <div class="note-edit-preview-head">Prévia</div>
-      <div class="note-body note-edit-preview" data-preview>${renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })}</div>
+      <div class="note-edit-bodyedit" data-bodyedit hidden>
+        <textarea class="note-edit-body" data-field="body" rows="12" aria-label="Corpo em markdown">${esc(note.body)}</textarea>
+        <div class="note-edit-bodyedit-actions">
+          <button type="button" class="note-edit-save" data-save="body">Salvar</button>
+          <button type="button" class="note-edit-cancel" data-cancel-body>Cancelar</button>
+        </div>
+      </div>
       <div class="note-edit-status" data-editstatus role="status" aria-live="polite"></div>
     </div>
 
@@ -974,30 +981,61 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     includeMedia: null,
   });
 
-  // Responsáveis (spec 37): checkboxes form+redirect (padrão CSP dos demais POSTs).
-  // Ativos sempre aparecem; arquivado SÓ se já é assignee desta task (marcado e
-  // esmaecido — dá pra manter ou remover, não pra atribuir novo arquivado).
+  // Responsáveis (spec 74): dots (mesmo componente do board, task-badges.ts) +
+  // popover estilo ClickUp num <details> nativo — abre/fecha sem JS (nenhum
+  // atributo `hidden` escondendo o conteúdo pra sempre), e o form de checkboxes
+  // de dentro é o MESMO endpoint de sempre (POST /app/tasks/assignees,
+  // replace-set). O client (task-edit.ts) intercepta o submit por fetch pra
+  // atualizar os dots sem reload; sem JS o form faz um POST normal (302 de
+  // volta pro detalhe). Ativos sempre aparecem; arquivado SÓ se já é assignee
+  // desta task (marcado e esmaecido — dá pra manter ou remover, não pra
+  // atribuir novo arquivado).
   const assignedIds = new Set(taskAssignees.map((a) => a.id));
   const pickerUsers = allUsers.filter((u) => u.archived_at === null || assignedIds.has(u.id));
+  const assigneeOptionAvatar = (u: (typeof pickerUsers)[number]): string => {
+    if (u.avatar_key) {
+      return `<img class="task-assignees-opt-avatar" src="/app/users/${esc(u.id)}/avatar" alt="">`;
+    }
+    let h = 0;
+    for (let i = 0; i < u.id.length; i++) h = (h * 31 + u.id.charCodeAt(i)) % 360;
+    const parts = u.name.trim().split(/\s+/).filter(Boolean);
+    const initials = ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
+    return `<span class="task-assignees-opt-avatar" style="background:hsl(${h},42%,36%)">${esc(initials)}</span>`;
+  };
   const assigneeChecks = pickerUsers
     .map((u) => {
       const checked = assignedIds.has(u.id) ? ' checked' : '';
       const archived = u.archived_at !== null;
-      const typeTag = u.type === 'agent' ? ' <span class="task-assignee-type">agente</span>' : '';
-      return `<label class="task-assignee-opt"${archived ? ' style="opacity:0.55"' : ''}>
-        <input type="checkbox" name="user_ids" value="${esc(u.id)}"${checked}>
-        <span>${esc(u.name)}${typeTag}${archived ? ' (arquivado)' : ''}</span>
+      const typeTag = u.type === 'agent' ? '<span class="task-assignee-type">agente</span>' : '';
+      return `<label class="task-assignees-opt${archived ? ' archived' : ''}">
+        <input type="checkbox" name="user_ids" value="${esc(u.id)}"${checked}
+          data-user-name="${esc(u.name)}" data-user-type="${esc(u.type)}" data-user-avatar="${u.avatar_key ? '1' : '0'}">
+        ${assigneeOptionAvatar(u)}
+        <span class="task-assignees-opt-name">${esc(u.name)}${archived ? ' (arquivado)' : ''}</span>
+        ${typeTag}
       </label>`;
     })
     .join('');
   const assigneesSection = pickerUsers.length
     ? `<div class="task-sidebar-field">
         <span class="task-sidebar-lbl">Responsáveis</span>
-        <form method="post" action="/app/tasks/assignees" class="task-assignees-form">
-          <input type="hidden" name="task_id" value="${esc(task.id)}">
-          ${assigneeChecks}
-          <button type="submit" class="btn task-d-btn" style="margin-top:6px">Salvar responsáveis</button>
-        </form>
+        <details class="task-assignees-picker" data-assignees-picker>
+          <summary class="task-assignees-summary" aria-label="Editar responsáveis">
+            ${assigneeDotsHtml(taskAssignees)}
+            <span class="task-assignees-addbtn" aria-hidden="true">+</span>
+          </summary>
+          <div class="task-assignees-popover">
+            <form method="post" action="/app/tasks/assignees" class="task-assignees-form" data-assignees-form>
+              <input type="hidden" name="task_id" value="${esc(task.id)}">
+              <div class="task-assignees-list">${assigneeChecks}</div>
+              <div class="task-assignees-actions">
+                <button type="submit" class="btn task-d-btn" data-assignees-save>Salvar</button>
+                <button type="button" class="btn task-d-btn" data-assignees-cancel>Cancelar</button>
+                <span class="task-assignees-msg" data-assignees-msg role="status" aria-live="polite"></span>
+              </div>
+            </form>
+          </div>
+        </details>
       </div>`
     : `<div class="task-sidebar-field">
         <span class="task-sidebar-lbl">Responsáveis</span>
@@ -1135,16 +1173,19 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>
 
           <div class="task-edit-bodyrow">
-            <div class="task-edit-bodyhead">
-              <span class="task-edit-lbl">Descrição (markdown)</span>
-              <button type="button" class="btn task-d-btn task-edit-save" data-save="body">Salvar descrição</button>
+            <div class="task-edit-bodyview" data-bodyview>
+              <div class="note-body task-edit-preview${task.body.trim() ? '' : ' task-edit-preview-empty'}" data-preview>${task.body.trim()
+                ? renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })
+                : '<span class="task-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
+              <button type="button" class="btn task-d-btn task-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
             </div>
-            <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
-          </div>
-
-          <div class="task-edit-previewrow">
-            <div class="task-edit-preview-head">Prévia</div>
-            <div class="note-body task-edit-preview" data-preview>${renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })}</div>
+            <div class="task-edit-bodyedit" data-bodyedit hidden>
+              <textarea class="task-edit-body" data-field="body" rows="10" aria-label="Descrição">${esc(task.body)}</textarea>
+              <div class="task-edit-bodyedit-actions">
+                <button type="button" class="btn task-d-btn task-edit-save" data-save="body">Salvar</button>
+                <button type="button" class="btn task-d-btn task-edit-cancel" data-cancel-body>Cancelar</button>
+              </div>
+            </div>
           </div>
 
           <div class="task-edit-status" data-editstatus role="status" aria-live="polite"></div>
@@ -1325,9 +1366,56 @@ const TASK_DETAIL_CSS = `
 .task-sidebar-val { font-size:13px; color:var(--text); }
 .task-sidebar-dates { gap:10px; }
 .task-sidebar-dates > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
-/* Picker de responsáveis (spec 37) */
-.task-assignees-form { display:flex; flex-direction:column; gap:4px; }
-.task-assignee-opt { display:flex; align-items:center; gap:7px; font-size:13px; cursor:pointer; }
+/* Responsáveis estilo ClickUp (spec 74): dots (mesma classe do board, spec 37)
+   + popover num <details> nativo — abre/fecha sem depender de JS. */
+.task-assignees { display:inline-flex; align-items:center; }
+.task-assignees .assignee-dot { margin-left:-6px; }
+.task-assignees .assignee-dot:first-child { margin-left:0; }
+.assignee-dot {
+  width:20px; height:20px; border-radius:50%; object-fit:cover;
+  border:1.5px solid var(--bg-accent); box-sizing:content-box;
+  display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.assignee-dot-initials { color:#fff; font-size:9px; font-weight:600; letter-spacing:0.3px; line-height:1; }
+.assignee-dot-agent { outline:1px dashed var(--text-dim); outline-offset:1px; }
+.assignee-dot-more { background:var(--surface-raised); color:var(--text-dim); }
+.assignee-dot-empty { border:1.5px dashed var(--border-strong); background:transparent; color:var(--text-dim); }
+.task-assignees-picker { border:none; }
+.task-assignees-summary {
+  display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; padding:2px 0;
+}
+.task-assignees-summary::-webkit-details-marker { display:none; }
+.task-assignees-summary::marker { content:''; }
+.task-assignees-addbtn {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:20px; height:20px; border-radius:50%; border:1px dashed var(--border-strong);
+  color:var(--text-dim); font-size:13px; line-height:1; flex-shrink:0;
+  transition:border-color 140ms var(--ease), color 140ms var(--ease);
+}
+.task-assignees-summary:hover .task-assignees-addbtn { border-color:var(--accent-lav); color:var(--accent-lav); }
+.task-assignees-popover {
+  margin-top:10px; padding:11px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  background:var(--surface);
+}
+.task-assignees-form { display:flex; flex-direction:column; gap:10px; }
+.task-assignees-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow-y:auto; }
+.task-assignees-opt {
+  display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:6px;
+  font-size:13px; cursor:pointer; transition:background 120ms var(--ease);
+}
+.task-assignees-opt:hover { background:var(--bg-accent); }
+.task-assignees-opt.archived { opacity:0.55; }
+.task-assignees-opt input { accent-color:var(--accent-lav); margin:0; flex-shrink:0; }
+.task-assignees-opt-avatar {
+  width:22px; height:22px; border-radius:50%; object-fit:cover; flex-shrink:0;
+  display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:10px; font-weight:600;
+}
+.task-assignees-opt-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.task-assignees-actions { display:flex; align-items:center; gap:10px; }
+.task-assignees-msg { font-size:12px; color:var(--text-subtle); }
+.task-assignees-msg.saving { color:var(--text-dim); }
+.task-assignees-msg.ok { color:var(--success); }
+.task-assignees-msg.err { color:var(--danger); }
 .task-assignee-type { color:var(--text-dim); font-size:11px; border:1px dashed var(--border); border-radius:5px; padding:0 5px; margin-left:2px; }
 /* Criado por (spec 37): carimbo read-only da credencial criadora, com avatar */
 .task-createdby { display:flex; align-items:center; gap:8px; }
@@ -1381,9 +1469,17 @@ const TASK_DETAIL_CSS = `
 .task-tags-input::placeholder { color:var(--text-subtle); }
 .task-tags-input:focus { outline:none; border-color:var(--accent-lav); background:var(--bg-accent); }
 
-/* Descrição: label + botão Salvar alinhado à direita do label (não flutuando) */
+/* Campo único de descrição (spec 74): LEITURA por padrão (prévia + botão
+   discreto "Editar"); clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). */
 .task-edit-bodyrow { margin-bottom:8px; }
-.task-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.task-edit-bodyview { display:flex; flex-direction:column; gap:10px; }
+.task-edit-editbtn { align-self:flex-end; }
+.task-edit-preview-empty { color:var(--text-subtle); }
+.task-edit-empty-trigger { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+.task-edit-empty-trigger:hover { color:var(--text); }
+.task-edit-bodyedit { display:flex; flex-direction:column; gap:10px; margin-top:10px; }
+.task-edit-bodyedit[hidden] { display:none; }
+.task-edit-bodyedit-actions { display:flex; gap:10px; }
 .task-edit-body {
   width:100%; box-sizing:border-box; min-height:180px; resize:vertical;
   background:var(--surface); border:1px solid var(--border); color:var(--text);
@@ -1392,15 +1488,10 @@ const TASK_DETAIL_CSS = `
   transition:border-color 160ms var(--ease);
 }
 .task-edit-body:focus { outline:none; border-color:var(--accent-lav); }
-
-/* Prévia: bloco bem separado com cartão próprio */
-.task-edit-previewrow { margin:22px 0 8px; }
-.task-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; margin-bottom:10px; }
 .task-edit-preview {
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
   padding:16px 20px;
 }
-.task-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-subtle); font-size:13px; }
 .task-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
 .task-edit-status.ok { color:var(--success); }
 .task-edit-status.saving { color:var(--text-dim); }
@@ -1518,7 +1609,28 @@ const NOTE_EDIT_CSS = `
 .note-edit-tldr-count.bad { color:var(--danger); }
 
 .note-edit-bodyrow { margin-top:26px; }
-.note-edit-bodyhead { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+/* Campo único de corpo (spec 74): LEITURA por padrão (prévia + botão discreto
+   "Editar"); clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Os antigos
+   rótulos de cabeçalho separados sumiram — o botão já diz o que faz. */
+.note-edit-bodyview { display:flex; flex-direction:column; gap:10px; }
+.note-edit-editbtn {
+  align-self:flex-end; font-size:12px; padding:5px 12px; border-radius:var(--radius-sm);
+  border:1px solid var(--border); background:none; color:var(--text-dim); cursor:pointer;
+  transition:border-color 140ms var(--ease), color 140ms var(--ease);
+}
+.note-edit-editbtn:hover { border-color:var(--border-strong); color:var(--text); }
+.note-edit-preview-empty { color:var(--text-subtle); }
+.note-edit-empty-trigger { cursor:pointer; text-decoration:underline dotted; text-underline-offset:3px; }
+.note-edit-empty-trigger:hover { color:var(--text); }
+.note-edit-bodyedit { display:flex; flex-direction:column; gap:10px; }
+.note-edit-bodyedit[hidden] { display:none; }
+.note-edit-bodyedit-actions { display:flex; gap:10px; }
+.note-edit-cancel {
+  font-size:13px; padding:7px 14px; border-radius:var(--radius-sm); border:1px solid var(--border);
+  background:none; color:var(--text-dim); cursor:pointer;
+  transition:border-color 160ms var(--ease), color 160ms var(--ease);
+}
+.note-edit-cancel:hover { border-color:var(--border-strong); color:var(--text); }
 .note-edit-body {
   width:100%; box-sizing:border-box; min-height:220px; resize:vertical;
   background:var(--surface); border:1px solid var(--border); color:var(--text);
@@ -1527,11 +1639,9 @@ const NOTE_EDIT_CSS = `
   transition:border-color 160ms var(--ease);
 }
 .note-edit-body:focus { outline:none; border-color:var(--accent-lav); }
-.note-edit-preview-head { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; margin:22px 0 10px; }
 .note-edit-preview {
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px;
 }
-.note-edit-preview:empty::after { content:"Nada pra pré-visualizar ainda."; color:var(--text-subtle); font-size:13px; }
 .note-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
 .note-edit-status.ok { color:var(--success); }
 .note-edit-status.saving { color:var(--text-dim); }

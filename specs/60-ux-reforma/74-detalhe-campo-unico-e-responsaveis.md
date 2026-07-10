@@ -1,6 +1,6 @@
 # Detalhe de nota/task: campo único de corpo (render por padrão) + seletor de responsáveis estilo ClickUp
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (10/07/2026) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > Pedido direto do dono (10/07/2026, com screenshots): "não faz sentido ter um campo Descrição (markdown) e um campo Prévia — tem que ser um campo só, que abre pra editar no clique; senão a gente visualmente prejudica toda essa experiência" e "no cartão de responsáveis, quero um botãozinho de selecionar as pessoas, igual fora do cartão, igual no ClickUp".
 
 ## Problema
@@ -33,8 +33,8 @@
 
 ## Critérios de aceite
 
-- [ ] Detalhe de nota e de task mostram UM só bloco de corpo, renderizado, com Editar → textarea → Salvar/Cancelar funcionando (fetch + 409 preservados).
-- [ ] Ctrl/Cmd+Enter salva no modo edição.
-- [ ] Cartão de responsáveis mostra dots + botão; popover seleciona e salva sem reload; replace-set e limite 16 preservados.
-- [ ] Testes existentes (users-web, notes/tasks SSR) verdes; novos asserts pro markup novo.
-- [ ] Suite + typecheck + build do client verdes.
+- [x] Detalhe de nota e de task mostram UM só bloco de corpo, renderizado, com Editar → textarea → Salvar/Cancelar funcionando (fetch + 409 preservados).
+- [x] Ctrl/Cmd+Enter salva no modo edição.
+- [x] Cartão de responsáveis mostra dots + botão; popover seleciona e salva sem reload; replace-set e limite 16 preservados.
+- [x] Testes existentes (users-web, notes/tasks SSR) verdes; novos asserts pro markup novo.
+- [x] Suite + typecheck + build do client verdes.

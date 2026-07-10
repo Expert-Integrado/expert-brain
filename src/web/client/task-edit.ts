@@ -1,17 +1,23 @@
 // Client do editor inline de task (/app/tasks/<id>) — spec 36, fase 1.
 // - Autosave em status/prioridade/prazo (eventos `change` discretos dos selects
 //   e do datetime-local). Sem debounce: são pickers, não texto contínuo.
-// - Título e corpo salvam por botão "Salvar" + atalho Ctrl/Cmd+Enter. Texto livre
-//   NÃO autosalva no meio da digitação (spec: destrutivo).
+// - Título salva por botão "Salvar" + atalho Ctrl/Cmd+Enter. Texto livre NÃO
+//   autosalva no meio da digitação (spec: destrutivo).
+// - Descrição: campo único (spec 74) — LEITURA por padrão (prévia + botão "Editar");
+//   clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Ctrl/Cmd+Enter salva, Esc
+//   cancela. Sem live-preview durante a digitação (mesma decisão do note-edit.ts).
+// - Responsáveis (spec 74): popover num <details> nativo (abre/fecha sem JS); o
+//   submit do form de checkboxes é interceptado por fetch pra atualizar os dots
+//   sem reload, na MESMA rota POST /app/tasks/assignees de sempre.
 // - Concorrência otimista: reenvia o `data-updated-at` da página como
 //   expected_updated_at; em 409 mostra "editada em outro lugar, recarregue" e NÃO
 //   sobrescreve. A cada save bem-sucedido, atualiza o expected_updated_at local.
-// - Prévia de markdown client-side leve (sem puxar `marked`), atualizada ao digitar.
 // - CSP: zero onclick/onchange inline — tudo via addEventListener neste bundle.
 
 import { appFetch } from './http.js';
 import { createSaveQueue, type SaveResult } from './save-queue.js';
 import { initVisibilityUi } from './visibility-ui.js';
+import { assigneeDotsHtml, type AssigneeDot } from '../../util/task-badges.js';
 
 const root = document.querySelector<HTMLElement>('.task-edit');
 
@@ -23,7 +29,10 @@ if (root) {
 
   const statusEl = document.querySelector<HTMLElement>('[data-editstatus]');
   const titleInput = root.querySelector<HTMLTextAreaElement>('[data-field="title"]');
+  const bodyViewEl = root.querySelector<HTMLElement>('[data-bodyview]');
+  const bodyEditEl = root.querySelector<HTMLElement>('[data-bodyedit]');
   const bodyArea = root.querySelector<HTMLTextAreaElement>('[data-field="body"]');
+  const bodyCancelBtn = root.querySelector<HTMLButtonElement>('[data-cancel-body]');
   const previewEl = root.querySelector<HTMLElement>('[data-preview]');
   const columnSel = root.querySelector<HTMLSelectElement>('[data-field="column"]');
   const projectSel = root.querySelector<HTMLSelectElement>('[data-field="project"]');
@@ -269,24 +278,129 @@ if (root) {
     if (e.key === 'Enter') { e.preventDefault(); if (titleInput.value !== titleSaved) saveTitle(); }
   });
 
-  // ── Save por botão: corpo/descrição ──
+  // ── Descrição: campo único (spec 74) — LEITURA (prévia + Editar) ↔ EDIÇÃO
+  // (textarea + Salvar/Cancelar). Sem live-preview durante a digitação. Delegado
+  // (não um forEach fixo nos triggers do load): o placeholder "Sem descrição" pode
+  // ser recriado dinamicamente depois de salvar uma descrição vazia.
+  function enterBodyEdit() {
+    if (!bodyArea || !bodyViewEl || !bodyEditEl) return;
+    bodyArea.value = bodySaved;
+    bodyViewEl.hidden = true;
+    bodyEditEl.hidden = false;
+    bodyArea.focus();
+  }
+  function exitBodyEdit() {
+    if (!bodyViewEl || !bodyEditEl) return;
+    bodyEditEl.hidden = true;
+    bodyViewEl.hidden = false;
+  }
+  bodyViewEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-edit-body]')) enterBodyEdit();
+  });
+
   async function saveBody() {
     if (!bodyArea) return;
-    if (await save({ body: bodyArea.value })) { bodySaved = bodyArea.value; markDirty(bodySaveBtn, false); }
+    const v = bodyArea.value;
+    if (await save({ body: v })) {
+      bodySaved = v;
+      if (previewEl) {
+        previewEl.innerHTML = v.trim()
+          ? renderPreview(v)
+          : '<span class="task-edit-empty-trigger" data-edit-body>Sem descrição</span>';
+        previewEl.classList.toggle('task-edit-preview-empty', !v.trim());
+      }
+      exitBodyEdit();
+    }
   }
   bodySaveBtn?.addEventListener('click', saveBody);
-  bodyArea?.addEventListener('input', () => {
-    markDirty(bodySaveBtn, bodyArea.value !== bodySaved);
-    if (previewEl) previewEl.innerHTML = renderPreview(bodyArea.value);
+  bodyCancelBtn?.addEventListener('click', () => {
+    if (bodyArea) bodyArea.value = bodySaved;
+    exitBodyEdit();
   });
   bodyArea?.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveBody(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (bodyArea) bodyArea.value = bodySaved; exitBodyEdit(); }
   });
 
   // Aviso ao sair com edição de texto pendente (só título/corpo — estruturados
   // já autosalvaram).
   window.addEventListener('beforeunload', (e) => {
     if (anyDirty() || queue.isBusy()) { e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+// ── Responsáveis estilo ClickUp (spec 74) ──
+// Popover num <details> nativo (spec: mesma mecânica do quick-edit do board — botão
+// + painel; aqui o painel é o próprio <details>, que abre/fecha sem depender de JS).
+// O form de checkboxes de dentro é o MESMO endpoint de sempre (POST
+// /app/tasks/assignees, form-encoded, replace-set) — sem JS ele faz um POST normal
+// (302 de volta pro detalhe, funcional). Com JS, o submit é interceptado por fetch
+// (redirect:'manual' — 302 vira 'opaqueredirect', tratado como sucesso) pra
+// atualizar os dots sem reload.
+const assigneesRoot = document.querySelector<HTMLElement>('[data-assignees-picker]');
+if (assigneesRoot) {
+  const form = assigneesRoot.querySelector<HTMLFormElement>('[data-assignees-form]');
+  const cancelBtn = assigneesRoot.querySelector<HTMLButtonElement>('[data-assignees-cancel]');
+  const msgEl = assigneesRoot.querySelector<HTMLElement>('[data-assignees-msg]');
+
+  function setMsg(text: string, cls: 'ok' | 'saving' | 'err' | '') {
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.className = 'task-assignees-msg' + (cls ? ' ' + cls : '');
+  }
+
+  cancelBtn?.addEventListener('click', () => {
+    form?.reset();
+    setMsg('', '');
+    assigneesRoot.removeAttribute('open');
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    setMsg('Salvando...', 'saving');
+    try {
+      // Monta o body manualmente a partir dos inputs (em vez de iterar FormData
+      // direto) — o client tsconfig não tem lib "DOM.Iterable", e já precisamos
+      // da lista de checkboxes marcados logo abaixo mesmo.
+      const checked = Array.from(form.querySelectorAll<HTMLInputElement>('input[name="user_ids"]:checked'));
+      const taskIdInput = form.querySelector<HTMLInputElement>('input[name="task_id"]');
+      const params = new URLSearchParams();
+      if (taskIdInput) params.append('task_id', taskIdInput.value);
+      checked.forEach((c) => params.append('user_ids', c.value));
+      const res = await fetch(form.action, {
+        method: 'POST',
+        credentials: 'same-origin',
+        redirect: 'manual',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: params,
+      });
+      // redirect:'manual' devolve type='opaqueredirect' (status 0) em qualquer 3xx,
+      // same-origin inclusive — é o sinal de sucesso (o endpoint só redireciona em
+      // replace-set OK). Qualquer outra resposta não-ok é erro de verdade (400/404).
+      if (res.type !== 'opaqueredirect' && !res.ok) {
+        const text = await res.text().catch(() => '');
+        setMsg('Erro ao salvar responsáveis' + (text ? ': ' + text : ''), 'err');
+        return;
+      }
+      const selected: AssigneeDot[] = checked.map((c) => ({
+        id: c.value,
+        name: c.dataset.userName || c.value,
+        type: c.dataset.userType === 'agent' ? 'agent' : 'person',
+        avatar: c.dataset.userAvatar === '1',
+      }));
+      // Baseline novo pra Cancelar (sem salvar de novo) voltar pro estado recém-salvo.
+      checked.forEach((c) => { c.defaultChecked = true; });
+      Array.from(form.querySelectorAll<HTMLInputElement>('input[name="user_ids"]:not(:checked)'))
+        .forEach((c) => { c.defaultChecked = false; });
+      // Requery a cada save: o outerHTML anterior fica órfão (sem parent) depois de
+      // substituído, então cachear a referência fora do handler quebraria no 2º save.
+      const dotsEl = assigneesRoot.querySelector<HTMLElement>('.task-assignees');
+      if (dotsEl) dotsEl.outerHTML = assigneeDotsHtml(selected);
+      setMsg('Salvo', 'ok');
+      assigneesRoot.removeAttribute('open');
+    } catch {
+      setMsg('Falha de conexão', 'err');
+    }
   });
 }
 

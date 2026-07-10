@@ -213,6 +213,47 @@ describe('POST /app/tasks/assignees (sidebar do detalhe)', () => {
     expect(html).toContain('/app/tasks/assignees');
   });
 
+  it('picker de responsáveis (spec 74): dots + popover <details> com checkboxes, avatar/inicial e selo de agente', async () => {
+    const ck = await cookie();
+    await seedTask('t1');
+    await createUser(E, { id: 'user_a', name: 'Ana Almeida', type: 'person', bio: null, api_key_id: null }, 1);
+    await createUser(E, { id: 'user_x', name: 'Xavier Bot', type: 'agent', bio: null, api_key_id: null }, 2);
+    await setTaskAssignees(E, 't1', ['user_a'], 5);
+    const page = await SELF.fetch('https://x/app/tasks/t1', { headers: { cookie: ck } });
+    const html = await page.text();
+    // dots (assigneeDotsHtml) + popover nativo — abre/fecha sem JS
+    expect(html).toContain('data-assignees-picker');
+    expect(html).toContain('<details class="task-assignees-picker"');
+    expect(html).toContain('class="task-assignees"');
+    expect(html).toContain('task-assignees-addbtn');
+    // form de checkboxes preservado (compat + fallback sem JS) na MESMA rota
+    expect(html).toContain('data-assignees-form');
+    expect(html).toContain('action="/app/tasks/assignees"');
+    expect(html).toContain('name="user_ids" value="user_a" checked');
+    expect(html).toContain('name="user_ids" value="user_x"');
+    expect(html).toContain('agente'); // selo de tipo agente na opção
+    expect(html).toContain('data-assignees-save');
+    expect(html).toContain('data-assignees-cancel');
+  });
+
+  it('picker de responsáveis: usuário arquivado some da lista, exceto se já for assignee', async () => {
+    const ck = await cookie();
+    await seedTask('t1');
+    await createUser(E, { id: 'user_old', name: 'Usuário Antigo', type: 'person', bio: null, api_key_id: null }, 1);
+    await setTaskAssignees(E, 't1', ['user_old'], 5);
+    await setUserArchived(E, 'user_old', 999);
+    await createUser(E, { id: 'user_new_archived', name: 'Nunca Atribuído', type: 'person', bio: null, api_key_id: null }, 2);
+    await setUserArchived(E, 'user_new_archived', 999);
+
+    const page = await SELF.fetch('https://x/app/tasks/t1', { headers: { cookie: ck } });
+    const html = await page.text();
+    // arquivado que JÁ é assignee aparece (esmaecido, opt-out manual)
+    expect(html).toContain('Usuário Antigo');
+    expect(html).toContain('class="task-assignees-opt archived"');
+    // arquivado que NUNCA foi assignee desta task não aparece pra atribuição nova
+    expect(html).not.toContain('Nunca Atribuído');
+  });
+
   it('Criado por: carimbo read-only com o usuário resolvido do PAT criador', async () => {
     const ck = await cookie();
     await seedKey('key_vps', 'claude-vps');

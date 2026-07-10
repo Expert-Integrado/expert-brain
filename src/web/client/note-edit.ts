@@ -1,7 +1,10 @@
 // Client do editor inline de NOTA de conhecimento (/app/notes/<id>) — spec 36 fase 2.
 // - title: input borderless (parece texto até hover/focus). Salva por botão + Ctrl/Cmd+Enter.
-// - body: textarea markdown + prévia = a própria seção .note-body re-renderizada no reload
-//   (aqui só uma prévia leve client-side ao digitar). Salva por botão + Ctrl/Cmd+Enter.
+// - body: campo único (spec 74) — LEITURA por padrão (prévia renderizada + botão "Editar");
+//   clique troca pra EDIÇÃO (textarea + Salvar/Cancelar). Ctrl/Cmd+Enter salva, Esc cancela.
+//   Salvar re-renderiza a prévia com o renderer leve client-side (renderPreview) e volta
+//   pro modo leitura — sem live-preview durante a digitação (não há painel visível pra
+//   atualizar nesse meio-tempo; ver spec 74 §1, decisão de simplicidade).
 // - tldr: input curto com contador (10-280). Autosave no blur/change.
 // - domains: multi-select simples dos 12 canônicos, máx 3. Autosave no change.
 // - kind: select dos 7. Autosave no change.
@@ -30,8 +33,11 @@ if (root) {
   const domainChecks = Array.from(root.querySelectorAll<HTMLInputElement>('[data-domain]'));
   // Corpo/prévia/status ficam num 2º bloco .note-edit (separado pela mídia/grafo local),
   // então buscamos no documento inteiro, não só no root do cabeçalho.
+  const bodyViewEl = document.querySelector<HTMLElement>('[data-bodyview]');
+  const bodyEditEl = document.querySelector<HTMLElement>('[data-bodyedit]');
   const bodyArea = document.querySelector<HTMLTextAreaElement>('[data-field="body"]');
   const bodySaveBtn = document.querySelector<HTMLButtonElement>('[data-save="body"]');
+  const bodyCancelBtn = document.querySelector<HTMLButtonElement>('[data-cancel-body]');
   const previewEl = document.querySelector<HTMLElement>('[data-preview]');
 
   let titleSaved = titleInput?.value ?? '';
@@ -183,20 +189,46 @@ if (root) {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveTitle(); }
   });
 
-  // ── body: botão + Ctrl/Cmd+Enter + prévia ao digitar ──
+  // ── body: campo único (spec 74) — LEITURA (prévia + Editar) ↔ EDIÇÃO (textarea +
+  // Salvar/Cancelar). Sem live-preview durante a digitação (o painel de prévia fica
+  // escondido nesse modo — nada visível pra atualizar).
+  function enterBodyEdit() {
+    if (!bodyArea || !bodyViewEl || !bodyEditEl) return;
+    bodyArea.value = bodySaved;
+    bodyViewEl.hidden = true;
+    bodyEditEl.hidden = false;
+    bodyArea.focus();
+  }
+  function exitBodyEdit() {
+    if (!bodyViewEl || !bodyEditEl) return;
+    bodyEditEl.hidden = true;
+    bodyViewEl.hidden = false;
+  }
+  bodyViewEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-edit-body]')) enterBodyEdit();
+  });
+
   async function saveBody() {
     if (!bodyArea) return;
     const v = bodyArea.value.trim();
     if (v.length < 1) { setStatus('O corpo não pode ficar vazio.', 'err'); return; }
-    if (await saveDirect({ body: v })) { bodySaved = bodyArea.value; markDirty(bodySaveBtn, false); }
+    if (await saveDirect({ body: v })) {
+      bodySaved = v;
+      if (previewEl) {
+        previewEl.innerHTML = renderPreview(v);
+        previewEl.classList.remove('note-edit-preview-empty');
+      }
+      exitBodyEdit();
+    }
   }
   bodySaveBtn?.addEventListener('click', saveBody);
-  bodyArea?.addEventListener('input', () => {
-    markDirty(bodySaveBtn, bodyArea.value !== bodySaved);
-    if (previewEl) previewEl.innerHTML = renderPreview(bodyArea.value);
+  bodyCancelBtn?.addEventListener('click', () => {
+    if (bodyArea) bodyArea.value = bodySaved;
+    exitBodyEdit();
   });
   bodyArea?.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveBody(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (bodyArea) bodyArea.value = bodySaved; exitBodyEdit(); }
   });
 
   // Aviso ao sair com edição de texto livre pendente OU save estruturado em voo.
