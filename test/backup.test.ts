@@ -258,3 +258,41 @@ describe('zip — escritor próprio validado por leitor independente', () => {
     expect(files.get('vazio.txt')).toHaveLength(0);
   });
 });
+
+// Achados do drill de restore off-site (spec 50-console-v2/69, 10/07/2026): o
+// restore real contra o snapshot de produção derrubou 3 pressupostos do gerador.
+describe('jsonl-to-sql — correções do drill de restore (spec 69)', () => {
+  it('corta statement por BYTES além da contagem de linhas (limite de 100KB do D1)', () => {
+    const big = 'x'.repeat(30_000);
+    const jsonl = Array.from({ length: 10 }, (_, i) => JSON.stringify({ id: `n${i}`, body: big })).join('\n');
+    const stmts = jsonlToInsertStatements('notes', jsonl, { rowsPerStatement: 50 });
+    expect(stmts.length).toBeGreaterThan(1); // por contagem, 10 linhas caberiam num lote só
+    for (const s of stmts) expect(s.length).toBeLessThan(100_000);
+  });
+
+  it('linha individual maior que o teto passa sozinha (nunca gera statement vazio)', () => {
+    const jsonl = [
+      JSON.stringify({ id: 'a', body: 'y'.repeat(120_000) }),
+      JSON.stringify({ id: 'b', body: 'pequena' }),
+    ].join('\n');
+    const stmts = jsonlToInsertStatements('notes', jsonl, {});
+    expect(stmts.length).toBe(2);
+    expect(stmts[0].length).toBeGreaterThan(100_000); // a gigante, sozinha
+    expect(stmts[1].length).toBeLessThan(1_000);
+  });
+
+  it('task_projects importa ANTES de notes (notes.project_id é FK)', () => {
+    const order = sortTablesForRestore(['notes', 'task_projects', 'tags', 'kanban_columns']);
+    expect(order.indexOf('task_projects')).toBeLessThan(order.indexOf('notes'));
+    expect(order.indexOf('kanban_columns')).toBeLessThan(order.indexOf('notes'));
+  });
+
+  it('notes com origin_note_id entram DEPOIS das sem origem (self-FK do schema)', () => {
+    const jsonl = [
+      JSON.stringify({ id: 'task1', origin_note_id: 'base' }),
+      JSON.stringify({ id: 'base', origin_note_id: null }),
+    ].join('\n');
+    const sql = jsonlToInsertStatements('notes', jsonl, {}).join('\n');
+    expect(sql.indexOf("'base'")).toBeLessThan(sql.indexOf("'task1'"));
+  });
+});

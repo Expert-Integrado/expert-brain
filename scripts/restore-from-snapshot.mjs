@@ -126,8 +126,16 @@ console.log('Import concluído.');
 if (opt.verify) {
   console.log('\nVerificando contagens contra o manifest...');
   let mismatches = 0;
+  // --command com shell (obrigatório no Windows pro npx .cmd) estilhaça o SQL
+  // nos espaços — toda query de verificação vai por --file, igual ao import.
+  // Descoberto no drill de restore off-site da spec 69 (10/07/2026).
+  const countFile = join(outDir, '__count.sql');
+  const queryViaFile = (sql) => {
+    writeFileSync(countFile, sql);
+    return wrangler(['d1', 'execute', opt.db, wranglerTarget, '--json', '--file', countFile]);
+  };
   for (const table of importTables) {
-    const r = wrangler(['d1', 'execute', opt.db, wranglerTarget, '--json', '--command', `SELECT COUNT(*) AS n FROM "${table}"`]);
+    const r = queryViaFile(`SELECT COUNT(*) AS n FROM "${table}";`);
     if (r.status !== 0) fail(`falha ao contar ${table}`);
     let n = NaN;
     try {
@@ -142,7 +150,7 @@ if (opt.verify) {
     console.log(`  ${table}: ${n}${expected !== undefined ? ` / manifest ${expected}` : ''} ${ok ? 'OK' : 'DIVERGENTE'}`);
   }
   if (manifest.schema_version) {
-    const r = wrangler(['d1', 'execute', opt.db, wranglerTarget, '--json', '--command', `SELECT COUNT(*) AS n FROM "_migrations" WHERE id = '${String(manifest.schema_version).replace(/'/g, "''")}'`]);
+    const r = queryViaFile(`SELECT COUNT(*) AS n FROM "_migrations" WHERE id = '${String(manifest.schema_version).replace(/'/g, "''")}';`);
     const found = r.status === 0 && (() => { try { return JSON.parse(r.stdout)?.[0]?.results?.[0]?.n === 1; } catch { return false; } })();
     console.log(`  schema ${manifest.schema_version}: ${found ? 'presente' : 'AUSENTE — rode o provision!'}`);
     if (!found) mismatches++;

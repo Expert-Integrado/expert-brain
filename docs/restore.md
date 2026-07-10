@@ -70,6 +70,18 @@
    - Se falhar no meio: o banco pode ter ficado parcial — **recomece do zero**
      (delete e recrie o D1). Não re-rode por cima sem `--or-replace`, e evite
      `--or-replace` em `notes` (REPLACE pode deixar entrada órfã no índice FTS).
+   - Alternativa ao DELETE acima, validada no drill: `--or-replace` direto num
+     banco recém-provisionado — como não há `notes` pré-existentes, o risco de
+     FTS órfão não se aplica; só os seeds do provision são sobrescritos.
+
+   **Drill real (10/07/2026, spec 69):** runbook executado ponta a ponta com o
+   snapshot de produção (7.006 notas) baixado da cópia off-site, num D1 local
+   limpo — contagens 14/14 batendo com o manifest. Três fixes entraram no
+   gerador nesse drill (hoje automáticos, sem flag): teto de ~80KB por statement
+   (o D1 rejeita acima de 100KB — lote de 50 notas grandes estourava), ordem de
+   import com `task_projects` antes de `notes` (FK `notes.project_id`) e notas
+   com `origin_note_id` depois das sem origem (self-FK). A verificação do
+   `--verify` roda por `--file` (o `--command` estilhaçava o SQL no Windows).
 
 6. **Valide as contagens** contra o manifest (o `--verify` acima já faz):
    `SELECT COUNT(*) FROM <tabela>` deve bater com `manifest.tables.<tabela>`

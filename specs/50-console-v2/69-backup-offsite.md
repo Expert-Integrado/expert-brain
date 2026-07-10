@@ -1,6 +1,6 @@
 # Backup off-site: rotina externa que copia os snapshots pra FORA da Cloudflare
 
-> **Status:** implantado — aguardando SÓ o token R2 do dono (10/07/2026: script + cron semanal instalados no servidor externo do dono; alerta de falha testado com falha forçada real; `docs/restore.md` dos 2 repos com o parágrafo off-site. Falta: dono criar o token S3 read-only no dash Cloudflare e guardar no cofre de senhas — daí a injeção no servidor e a 1ª execução verificada fecham a spec) · **Prioridade:** P1 · **Esforço:** M · **Repo:** ops (servidor externo do dono) — zero código nos Workers
+> **Status:** shipped (10/07/2026 — token S3 read-only criado pelo dono e guardado no cofre; credenciais injetadas no servidor externo; 1ª execução real verificada: snapshots dos 2 Workers espelhados em disco + nuvem alheia, manifests validados; teste de escrita NEGADA confirmado (403); drill de restore ponta a ponta a partir da cópia off-site com contagens 14/14 batendo o manifest) · **Prioridade:** P1 · **Esforço:** M · **Repo:** ops (servidor externo do dono) — zero código nos Workers
 > **Depende de:** `50-console-v2/67` (os snapshots que esta rotina copia). **Exige o dono no loop** (criar tokens R2 e autorizar o destino em nuvem).
 > **Agente sugerido:** Opus · **Esforço de execução:** padrão
 
@@ -50,10 +50,10 @@ Script único (`backup-offsite.sh`, idempotente, versionado no repo de infra do 
 
 ## Critérios de aceite
 
-- [ ] Token R2 read-only com escopo mínimo criado e testado (listar e baixar `backups/`; escrita NEGADA — testar explicitamente). ← AÇÃO DO DONO + 1ª execução
-- [x] Cron semanal no servidor externo roda o script (instalado 10/07/2026, terça de madrugada — depois dos snapshots de segunda; espelhamento efetivo depende do token acima).
-- [x] Verificação: manifest válido, JSONL presentes com tamanho > 0, snapshot < 8 dias — implementada no script; alerta real testado com falha forçada em 10/07/2026 (canal de alerta do dono recebeu).
-- [ ] Snapshot recém-baixado do off-site passa no `restore-from-snapshot.mjs --verify` num banco local limpo. ← após 1ª execução com token
+- [x] Token R2 read-only com escopo mínimo criado e testado (10/07/2026: listagem e download de `backups/` ok na 1ª execução real; PUT explicitamente NEGADO com 403 AccessDenied).
+- [x] Cron semanal no servidor externo roda o script (instalado 10/07/2026, terça de madrugada — depois dos snapshots de segunda); 1ª execução real ok com os 2 Workers espelhados (disco + nuvem).
+- [x] Verificação: manifest válido, JSONL presentes com tamanho > 0, snapshot < 8 dias — implementada no script; alerta real testado com falha forçada em 10/07/2026 (canal de alerta do dono recebeu). Na 1ª execução real a verificação foi corrigida pra tratar os DOIS shapes de manifest (brain e contacts) e falhar explicitamente em parse ilegível.
+- [x] Snapshot recém-baixado do off-site passa no `restore-from-snapshot.mjs --verify` num banco local limpo (drill de 10/07/2026: 7.006 notas, contagens 14/14 batendo o manifest; 3 fixes de gerador descobertos e corrigidos — ver docs/restore.md).
 - [x] Nenhum secret em texto plano em repo, log ou chat (secrets via `/etc/environment.d/expert.conf` 600; remote R2 do rclone definido por env vars em runtime, nada gravado em rclone.conf).
 - [x] `docs/restore.md` dos dois repos ganha o parágrafo do restore off-site (10/07/2026).
 
