@@ -8,6 +8,7 @@ import { esc } from '../util/html.js';
 import { handleApp } from '../web/handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
 import { handleMailboxSummary, handleWhoami } from '../web/mailbox-api.js';
+import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from '../web/project-share.js';
 
 export const authHandler = {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -42,6 +43,23 @@ export const authHandler = {
       }
       if (req.method === 'GET' && SHARE_TOKEN_RE.test(rest)) {
         return handleSharePage(req, env, rest);
+      }
+      return shareNotFound();
+    }
+
+    // Board compartilhado por PROJETO (spec 85): /p/<token>, mesmo racional do /s/
+    // (público, fora de /app, 404 neutro pra token fora do formato/método errado).
+    if (url.pathname.startsWith('/p/')) {
+      const rest = url.pathname.slice('/p/'.length);
+      if (rest.endsWith('/comment')) {
+        const token = rest.slice(0, -'/comment'.length);
+        if (req.method === 'POST' && PROJECT_SHARE_TOKEN_RE.test(token)) {
+          return handleProjectShareCommentPost(req, env, token);
+        }
+        return shareNotFound();
+      }
+      if (req.method === 'GET' && PROJECT_SHARE_TOKEN_RE.test(rest)) {
+        return handleProjectSharePage(req, env, rest);
       }
       return shareNotFound();
     }

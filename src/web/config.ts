@@ -5,6 +5,7 @@ import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js'
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
+import { pshareFlashKey, listProjectShares, type ProjectShareRow } from './project-share.js';
 import { readPersonalizationPrompt, readOwnerInstructions, writeOwnerInstructions, OWNER_INSTRUCTIONS_MAX_LEN } from '../db/meta.js';
 import { assetVersion } from './asset-version.js';
 import { readLastBackup } from '../backup/snapshot.js';
@@ -200,12 +201,74 @@ function renderProjectRow(proj: TaskProject, count: number): string {
   </tr>`;
 }
 
-function renderProjectsSection(projects: TaskProject[], counts: Map<string, number>, savedProjects: boolean): string {
+function renderProjectsSection(
+  projects: TaskProject[],
+  counts: Map<string, number>,
+  savedProjects: boolean,
+  shares: ProjectShareRow[] = [],
+  justCreatedShareUrl: string | null = null
+): string {
   const total = projects.length;
   const rows = projects.length
     ? projects.map((p) => renderProjectRow(p, counts.get(p.id) ?? 0)).join('')
     : `<tr><td colspan="4" style="color:var(--text-dim)">Nenhum projeto ainda. Crie um abaixo, ou deixe a task sem projeto (o padrão).</td></tr>`;
   const atCap = total >= TASK_PROJECT_CAP;
+
+  // Shares públicos por projeto (spec 85). A URL /p/ plaintext só aparece no banner
+  // one-time (pflash); a listagem identifica pelo prefixo. Revogados ficam fora da
+  // tabela (revogação é terminal — sem un-revoke, o histórico vive no banco).
+  const projectLabelById = new Map(projects.map((p) => [p.id, p.label] as const));
+  const activeShares = shares.filter((s) => s.revoked_at === null);
+  const now = Date.now();
+  const shareRows = activeShares.map((s) => {
+    const expired = s.expires_at != null && s.expires_at <= now;
+    return `<tr${expired ? ' style="opacity:0.55"' : ''}>
+      <td>${esc(projectLabelById.get(s.project_id) ?? s.project_id)}</td>
+      <td><strong>${esc(s.label)}</strong></td>
+      <td>${s.mode === 'comment' ? 'leitura + comentários' : 'somente leitura'}</td>
+      <td><code>${esc(s.prefix)}…</code></td>
+      <td>${s.expires_at != null ? `${esc(formatBrtDateTime(s.expires_at))}${expired ? ' (expirado)' : ''}` : 'sem expiração'}</td>
+      <td><form method="post" action="/app/project-shares/revoke" style="display:inline">
+        <input type="hidden" name="id" value="${esc(s.id)}">
+        <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
+      </form></td>
+    </tr>`;
+  }).join('');
+  const shareBanner = justCreatedShareUrl
+    ? `<div class="key-flash" id="pshare-flash">
+         <h2>Link do board criado — copie agora</h2>
+         <p>Essa é a única vez que a URL completa aparece. Quem tiver o link vê o recorte do projeto — trate como convite.</p>
+         <div class="row" style="gap:8px">
+           <input type="text" readonly id="pshare-flash-value" class="key-flash-value" value="${esc(justCreatedShareUrl)}">
+           <button type="button" data-copy="pshare-flash-value">Copiar</button>
+         </div>
+       </div>`
+    : '';
+  const activeProjects = projects.filter((p) => p.archived_at === null);
+  const sharesBlock = `
+        <div class="adv-section">
+          <h3>Board compartilhado (link externo)</h3>
+          <p>Compartilha <strong>só as tasks de um projeto</strong> (nunca as privadas, nunca notas/grafo) com alguém de fora, por link <code>/p/…</code>. Modo <em>comentários</em>: quem tem o link comenta assinando a identidade abaixo, com selo EXTERNO — e os responsáveis recebem no mailbox. Revogar mata o link na hora.</p>
+          ${shareBanner}
+          ${activeShares.length === 0 ? '' : `
+          <table class="keys-table">
+            <thead><tr><th>Projeto</th><th>Identidade externa</th><th>Permissão</th><th>Link</th><th>Expira</th><th></th></tr></thead>
+            <tbody>${shareRows}</tbody>
+          </table>`}
+          ${activeProjects.length === 0 ? '' : `
+          <form method="post" action="/app/project-shares/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+            <select name="project_id" required class="input-text" aria-label="Projeto">
+              ${activeProjects.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('')}
+            </select>
+            <input type="text" name="label" required maxlength="60" placeholder="Identidade externa (ex: Cliente X)" class="input-text" style="width:220px">
+            <select name="mode" class="input-text" aria-label="Permissão">
+              <option value="read">Somente leitura</option>
+              <option value="comment">Leitura + comentários</option>
+            </select>
+            <input type="number" name="expires_days" min="1" max="365" placeholder="Expira em (dias, opcional)" class="input-text" style="width:190px">
+            <button type="submit" class="btn btn-primary">Criar link</button>
+          </form>`}
+        </div>`;
   return `
     <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
       <summary>
@@ -232,6 +295,7 @@ function renderProjectsSection(projects: TaskProject[], counts: Map<string, numb
             <button type="submit" class="btn btn-primary">Criar projeto</button>
           </form>`}
         </div>
+        ${sharesBlock}
       </div>
     </details>`;
 }
@@ -433,6 +497,18 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       await env.OAUTH_KV.delete(key);
     }
   }
+  // Mesmo padrão pro share de board por projeto (spec 85): a URL /p/<token> só
+  // aparece uma vez, via ?pflash= consumido do KV (single-use).
+  const pflash = url.searchParams.get('pflash');
+  let justCreatedShareUrl: string | null = null;
+  if (pflash && /^[a-f0-9]{32}$/.test(pflash)) {
+    const key = pshareFlashKey(pflash);
+    const value = await env.OAUTH_KV.get(key);
+    if (value) {
+      justCreatedShareUrl = value;
+      await env.OAUTH_KV.delete(key);
+    }
+  }
 
   // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
   // "Sistemas web" (que contém o prompt) já expandida.
@@ -469,6 +545,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ownerInstructionsRaw,
     stats,
     lastBackup,
+    projectShares,
   ] = await Promise.all([
     listKanbanColumns(env, true),
     taskCountsByColumn(env),
@@ -483,13 +560,18 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     readOwnerInstructions(env),
     getVaultStatus(env),
     readLastBackup(env),
+    listProjectShares(env),
   ]);
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
 
-  // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58).
-  const projectsSection = renderProjectsSection(taskProjects, projectCounts, savedProjects);
+  // Seção "Projetos": pastas (ativas + arquivadas) + contagem de tasks (spec 58) +
+  // shares públicos por projeto (spec 85; abre a seção quando um share acabou de nascer).
+  const projectsSection = renderProjectsSection(
+    taskProjects, projectCounts, savedProjects || justCreatedShareUrl !== null,
+    projectShares, justCreatedShareUrl
+  );
 
   // Seção "Tags": vocabulário global com renomear/apagar (pedido 10/07).
   const tagsSection = renderTagsSection(allTags, savedTags);
@@ -622,7 +704,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // (#backup, #board...) são resolvidos no client — o servidor não vê o fragment.
   const savedBackup = url.searchParams.get('saved') === 'backup';
   const activeTab: 'conexoes' | 'organizacao' | 'sistema' =
-    savedBoard || savedProjects || savedTaxonomy || savedUsers ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
+    savedBoard || savedProjects || savedTaxonomy || savedUsers || justCreatedShareUrl !== null
+      ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
 

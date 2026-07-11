@@ -80,7 +80,7 @@ describe('GET /app/export', () => {
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
     // Bump pra 0022 (spec 82 — mailbox por agente).
-    expect(manifest.schema_version).toBe('0023_api_key_meta');
+    expect(manifest.schema_version).toBe('0024_project_shares');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {

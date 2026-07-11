@@ -489,6 +489,29 @@ const MIGRATION_0023_STMTS: string[] = [
   `ALTER TABLE api_keys ADD COLUMN system TEXT`,
 ];
 
+// 0024 — SHARE DE BOARD POR PROJETO (spec 80-frota-agentes/85). O dono compartilha o
+// RECORTE de um projeto (/p/<token>) com humano/IA de fora, com permissão por token:
+// 'read' (só olha) ou 'comment' (comenta assinando o LABEL do share). Guarda o HASH
+// do token (mesmo racional do share de nota — plaintext só aparece uma vez, no flash
+// da criação); `prefix` identifica o share na listagem. Task privada fica fora do
+// recorte SEMPRE (fail-closed, filtro na leitura). O número 0022 citado na spec era
+// reserva de nome — o próximo livre real é 0024.
+// Espelho .sql de referência: src/db/migrations/0010_project_shares.sql.
+const MIGRATION_0024_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS project_shares (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    prefix TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('read','comment')),
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER,
+    revoked_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_project_shares_project ON project_shares(project_id, revoked_at)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -513,6 +536,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0021_api_key_user', stmts: MIGRATION_0021_STMTS },
   { id: '0022_agent_mailbox', stmts: MIGRATION_0022_STMTS },
   { id: '0023_api_key_meta', stmts: MIGRATION_0023_STMTS },
+  { id: '0024_project_shares', stmts: MIGRATION_0024_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

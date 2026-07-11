@@ -8,6 +8,7 @@ import type { Env } from '../env.js';
 import { handleApp } from './handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from './share.js';
 import { handleMailboxSummary, handleWhoami } from './mailbox-api.js';
+import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from './project-share.js';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -40,6 +41,21 @@ export default {
     }
     if (url.pathname === '/api/whoami' && req.method === 'GET') {
       return handleWhoami(req, env);
+    }
+    // Espelha o board público /p/<token> (spec 85), que em prod vive no auth/handler.ts.
+    if (url.pathname.startsWith('/p/')) {
+      const rest = url.pathname.slice('/p/'.length);
+      if (rest.endsWith('/comment')) {
+        const token = rest.slice(0, -'/comment'.length);
+        if (req.method === 'POST' && PROJECT_SHARE_TOKEN_RE.test(token)) {
+          return handleProjectShareCommentPost(req, env, token);
+        }
+        return shareNotFound();
+      }
+      if (req.method === 'GET' && PROJECT_SHARE_TOKEN_RE.test(rest)) {
+        return handleProjectSharePage(req, env, rest);
+      }
+      return shareNotFound();
     }
     const res = await handleApp(req, env);
     if (res) return res;

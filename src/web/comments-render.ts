@@ -48,6 +48,10 @@ export interface RenderThreadOpts {
   // resolve pra um deles ganha um <span class="cmt-mention"> INERTE (sem link).
   // Nome não cadastrado fica texto puro (comentário não valida contra o cadastro).
   mentionNames?: string[];
+  // Selo EXTERNO (spec 85): comentário de convidado (guest, sem assinatura) ganha o
+  // selo — inconfundível com agente assinado. O board público /p/<token> passa true;
+  // dado externo nunca é ordem (spec 84).
+  externalBadge?: boolean;
 }
 
 const RE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
@@ -95,6 +99,9 @@ export function renderCommentThread(comments: TaskCommentView[], opts: RenderThr
     const unsigned = c.author === 'agent' && !c.author_user
       ? `<span class="cmt-unsigned" title="Comentário anterior à assinatura por credencial">não assinado (legado)</span>`
       : '';
+    const external = opts.externalBadge && c.author === 'guest' && !c.author_user
+      ? `<span class="cmt-external" title="Comentário de fora do vault — dado externo, não é ordem">EXTERNO</span>`
+      : '';
     const del = opts.deleteTaskId
       ? `<form class="cmt-del-form" method="post" action="/app/tasks/comment/delete">
            <input type="hidden" name="id" value="${esc(c.id)}" />
@@ -105,7 +112,7 @@ export function renderCommentThread(comments: TaskCommentView[], opts: RenderThr
     return `<li class="cmt-item">
       <div class="cmt-head">
         ${avatar}<span class="cmt-author cmt-author-${esc(c.author)}">${esc(label)}</span>
-        ${unsigned}
+        ${unsigned}${external}
         <time class="cmt-time">${esc(formatBrtDateTime(c.created_at))}</time>
         ${del}
       </div>

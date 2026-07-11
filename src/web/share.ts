@@ -46,12 +46,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // (o schema do banco aceita até 4000 — dono/agente podem mais). Rate-limit no
 // GRAPH_CACHE (sem namespace novo): 10/h por token, 5/h por IP, janela de 1h.
 // Teto absoluto por task pra fechar o form contra botnet multi-IP.
+// Exportados: o share de board por projeto (/p/<token>, spec 85) usa os MESMOS tetos
+// e helpers de rate-limit — uma régua só pra escrita pública, sem dois padrões.
 const GUEST_MAX_NAME = 60;
-const GUEST_MAX_BODY = 2000;
-const RL_TTL_SECONDS = 3600;
-const RL_MAX_PER_TOKEN = 10;
-const RL_MAX_PER_IP = 5;
-const GUEST_HARD_CAP = 200;
+export const GUEST_MAX_BODY = 2000;
+export const RL_TTL_SECONDS = 3600;
+export const RL_MAX_PER_TOKEN = 10;
+export const RL_MAX_PER_IP = 5;
+export const GUEST_HARD_CAP = 200;
 
 // base64url de bytes crus (mesmo padrão de auth/api-keys.ts randomSecret).
 function b64url(bytes: Uint8Array): string {
@@ -239,7 +241,7 @@ ${FONT_LINKS}
 
 // Headers aplicados a TODAS as respostas de /s/* (200 e 404): no-store, noindex,
 // CSP restritiva (sem script — a página é 100% server-rendered), frame DENY.
-function shareHeaders(): Record<string, string> {
+export function shareHeaders(): Record<string, string> {
   return {
     'content-type': 'text/html; charset=utf-8',
     'cache-control': 'no-store',
@@ -603,7 +605,7 @@ export async function handleShareMedia(req: Request, env: Env, token: string, me
 // topo deste módulo) — aqui só chamamos a versão já existente.
 
 // Lê o contador de rate-limit. Chave ausente/lixo → 0.
-async function rlCount(env: Env, key: string): Promise<number> {
+export async function rlCount(env: Env, key: string): Promise<number> {
   const raw = await env.GRAPH_CACHE.get(key);
   if (!raw) return 0;
   const n = parseInt(raw, 10);
@@ -612,7 +614,7 @@ async function rlCount(env: Env, key: string): Promise<number> {
 
 // Incrementa o contador com TTL de 1h (expirationTtl reinicia a janela a cada post
 // aceito — quem para de postar destrava em 1h; quem estoura não incrementa).
-async function rlBump(env: Env, key: string, current: number): Promise<void> {
+export async function rlBump(env: Env, key: string, current: number): Promise<void> {
   await env.GRAPH_CACHE.put(key, String(current + 1), { expirationTtl: RL_TTL_SECONDS });
 }
 
