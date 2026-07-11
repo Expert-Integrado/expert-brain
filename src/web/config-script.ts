@@ -43,6 +43,9 @@ export function configPageScript(): string {
   function resolveHash() {
     if (!tabs.length || !location.hash) return;
     var hash = location.hash.slice(1);
+    // Alias da aba antiga (pré-redesign 11/07): links salvos com #conexoes caem
+    // na aba Agentes, que herdou o conteúdo dela.
+    if (hash === 'conexoes') hash = 'agentes';
     var isTab = tabs.some(function (t) { return t.getAttribute('data-tab') === hash; });
     if (isTab) {
       activateTab(hash, false);

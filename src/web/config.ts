@@ -712,14 +712,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
        </div>`
     : '';
 
-  // Aba ativa no primeiro paint (spec 69): os redirects ?saved= de board/projects/
-  // taxonomy caem na aba "Organização" e o de backup na aba "Sistema"; todo o resto
-  // (prefs, owner, chave criada) mora na aba padrão "Conexões". Deep links por hash
-  // (#backup, #board...) são resolvidos no client — o servidor não vê o fragment.
+  // Aba ativa no primeiro paint (spec 69, redesign 11/07): os redirects ?saved= de
+  // board/projects/taxonomy/tags caem na aba "Organização" e o de backup na aba
+  // "Sistema"; todo o resto (prefs, owner, users, chave criada) mora na aba padrão
+  // "Agentes". Deep links por hash (#backup, #board...) são resolvidos no client —
+  // o servidor não vê o fragment (o alias #conexoes → agentes também vive lá).
   const savedBackup = url.searchParams.get('saved') === 'backup';
-  const activeTab: 'conexoes' | 'organizacao' | 'sistema' =
-    savedBoard || savedProjects || savedTaxonomy || savedUsers || justCreatedShareUrl !== null
-      ? 'organizacao' : savedBackup ? 'sistema' : 'conexoes';
+  const activeTab: 'agentes' | 'integracoes' | 'organizacao' | 'sistema' =
+    savedBoard || savedProjects || savedTaxonomy || savedTags || justCreatedShareUrl !== null
+      ? 'organizacao' : savedBackup ? 'sistema' : 'agentes';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
 
@@ -729,14 +730,17 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     </div>
 
     <nav class="config-tabs" role="tablist" aria-label="Seções das configurações">
-      ${tabButton('conexoes', 'Conexões')}
+      ${tabButton('agentes', 'Agentes')}
+      ${tabButton('integracoes', 'Integrações')}
       ${tabButton('organizacao', 'Organização')}
       ${tabButton('sistema', 'Sistema')}
     </nav>
     <noscript><style>.config-panel{display:block !important}.config-tabs{display:none}</style></noscript>
 
-    <section class="config-panel${activeTab === 'conexoes' ? ' active' : ''}" id="panel-conexoes" role="tabpanel" aria-labelledby="config-tab-conexoes" data-panel="conexoes">
-    <p class="config-subtitle">Como você liga o Expert Brain aos seus clientes de IA — e as orientações que todo agente recebe ao conectar. Abra o caso que é o seu.</p>
+    <section class="config-panel${activeTab === 'agentes' ? ' active' : ''}" id="panel-agentes" role="tabpanel" aria-labelledby="config-tab-agentes" data-panel="agentes">
+    <p class="config-subtitle">Quem conecta no Brain: perfis de pessoas e agentes, chaves de API e as orientações que todo agente recebe ao conectar.</p>
+
+    ${usersSection}
 
     <details class="disclosure-advanced conn-section" open>
       <summary>
@@ -841,6 +845,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
+    ${ownerInstructionsSection}
+    </section>
+
+    <section class="config-panel${activeTab === 'integracoes' ? ' active' : ''}" id="panel-integracoes" role="tabpanel" aria-labelledby="config-tab-integracoes" data-panel="integracoes">
+    <p class="config-subtitle">Fontes externas que alimentam o vault de contatos. Cada card mostra o estado atual — clique pra configurar.</p>
+
+    <div class="config-cards">
+
     <details class="disclosure-advanced conn-section" id="google-contatos">
       <summary>
         <span class="adv-title">Google Contatos</span>
@@ -944,7 +956,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    ${ownerInstructionsSection}
+    </div>
     </section>
 
     <section class="config-panel${activeTab === 'organizacao' ? ' active' : ''}" id="panel-organizacao" role="tabpanel" aria-labelledby="config-tab-organizacao" data-panel="organizacao">
@@ -955,8 +967,6 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ${projectsSection}
 
     ${tagsSection}
-
-    ${usersSection}
 
     ${taxonomySection}
     </section>
