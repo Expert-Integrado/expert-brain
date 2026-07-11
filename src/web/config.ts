@@ -1014,6 +1014,24 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
       <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
     </div>
+
+    <div class="card" id="push-notifs">
+      <h2>Notificações</h2>
+      <p id="push-status" style="color:var(--text-dim);font-size:13px">Receba um aviso neste dispositivo quando houver tarefas vencendo ou capturas paradas no inbox (junto com o lembrete diário).</p>
+      <div class="row" style="gap:8px;margin-top:6px">
+        <button type="button" id="push-enable-btn" class="btn btn-primary" hidden>Ativar neste dispositivo</button>
+        <button type="button" id="push-disable-btn" class="btn" hidden>Desativar</button>
+        <button type="button" id="push-test-btn" class="btn" hidden>Enviar teste</button>
+      </div>
+      <noscript><p style="color:var(--text-dim);font-size:13px">Notificações exigem JavaScript.</p></noscript>
+    </div>
+
+    <div class="card" id="pwa-install">
+      <h2>Instalar como app</h2>
+      <p id="pwa-install-status" style="color:var(--text-dim);font-size:13px">O console funciona como app instalado (PWA): ícone na tela inicial, janela própria e compartilhamento direto pro inbox.</p>
+      <button type="button" id="pwa-install-btn" class="btn btn-primary" hidden>Instalar app</button>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">No iPhone/iPad: abrir no Safari → botão Compartilhar → <strong>Adicionar à Tela de Início</strong>. No Android/desktop, se o botão acima não aparecer, use o menu do navegador (Instalar app).</p>
+    </div>
     </section>
 
     <script src="/app/config/bundle.js?v=${assetVersion('config.bundle.js')}" defer></script>

@@ -22,15 +22,37 @@ describe('assets/manifest.webmanifest', () => {
     expect(() => loadManifest()).not.toThrow();
   });
 
-  it('share_target aponta pro inbox via GET com title/text/url (spec 68)', () => {
+  it('share_target nível 2: POST multipart pro /app/inbox/share com title/text/url + arquivo (spec 68)', () => {
     const m = loadManifest();
     expect(m.share_target).toEqual({
-      action: '/app/inbox',
-      method: 'GET',
-      // enctype explícito cala o warning do Chrome no manifest (onda 6, spec 67)
-      enctype: 'application/x-www-form-urlencoded',
-      params: { title: 'title', text: 'text', url: 'url' },
+      action: '/app/inbox/share',
+      method: 'POST',
+      enctype: 'multipart/form-data',
+      params: {
+        title: 'title',
+        text: 'text',
+        url: 'url',
+        files: [
+          {
+            name: 'media',
+            accept: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/*'],
+          },
+        ],
+      },
     });
+  });
+
+  it('id estável e screenshots wide+narrow presentes (rich install UI)', () => {
+    const m = loadManifest();
+    expect(m.id).toBe('/app');
+    expect(Array.isArray(m.screenshots)).toBe(true);
+    const forms = m.screenshots.map((s: any) => s.form_factor);
+    expect(forms).toContain('wide');
+    expect(forms).toContain('narrow');
+    for (const s of m.screenshots) {
+      expect(s.src.startsWith('/')).toBe(true);
+      expect(typeof s.sizes).toBe('string');
+    }
   });
 
   it('shortcuts cobrem capturar/tarefas/hoje com URLs válidas', () => {

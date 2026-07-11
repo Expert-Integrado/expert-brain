@@ -4,6 +4,7 @@ import { runSnapshot } from './backup/snapshot.js';
 import { runTaskAutocancel } from './task-lifecycle.js';
 import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
 import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js';
+import { runPushDigest } from './web/push.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
 // wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
@@ -117,6 +118,14 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
         })
     );
   }
+  // Web Push do lembrete diário (spec 68): empurra push pros dispositivos assinados
+  // quando há pendência (task vencendo/atrasada ou inbox). Braço próprio — falha
+  // aqui não derruba o digest do Telegram, e vice-versa. No-op sem VAPID/assinaturas.
+  ctx.waitUntil(
+    runPushDigest(env, Date.now())
+      .then((r) => console.log('push-digest', JSON.stringify(r)))
+      .catch((e) => console.error('push-digest failed', e))
+  );
   ctx.waitUntil(
     runDueReminder(env, Date.now())
       .then(async (r) => {

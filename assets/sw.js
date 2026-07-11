@@ -9,8 +9,14 @@
 // v3: manifest.webmanifest ganhou share_target/shortcuts (specs/50-console-v2/
 // 68-pwa-instalavel.md) — bump invalida o cache antigo do manifest (stale-while-
 // revalidate por extensão) pra que o SO recarregue os atalhos/share target.
-const VERSION = 'v3';
+// v4: share_target virou POST multipart (arquivo → inbox com anexo) + Web Push
+// sem payload + App Badging. O bump recarrega o manifest novo no SO.
+const VERSION = 'v4';
 const CACHE = `brain-${VERSION}`;
+// Cache separado pro handoff do share de arquivo (não entra na limpeza por versão:
+// pode haver um share pendente atravessando um deploy).
+const SHARE_CACHE = 'brain-share';
+const SHARE_PENDING_URL = '/_share/pending';
 const ASSET_RE = /\.(js|css|png|svg|webmanifest|woff2?)$/;
 
 self.addEventListener('install', () => {
@@ -20,16 +26,52 @@ self.addEventListener('install', () => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE && k !== SHARE_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
+// ── Web Share Target nível 2 (specs/50-console-v2/68) ──────────────────────────
+// O POST de navegação do share sheet NÃO carrega o cookie SameSite=Lax — se fosse
+// direto pro Worker, cairia sem sessão. O SW intercepta ANTES da rede: guarda o
+// arquivo no Cache API e redireciona pro GET do inbox com os params de texto +
+// share=file; lá o client (shell bundle) resgata o blob e sobe com a sessão.
+async function handleShareTarget(event) {
+  try {
+    const form = await event.request.formData();
+    const params = new URLSearchParams();
+    for (const k of ['title', 'text', 'url']) {
+      const v = form.get(k);
+      if (typeof v === 'string' && v.trim()) params.set(k, v.trim());
+    }
+    const file = form.get('media');
+    if (file && typeof file !== 'string' && file.size > 0) {
+      const cache = await caches.open(SHARE_CACHE);
+      await cache.put(SHARE_PENDING_URL, new Response(file, {
+        headers: {
+          'content-type': file.type || 'application/octet-stream',
+          'x-share-filename': encodeURIComponent(file.name || ''),
+        },
+      }));
+      params.set('share', 'file');
+    }
+    const qs = params.toString();
+    return Response.redirect(new URL('/app/inbox' + (qs ? '?' + qs : ''), self.location.origin).href, 303);
+  } catch (err) {
+    return Response.redirect(new URL('/app/inbox', self.location.origin).href, 303);
+  }
+}
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
-
   const url = new URL(req.url);
+
+  if (req.method === 'POST' && url.origin === self.location.origin && url.pathname === '/app/inbox/share') {
+    event.respondWith(handleShareTarget(event));
+    return;
+  }
+
+  if (req.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
 
   // Never touch auth, MCP, mutation or data endpoints — always go to network.
@@ -88,6 +130,63 @@ async function networkFirst(req) {
     });
   }
 }
+
+// ── Web Push sem payload (specs/50-console-v2/68) ──────────────────────────────
+// O push chega VAZIO (só o "toque no ombro"); o conteúdo vem fresco de
+// /app/push/pending, buscado AQUI com o cookie de sessão do dispositivo. Se a
+// busca falhar (offline, sessão expirada), mostra um genérico — com
+// userVisibleOnly:true, receber push e não notificar é violação de contrato.
+async function showPendingNotification() {
+  let title = 'Expert Brain';
+  let body = 'Você tem pendências no Brain.';
+  let badge = null;
+  let targetUrl = '/app';
+  try {
+    const res = await fetch('/app/push/pending', { credentials: 'include' });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.title) title = data.title;
+      if (data.body) body = data.body;
+      if (typeof data.badge_count === 'number') badge = data.badge_count;
+      if (data.url) targetUrl = data.url;
+    }
+  } catch (err) {
+    // segue com o genérico
+  }
+  if (badge !== null && 'setAppBadge' in self.navigator) {
+    try {
+      if (badge > 0) await self.navigator.setAppBadge(badge);
+      else await self.navigator.clearAppBadge();
+    } catch (err) { /* badging é opcional */ }
+  }
+  await self.registration.showNotification(title, {
+    body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: 'brain-digest',
+    data: { url: targetUrl },
+  });
+}
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(showPendingNotification());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/app';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.includes('/app') && 'focus' in c) {
+          if ('navigate' in c) c.navigate(url).catch(() => {});
+          return c.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});
 
 function offlineHtml() {
   return `<!doctype html><html lang="pt-BR"><head>

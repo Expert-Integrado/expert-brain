@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { newId } from '../util/id.js';
 import {
   MEDIA_KINDS, type MediaKind, type MediaRow,
-  insertMedia, getMediaById, listMediaByNote, deleteMediaById, countMediaByHash,
+  insertMedia, getMediaById, listMediaByNote, deleteMediaById, countMediaByHashAllTables,
 } from '../db/media-queries.js';
 import { getNoteById } from '../db/queries.js';
 
@@ -195,6 +195,23 @@ export interface AttachResult {
   signed_url: string;
 }
 
+// Sobe um blob pro R2 com dedup por conteúdo (key = sha256/<hash>.<ext>): só faz o
+// put se o blob ainda não existe. Compartilhado entre attachMedia (nota) e a mídia
+// do inbox (spec 68) — a MESMA key nas duas superfícies é o que torna a triagem
+// "virar nota" um re-aponte de linha, sem re-upload.
+export interface StoredBlob { r2_key: string; content_hash: string; deduped: boolean; }
+
+export async function putBlobDedup(env: Env, bytes: Uint8Array, mime: string): Promise<StoredBlob> {
+  if (!env.MEDIA) throw new MediaError(503, 'R2 bucket not configured (MEDIA binding missing)');
+  const hash = await sha256Hex(bytes);
+  const r2Key = `sha256/${hash}.${extFromMime(mime)}`;
+  const existing = await env.MEDIA.head(r2Key);
+  if (!existing) {
+    await env.MEDIA.put(r2Key, bytes, { httpMetadata: { contentType: mime } });
+  }
+  return { r2_key: r2Key, content_hash: hash, deduped: !!existing };
+}
+
 // canSeePrivate (spec 10-backend/25): default false mantém o contrato histórico
 // (nota privada = "not found"); a sessão do dono e PAT com escopo 'private' passam
 // true — sem isso nem o DONO conseguia anexar mídia em nota privada pelo console.
@@ -211,14 +228,7 @@ export async function attachMedia(env: Env, noteId: string, input: AttachInput, 
   }
 
   const kind: MediaKind = (input.kind && MEDIA_KINDS.includes(input.kind)) ? input.kind : kindFromMime(mime);
-  const hash = await sha256Hex(bytes);
-  const r2Key = `sha256/${hash}.${extFromMime(mime)}`;
-
-  // Dedup: só sobe pro R2 se o blob ainda não existe.
-  const existing = await env.MEDIA.head(r2Key);
-  if (!existing) {
-    await env.MEDIA.put(r2Key, bytes, { httpMetadata: { contentType: mime } });
-  }
+  const { r2_key: r2Key, content_hash: hash, deduped } = await putBlobDedup(env, bytes, mime);
 
   const id = newId();
   await insertMedia(env, {
@@ -228,7 +238,7 @@ export async function attachMedia(env: Env, noteId: string, input: AttachInput, 
 
   return {
     id, kind, content_hash: hash, r2_key: r2Key, size_bytes: bytes.length, mime_type: mime,
-    deduped: !!existing,
+    deduped,
     signed_url: await signedMediaPath(env, id, now, origin),
   };
 }
@@ -247,6 +257,14 @@ export async function listMediaViews(env: Env, noteId: string, now: number, orig
   })));
 }
 
+// Nome de arquivo seguro pro header content-disposition: valor de header é ByteString
+// (Latin-1) — qualquer code point > 255 (emoji, CJK, comum em screenshot de share
+// sheet) faz headers.set() lançar TypeError e derruba a resposta inteira. Remove
+// também aspas e CR/LF (header injection). Vazio após a limpeza = sem header.
+export function safeDispositionFilename(name: string): string {
+  return name.replace(/["\r\n]/g, '').replace(/[^\x20-\xFF]/g, '_').trim();
+}
+
 // Stream do blob R2 (auth já validada pelo handler). Retorna null se sumiu.
 export async function fetchBlob(env: Env, media: MediaRow): Promise<Response | null> {
   if (!env.MEDIA) return null;
@@ -256,18 +274,20 @@ export async function fetchBlob(env: Env, media: MediaRow): Promise<Response | n
   headers.set('content-type', obj.httpMetadata?.contentType || media.mime_type || 'application/octet-stream');
   headers.set('cache-control', 'private, max-age=3600');
   headers.set('content-length', String(media.size_bytes));
-  if (media.original_filename) {
-    headers.set('content-disposition', `inline; filename="${media.original_filename.replace(/"/g, '')}"`);
+  const safeName = media.original_filename ? safeDispositionFilename(media.original_filename) : '';
+  if (safeName) {
+    headers.set('content-disposition', `inline; filename="${safeName}"`);
   }
   return new Response(obj.body, { headers });
 }
 
-// Remove o registro D1; se for a ÚLTIMA referência ao content_hash, remove o blob R2.
+// Remove o registro D1; se for a ÚLTIMA referência ao content_hash (contando note_media
+// E inbox_media — spec 68: as duas tabelas compartilham blobs por dedup), remove o blob R2.
 export async function removeMedia(env: Env, mediaId: string): Promise<{ removedBlob: boolean } | null> {
   const media = await getMediaById(env, mediaId);
   if (!media) return null;
   await deleteMediaById(env, mediaId);
-  const remaining = await countMediaByHash(env, media.content_hash);
+  const remaining = await countMediaByHashAllTables(env, media.content_hash);
   let removedBlob = false;
   if (remaining === 0 && env.MEDIA) {
     await env.MEDIA.delete(media.r2_key);

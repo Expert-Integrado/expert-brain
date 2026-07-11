@@ -48,6 +48,12 @@ export interface Env {
   // mas NÃO envia (no-op seguro): fica dormente até os secrets serem setados.
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  // Web Push (specs/50-console-v2/68): JWK P-256 completo (d/x/y) da chave VAPID,
+  // setado via `wrangler secret put VAPID_PRIVATE_KEY`. A chave PÚBLICA é derivada
+  // dos campos x/y — não existe segundo secret. Ausente → push desligado (no-op).
+  VAPID_PRIVATE_KEY?: string;
+  // Claim `sub` do JWT VAPID (contato do operador). Ausente → usa WORKER_URL.
+  VAPID_SUBJECT?: string;
 }
 
 export interface AuthContext extends Record<string, unknown> {

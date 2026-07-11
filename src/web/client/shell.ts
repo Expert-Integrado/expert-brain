@@ -12,6 +12,7 @@
 import Fuse from 'fuse.js';
 import { appFetch } from './http.js';
 import { loadMeta, type NoteMeta } from './meta-cache.js';
+import { toast } from './toast.js';
 
 interface Command {
   id: string;
@@ -280,6 +281,7 @@ async function createTaskAndNavigate(title: string): Promise<void> {
     window.location.href = `/app/tasks?task=${encodeURIComponent(data.id)}`;
   } catch (err) {
     console.warn('palette: criação de tarefa falhou', err);
+    toast('Não deu pra criar a tarefa. Tenta de novo.');
   }
 }
 
@@ -295,6 +297,7 @@ async function captureAndNavigate(text: string): Promise<void> {
     window.location.href = '/app/inbox';
   } catch (err) {
     console.warn('palette: captura pro inbox falhou', err);
+    toast('Não deu pra capturar no inbox. Tenta de novo.');
   }
 }
 
@@ -309,11 +312,13 @@ async function findContactAndOpenInteraction(term: string): Promise<void> {
     const first = data.results?.[0];
     if (!first) {
       console.warn('palette: nenhum contato encontrado para', term);
+      toast(`Nenhum contato encontrado para "${term}".`);
       return;
     }
     window.location.href = `/app/contacts/${encodeURIComponent(first.id)}#registrar-interacao`;
   } catch (err) {
     console.warn('palette: busca de contato pra interação falhou', err);
+    toast('Busca de contato falhou. Tenta de novo.');
   }
 }
 
@@ -568,6 +573,7 @@ window.addEventListener('keydown', onKey);
 // da palette (ensureNotesLoaded via openPalette). Páginas sem busca visível não
 // baixam mais o /app/graph/meta à toa.
 registerServiceWorker();
+wireInstallCta();
 
 // Service worker — registra /sw.js após load pra cachear shell estático.
 // Não muda nada visual; só permite Add to Home Screen e abre mais rápido em
@@ -580,3 +586,193 @@ function registerServiceWorker() {
       .catch((err) => console.warn('sw register failed', err));
   });
 }
+
+// CTA de instalação do PWA (specs/50-console-v2/68): o browser só dispara
+// `beforeinstallprompt` quando o app é instalável e ainda não foi instalado —
+// capturamos o evento aqui (shell roda em toda página) e, se a página tiver o
+// botão #pwa-install-btn (card "Instalar como app" na config), ele aparece.
+// iOS não tem esse evento: a instrução manual do card cobre (SSR, sem JS).
+let deferredInstall: (Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> }) | null = null;
+
+function updateInstallCta() {
+  const btn = document.getElementById('pwa-install-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  const status = document.getElementById('pwa-install-status');
+  const standalone = window.matchMedia('(display-mode: standalone)').matches
+    || (navigator as unknown as { standalone?: boolean }).standalone === true;
+  if (standalone) {
+    btn.hidden = true;
+    if (status) status.textContent = 'O app já está instalado — você está usando ele agora.';
+    return;
+  }
+  btn.hidden = !deferredInstall;
+}
+
+function wireInstallCta() {
+  const btn = document.getElementById('pwa-install-btn') as HTMLButtonElement | null;
+  if (!btn) return;
+  updateInstallCta();
+  btn.addEventListener('click', async () => {
+    const ev = deferredInstall;
+    if (!ev) return;
+    deferredInstall = null;
+    btn.hidden = true;
+    try {
+      await ev.prompt();
+      const choice = await ev.userChoice;
+      if (choice.outcome === 'accepted') toast('App instalado.', 'ok');
+      else updateInstallCta();
+    } catch (err) {
+      console.warn('pwa: install prompt falhou', err);
+    }
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e as typeof deferredInstall;
+  updateInstallCta();
+});
+
+// ── Web Push (specs/50-console-v2/68): card "Notificações" da config. O estado dos
+// botões deriva da assinatura REAL do dispositivo (pushManager.getSubscription), não
+// de flag no servidor. Sem suporte do browser ou sem VAPID no servidor, o card
+// explica em texto e não mostra botão nenhum.
+function b64urlToUint8(s: string): Uint8Array {
+  const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+  const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+  const bin = atob(b64 + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function wirePushCard(): Promise<void> {
+  const enableBtn = document.getElementById('push-enable-btn') as HTMLButtonElement | null;
+  const disableBtn = document.getElementById('push-disable-btn') as HTMLButtonElement | null;
+  const testBtn = document.getElementById('push-test-btn') as HTMLButtonElement | null;
+  const status = document.getElementById('push-status');
+  if (!enableBtn || !disableBtn || !testBtn) return;
+
+  const setStatus = (msg: string) => { if (status) status.textContent = msg; };
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+    setStatus('Este navegador não suporta notificações push. No iPhone/iPad, instale o app primeiro (Compartilhar → Adicionar à Tela de Início).');
+    return;
+  }
+
+  let vapidKey: string | null = null;
+  try {
+    const res = await appFetch('/app/push/vapid-key');
+    if (res.ok) vapidKey = ((await res.json()) as { key: string | null }).key;
+  } catch { /* trata como não configurado abaixo */ }
+  if (!vapidKey) {
+    setStatus('Push não configurado no servidor (chave VAPID ausente).');
+    return;
+  }
+
+  const reg = await navigator.serviceWorker.ready;
+  const current = await reg.pushManager.getSubscription();
+  const showSubscribed = (on: boolean) => {
+    enableBtn.hidden = on;
+    disableBtn.hidden = !on;
+    testBtn.hidden = !on;
+    if (on) setStatus('Notificações ativas neste dispositivo. O aviso diário chega junto com o lembrete de tarefas.');
+  };
+  showSubscribed(!!current);
+
+  enableBtn.addEventListener('click', async () => {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') {
+        toast('Permissão de notificação negada pelo navegador.');
+        return;
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: b64urlToUint8(vapidKey!) as unknown as BufferSource,
+      });
+      const res = await appFetch('/app/push/subscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      if (!res.ok) throw new Error('subscribe ' + res.status);
+      showSubscribed(true);
+      toast('Notificações ativadas.', 'ok');
+    } catch (err) {
+      console.warn('push: ativação falhou', err);
+      toast('Não deu pra ativar as notificações. Tenta de novo.');
+    }
+  });
+
+  disableBtn.addEventListener('click', async () => {
+    try {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await appFetch('/app/push/unsubscribe', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      showSubscribed(false);
+      setStatus('Notificações desativadas neste dispositivo.');
+      toast('Notificações desativadas.', 'ok');
+    } catch (err) {
+      console.warn('push: desativação falhou', err);
+      toast('Não deu pra desativar. Tenta de novo.');
+    }
+  });
+
+  testBtn.addEventListener('click', async () => {
+    try {
+      const res = await appFetch('/app/push/test', { method: 'POST' });
+      if (!res.ok) throw new Error('test ' + res.status);
+      toast('Teste enviado — a notificação deve chegar em alguns segundos.', 'ok');
+    } catch (err) {
+      console.warn('push: teste falhou', err);
+      toast('Não deu pra enviar o teste.');
+    }
+  });
+}
+
+if (document.getElementById('push-notifs')) void wirePushCard();
+
+// ── Web Share Target nível 2 (specs/50-console-v2/68): quando o SO compartilha um
+// ARQUIVO, o service worker intercepta o POST /app/inbox/share (que não carrega o
+// cookie SameSite=Lax), guarda o blob no Cache API e redireciona pra
+// /app/inbox?share=file&title=... — aqui a página resgata o blob e sobe via fetch
+// same-origin (cookie flui), criando o item do inbox com o anexo.
+const SHARE_CACHE = 'brain-share';
+const SHARE_PENDING_URL = '/_share/pending';
+
+async function processSharedFile(): Promise<void> {
+  if (window.location.pathname !== '/app/inbox') return;
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('share') !== 'file') return;
+  try {
+    const cache = await caches.open(SHARE_CACHE);
+    const res = await cache.match(SHARE_PENDING_URL);
+    if (!res) return; // já processado (refresh) ou cache evicted — o prefill de texto cobre
+    const blob = await res.blob();
+    const filename = decodeURIComponent(res.headers.get('x-share-filename') || '') || 'compartilhado';
+    const text = ['title', 'text', 'url']
+      .map((k) => params.get(k)?.trim() || '')
+      .filter(Boolean)
+      .join('\n\n');
+    const form = new FormData();
+    form.set('text', text);
+    form.set('media', new File([blob], filename, { type: blob.type || 'application/octet-stream' }));
+    const up = await appFetch('/app/inbox/share-upload', { method: 'POST', body: form });
+    if (!up.ok) throw new Error('share-upload ' + up.status);
+    await cache.delete(SHARE_PENDING_URL);
+    // Recarrega limpo: o item recém-criado aparece na fila e o prefill some.
+    window.location.replace('/app/inbox');
+  } catch (err) {
+    console.warn('share: upload do arquivo compartilhado falhou', err);
+    toast('Não deu pra anexar o arquivo compartilhado. O texto ficou no campo de captura.');
+  }
+}
+void processSharedFile();

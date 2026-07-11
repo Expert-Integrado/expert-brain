@@ -512,6 +512,48 @@ const MIGRATION_0024_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_project_shares_project ON project_shares(project_id, revoked_at)`,
 ];
 
+// 0025 — MÍDIA NO INBOX (specs/50-console-v2/68 — Web Share Target nível 2). Uma
+// imagem compartilhada pelo share sheet do SO vira item do inbox COM anexo. Tabela
+// PRÓPRIA (espelho enxuto de note_media) referenciando inbox_items: o rascunho não é
+// nota, então a mídia dele também não pode morar em note_media (FK pra notes). O blob
+// vive no MESMO bucket R2 com a MESMA key sha256/<hash>.<ext> — dedup cross-tabela por
+// construção (triar "virar nota" só re-aponta a linha pra note_media, zero re-upload).
+// ON DELETE CASCADE limpa as linhas se o item for hard-deletado (hoje nada hard-deleta
+// inbox_items; descarte na triagem remove a mídia em código, decidindo o destino do
+// blob pelo refcount nas DUAS tabelas). Tudo aditivo: tabela nova + índice.
+const MIGRATION_0025_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS inbox_media (
+    id                TEXT PRIMARY KEY,
+    item_id           TEXT NOT NULL REFERENCES inbox_items(id) ON DELETE CASCADE,
+    kind              TEXT NOT NULL CHECK (kind IN ('image','video','document','audio')),
+    r2_key            TEXT NOT NULL,
+    content_hash      TEXT NOT NULL,
+    mime_type         TEXT NOT NULL,
+    size_bytes        INTEGER NOT NULL,
+    original_filename TEXT,
+    created_at        INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_media_item ON inbox_media(item_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_inbox_media_hash ON inbox_media(content_hash)`,
+];
+
+// 0026 — WEB PUSH (specs/50-console-v2/68 — notificações nível 2). Assinaturas de
+// push do(s) dispositivo(s) do dono. `endpoint` é a URL única do push service do
+// browser (UNIQUE = re-assinar o mesmo device atualiza em vez de duplicar). p256dh/
+// auth são as chaves da assinatura — guardadas por completude (o envio atual é SEM
+// payload, que dispensa a criptografia RFC 8291; se um dia houver payload, já estão
+// aqui). Endpoint que responder 404/410 no envio é removido (expirou no push service).
+const MIGRATION_0026_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         TEXT PRIMARY KEY,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT,
+    auth       TEXT,
+    created_at INTEGER NOT NULL,
+    last_ok_at INTEGER
+  )`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -537,6 +579,8 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0022_agent_mailbox', stmts: MIGRATION_0022_STMTS },
   { id: '0023_api_key_meta', stmts: MIGRATION_0023_STMTS },
   { id: '0024_project_shares', stmts: MIGRATION_0024_STMTS },
+  { id: '0025_inbox_media', stmts: MIGRATION_0025_STMTS },
+  { id: '0026_push_subscriptions', stmts: MIGRATION_0026_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

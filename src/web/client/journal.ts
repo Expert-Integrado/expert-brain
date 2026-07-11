@@ -8,6 +8,7 @@
 //   agrupamento por dia do SSR, via `carry` pro cabeçalho não repetir).
 
 import { appFetch } from './http.js';
+import { toast } from './toast.js';
 
 function wireFilters(): void {
   const container = document.getElementById('journal-groups');
@@ -41,6 +42,7 @@ async function loadMore(link: HTMLAnchorElement, container: HTMLElement): Promis
   } catch (err) {
     link.textContent = original;
     console.warn('journal: load-more failed', err);
+    toast('Não deu pra carregar mais atividade. Tenta de novo.');
   }
 }
 

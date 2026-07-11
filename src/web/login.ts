@@ -4,12 +4,13 @@ import { verifyPassword } from '../auth/password.js';
 import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from '../auth/rate-limit.js';
 import { signSession, sessionCookie } from './session.js';
 import { FONT_LINKS } from './styles.js';
-import { htmlResponse } from './render.js';
+import { htmlResponse, PWA_HEAD } from './render.js';
 import { assetVersion } from './asset-version.js';
 
 function renderLoginPage(error: string | null, next: string): string {
   return `<!doctype html><html lang="pt-BR"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8">
+${PWA_HEAD}
 <title>Entrar · Expert Brain</title>
 ${FONT_LINKS}
 <link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}"></head>

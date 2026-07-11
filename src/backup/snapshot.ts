@@ -108,8 +108,14 @@ export async function buildSnapshot(env: Env, now: number): Promise<SnapshotBuil
   const schemaRow = names.includes('_migrations')
     ? await env.DB.prepare(`SELECT id FROM _migrations ORDER BY id DESC LIMIT 1`).first<{ id: string }>()
     : null;
+  // Keys de mídia das DUAS tabelas (note_media + inbox_media, spec 68) — o restore
+  // pra bucket novo precisa da lista completa dos blobs referenciados.
   const mediaKeys = names.includes('note_media')
-    ? await env.DB.prepare(`SELECT DISTINCT r2_key FROM note_media ORDER BY r2_key`).all<{ r2_key: string }>()
+    ? await env.DB.prepare(
+        names.includes('inbox_media')
+          ? `SELECT DISTINCT r2_key FROM (SELECT r2_key FROM note_media UNION SELECT r2_key FROM inbox_media) ORDER BY r2_key`
+          : `SELECT DISTINCT r2_key FROM note_media ORDER BY r2_key`
+      ).all<{ r2_key: string }>()
     : { results: [] as Array<{ r2_key: string }> };
 
   const counts: Record<string, number> = {};

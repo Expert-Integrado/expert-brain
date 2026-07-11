@@ -17,6 +17,12 @@ import {
   getNotesByIds,
   INBOX_BODY_MAX,
 } from '../db/queries.js';
+import {
+  MEDIA_KINDS, type MediaKind,
+  insertMedia, insertInboxMedia, getInboxMediaById, listInboxMediaByItem,
+  listInboxMediaByItems, deleteInboxMediaById, countMediaByHashAllTables,
+} from '../db/media-queries.js';
+import { putBlobDedup, kindFromMime, safeDispositionFilename, MAX_BYTES } from '../media/store.js';
 
 // Página + endpoints do INBOX DE CAPTURA (spec 50-console-v2/63). Fila de triagem no
 // console: lista de pendentes + quick-add + 3 ações por item (virar nota / virar task /
@@ -103,7 +109,166 @@ const INBOX_CSS = `
 .inbox-item-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .inbox-item-actions form { margin: 0; }
 .inbox-empty { color: var(--text-dim); }
+.inbox-item-media { display: flex; gap: 8px; flex-wrap: wrap; }
+.inbox-item-img {
+  display: block; max-width: 100%; max-height: 220px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.inbox-item-file {
+  font-size: 13px; color: var(--accent-lav); text-decoration: none;
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 6px 10px;
+}
+.inbox-item-file:hover { border-color: var(--border-strong); }
 `;
+
+// ───────────────── Web Share Target nível 2 (arquivo, spec 68) ─────────────────
+
+// Duck-type de File (mesmo racional de media.ts): o lib do Worker não tipa File
+// como construtor utilizável — um File tem .arrayBuffer()/.size/.name/.type.
+function asFile(entry: unknown): File | null {
+  if (!entry || typeof entry === 'string') return null;
+  const f = entry as File;
+  return typeof f.arrayBuffer === 'function' && f.size > 0 ? f : null;
+}
+
+// Cria um item do inbox vindo de share (source 'pwa-share'), com anexo opcional.
+// O item é criado ANTES da mídia de propósito: captura não pode virar dead-end por
+// falha de upload — no pior caso o texto fica sem o anexo (erro logado).
+async function createSharedInboxItem(env: Env, text: string, file: File | null): Promise<string> {
+  const now = Date.now();
+  const id = `ibx_${newId()}`;
+  const body = (text || (file?.name ? `(arquivo compartilhado: ${file.name})` : '(arquivo compartilhado)')).slice(0, INBOX_BODY_MAX);
+  await insertInboxItem(env, { id, body, source: 'pwa-share', created_at: now });
+  if (file) {
+    const mime = file.type || 'application/octet-stream';
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const stored = await putBlobDedup(env, bytes, mime);
+    await insertInboxMedia(env, {
+      id: newId(), item_id: id, kind: kindFromMime(mime),
+      r2_key: stored.r2_key, content_hash: stored.content_hash,
+      mime_type: mime, size_bytes: bytes.length,
+      original_filename: file.name || null, created_at: now,
+    });
+  }
+  return id;
+}
+
+// Remove as mídias de um item descartado; o blob R2 só sai se esta era a ÚLTIMA
+// referência ao content_hash nas DUAS tabelas (note_media + inbox_media, dedup).
+export async function discardInboxMedia(env: Env, itemId: string): Promise<void> {
+  const rows = await listInboxMediaByItem(env, itemId);
+  for (const m of rows) {
+    await deleteInboxMediaById(env, m.id);
+    const remaining = await countMediaByHashAllTables(env, m.content_hash);
+    if (remaining === 0 && env.MEDIA) await env.MEDIA.delete(m.r2_key);
+  }
+}
+
+// Migra as mídias do item pra nota/task recém-criada: mesma key R2 (dedup por
+// construção) — só nasce a linha em note_media e morre a de inbox_media. Best-effort:
+// falha aqui não desfaz a criação (o anexo é acessório da captura, não o núcleo).
+async function migrateInboxMediaToNote(env: Env, itemId: string, noteId: string, now: number): Promise<void> {
+  try {
+    const rows = await listInboxMediaByItem(env, itemId);
+    for (const m of rows) {
+      await insertMedia(env, {
+        id: newId(), note_id: noteId,
+        kind: MEDIA_KINDS.includes(m.kind as MediaKind) ? (m.kind as MediaKind) : 'document',
+        r2_key: m.r2_key, content_hash: m.content_hash, mime_type: m.mime_type,
+        size_bytes: m.size_bytes, original_filename: m.original_filename, created_at: now,
+      });
+      await deleteInboxMediaById(env, m.id);
+    }
+  } catch (err) {
+    console.error('inbox: migração de mídia na triagem falhou (item triado, anexo ficou pra trás)', err);
+  }
+}
+
+// POST /app/inbox/share — alvo do `share_target` do manifest (multipart). O caminho
+// NORMAL nunca chega aqui: o service worker intercepta o POST, guarda o arquivo no
+// Cache API e redireciona pro GET (o POST de navegação top-level não manda o cookie
+// SameSite=Lax, então esta rota quase sempre chegaria sem sessão). Fallback defensivo
+// pra SW ausente/desatualizado: com sessão + arquivo captura completo; sem sessão,
+// degrada pro fluxo GET (texto preservado nos params; o arquivo se perde).
+export async function handleInboxSharePost(req: Request, env: Env): Promise<Response> {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return new Response(null, { status: 303, headers: { location: '/app/inbox' } });
+  }
+  const title = String(form.get('title') ?? '').trim();
+  const text = String(form.get('text') ?? '').trim();
+  const sharedUrl = String(form.get('url') ?? '').trim();
+  const file = asFile(form.get('media'));
+
+  const session = await requireSession(req, env);
+  if (session.ok && file && file.size <= MAX_BYTES) {
+    const body = [title, text, sharedUrl].filter(Boolean).join('\n\n');
+    try {
+      await createSharedInboxItem(env, body, file);
+      return new Response(null, { status: 303, headers: { location: '/app/inbox' } });
+    } catch (err) {
+      console.error('inbox share: captura com arquivo falhou (degrada pro prefill de texto)', err);
+    }
+  }
+  const params = new URLSearchParams();
+  if (title) params.set('title', title);
+  if (text) params.set('text', text);
+  if (sharedUrl) params.set('url', sharedUrl);
+  const qs = params.toString();
+  return new Response(null, { status: 303, headers: { location: `/app/inbox${qs ? `?${qs}` : ''}` } });
+}
+
+// POST /app/inbox/share-upload — segunda perna do share de arquivo: o client
+// (shell.ts) resgata o blob que o SW guardou no Cache API e sobe AQUI via fetch
+// same-origin (cookie de sessão flui normal). JSON, não redirect.
+export async function handleInboxShareUploadPost(req: Request, env: Env): Promise<Response> {
+  const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
+  const session = await requireSession(req, env);
+  if (!session.ok) return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), { status: 401, headers: jsonHeaders });
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return new Response(JSON.stringify({ ok: false, error: 'multipart inválido' }), { status: 400, headers: jsonHeaders });
+  }
+  const text = String(form.get('text') ?? '').trim();
+  const file = asFile(form.get('media'));
+  if (!text && !file) return new Response(JSON.stringify({ ok: false, error: 'nada pra capturar' }), { status: 400, headers: jsonHeaders });
+  if (file && file.size > MAX_BYTES) {
+    return new Response(JSON.stringify({ ok: false, error: 'arquivo acima de 50MB' }), { status: 413, headers: jsonHeaders });
+  }
+  try {
+    const id = await createSharedInboxItem(env, text, file);
+    return new Response(JSON.stringify({ ok: true, id }), { status: 201, headers: jsonHeaders });
+  } catch (err) {
+    console.error('inbox share-upload falhou', err);
+    return new Response(JSON.stringify({ ok: false, error: 'falha ao capturar' }), { status: 500, headers: jsonHeaders });
+  }
+}
+
+// GET /app/inbox/media/:id — serve o anexo de um item do inbox. SÓ sessão (o inbox
+// é superfície do dono; não há signed URL aqui — o <img> da página logada já manda
+// o cookie).
+export async function handleInboxMediaServe(req: Request, env: Env, mediaId: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const media = await getInboxMediaById(env, mediaId);
+  if (!media || !env.MEDIA) return htmlResponse('não encontrado', 404);
+  const obj = await env.MEDIA.get(media.r2_key);
+  if (!obj) return htmlResponse('não encontrado', 404);
+  const headers = new Headers();
+  headers.set('content-type', obj.httpMetadata?.contentType || media.mime_type || 'application/octet-stream');
+  headers.set('cache-control', 'private, max-age=3600');
+  headers.set('content-length', String(media.size_bytes));
+  const safeName = media.original_filename ? safeDispositionFilename(media.original_filename) : '';
+  if (safeName) {
+    headers.set('content-disposition', `inline; filename="${safeName}"`);
+  }
+  return new Response(obj.body, { headers });
+}
 
 export async function handleInboxPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
@@ -120,9 +285,17 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
   const emptyTitle = new Map<string, string>();
   const emptyIds = new Set<string>();
 
+  // Anexos dos itens (spec 68 — share de arquivo): 1 query pra todos os itens da página.
+  const mediaByItem = await listInboxMediaByItems(env, items.map((it) => it.id));
+
   const itemsHtml = items
     .map((it) => {
       const bodyHtml = renderMarkdown(it.body, { titleIndex: emptyTitle, idSet: emptyIds, currentId: it.id });
+      const mediaHtml = (mediaByItem.get(it.id) ?? [])
+        .map((m) => m.kind === 'image'
+          ? `<a href="/app/inbox/media/${esc(m.id)}" target="_blank" rel="noopener"><img class="inbox-item-img" src="/app/inbox/media/${esc(m.id)}" alt="${esc(m.original_filename ?? 'imagem anexada')}" loading="lazy"></a>`
+          : `<a class="inbox-item-file" href="/app/inbox/media/${esc(m.id)}" target="_blank" rel="noopener">${esc(m.original_filename ?? m.mime_type)}</a>`)
+        .join('');
       return `
       <div class="inbox-item">
         <div class="inbox-item-head">
@@ -131,6 +304,7 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
           <span>${esc(ageLabel(it.created_at, now))}</span>
         </div>
         <div class="inbox-item-body">${bodyHtml}</div>
+        ${mediaHtml ? `<div class="inbox-item-media">${mediaHtml}</div>` : ''}
         <div class="inbox-item-actions">
           <form method="post" action="/app/inbox/to-note">
             <input type="hidden" name="id" value="${esc(it.id)}" />
@@ -224,6 +398,14 @@ export async function handleInboxResolvePost(req: Request, env: Env): Promise<Re
   }
   const resultId = String(form.get('result_id') ?? '').trim() || null;
   await resolveInboxItem(env, id, action, resultId, Date.now());
+  // Descartar joga fora também o anexo (spec 68); best-effort — falha não trava a triagem.
+  if (action === 'discard') {
+    try {
+      await discardInboxMedia(env, id);
+    } catch (err) {
+      console.error('inbox discard: limpeza de mídia falhou', err);
+    }
+  }
   return backTo(form);
 }
 
@@ -299,6 +481,7 @@ export async function handleInboxToNotePost(req: Request, env: Env): Promise<Res
     }
   }
 
+  await migrateInboxMediaToNote(env, id, noteId, now);
   await resolveInboxItem(env, id, 'note', noteId, now);
 
   // Melhor match do gate de dedup (spec 71/75): hidrata a candidata pra confirmar que
@@ -347,6 +530,7 @@ export async function handleInboxToTaskPost(req: Request, env: Env): Promise<Res
     updated_at: now,
   }, actor);
 
+  await migrateInboxMediaToNote(env, id, taskId, now);
   await resolveInboxItem(env, id, 'task', taskId, now);
   return new Response(null, { status: 302, headers: { location: `/app/tasks/${taskId}` } });
 }

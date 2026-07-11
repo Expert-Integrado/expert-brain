@@ -36,6 +36,20 @@ const SIDEBAR_ICONS = {
 // captura + triagem — a página /app/inbox segue existindo (link "ver tudo" do card
 // e Web Share Target do PWA), mas sem item de menu nem badge de contagem.
 
+// Identidade PWA compartilhada por TODO head servido — shell logado E login/erro
+// (rodada PWA 11/07): instalar o app a partir da tela de login ficava sem manifest,
+// sem theme-color e sem ícone iOS. apple-touch-icon dedicado 180x180 (o iOS ignora
+// o manifest e busca este link; antes apontava pro 192 genérico sem `sizes`).
+export const PWA_HEAD = `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="${THEME_COLOR}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Brain">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" href="/expert-integrado-logo.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">`;
+
 export async function renderShell(opts: {
   title: string;
   active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'config' | 'api-keys';
@@ -52,16 +66,8 @@ export async function renderShell(opts: {
   const releaseBanner = opts.title === 'Novidades' ? '' : await releaseBannerHtml(opts.env);
   return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="${THEME_COLOR}">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Brain">
+${PWA_HEAD}
 <title>${esc(opts.title)} · Expert Brain</title>
-<link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" type="image/png" href="/expert-integrado-logo.png">
-<link rel="apple-touch-icon" href="/icon-192.png">
 ${FONT_LINKS}
 <link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}">
 ${opts.extraHead ?? ''}

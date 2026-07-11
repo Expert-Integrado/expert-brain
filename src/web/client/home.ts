@@ -25,6 +25,7 @@ async function completeTask(id: string, li: HTMLLIElement): Promise<void> {
     }
   } catch (err) {
     console.warn('home: complete failed', err);
+    toast('Não deu pra concluir a tarefa. Tenta de novo.');
   }
 }
 
