@@ -16,6 +16,7 @@ import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { listUsers } from '../db/queries.js';
 import { listAllTags, type TagUsage } from '../db/tag-admin.js';
 import { renderUsersSection, USERS_SECTION_CSS } from './users.js';
+import { connCardSummary, ICON_GOOGLE, ICON_WHATSAPP, ICON_INSTAGRAM, ICON_FUNNEL } from './config-icons.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -853,11 +854,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <div class="config-cards">
 
-    <details class="disclosure-advanced conn-section" id="google-contatos">
-      <summary>
-        <span class="adv-title">Google Contatos</span>
-        <span class="adv-sub">Sincroniza etiquetas escolhidas da sua agenda pro vault de contatos — mão única, o Google nunca é alterado</span>
-      </summary>
+    <details class="disclosure-advanced conn-section conn-card" id="google-contatos">
+      ${connCardSummary({
+        icon: ICON_GOOGLE,
+        title: 'Google Contatos',
+        sub: 'Sincroniza etiquetas escolhidas da sua agenda pro vault de contatos — mão única, o Google nunca é alterado',
+        dotId: 'gc-dot',
+      })}
       <div class="adv-body">
         <div class="adv-section">
           <p>Só entram os contatos das <strong>etiquetas que você escolher</strong> (nunca a agenda inteira). Nome, telefone, e-mail e aniversário vêm do Google; empresa e cargo só preenchem quando estão vazios aqui; observações e categorias locais nunca são tocadas. Apagar no Google <strong>não</strong> apaga o contato do vault. Roda sozinho 1x por dia.</p>
@@ -880,11 +883,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    <details class="disclosure-advanced conn-section" id="whatsapp-grupos">
-      <summary>
-        <span class="adv-title">Grupos do WhatsApp</span>
-        <span class="adv-sub">Integração opcional com o WhatsApp Agent — grupos escolhidos viram nós no grafo de contatos, com quem está dentro</span>
-      </summary>
+    <details class="disclosure-advanced conn-section conn-card" id="whatsapp-grupos">
+      ${connCardSummary({
+        icon: ICON_WHATSAPP,
+        title: 'Grupos do WhatsApp',
+        sub: 'Integração opcional com o WhatsApp Agent — grupos escolhidos viram nós no grafo de contatos, com quem está dentro',
+        dotId: 'wa-dot',
+      })}
       <div class="adv-body">
         <div class="adv-section">
           <p>Requer o <strong>WhatsApp Agent conectado</strong> — é ele quem fornece a lista de grupos e participantes; sem essa conexão este módulo não funciona. Só entram os <strong>grupos que você marcar</strong> abaixo (por padrão todos vêm marcados; desmarque o que não quiser). Participante só vira vínculo se <strong>já existe</strong> como contato no vault (match por telefone) — número desconhecido não cria contato novo. Quem sai do grupo perde o vínculo criado pelo sync; vínculos manuais ficam. A lista de grupos e os membros são empurrados por um script na sua máquina (peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo").</p>
@@ -914,11 +919,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    <details class="disclosure-advanced conn-section" id="instagram-contatos">
-      <summary>
-        <span class="adv-title">Conversas do Instagram</span>
-        <span class="adv-sub">Integração opcional com o Instagram Agent — conversas escolhidas viram contatos no grafo</span>
-      </summary>
+    <details class="disclosure-advanced conn-section conn-card" id="instagram-contatos">
+      ${connCardSummary({
+        icon: ICON_INSTAGRAM,
+        title: 'Conversas do Instagram',
+        sub: 'Integração opcional com o Instagram Agent — conversas escolhidas viram contatos no grafo',
+        dotId: 'ig-dot',
+      })}
       <div class="adv-body">
         <div class="adv-section">
           <p>Requer o <strong>Instagram Agent conectado</strong> — é ele quem fornece a lista de conversas; sem essa conexão este módulo não funciona. Só entram as <strong>conversas que você marcar</strong> abaixo (por padrão todas vêm marcadas; desmarque o que não quiser). Marcar a conversa <strong>cria o contato</strong> se a pessoa ainda não existe no vault (com o @ do Instagram e o telefone, quando conhecido); se já existe, só ganha o vínculo e o canal — nome e dados locais nunca são sobrescritos. A lista de conversas é empurrada por um script na sua máquina (peça ao Claude: "sincroniza as conversas do Instagram pro grafo").</p>
@@ -939,11 +946,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    <details class="disclosure-advanced conn-section" id="pipedrive-crm">
-      <summary>
-        <span class="adv-title">Pipedrive (CRM)</span>
-        <span class="adv-sub">Integração opcional — enriquece contatos existentes com dados do seu CRM, mão única</span>
-      </summary>
+    <details class="disclosure-advanced conn-section conn-card" id="pipedrive-crm">
+      ${connCardSummary({
+        icon: ICON_FUNNEL,
+        title: 'Pipedrive (CRM)',
+        sub: 'Integração opcional — enriquece contatos existentes com dados do seu CRM, mão única',
+        dotId: 'pd-dot',
+      })}
       <div class="adv-body">
         <div class="adv-section">
           <p>Integração <strong>opcional</strong>: só funciona se você conectar explicitamente o seu Pipedrive (chave de API no servidor de contatos). Quando ligada, roda 1x por dia e <strong>só preenche campos vazios</strong> (e-mail, empresa) de contatos que <strong>já existem</strong> no vault — nunca cria contato, nunca sobrescreve o que você editou, nunca escreve de volta no Pipedrive. Desligada, nada acontece.</p>

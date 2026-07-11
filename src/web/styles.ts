@@ -1072,6 +1072,87 @@ export const SURFACES_CSS = `
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
 }
 
+/* ---- Cards de integracao e de agente (redesign 11/07) ----
+   O card colapsado e um <details class="conn-card"> cujo summary e a face:
+   tile de icone + nome/descricao + status dot + engrenagem. Aberto, o card
+   toma a largura toda do grid (o corpo .adv-body continua o mesmo de antes). */
+.config-cards {
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+  align-items: start; margin-top: 12px;
+}
+@media (min-width: 640px) { .config-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .config-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.config-cards > .conn-card { margin-top: 0; }
+.config-cards > .conn-card[open] { grid-column: 1 / -1; }
+
+.conn-card > summary {
+  flex-direction: row; align-items: center; gap: 14px;
+  padding: 14px 16px;
+}
+/* A seta ::before do disclosure sai de cena — no card, quem sinaliza estado
+   aberto e a engrenagem girada. */
+.conn-card > summary .adv-title::before { display: none; }
+.conn-card > summary .adv-title { font-size: 15px; }
+.conn-card > summary .adv-sub {
+  padding-left: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.conn-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+
+.conn-tile {
+  flex-shrink: 0; width: 44px; height: 44px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  background: rgba(167, 139, 250, 0.10);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.conn-tile svg { width: 22px; height: 22px; }
+
+.conn-state {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-subtle); white-space: nowrap;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-subtle); opacity: 0.6;
+}
+.status-dot.is-on {
+  background: var(--success); opacity: 1;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--success) 60%, transparent);
+}
+
+.conn-gear {
+  flex-shrink: 0; display: inline-flex; color: var(--text-subtle);
+  opacity: 0; transition: opacity 160ms var(--ease), transform 220ms var(--ease);
+}
+.conn-gear svg { width: 17px; height: 17px; }
+.conn-card > summary:hover .conn-gear { opacity: 1; color: var(--text); }
+.conn-card[open] > summary .conn-gear { opacity: 1; transform: rotate(90deg); }
+/* Touch: sem hover, a engrenagem fica sempre visivel (mais discreta). */
+@media (hover: none) { .conn-gear { opacity: 0.55; } }
+
+/* Card de agente (secao Usuarios na aba Agentes): mesma anatomia do conn-card,
+   com avatar no lugar do tile e chips de chave no corpo. */
+.agent-card .user-avatar-img { width: 44px; height: 44px; flex-shrink: 0; }
+.agent-card .user-avatar-initials { font-size: 15px; }
+.agent-badge {
+  display: inline-block; padding: 1px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  background: rgba(167, 139, 250, 0.12); border: 1px solid var(--border);
+  color: var(--text-subtle); vertical-align: middle;
+}
+.key-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.08); border: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.key-chip code { font-size: 11.5px; color: var(--text-subtle); }
+.key-chip form { display: inline; }
+.key-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
 /* ---- Rodape: status do vault (movido do topo) ---- */
 .vault-stats-foot { margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
 .vault-stats-foot h3 {

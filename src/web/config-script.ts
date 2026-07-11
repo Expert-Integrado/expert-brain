@@ -13,6 +13,17 @@ export function configPageScript(): string {
   // links por hash (#board, #backup, #organizacao...), o clique e as setas do teclado.
   var tabs = Array.prototype.slice.call(document.querySelectorAll('.config-tabs [role="tab"]'));
   var panels = Array.prototype.slice.call(document.querySelectorAll('.config-panel'));
+  // Status dots dos cards de integração (redesign 11/07): cada painel registra
+  // seu loader (1-fetch, mesma flag do gate por toggle) e a ativação da aba
+  // Integrações dispara todos — o dot hidrata sem precisar abrir card por card.
+  var integLoaders = [];
+  function runIntegLoaders() { integLoaders.forEach(function (fn) { fn(); }); }
+  function setDot(id, on, label) {
+    var dot = document.getElementById(id);
+    if (dot) dot.className = 'status-dot' + (on ? ' is-on' : '');
+    var lab = document.getElementById(id + '-label');
+    if (lab) lab.textContent = label;
+  }
   function activateTab(slug, updateHash) {
     tabs.forEach(function (t) {
       var on = t.getAttribute('data-tab') === slug;
@@ -22,6 +33,7 @@ export function configPageScript(): string {
     panels.forEach(function (p) {
       p.classList.toggle('active', p.getAttribute('data-panel') === slug);
     });
+    if (slug === 'integracoes') runIntegLoaders();
     if (updateHash && history.replaceState) history.replaceState(null, '', '#' + slug);
   }
   tabs.forEach(function (t, i) {
@@ -258,6 +270,7 @@ export function configPageScript(): string {
 
     var gcParam = new URLSearchParams(location.search).get('google');
     if (gcParam) {
+      activateTab('integracoes', false);
       gcRoot.open = true;
       gcFlash.hidden = false;
       if (gcParam === 'connected') {
@@ -305,13 +318,16 @@ export function configPageScript(): string {
 
     function gcRender(st) {
       if (!st.ok) {
+        setDot('gc-dot', false, 'Indisponível');
         gcStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
+        setDot('gc-dot', false, 'Não configurado');
         gcStatusEl.innerHTML = 'Falta configurar as credenciais do Google no servidor de contatos (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).';
         return;
       }
+      setDot('gc-dot', !!st.connected, st.connected ? 'Configurado' : 'Não conectado');
       gcConnect.hidden = !!st.connected;
       gcSync.hidden = !st.connected;
       gcDisconnect.hidden = !st.connected;
@@ -341,6 +357,7 @@ export function configPageScript(): string {
       gcLoaded = true;
       gcJson('/app/config/google/status').then(gcRender);
     }
+    integLoaders.push(gcLoad);
     if (gcRoot.open) gcLoad();
     gcRoot.addEventListener('toggle', function () { if (gcRoot.open) gcLoad(); });
 
@@ -427,13 +444,16 @@ export function configPageScript(): string {
 
     function waRender(st) {
       if (!st.ok) {
+        setDot('wa-dot', false, 'Indisponível');
         waStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
+        setDot('wa-dot', false, 'Não configurado');
         waStatusEl.textContent = 'Integração desligada: falta configurar o WHATSAPP_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
         return;
       }
+      setDot('wa-dot', true, 'Configurado');
       var parts = ['Integração ativa'];
       if (st.groups_linked) parts.push(st.groups_linked + ' grupo(s) no grafo');
       if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
@@ -479,6 +499,7 @@ export function configPageScript(): string {
       waLoaded = true;
       waJson('/app/config/whatsapp/status').then(waRender);
     }
+    integLoaders.push(waLoad);
     if (waRoot.open) waLoad();
     waRoot.addEventListener('toggle', function () { if (waRoot.open) waLoad(); });
 
@@ -551,13 +572,16 @@ export function configPageScript(): string {
 
     function igRender(st) {
       if (!st.ok) {
+        setDot('ig-dot', false, 'Indisponível');
         igStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
+        setDot('ig-dot', false, 'Não configurado');
         igStatusEl.textContent = 'Integração desligada: falta configurar o INSTAGRAM_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
         return;
       }
+      setDot('ig-dot', true, 'Configurado');
       var parts = ['Integração ativa'];
       if (st.contacts_linked) parts.push(st.contacts_linked + ' conversa(s) vinculada(s) a contatos');
       if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
@@ -597,6 +621,7 @@ export function configPageScript(): string {
       igLoaded = true;
       igJson('/app/config/instagram/status').then(igRender);
     }
+    integLoaders.push(igLoad);
     if (igRoot.open) igLoad();
     igRoot.addEventListener('toggle', function () { if (igRoot.open) igLoad(); });
 
@@ -639,13 +664,16 @@ export function configPageScript(): string {
 
     function pdRender(st) {
       if (!st.ok) {
+        setDot('pd-dot', false, 'Indisponível');
         pdStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
+        setDot('pd-dot', false, 'Não configurado');
         pdStatusEl.textContent = 'Integração desligada: nenhuma chave do Pipedrive conectada no servidor de contatos. Nada é sincronizado.';
         return;
       }
+      setDot('pd-dot', true, 'Configurado');
       var parts = ['Integração ativa (sync diário automático)'];
       if (st.last_run) parts.push('última janela concluída: ' + st.last_run);
       if (st.cursor_pending) parts.push('há uma janela em andamento (retoma no próximo run)');
@@ -662,6 +690,7 @@ export function configPageScript(): string {
       pdLoaded = true;
       pdJson('/app/config/pipedrive/status').then(pdRender);
     }
+    integLoaders.push(pdLoad);
     if (pdRoot.open) pdLoad();
     pdRoot.addEventListener('toggle', function () { if (pdRoot.open) pdLoad(); });
 
@@ -681,6 +710,12 @@ export function configPageScript(): string {
       });
     });
   }
+
+  // Os loaders são registrados DEPOIS do resolveHash inicial — se o primeiro
+  // paint já caiu na aba Integrações (server via ?saved=/callback ou deep-link
+  // por hash), dispara os dots agora (as flags de 1-fetch evitam repetição).
+  var activePanel = document.querySelector('.config-panel.active');
+  if (activePanel && activePanel.getAttribute('data-panel') === 'integracoes') runIntegLoaders();
 
   // ── Contador de caracteres (spec 70: "Instruções pros agentes (MCP)") ──
   // Genérico: qualquer textarea com data-charcount="<id do span>" ganha um

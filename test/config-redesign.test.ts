@@ -119,7 +119,7 @@ describe('cards de integração', () => {
   it('os 4 details viram conn-card com tile e status dot (gc/wa/ig/pd)', async () => {
     const html = await fetchConfig();
     const panel = html.slice(html.indexOf('id="panel-integracoes"'), html.indexOf('id="panel-organizacao"'));
-    expect(panel.split('class="conn-card').length - 1).toBeGreaterThanOrEqual(4);
+    expect(panel.split('conn-card').length - 1).toBeGreaterThanOrEqual(4);
     for (const dot of ['gc-dot', 'wa-dot', 'ig-dot', 'pd-dot']) {
       expect(panel).toContain(`id="${dot}"`);
     }
