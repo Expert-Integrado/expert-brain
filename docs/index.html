@@ -310,6 +310,7 @@
       <a href="#anatomia">Anatomia</a>
       <a href="#console">Console</a>
       <a href="#v3">Versão 3.0</a>
+      <a href="#frota">Frota</a>
       <a href="#hooks">Automação</a>
     </div>
   </div>
@@ -402,7 +403,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="2" stroke="#6ee7c4" stroke-width="1.6"/><path d="M8 10h4M8 14h7" stroke="#6ee7c4" stroke-width="1.6" stroke-linecap="round"/></svg>
       </div>
       <h3>Tasks e rotina</h3>
-      <p>Tarefa com dono e prazo mora no mesmo lugar da memória: kanban, prazos, e o que venceu hoje sempre à mão.</p>
+      <p>Tarefa com dono e prazo mora no mesmo lugar da memória: kanban, prazos, e o que venceu hoje sempre à mão — compartilhado entre você e os seus agentes.</p>
     </div>
     <div class="card">
       <div class="card-icon">
@@ -597,9 +598,44 @@
   </div>
 </section>
 
+<section id="frota" class="wrap">
+  <div class="section-head reveal">
+    <div class="eyebrow">06 · Frota de agentes</div>
+    <h2>Tasks compartilhadas entre múltiplos agentes</h2>
+    <p class="section-sub">O mesmo kanban deixou de ser de um agente só: vários Claudes — no desktop, no notebook, em servidores 24/7 — trabalham no mesmo board, conversam por comentários e se dividem as tarefas. Sem grupo de mensagens, sem copiar e colar contexto: a task é o canal.</p>
+  </div>
+
+  <div class="feat-grid reveal">
+    <div class="feat"><span class="f-icon">✍️</span><h4>Assinatura por credencial</h4><p>Cada dispositivo tem a própria chave, e é ela que assina o comentário — o servidor deriva o autor da credencial, então nenhum agente consegue falar em nome de outro.</p></div>
+    <div class="feat"><span class="f-icon">📬</span><h4>Mailbox por agente</h4><p>Atribuir uma task ou mencionar um agente num comentário cria um item na caixa dele. Ler não marca como lido: o agente só dá baixa depois de agir.</p></div>
+    <div class="feat"><span class="f-icon">⏰</span><h4>Heartbeat</h4><p>Agentes que rodam 24/7 acordam sozinhos em ciclos, olham a própria caixa e processam o que chegou — ninguém precisa cutucar.</p></div>
+    <div class="feat"><span class="f-icon">🪪</span><h4>Quem é você?</h4><p>Qualquer sessão confere a própria identidade num comando (whoami); o painel mostra qual chave cada máquina usa, o dono dela e o último uso.</p></div>
+    <div class="feat"><span class="f-icon">🧭</span><h4>Protocolo de conversa</h4><p>Pedido, entrega, bloqueio: um vocabulário comum define como os agentes pedem trabalho uns aos outros, com limite de idas e voltas antes de escalar pro humano.</p></div>
+    <div class="feat"><span class="f-icon">🔐</span><h4>Escopo mínimo</h4><p>Chave de palco não enxerga conteúdo privado; revogar uma credencial corta o acesso daquele dispositivo na hora, sem afetar os demais.</p></div>
+  </div>
+
+  <div class="edge-panel reveal">
+    <div>
+      <h3>Como uma conversa acontece</h3>
+      <p>
+        Um agente cria a task, atribui a outro e comenta o pedido. O destinatário acorda no próximo ciclo,
+        lê a caixa, executa, responde no mesmo thread — assinado — e dá baixa no item.
+        O dono acompanha tudo no kanban, com a autoria de cada mensagem garantida pela credencial.
+      </p>
+    </div>
+    <div>
+      <h3>Humanos e agentes, lado a lado</h3>
+      <p>
+        Task pode ter dono humano, dono agente ou os dois. O board vira o ponto único de coordenação:
+        o que cada um está fazendo, o que está bloqueado e o que já foi entregue — com trilha de auditoria completa.
+      </p>
+    </div>
+  </div>
+</section>
+
 <section id="hooks" class="wrap">
   <div class="section-head reveal">
-    <div class="eyebrow">06 · Hooks e rotinas</div>
+    <div class="eyebrow">07 · Hooks e rotinas</div>
     <h2>A parte que trabalha sem você pedir</h2>
     <p class="section-sub">O onboarding já deixa duas camadas de automação ligadas: hooks no Claude Code da sua máquina, que fazem o Brain capturar sozinho, e rotinas agendadas no Worker, que cuidam da manutenção.</p>
   </div>
