@@ -104,7 +104,7 @@ const FIXTURE_COUNTS: Record<string, number> = {
   // passar pelo insertTask que loga 'created'), então a tabela nova entra no dump
   // vazia — o que importa é ela EXISTIR no snapshot.
   task_activity: 0,
-  _migrations: 19,
+  _migrations: 20,
 };
 
 beforeAll(async () => {
@@ -136,8 +136,8 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    // Bump pra 0019 (spec 74 — log de atividade de task).
-    expect(manifest.schema_version).toBe('0019_task_activity');
+    // Bump pra 0020 (spec 81 — assinatura de comentário por credencial).
+    expect(manifest.schema_version).toBe('0020_comment_author_user');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

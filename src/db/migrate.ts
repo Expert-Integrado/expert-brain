@@ -426,6 +426,17 @@ const MIGRATION_0019_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_id, at DESC)`,
 ];
 
+// 0020 — ASSINATURA DE COMENTÁRIO (spec 80-frota-agentes/81). No board-como-barramento
+// a autoria do comentário de agente passa a ser DERIVADA DA CREDENCIAL no servidor
+// (resolveMe: PAT → users), nunca autodeclarada via author_name. Esta coluna guarda o
+// usuário resolvido (users.id) no momento da escrita; NULL em todos os comentários
+// legados (nenhum backfill — legado fica legado, o render mostra "não assinado").
+// ADD COLUMN é aditivo (não recria task_comments); nenhuma linha existente tocada.
+// Espelho .sql de referência: src/db/migrations/0006_comment_author_user.sql.
+const MIGRATION_0020_STMTS: string[] = [
+  `ALTER TABLE task_comments ADD COLUMN author_user_id TEXT`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -446,6 +457,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0017_users', stmts: MIGRATION_0017_STMTS },
   { id: '0018_similar_edges_score_idx', stmts: MIGRATION_0018_STMTS },
   { id: '0019_task_activity', stmts: MIGRATION_0019_STMTS },
+  { id: '0020_comment_author_user', stmts: MIGRATION_0020_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

@@ -27,7 +27,7 @@ import {
   listTaskComments,
   countTaskComments,
   type TaskRow,
-  type TaskComment,
+  type TaskCommentView,
 } from '../db/queries.js';
 import { listMediaByNote, type MediaRow } from '../db/media-queries.js';
 import { fetchBlob, getMediaById } from '../media/store.js';
@@ -305,7 +305,7 @@ export interface ShareCommentFormState {
 // markdown). O form é HTML puro (POST, sem JS, sem cookie) + honeypot invisível.
 export function renderSharePage(
   task: TaskRow,
-  comments: TaskComment[],
+  comments: TaskCommentView[],
   token: string,
   form: ShareCommentFormState = {},
   status = 200
@@ -356,7 +356,7 @@ ${FONT_LINKS}
 
 // Seção "Comentários" da página pública: thread + form do convidado. O form posta
 // em /s/<token>/comment (mesma origem → CSP form-action 'self' via default-src).
-function renderShareComments(token: string, comments: TaskComment[], form: ShareCommentFormState): string {
+function renderShareComments(token: string, comments: TaskCommentView[], form: ShareCommentFormState): string {
   const errorHtml = form.error ? `<p class="cmt-msg cmt-msg-err" role="alert">${esc(form.error)}</p>` : '';
   const noticeHtml = form.notice ? `<p class="cmt-msg cmt-msg-ok" role="status">${esc(form.notice)}</p>` : '';
   const formHtml = form.formClosed
@@ -678,7 +678,8 @@ export async function handleShareCommentPost(req: Request, env: Env, token: stri
     }
   }
 
-  // Grava o comentário do convidado.
+  // Grava o comentário do convidado. Convidado NUNCA assina (spec 81): identidade
+  // verificável é exclusiva de credencial — author_user_id fica NULL por construção.
   await addTaskComment(env, {
     id: `cmt_${newId()}`,
     task_id: task.id,
@@ -686,6 +687,7 @@ export async function handleShareCommentPost(req: Request, env: Env, token: stri
     author_name: name,
     body,
     created_at: now,
+    author_user_id: null,
   });
 
   // Incrementa os contadores só APÓS gravar com sucesso.

@@ -1148,7 +1148,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const activitySection = `
     <section class="task-activity" id="atividade">
       <h2>Atividade</h2>
-      ${renderCommentThread(comments, { deleteTaskId: task.id })}
+      ${renderCommentThread(comments, { deleteTaskId: task.id, withAvatars: true })}
       <form class="cmt-form" method="post" action="/app/tasks/comment">
         <input type="hidden" name="task_id" value="${esc(task.id)}" />
         <label class="cmt-field">
@@ -1793,6 +1793,8 @@ ${SHARE_SECTION_CSS}
 .cmt-author-agent { color:var(--info); }
 .cmt-author-guest { color:var(--text); }
 .cmt-time { font-size:11.5px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+.cmt-avatar { width:20px; height:20px; border-radius:50%; object-fit:cover; display:inline-flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:#fff; flex:0 0 auto; }
+.cmt-unsigned { font-size:10.5px; color:var(--text-subtle); border:1px solid var(--border); border-radius:999px; padding:1px 8px; }
 .cmt-body { font-size:14px; line-height:1.55; color:var(--text); word-break:break-word; }
 .cmt-empty { color:var(--text-subtle); font-size:14px; margin-bottom:18px; }
 .cmt-del-form { margin-left:auto; }

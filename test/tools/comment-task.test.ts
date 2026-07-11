@@ -8,9 +8,14 @@ import { registerListTasks } from '../../src/mcp/tools/list-tasks.js';
 
 const E = env as any;
 
-function reg(fn: (s: any, e: any) => void) {
+// Sessão OAuth do dono: resolveMe cai no perfil user_owner (spec 81 — comment_task
+// agora exige credencial com usuário resolvível; os casos PAT estão em
+// comment-task-signature.test.ts).
+const OWNER = { email: 'o@x', loggedInAt: 0 } as any;
+
+function reg(fn: (s: any, e: any, a?: any) => void) {
   const r: any = {};
-  fn({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  fn({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, OWNER);
   return r;
 }
 
@@ -40,11 +45,12 @@ describe('comment_task (MCP)', () => {
     expect(typeof p.created_brt).toBe('string');
   });
 
-  it('author_name default "agente" quando omitido', async () => {
+  it('author_name omitido fica null; a identidade vem do author_user (spec 81)', async () => {
     await seedTask('t1');
     const res = await reg(registerCommentTask).comment_task({ task_id: 't1', body: 'nota' });
     const p = JSON.parse(res.content[0].text);
-    expect(p.author_name).toBe('agente');
+    expect(p.author_name).toBeNull();
+    expect(p.author_user).toBeTruthy();
   });
 
   it('erro (sem throw) quando id nao e task', async () => {

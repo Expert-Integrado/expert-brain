@@ -44,6 +44,7 @@ import {
   countTaskProjects,
   TASK_PROJECT_CAP,
   listAssigneesForTasks,
+  getOwnerUser,
 } from '../db/queries.js';
 import { renameTag, deleteTag } from '../db/tag-admin.js';
 import { validateDomains } from '../db/validation.js';
@@ -779,8 +780,13 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   const task = await getTaskById(env, taskId);
   if (!task) return htmlResponse('Tarefa não encontrada', 404);
 
+  // Assinatura (spec 81): o comentário do console também aponta pro perfil do dono
+  // (mesma resolução do resolveMe em sessão OAuth). Se o seed user_owner sumir
+  // (estado impossível em prática), grava sem assinatura — comportamento legado.
+  const owner = await getOwnerUser(env);
   await addTaskComment(env, {
     id: `cmt_${newId()}`, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
+    author_user_id: owner?.id ?? null,
   });
   return taskDetailRedirect(taskId);
 }

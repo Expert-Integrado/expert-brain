@@ -88,7 +88,9 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   // readOnlyHint:true — passa pelo guarda de escopo read. Recebe `auth` pro is_me.
   registerListUsers(reg, env, auth);
   // Comentários em task (thread): agente anota progresso sem sobrescrever o body.
-  registerCommentTask(reg, env);
+  // Recebe `auth` (spec 81): a autoria é assinada pela credencial via resolveMe —
+  // PAT sem perfil vinculado é rejeitado fail-closed no call.
+  registerCommentTask(reg, env, auth);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
   registerShareTask(reg, env);
   registerUnshareTask(reg, env);

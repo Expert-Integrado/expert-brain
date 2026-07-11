@@ -1230,6 +1230,16 @@ export interface TaskComment {
   author_name: string | null;
   body: string;
   created_at: number;
+  // Assinatura por credencial (spec 80/81): usuário resolvido no servidor no momento
+  // da escrita (resolveMe). NULL/ausente = comentário legado ou externo, sem autor
+  // verificável. Opcional no INSERT pra não quebrar callers antigos (grava NULL).
+  author_user_id?: string | null;
+}
+
+// Shape de LEITURA da thread: o comentário + o perfil do assinante resolvido via
+// LEFT JOIN users (null quando não assinado). É o que render/get_task consomem.
+export interface TaskCommentView extends TaskComment {
+  author_user: AssigneeRef | null;
 }
 
 // Insere um comentário. O caller valida ANTES que a task existe e está viva
@@ -1238,26 +1248,36 @@ export interface TaskComment {
 // podem ser null). O CHECK de length(body) na migration é a última linha de defesa.
 export async function addTaskComment(env: Env, c: TaskComment): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at)
-     VALUES (?,?,?,?,?,?)`
-  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at).run();
+    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at, author_user_id)
+     VALUES (?,?,?,?,?,?,?)`
+  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id ?? null).run();
 }
 
-// Lista os comentários de UMA task em ordem cronológica. O JOIN em notes com
-// deleted_at IS NULL garante que comentário de task SOFT-deletada não vaza (o
-// soft-delete não cascateia a FK). limit/offset pra paginação.
+// Lista os comentários de UMA task em ordem cronológica, com o perfil do assinante
+// (spec 81) resolvido no mesmo statement (LEFT JOIN users — mesmo arquivado: display
+// histórico, não atribuição). O JOIN em notes com deleted_at IS NULL garante que
+// comentário de task SOFT-deletada não vaza (o soft-delete não cascateia a FK).
+// limit/offset pra paginação.
 export async function listTaskComments(
   env: Env, taskId: string, limit = 200, offset = 0
-): Promise<TaskComment[]> {
+): Promise<TaskCommentView[]> {
   const r = await env.DB.prepare(
-    `SELECT c.id, c.task_id, c.author, c.author_name, c.body, c.created_at
+    `SELECT c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id,
+            u.name AS au_name, u.type AS au_type, (u.avatar_key IS NOT NULL) AS au_avatar
      FROM task_comments c
      JOIN notes n ON n.id = c.task_id
+     LEFT JOIN users u ON u.id = c.author_user_id
      WHERE c.task_id = ? AND n.deleted_at IS NULL AND n.kind = 'task'
      ORDER BY c.created_at ASC, c.id ASC
      LIMIT ? OFFSET ?`
-  ).bind(taskId, limit, offset).all<TaskComment>();
-  return r.results ?? [];
+  ).bind(taskId, limit, offset).all<TaskComment & { au_name: string | null; au_type: UserType | null; au_avatar: number | null }>();
+  return (r.results ?? []).map((row) => {
+    const { au_name, au_type, au_avatar, ...c } = row;
+    const author_user: AssigneeRef | null = c.author_user_id && au_name
+      ? { id: c.author_user_id, name: au_name, type: au_type ?? 'agent', avatar: !!au_avatar }
+      : null;
+    return { ...c, author_user };
+  });
 }
 
 // Conta comentários de UMA task, opcionalmente filtrando por autor (o filtro de
