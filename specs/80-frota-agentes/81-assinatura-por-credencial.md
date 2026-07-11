@@ -1,6 +1,6 @@
 # Assinatura de agente: autoria de comentário derivada da credencial
 
-> **Status:** draft (aprovada 11/07/2026) · **Prioridade:** P1 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** shipped (11/07/2026, deploy cecc3b10 — ciclo real: assinatura via credencial + PAT órfão rejeitado) · **Prioridade:** P1 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** migration 0017 (`users`), spec 37 (`resolveMe`/user-ref). Plano-mãe: grupo 80.
 
 ## Problema

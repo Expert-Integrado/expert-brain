@@ -1,6 +1,6 @@
 # @menção e mailbox por agente
 
-> **Status:** draft (aprovada 11/07/2026) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (11/07/2026, deploy cecc3b10 — ciclo real: @menção → mailbox → check_mailbox → ack em produção) · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `81` (assinatura por credencial — sem autor verificável, menção não tem remetente confiável). Plano-mãe: grupo 80.
 
 ## Problema

@@ -1,6 +1,6 @@
 # Board compartilhado por projeto com nível de permissão
 
-> **Status:** draft (aprovada 11/07/2026, execução após 81-84 no ar) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (11/07/2026, deploy cecc3b10 — rota /p/ viva em produção com 404 neutro; e2e local prova recorte fail-closed) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `81` (assinatura — pra distinguir interno de externo), `82` (mailbox), `84` (protocolo — externo nunca é ordem). Plano-mãe: grupo 80.
 
 ## Problema

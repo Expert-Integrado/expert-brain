@@ -1,6 +1,6 @@
 # UX do /app/config: fluxo único de credencial, banner one-time, whoami e agrupamento
 
-> **Status:** draft (achados colhidos ao vivo na Fase 0, 11/07/2026) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (11/07/2026, deploy cecc3b10 — /api/whoami provado em produção: chave vinculada e órfã com hint) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `86` (dono mora na chave — o form novo é a cara dessa regra). Plano-mãe: grupo 80.
 
 ## Problema

@@ -1,6 +1,6 @@
 # Heartbeat e wake-up: como cada instância descobre que tem mensagem
 
-> **Status:** draft (aprovada 11/07/2026) · **Prioridade:** P1 · **Esforço:** S (Worker) + config por dispositivo · **Repo:** expert-brain (parte 1) + infra dos dispositivos (parte 2)
+> **Status:** parte 1 shipped (11/07/2026, deploy cecc3b10 — /api/mailbox/summary provado em produção); parte 2 = config por dispositivo · **Prioridade:** P1 · **Esforço:** S (Worker) + config por dispositivo · **Repo:** expert-brain (parte 1) + infra dos dispositivos (parte 2)
 > **Depende de:** `82` (mailbox). Substitui a abordagem da task `2p6hrm3fhw1l` (heartbeat 30/30min genérico lendo o Kanban inteiro). Plano-mãe: grupo 80.
 
 ## Problema

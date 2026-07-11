@@ -1,6 +1,6 @@
 # Chave pertence ao usuário (1:N) e credencial privada separada
 
-> **Status:** draft (avaliação pedida pelo dono na Fase 0, 11/07/2026) · **Prioridade:** P1 · **Esforço:** S-M · **Repo:** expert-brain
+> **Status:** shipped (11/07/2026, deploy cecc3b10 — vínculo chave→usuário operante em produção via whoami/assinatura/mailbox) · **Prioridade:** P1 · **Esforço:** S-M · **Repo:** expert-brain
 > **Depende de:** `81` (compartilha o `resolveMe`; coordenar com a migration 0020). Desbloqueia as pendências da Fase 0 (task `ns5e5l1023ui`, comentário `cmt_lnwlcxdpix5d`). Origem da tensão: nota `0ddnsnhzcwys`. Plano-mãe: grupo 80.
 
 ## Problema
