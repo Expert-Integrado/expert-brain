@@ -18,6 +18,18 @@ import {
   setUserArchived, getTaskById, setTaskAssignees, listAssigneesForTask, getOwnerUser,
 } from '../db/queries.js';
 import { produceAssignmentMailbox } from '../db/mailbox.js';
+import { ICON_GEAR } from './config-icons.js';
+
+// Selo "dormindo" e uso relativo de chave — compartilhado entre os chips do
+// card de agente (aqui) e a listagem de chaves em "Agentes externos e
+// automações" (config.ts).
+export const KEY_DORMANT_MS = 30 * 24 * 3600_000;
+export const relKeyUse = (ms: number): string => {
+  const h = Math.floor((Date.now() - ms) / 3600_000);
+  if (h < 1) return 'há menos de 1h';
+  if (h < 48) return `há ${h}h`;
+  return `há ${Math.floor(h / 24)}d`;
+};
 
 // ─────────────── Avatar (R2, binding MEDIA) ───────────────
 // Foto de perfil mora em avatars/<user_id> — key fixa por usuário (re-upload
@@ -39,20 +51,29 @@ function typeOptions(selected: UserType): string {
     .join('');
 }
 
-// Chaves do usuário (spec 86 — 1:N, read-only aqui): o vínculo mora na CHAVE
-// (api_keys.user_id, definido na criação em "Agentes externos e automações"), não é
-// mais editado no usuário. Lista as N chaves que identificam este perfil, incluindo
-// o vínculo LEGADO (users.api_key_id) enquanto a chave não migrar.
-function userKeysCell(u: BrainUser, keys: ApiKeyRow[]): string {
-  const mine = keys.filter((k) =>
+// Chaves do usuário (spec 86 — 1:N, read-only no vínculo): o dono mora na CHAVE
+// (api_keys.user_id, definido na criação em "Agentes externos e automações").
+// Inclui o vínculo LEGADO (users.api_key_id) enquanto a chave não migrar.
+function userKeys(u: BrainUser, keys: ApiKeyRow[]): ApiKeyRow[] {
+  return keys.filter((k) =>
     (k.user_id === u.id || (!k.user_id && u.api_key_id === k.id)) && k.revoked_at === null
   );
+}
+
+// Chips das chaves no corpo do card: nome + prefixo + último uso + selo
+// dormindo + revogar inline (mesma rota POST /app/api-keys/revoke da listagem).
+function userKeyChips(u: BrainUser, keys: ApiKeyRow[]): string {
+  const mine = userKeys(u, keys);
   if (mine.length === 0) {
-    return `<span style="color:var(--text-dim);font-size:12px">Sem chave — crie uma em "Agentes externos e automações" escolhendo este usuário como dono</span>`;
+    return `<p style="color:var(--text-dim);font-size:13px;margin:0">Sem chave — este perfil ainda não tem credencial de API própria.</p>`;
   }
-  return mine
-    .map((k) => `<span class="badge-pill" title="${esc(k.prefix)}…">${esc(k.name)}${!k.user_id ? ' · vínculo legado' : ''}</span>`)
-    .join(' ');
+  const chips = mine.map((k) => {
+    const lastRef = k.last_used_at ?? k.created_at;
+    const dormant = Date.now() - lastRef > KEY_DORMANT_MS;
+    const lastUsed = k.last_used_at ? `usada ${esc(relKeyUse(k.last_used_at))}` : 'nunca usada';
+    return `<span class="key-chip"><strong>${esc(k.name)}</strong> <code>${esc(k.prefix)}…</code> <span style="color:var(--text-subtle)">${lastUsed}</span>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}${!k.user_id ? ' <span style="color:var(--text-subtle)">vínculo legado</span>' : ''}<form method="post" action="/app/api-keys/revoke"><input type="hidden" name="id" value="${esc(k.id)}"><button type="submit" class="btn btn-danger btn-sm">Revogar</button></form></span>`;
+  });
+  return `<div class="key-chips">${chips.join('')}</div>`;
 }
 
 // Bolinha da tabela: foto (com cache-bust por updated_at) ou iniciais coloridas.
@@ -68,9 +89,16 @@ function avatarCell(u: BrainUser): string {
   return `<span class="user-avatar-img user-avatar-initials" style="background:hsl(${h},42%,36%)">${esc(initials)}</span>`;
 }
 
-function renderUserRow(u: BrainUser, keys: ApiKeyRow[], all: BrainUser[], hasMedia: boolean): string {
+// Card de agente (redesign 11/07): a face é o summary (avatar 44px + nome +
+// selo de tipo + bio truncada + status dot + engrenagem); o corpo expande com
+// perfil editável, chips de chave, foto e arquivar — as MESMAS rotas POST da
+// tabela antiga, zero mudança de backend.
+function renderUserCard(u: BrainUser, keys: ApiKeyRow[], hasMedia: boolean): string {
   const archived = u.archived_at !== null;
   const isOwner = u.is_owner === 1;
+  // Verde "Conectado" = dono (entra por OAuth, não precisa de chave) ou ≥1
+  // chave ativa vinculada (mesmo filtro dos chips, incl. vínculo legado).
+  const connected = isOwner || userKeys(u, keys).length > 0;
   // Tipo do dono é travado (o perfil-pessoa do dono é a âncora do 'me' OAuth);
   // agente troca PAT à vontade. Pessoa comum também pode ter PAT (instância dela).
   const typeCell = isOwner
@@ -88,88 +116,115 @@ function renderUserRow(u: BrainUser, keys: ApiKeyRow[], all: BrainUser[], hasMed
          <button type="submit" class="btn btn-ghost btn-sm">Remover foto</button>
        </form>` : ''}`
     : `<span style="color:var(--text-dim);font-size:12px">Foto requer R2 (MEDIA) habilitado</span>`;
-  const archiveCell = isOwner
-    ? '—'
-    : archived
-      ? `<form method="post" action="/app/config/users/archive" style="display:inline">
+  const archiveSection = isOwner
+    ? ''
+    : `<div class="adv-section">
+         <form method="post" action="/app/config/users/archive" style="display:inline">
            <input type="hidden" name="id" value="${esc(u.id)}">
-           <input type="hidden" name="archived" value="0">
-           <button type="submit">Desarquivar</button>
-         </form>`
-      : `<form method="post" action="/app/config/users/archive" style="display:inline">
-           <input type="hidden" name="id" value="${esc(u.id)}">
-           <input type="hidden" name="archived" value="1">
-           <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
-         </form>`;
-  return `<tr${archived ? ' style="opacity:0.55"' : ''}>
-    <td>${avatarCell(u)}</td>
-    <td>
-      <form method="post" action="/app/config/users/update" class="user-edit-form">
-        <input type="hidden" name="id" value="${esc(u.id)}">
-        <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="text" name="name" value="${esc(u.name)}" required maxlength="60" class="input-text" style="width:150px" aria-label="Nome">
-          ${typeCell}
+           <input type="hidden" name="archived" value="${archived ? '0' : '1'}">
+           <button type="submit" class="btn ${archived ? '' : 'btn-danger '}btn-sm">${archived ? 'Desarquivar' : 'Arquivar'}</button>
+         </form>
+       </div>`;
+  return `
+    <details class="disclosure-advanced conn-section conn-card agent-card"${archived ? ' style="opacity:0.6"' : ''}>
+      <summary>
+        ${avatarCell(u)}
+        <span class="conn-info">
+          <span class="adv-title">${esc(u.name)} <span class="agent-badge">${esc(TYPE_LABELS[u.type])}${isOwner ? ' · dono' : ''}</span></span>
+          <span class="adv-sub">${u.bio ? esc(u.bio) : '<span style="opacity:.6">Sem descrição</span>'}</span>
+        </span>
+        <span class="conn-state">
+          <span class="status-dot${connected && !archived ? ' is-on' : ''}"></span>
+          <span class="conn-state-label">${archived ? 'Arquivado' : connected ? 'Conectado' : 'Sem chave'}</span>
+        </span>
+        <span class="conn-gear" aria-hidden="true">${ICON_GEAR}</span>
+      </summary>
+      <div class="adv-body">
+        <div class="adv-section">
+          <h3>Perfil</h3>
+          <form method="post" action="/app/config/users/update" class="user-edit-form">
+            <input type="hidden" name="id" value="${esc(u.id)}">
+            <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">
+              <input type="text" name="name" value="${esc(u.name)}" required maxlength="60" class="input-text" style="width:180px" aria-label="Nome">
+              ${typeCell}
+            </div>
+            <input type="text" name="bio" value="${esc(u.bio ?? '')}" maxlength="200" class="input-text" placeholder="Pra que serve / quem é (opcional)" style="width:100%;max-width:480px;margin-top:6px" aria-label="Descrição">
+            <div class="row" style="gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap">
+              <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
+            </div>
+          </form>
         </div>
-        <input type="text" name="bio" value="${esc(u.bio ?? '')}" maxlength="200" class="input-text" placeholder="Pra que serve / quem é (opcional)" style="width:100%;margin-top:6px" aria-label="Descrição">
-        <div class="row" style="gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
-          <button type="submit">Salvar</button>
+        <div class="adv-section">
+          <h3>Chaves de API</h3>
+          ${userKeyChips(u, keys)}
+          ${archived ? '' : `<button type="button" class="btn btn-sm" data-create-key-for="${esc(u.id)}" style="margin-top:10px">Criar chave pra este perfil</button>`}
         </div>
-      </form>
-      <div style="margin-top:6px">${userKeysCell(u, keys)}</div>
-    </td>
-    <td>${avatarForms}</td>
-    <td>${archiveCell}</td>
-  </tr>`;
+        <div class="adv-section">
+          <h3>Foto</h3>
+          ${avatarForms}
+        </div>
+        ${archiveSection}
+      </div>
+    </details>`;
 }
 
 export function renderUsersSection(
   users: BrainUser[],
   keys: ApiKeyRow[],
-  savedUsers: boolean,
+  _savedUsers: boolean,
   hasMedia: boolean
 ): string {
   const total = users.length;
-  const rows = users.map((u) => renderUserRow(u, keys, users, hasMedia)).join('');
+  const activeUsers = users.filter((u) => u.archived_at === null);
+  const archivedUsers = users.filter((u) => u.archived_at !== null);
   const atCap = total >= USER_CAP;
+  // Chave ativa sem dono nem vínculo legado: aviso como LINK pra #api-keys —
+  // o form de vincular mora lá (e SÓ lá; a tela toda tem 1 form de vínculo).
+  const orphanCount = keys.filter((k) =>
+    k.revoked_at === null && !k.user_id && !users.some((u) => u.api_key_id === k.id)
+  ).length;
+  const orphanNote = orphanCount > 0
+    ? `<p class="callout-info" style="margin-top:0">${orphanCount} chave(s) ativa(s) sem dono — <a href="#api-keys">vincule um perfil em "Agentes externos e automações"</a> pra ela assinar com a identidade certa.</p>`
+    : '';
+  const createForm = atCap
+    ? `<p style="color:var(--text-dim)">Limite de ${USER_CAP} usuários atingido. Arquive um perfil sem uso antes de criar outro.</p>`
+    : `<form method="post" action="/app/config/users/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label for="new-user-name" style="font-size:12px;color:var(--text-dim)">Nome</label>
+          <input id="new-user-name" type="text" name="name" required maxlength="60" placeholder="Ex.: Claude VPS" class="input-text" style="width:170px">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label for="new-user-type" style="font-size:12px;color:var(--text-dim)">Tipo</label>
+          <select id="new-user-type" name="type">${typeOptions('agent')}</select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <label for="new-user-bio" style="font-size:12px;color:var(--text-dim)">Descrição (opcional)</label>
+          <input id="new-user-bio" type="text" name="bio" maxlength="200" placeholder="Ex.: instância na VPS, roda os crons" class="input-text" style="width:240px">
+        </div>
+        <button type="submit" class="btn btn-primary">Criar usuário</button>
+      </form>
+      <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, use o botão "Criar chave" no próprio card do perfil — o formulário já vem com o dono certo.</p>`;
   return `
-    <details class="disclosure-advanced conn-section" id="users"${savedUsers ? ' open' : ''}>
-      <summary>
-        <span class="adv-title">Usuários</span>
-        <span class="adv-sub">Pessoas e agentes que podem ser responsáveis por tarefas — nome, foto e vínculo com chave de API</span>
-      </summary>
-      <div class="adv-body">
-        <div class="adv-section">
-          <p>Usuário aqui <strong>não é login</strong> — é um perfil de atribuição: a bolinha de responsável nas tarefas, como no ClickUp. <strong>Pessoa</strong> é alguém de carne e osso; <strong>agente</strong> é uma instância de IA (ex: Claude na VPS, OpenClaw). O vínculo com credencial mora na <em>chave</em> (escolha o dono ao criar a chave em "Agentes externos e automações") — um usuário pode ter várias chaves e o <code>assignee: 'me'</code> das tools MCP resolve pra esse perfil. Arquivar não apaga histórico: as tasks antigas continuam mostrando o responsável. ${total}/${USER_CAP} usuários.</p>
-          <table class="keys-table">
-            <thead><tr>
-              <th></th><th>Perfil (nome, tipo, descrição, chave)</th><th>Foto</th><th></th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
+    <div id="users">
+      <p class="config-hint" style="margin-top:0">Cada card é um perfil de atribuição (<strong>não é login</strong>): <strong>pessoa</strong> é alguém de carne e osso, <strong>agente</strong> é uma instância de IA. A credencial mora na <em>chave</em> — o <code>assignee: 'me'</code> das tools MCP resolve pro perfil dono da chave. Arquivar não apaga histórico. ${total}/${USER_CAP} usuários.</p>
+      ${orphanNote}
+      <div class="config-cards">${activeUsers.map((u) => renderUserCard(u, keys, hasMedia)).join('')}</div>
+      ${archivedUsers.length > 0
+        ? `<details id="users-archived" style="margin-top:12px">
+            <summary style="cursor:pointer;color:var(--text-dim)">Arquivados (${archivedUsers.length}) — histórico preservado</summary>
+            <div class="config-cards" style="margin-top:10px">${archivedUsers.map((u) => renderUserCard(u, keys, hasMedia)).join('')}</div>
+          </details>`
+        : ''}
+      <details class="disclosure-advanced conn-section" id="users-new">
+        <summary>
+          <span class="adv-title">Novo usuário</span>
+          <span class="adv-sub">Cria um perfil de pessoa ou agente pra atribuir tarefas e chaves</span>
+        </summary>
+        <div class="adv-body">
+          <div class="adv-section">${createForm}</div>
         </div>
-        <div class="adv-section">
-          <h3>Novo usuário</h3>
-          ${atCap
-            ? `<p style="color:var(--text-dim)">Limite de ${USER_CAP} usuários atingido. Arquive um perfil sem uso antes de criar outro.</p>`
-            : `<form method="post" action="/app/config/users/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label for="new-user-name" style="font-size:12px;color:var(--text-dim)">Nome</label>
-              <input id="new-user-name" type="text" name="name" required maxlength="60" placeholder="Ex.: Claude VPS" class="input-text" style="width:170px">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label for="new-user-type" style="font-size:12px;color:var(--text-dim)">Tipo</label>
-              <select id="new-user-type" name="type">${typeOptions('agent')}</select>
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label for="new-user-bio" style="font-size:12px;color:var(--text-dim)">Descrição (opcional)</label>
-              <input id="new-user-bio" type="text" name="bio" maxlength="200" placeholder="Ex.: instância na VPS, roda os crons" class="input-text" style="width:240px">
-            </div>
-            <button type="submit" class="btn btn-primary">Criar usuário</button>
-          </form>
-          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, gere a chave de API do agente em "Agentes externos e automações" (escolhendo este usuário como dono) e envie a foto na própria linha da tabela.</p>`}
-        </div>
-      </div>
-    </details>`;
+      </details>
+    </div>`;
 }
 
 // ─────────────── CSS da seção + bolinhas (injetado pelo config e board) ───────────────

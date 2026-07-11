@@ -711,6 +711,23 @@ export function configPageScript(): string {
     });
   }
 
+  // Botão "Criar chave" do card de agente: abre o accordion #api-keys (mesma
+  // aba), pré-seleciona o dono no form de criação e foca o campo de nome.
+  // Zero rota nova — só conduz o dono pro form certo já preenchido.
+  document.querySelectorAll('[data-create-key-for]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var uid = btn.getAttribute('data-create-key-for');
+      var keysBox = document.getElementById('api-keys');
+      if (!keysBox) return;
+      keysBox.open = true;
+      var sel = keysBox.querySelector('form[action="/app/api-keys/create"] select[name="user_id"]');
+      if (sel) sel.value = uid;
+      keysBox.scrollIntoView();
+      var name = keysBox.querySelector('form[action="/app/api-keys/create"] input[name="name"]');
+      if (name) name.focus();
+    });
+  });
+
   // Os loaders são registrados DEPOIS do resolveHash inicial — se o primeiro
   // paint já caiu na aba Integrações (server via ?saved=/callback ou deep-link
   // por hash), dispara os dots agora (as flags de 1-fetch evitam repetição).

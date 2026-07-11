@@ -15,7 +15,7 @@ import { resolveDomainMeta, resolveKindMeta, DOMAIN_FALLBACK } from './domain-co
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { listUsers } from '../db/queries.js';
 import { listAllTags, type TagUsage } from '../db/tag-admin.js';
-import { renderUsersSection, USERS_SECTION_CSS } from './users.js';
+import { renderUsersSection, USERS_SECTION_CSS, KEY_DORMANT_MS, relKeyUse } from './users.js';
 import { connCardSummary, ICON_GOOGLE, ICON_WHATSAPP, ICON_INSTAGRAM, ICON_FUNNEL } from './config-icons.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
@@ -618,13 +618,6 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // relativo com selo "dormindo" (30+ dias sem uso = candidata a revogação) e as
   // revogadas colapsadas num details próprio (trilha de auditoria, não poluição).
   const userNameById = new Map(allUsers.map((u) => [u.id, u.name] as const));
-  const DORMANT_MS = 30 * 24 * 3600_000;
-  const relUse = (ms: number): string => {
-    const h = Math.floor((Date.now() - ms) / 3600_000);
-    if (h < 1) return 'há menos de 1h';
-    if (h < 48) return `há ${h}h`;
-    return `há ${Math.floor(h / 24)}d`;
-  };
   // Chave órfã ATIVA ganha o form de vincular dono inline (adendo spec 87): antes o
   // "sem dono" era só um selo sem saída — as chaves emitidas antes da 0021 não tinham
   // como ganhar dono pela UI. Orphan-only: chave com dono não expõe edição (trocar
@@ -645,8 +638,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
              <button type="submit" class="btn btn-sm">Vincular</button>
            </form>`;
     const lastRef = k.last_used_at ?? k.created_at;
-    const dormant = !revoked && Date.now() - lastRef > DORMANT_MS;
-    const lastUsed = k.last_used_at ? esc(relUse(k.last_used_at)) : 'nunca';
+    const dormant = !revoked && Date.now() - lastRef > KEY_DORMANT_MS;
+    const lastUsed = k.last_used_at ? esc(relKeyUse(k.last_used_at)) : 'nunca';
     const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
     const revokeBtn = revoked
       ? '—'
@@ -719,9 +712,13 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // "Agentes". Deep links por hash (#backup, #board...) são resolvidos no client —
   // o servidor não vê o fragment (o alias #conexoes → agentes também vive lá).
   const savedBackup = url.searchParams.get('saved') === 'backup';
-  const activeTab: 'agentes' | 'integracoes' | 'organizacao' | 'sistema' =
+  // O cast largo evita o narrowing do TS: nenhum ?saved= cai em 'integracoes'
+  // hoje (a aba é ativada só no client, via hash/?google=), mas o template dos
+  // painéis compara contra ela como qualquer outra.
+  const activeTab = (
     savedBoard || savedProjects || savedTaxonomy || savedTags || justCreatedShareUrl !== null
-      ? 'organizacao' : savedBackup ? 'sistema' : 'agentes';
+      ? 'organizacao' : savedBackup ? 'sistema' : 'agentes'
+  ) as 'agentes' | 'integracoes' | 'organizacao' | 'sistema';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
 
