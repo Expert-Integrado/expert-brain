@@ -1055,6 +1055,46 @@ export const SURFACES_CSS = `
 .tax-inline-error { color: var(--danger); font-size: 13px; margin-top: 6px; }
 .tax-inline-status { color: var(--text-dim); font-size: 13px; }
 
+/* Rodada 3 (11/07) — polimento visual das tabelas de configuração (Quadro de
+   tarefas / Projetos / Tags / Áreas e tipos). Só CSS: o HTML das seções fica
+   intacto de propósito (contratos dos testes kanban/tags/taxonomy/projects). */
+.keys-table tbody tr { transition: background 150ms var(--ease); }
+.keys-table tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
+/* Botões soltos dentro das tabelas (Salvar/Renomear/Desarquivar): mesma pele do
+   .row button, em tamanho compacto de linha. Declarado DEPOIS de .row button
+   :not(.btn) (mesma especificidade) pra vencer nos forms .row dentro de tabela.
+   O :not(.btn) preserva a hierarquia .btn-danger/.btn-primary. */
+.keys-table button:not(.btn) {
+  padding: 6px 12px;
+  background: rgba(var(--accent-lav-rgb), 0.12);
+  color: var(--accent-lav);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms var(--ease), color 180ms var(--ease);
+}
+.keys-table button:not(.btn):hover { background: rgba(var(--accent-lav-rgb), 0.22); }
+/* Setas de reordenação (↑/↓ em Projetos): quadradinho neutro, acende no hover. */
+.keys-table button[aria-label="Subir"],
+.keys-table button[aria-label="Descer"] {
+  min-width: 30px; padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-subtle);
+}
+.keys-table button[aria-label="Subir"]:hover,
+.keys-table button[aria-label="Descer"]:hover {
+  background: rgba(var(--accent-lav-rgb), 0.18);
+  color: var(--accent-lav);
+}
+/* Tabela larga em tela estreita: rola horizontal dentro da própria tabela em
+   vez de estourar o card (display block transforma a table em scroll container). */
+@media (max-width: 640px) {
+  .keys-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
 .key-flash {
   margin-bottom: 18px; padding: 16px 18px;
