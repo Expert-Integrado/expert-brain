@@ -63,6 +63,9 @@ export function registerCommentTask(server: any, env: Env, auth?: AuthContext): 
       await addTaskComment(env, {
         id, task_id: input.task_id, author: 'agent', author_name: name, body, created_at: now,
         author_user_id: me.id,
+        // Forense por chave (spec 86): registra POR QUAL credencial o comentário
+        // entrou. NULL em sessão OAuth do dono (sem keyId).
+        author_key_id: auth?.keyId ?? null,
       });
       const commentCount = await countTaskComments(env, input.task_id);
       return toolSuccess({

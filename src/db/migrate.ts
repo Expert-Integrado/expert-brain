@@ -437,6 +437,24 @@ const MIGRATION_0020_STMTS: string[] = [
   `ALTER TABLE task_comments ADD COLUMN author_user_id TEXT`,
 ];
 
+// 0021 — CHAVE PERTENCE AO USUÁRIO, 1:N (spec 80-frota-agentes/86). Inverte a fonte
+// da verdade do vínculo credencial→usuário: `api_keys.user_id` (dono da chave) permite
+// N chaves por usuário — rotação sem janela quebrada (chave antiga e nova apontam pro
+// MESMO usuário) e credencial privada separada da identidade (§4 da spec). O backfill
+// preserva os vínculos legados de `users.api_key_id` (que fica como fallback de leitura
+// durante a transição; remoção da coluna legada fica pra migration futura de limpeza —
+// ver README do grupo 80). `task_comments.author_key_id` é a forense POR CHAVE da
+// assinatura (spec 81 grava QUEM; com 1:N passa a importar POR QUAL chave). ADD COLUMN
+// é aditivo; o UPDATE só preenche user_id NULL (idempotente, zero linha divergente
+// tocada). O número 0023 citado na spec era reserva de nome — o trilho real ia até
+// 0020, então usou-se o próximo livre: 0021 (regra transversal em specs/90-roadmap.md).
+// Espelho .sql de referência: src/db/migrations/0007_api_key_user.sql.
+const MIGRATION_0021_STMTS: string[] = [
+  `ALTER TABLE api_keys ADD COLUMN user_id TEXT`,
+  `UPDATE api_keys SET user_id = (SELECT u.id FROM users u WHERE u.api_key_id = api_keys.id) WHERE user_id IS NULL`,
+  `ALTER TABLE task_comments ADD COLUMN author_key_id TEXT`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -458,6 +476,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0018_similar_edges_score_idx', stmts: MIGRATION_0018_STMTS },
   { id: '0019_task_activity', stmts: MIGRATION_0019_STMTS },
   { id: '0020_comment_author_user', stmts: MIGRATION_0020_STMTS },
+  { id: '0021_api_key_user', stmts: MIGRATION_0021_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

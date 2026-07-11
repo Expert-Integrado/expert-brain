@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
 import { ApiKeyLimitError, createApiKey, revokeApiKey, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
+import { getUserById } from '../db/queries.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
 // Mantemos a rota só pra não quebrar bookmarks antigos.
@@ -40,9 +41,16 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   // Escopo aditivo 'private' (spec 31): checkbox → CSV 'full,private' | 'read,private'.
   const wantsPrivate = String(form.get('private_scope') ?? '') === '1';
   const scopes = wantsPrivate ? `${base},private` : base;
+  // Dono da chave (spec 86): OBRIGATÓRIO pra chave nova — chave sem dono não nasce
+  // mais pela UI (o vínculo esquecível em dois passos foi a origem do bug do PC
+  // assinando como Claude VPS). Precisa ser um usuário ATIVO.
+  const userId = String(form.get('user_id') ?? '').trim();
+  if (!userId) return htmlResponse('Dono da chave obrigatório — escolha o usuário que esta credencial identifica', 400);
+  const owner = await getUserById(env, userId);
+  if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
   let plainKey: string;
   try {
-    const created = await createApiKey(env, session.email, name, scopes);
+    const created = await createApiKey(env, session.email, name, scopes, userId);
     plainKey = created.plainKey;
   } catch (err) {
     if (err instanceof ApiKeyLimitError) {

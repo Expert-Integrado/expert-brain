@@ -69,28 +69,21 @@ describe('POST /app/config/users/* (CRUD por form)', () => {
     expect((await listUsers(E, true)).find((u) => u.name === 'X')).toBeUndefined();
   });
 
-  it('update vincula PAT ativo; chave já usada por outro usuário → 400', async () => {
+  it('update NÃO edita mais o vínculo com chave (spec 86 — dono mora na chave)', async () => {
     const ck = await cookie();
     await seedKey('key_vps', 'claude-vps');
-    await createUser(E, { id: 'user_1', name: 'Agente A', type: 'agent', bio: null, api_key_id: null }, 1);
-    await createUser(E, { id: 'user_2', name: 'Agente B', type: 'agent', bio: null, api_key_id: null }, 2);
+    await createUser(E, { id: 'user_1', name: 'Agente A', type: 'agent', bio: null, api_key_id: 'key_vps' }, 1);
 
-    const ok = await formPost('/app/config/users/update', [['id', 'user_1'], ['name', 'Agente A'], ['type', 'agent'], ['api_key_id', 'key_vps']], ck);
+    // Mesmo enviando o campo antigo, o handler o ignora: o vínculo legado fica intacto.
+    const ok = await formPost('/app/config/users/update', [['id', 'user_1'], ['name', 'Agente A2'], ['type', 'agent'], ['api_key_id', '']], ck);
     expect(ok.status).toBe(302);
-    expect((await getUserById(E, 'user_1'))?.api_key_id).toBe('key_vps');
-
-    const conflict = await formPost('/app/config/users/update', [['id', 'user_2'], ['name', 'Agente B'], ['type', 'agent'], ['api_key_id', 'key_vps']], ck);
-    expect(conflict.status).toBe(400);
-    expect(await conflict.text()).toContain('Agente A');
+    const u = await getUserById(E, 'user_1');
+    expect(u?.name).toBe('Agente A2');
+    expect(u?.api_key_id).toBe('key_vps'); // não foi zerado pelo update
   });
 
-  it('chave revogada não vincula; tipo do dono é imutável', async () => {
+  it('tipo do dono é imutável', async () => {
     const ck = await cookie();
-    await seedKey('key_dead', 'revogada', 999);
-    await createUser(E, { id: 'user_1', name: 'Agente A', type: 'agent', bio: null, api_key_id: null }, 1);
-    const bad = await formPost('/app/config/users/update', [['id', 'user_1'], ['name', 'Agente A'], ['type', 'agent'], ['api_key_id', 'key_dead']], ck);
-    expect(bad.status).toBe(400);
-
     const owner = (await getOwnerUser(E))!;
     const res = await formPost('/app/config/users/update', [['id', owner.id], ['name', 'Eu'], ['type', 'agent']], ck);
     expect(res.status).toBe(302);

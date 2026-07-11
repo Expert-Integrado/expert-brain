@@ -38,24 +38,20 @@ function typeOptions(selected: UserType): string {
     .join('');
 }
 
-// Dropdown de PATs ATIVOS pra vincular um usuário-agente à credencial que o
-// identifica ('me'). Chave já vinculada a OUTRO usuário aparece desabilitada.
-function apiKeyOptions(keys: ApiKeyRow[], users: BrainUser[], current: string | null, selfId: string | null): string {
-  const usedBy = new Map<string, string>();
-  for (const u of users) {
-    if (u.api_key_id && u.archived_at === null && u.id !== selfId) usedBy.set(u.api_key_id, u.name);
+// Chaves do usuário (spec 86 — 1:N, read-only aqui): o vínculo mora na CHAVE
+// (api_keys.user_id, definido na criação em "Agentes externos e automações"), não é
+// mais editado no usuário. Lista as N chaves que identificam este perfil, incluindo
+// o vínculo LEGADO (users.api_key_id) enquanto a chave não migrar.
+function userKeysCell(u: BrainUser, keys: ApiKeyRow[]): string {
+  const mine = keys.filter((k) =>
+    (k.user_id === u.id || (!k.user_id && u.api_key_id === k.id)) && k.revoked_at === null
+  );
+  if (mine.length === 0) {
+    return `<span style="color:var(--text-dim);font-size:12px">Sem chave — crie uma em "Agentes externos e automações" escolhendo este usuário como dono</span>`;
   }
-  const opts = keys
-    .filter((k) => k.revoked_at === null)
-    .map((k) => {
-      const taken = usedBy.get(k.id);
-      const sel = k.id === current ? ' selected' : '';
-      const dis = taken && k.id !== current ? ' disabled' : '';
-      const suffix = taken && k.id !== current ? ` — já vinculada a ${taken}` : '';
-      return `<option value="${esc(k.id)}"${sel}${dis}>${esc(k.name)} (${esc(k.prefix)}…)${esc(suffix)}</option>`;
-    })
-    .join('');
-  return `<option value=""${current === null ? ' selected' : ''}>— sem vínculo —</option>${opts}`;
+  return mine
+    .map((k) => `<span class="badge-pill" title="${esc(k.prefix)}…">${esc(k.name)}${!k.user_id ? ' · vínculo legado' : ''}</span>`)
+    .join(' ');
 }
 
 // Bolinha da tabela: foto (com cache-bust por updated_at) ou iniciais coloridas.
@@ -115,10 +111,10 @@ function renderUserRow(u: BrainUser, keys: ApiKeyRow[], all: BrainUser[], hasMed
         </div>
         <input type="text" name="bio" value="${esc(u.bio ?? '')}" maxlength="200" class="input-text" placeholder="Pra que serve / quem é (opcional)" style="width:100%;margin-top:6px" aria-label="Descrição">
         <div class="row" style="gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
-          <select name="api_key_id" aria-label="Chave de API vinculada">${apiKeyOptions(keys, all, u.api_key_id, u.id)}</select>
           <button type="submit">Salvar</button>
         </div>
       </form>
+      <div style="margin-top:6px">${userKeysCell(u, keys)}</div>
     </td>
     <td>${avatarForms}</td>
     <td>${archiveCell}</td>
@@ -142,7 +138,7 @@ export function renderUsersSection(
       </summary>
       <div class="adv-body">
         <div class="adv-section">
-          <p>Usuário aqui <strong>não é login</strong> — é um perfil de atribuição: a bolinha de responsável nas tarefas, como no ClickUp. <strong>Pessoa</strong> é alguém de carne e osso; <strong>agente</strong> é uma instância de IA (ex: Claude na VPS, OpenClaw). Vincular um agente à <em>chave de API</em> dele faz o <code>assignee: 'me'</code> das tools MCP resolver pra esse perfil — cada instância enxerga a própria fila. Arquivar não apaga histórico: as tasks antigas continuam mostrando o responsável. ${total}/${USER_CAP} usuários.</p>
+          <p>Usuário aqui <strong>não é login</strong> — é um perfil de atribuição: a bolinha de responsável nas tarefas, como no ClickUp. <strong>Pessoa</strong> é alguém de carne e osso; <strong>agente</strong> é uma instância de IA (ex: Claude na VPS, OpenClaw). O vínculo com credencial mora na <em>chave</em> (escolha o dono ao criar a chave em "Agentes externos e automações") — um usuário pode ter várias chaves e o <code>assignee: 'me'</code> das tools MCP resolve pra esse perfil. Arquivar não apaga histórico: as tasks antigas continuam mostrando o responsável. ${total}/${USER_CAP} usuários.</p>
           <table class="keys-table">
             <thead><tr>
               <th></th><th>Perfil (nome, tipo, descrição, chave)</th><th>Foto</th><th></th>
@@ -169,7 +165,7 @@ export function renderUsersSection(
             </div>
             <button type="submit" class="btn btn-primary">Criar usuário</button>
           </form>
-          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, vincule a chave de API (agentes) e envie a foto na própria linha da tabela.</p>`}
+          <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, gere a chave de API do agente em "Agentes externos e automações" (escolhendo este usuário como dono) e envie a foto na própria linha da tabela.</p>`}
         </div>
       </div>
     </details>`;
@@ -205,7 +201,10 @@ export async function handleUserCreatePost(req: Request, env: Env): Promise<Resp
   return usersRedirect();
 }
 
-// POST /app/config/users/update — form { id, name, type, bio, api_key_id }.
+// POST /app/config/users/update — form { id, name, type, bio }. O vínculo com chave
+// NÃO é mais editado aqui (spec 86): o dono mora na CHAVE (api_keys.user_id, definido
+// na criação). O campo legado users.api_key_id fica intocado — segue servindo de
+// fallback de resolução até a chave migrar.
 export async function handleUserUpdatePost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -224,21 +223,7 @@ export async function handleUserUpdatePost(req: Request, env: Env): Promise<Resp
   const type = user.is_owner === 1 ? user.type : (typeRaw as UserType);
   const bio = String(form.get('bio') ?? '').trim().slice(0, 200) || null;
 
-  const keyRaw = String(form.get('api_key_id') ?? '').trim();
-  let apiKeyId: string | null = null;
-  if (keyRaw) {
-    // Só chaves ATIVAS do dono; 1 chave identifica no máximo 1 usuário ativo
-    // (senão o 'me' das tools fica ambíguo).
-    const keys = await listApiKeys(env, session.email);
-    const key = keys.find((k) => k.id === keyRaw && k.revoked_at === null);
-    if (!key) return htmlResponse('Chave de API inválida ou revogada', 400);
-    const all = await listUsers(env, false);
-    const taken = all.find((u) => u.api_key_id === keyRaw && u.id !== id);
-    if (taken) return htmlResponse(`Essa chave já identifica o usuário "${taken.name}" — desvincule lá primeiro`, 400);
-    apiKeyId = keyRaw;
-  }
-
-  await updateUser(env, id, { name, type, bio, api_key_id: apiKeyId }, Date.now());
+  await updateUser(env, id, { name, type, bio }, Date.now());
   return usersRedirect();
 }
 

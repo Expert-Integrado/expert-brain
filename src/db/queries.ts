@@ -1234,6 +1234,10 @@ export interface TaskComment {
   // da escrita (resolveMe). NULL/ausente = comentário legado ou externo, sem autor
   // verificável. Opcional no INSERT pra não quebrar callers antigos (grava NULL).
   author_user_id?: string | null;
+  // Forense POR CHAVE (spec 86): com N chaves por usuário importa também POR QUAL
+  // chave o comentário entrou (identidade vs privada, nova vs antiga). NULL em
+  // OAuth/legado/externo.
+  author_key_id?: string | null;
 }
 
 // Shape de LEITURA da thread: o comentário + o perfil do assinante resolvido via
@@ -1248,9 +1252,9 @@ export interface TaskCommentView extends TaskComment {
 // podem ser null). O CHECK de length(body) na migration é a última linha de defesa.
 export async function addTaskComment(env: Env, c: TaskComment): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at, author_user_id)
-     VALUES (?,?,?,?,?,?,?)`
-  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id ?? null).run();
+    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at, author_user_id, author_key_id)
+     VALUES (?,?,?,?,?,?,?,?)`
+  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id ?? null, c.author_key_id ?? null).run();
 }
 
 // Lista os comentários de UMA task em ordem cronológica, com o perfil do assinante
@@ -1860,8 +1864,19 @@ export async function getUserByIdOrName(env: Env, ref: string, activesOnly: bool
   return pool.find((u) => u.name.trim().toLowerCase() === wanted) ?? null;
 }
 
-// Identidade por PAT: o usuário-agente cujo api_key_id é a credencial que chamou.
+// Identidade por PAT (fonte da verdade invertida, spec 86): o DONO da chave mora em
+// `api_keys.user_id` (1:N — qualquer chave do usuário assina como o usuário). Fallback
+// LEGADO em `users.api_key_id` só quando a coluna nova é NULL (chaves pré-0021 ainda
+// não migradas). Interface pública inalterada — specs 81/82/83 consomem sem mudança.
 export async function getUserByApiKeyId(env: Env, keyId: string): Promise<BrainUser | null> {
+  const key = await env.DB.prepare(
+    `SELECT user_id FROM api_keys WHERE id = ?`
+  ).bind(keyId).first<{ user_id: string | null }>();
+  if (key?.user_id) {
+    return env.DB.prepare(
+      `SELECT ${USER_COLS} FROM users WHERE id = ? AND archived_at IS NULL LIMIT 1`
+    ).bind(key.user_id).first<BrainUser>();
+  }
   return env.DB.prepare(
     `SELECT ${USER_COLS} FROM users WHERE api_key_id = ? AND archived_at IS NULL LIMIT 1`
   ).bind(keyId).first<BrainUser>();
@@ -2002,8 +2017,18 @@ export async function resolveActorProfile(env: Env, actor: string | null | undef
       key_name: null,
     };
   }
+  // Fonte invertida (spec 86): dono da chave em api_keys.user_id, com fallback no
+  // vínculo legado users.api_key_id. SEM filtro de arquivado de propósito — isto é
+  // display histórico de autoria, não atribuição.
   const [user, key] = await Promise.all([
-    env.DB.prepare(`SELECT ${USER_COLS} FROM users WHERE api_key_id = ? LIMIT 1`).bind(actor).first<BrainUser>(),
+    env.DB.prepare(
+      `SELECT ${USER_COLS.split(', ').map((c) => `u.${c}`).join(', ')}
+       FROM users u
+       WHERE u.id = (SELECT user_id FROM api_keys WHERE id = ?1 AND user_id IS NOT NULL)
+          OR (NOT EXISTS (SELECT 1 FROM api_keys WHERE id = ?1 AND user_id IS NOT NULL)
+              AND u.api_key_id = ?1)
+       LIMIT 1`
+    ).bind(actor).first<BrainUser>(),
     env.DB.prepare(`SELECT name FROM api_keys WHERE id = ?`).bind(actor).first<{ name: string }>(),
   ]);
   return {

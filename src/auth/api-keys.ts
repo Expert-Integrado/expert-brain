@@ -51,6 +51,10 @@ export interface ApiKeyRow {
   created_at: number;
   last_used_at: number | null;
   revoked_at: number | null;
+  // Dono da chave (spec 86 — 1:N: um usuário pode ter N chaves; a identidade de
+  // assinatura resolve por aqui). NULL = chave legada sem dono (segue funcionando,
+  // sem assinatura, via fallback users.api_key_id quando existir).
+  user_id: string | null;
 }
 
 // Retorno de validateApiKey: quem é o dono, os escopos da chave (CSV) e o id dela (pra
@@ -79,7 +83,8 @@ export async function createApiKey(
   env: Env,
   ownerEmail: string,
   name: string,
-  scopes: string = 'full' // CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'
+  scopes: string = 'full', // CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'
+  userId: string | null = null // dono da chave (spec 86) — o caller valida que o usuário existe/ativo
 ): Promise<CreateApiKeyResult> {
   // Cap por owner pra evitar criação ilimitada via sessão comprometida. revokeApiKey
   // faz UPDATE (revogação lógica), então o count precisa filtrar revoked_at IS NULL
@@ -97,17 +102,17 @@ export async function createApiKey(
   const now = Date.now();
   const prefix = plainKey.slice(0, PREFIX.length + 6);
   await env.DB.prepare(
-    `INSERT INTO api_keys (id, owner_email, name, prefix, key_hash, scopes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, ownerEmail, name, prefix, keyHash, scopes, now).run();
+    `INSERT INTO api_keys (id, owner_email, name, prefix, key_hash, scopes, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, ownerEmail, name, prefix, keyHash, scopes, now, userId).run();
   return {
-    row: { id, owner_email: ownerEmail, name, prefix, scopes, created_at: now, last_used_at: null, revoked_at: null },
+    row: { id, owner_email: ownerEmail, name, prefix, scopes, created_at: now, last_used_at: null, revoked_at: null, user_id: userId },
     plainKey,
   };
 }
 
 export async function listApiKeys(env: Env, ownerEmail: string): Promise<ApiKeyRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, owner_email, name, prefix, scopes, created_at, last_used_at, revoked_at
+    `SELECT id, owner_email, name, prefix, scopes, created_at, last_used_at, revoked_at, user_id
      FROM api_keys WHERE owner_email = ? ORDER BY created_at DESC`
   ).bind(ownerEmail).all<ApiKeyRow>();
   return res.results ?? [];

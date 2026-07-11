@@ -79,8 +79,8 @@ describe('GET /app/export', () => {
 
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
-    // Bump pra 0020 (spec 81 — assinatura de comentário por credencial).
-    expect(manifest.schema_version).toBe('0020_comment_author_user');
+    // Bump pra 0021 (spec 86 — chave pertence ao usuario).
+    expect(manifest.schema_version).toBe('0021_api_key_user');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {

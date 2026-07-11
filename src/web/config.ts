@@ -666,6 +666,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <label>Nome (pra você lembrar onde usa)
               <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
             </label>
+            <label style="display:block;margin-top:12px">Dono da chave (spec 86 — a credencial ASSINA como este usuário)
+              <select name="user_id" required class="input-text" style="display:block;margin-top:4px">
+                <option value="">— escolha o usuário —</option>
+                ${allUsers.filter((u) => u.archived_at === null).map((u) => `<option value="${esc(u.id)}">${esc(u.name)} (${u.type === 'agent' ? 'agente' : 'pessoa'})</option>`).join('')}
+              </select>
+            </label>
             <label style="display:block;margin-top:12px">Escopo
               <select name="scope" class="input-text" style="display:block;margin-top:4px">
                 <option value="full">Leitura e escrita — CRUD completo do vault</option>
