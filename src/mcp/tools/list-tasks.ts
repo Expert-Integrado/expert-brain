@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolSuccess, toolError, noteUrl, canSeePrivate } from '../helpers.js';
-import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, getUserByIdOrName, taskIdsAssignedTo, listAssigneesForTasks, type TaskRow, type TaskProject } from '../../db/queries.js';
+import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, getUserByIdOrName, taskIdsAssignedTo, listAssigneesForTasks, claimActive, listTasksAwaitingOwner, type TaskRow, type TaskProject } from '../../db/queries.js';
 import { resolveMe } from './user-ref.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
@@ -13,6 +13,8 @@ const inputSchema = {
   project: z.string().optional().describe('Only tasks in this PROJECT (folder). Accepts a project id (proj_...) or label (case-insensitive); resolves among BOTH active AND archived projects (so you can list a finished project’s history). A single-valued grouping, distinct from `tag`. No match → empty result.'),
   mentions_entity: z.string().optional().describe('Only tasks that MENTION this CONTACT (entity id from the Contacts vault) — "tasks with this person". Get the id via get_contact_by_phone / search_contacts. No match → empty result. Composes with status/tag/project/query.'),
   assignee: z.string().optional().describe('Only tasks ASSIGNED to this user (responsible). Ref by user id (user_...), name (case-insensitive), or "me" (the profile linked to this credential — an agent\'s own queue). Unknown ref → empty result; "me" without a linked profile → error explaining how to link. Composes with the other filters. See list_users.'),
+  available: z.boolean().optional().describe('Only tasks AVAILABLE to work on (spec 88): not claimed, claim expired, or claimed by ME. An agent picking work should use assignee:"me" + available:true, then claim_task the chosen one. Composes with the other filters.'),
+  awaiting_owner: z.boolean().optional().describe("Only tasks WAITING ON THE OWNER's decision (spec 88): the latest [bloqueio] comment has no owner reply after it. The owner's approval queue — replying in the thread clears the task from it. Composes with the other filters."),
   limit: z.number().int().min(1).max(500).optional().describe('Max tasks to return (default 200).'),
 };
 
@@ -20,9 +22,9 @@ const DESCRIPTION = `Lists tasks regardless of due date — including tasks WITH
 
 This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks (ordered by due date then priority). Pass \`query\` for full-text search over tasks (title+body, all statuses), \`status\` to filter (asking for ['done']/['canceled'] auto-includes closed tasks — no include_closed needed, capped to the most recent by \`limit\`), \`tag\` to scope by a transversal label (multi), \`project\` to scope by a folder (single-valued, resolves active+archived), \`limit\` to cap. \`project\` and \`tag\` compose with \`status\`/\`query\`.
 
-Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`. Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], comment_count, url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
+Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`, adding \`available: true\` to skip tasks another agent is already working (claim_task lease, spec 88), (e) pull the owner's APPROVAL QUEUE with \`awaiting_owner: true\` (tasks whose latest [bloqueio] comment has no owner reply). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], claim ({by,expires_at,expires_brt}|null — the ACTIVE work lease; null = free), comment_count, url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
-interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; assignee?: string; limit?: number; }
+interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; assignee?: string; available?: boolean; awaiting_owner?: boolean; limit?: number; }
 
 export function registerListTasks(server: any, env: Env, auth?: AuthContext): void {
   // Selo de privacidade (spec 59): sem escopo `private`, task privada some de TODAS as
@@ -112,6 +114,23 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
         tasks = tasks.filter((t) => assigned.has(t.id));
       }
 
+      // Filtro available (spec 88): só tasks LIVRES pra trabalhar — sem claim, lease
+      // vencido, ou claimada por MIM (renovar e seguir é legítimo). Credencial sem
+      // perfil vinculado ainda filtra (só não reconhece claims próprios).
+      if (input.available === true) {
+        const meId = (await resolveMe(env, auth))?.id ?? null;
+        tasks = tasks.filter((t) => !claimActive(t, now) || t.claimed_by === meId);
+      }
+
+      // Filtro awaiting_owner (spec 88 §3): a fila de aprovação do dono — interseção
+      // com o conjunto "último bloqueio sem resposta do owner" (SQL dedicado; a base
+      // já veio gateada por privacidade, então intersectar por id é seguro).
+      if (input.awaiting_owner === true) {
+        const awaiting = new Set((await listTasksAwaitingOwner(env, seePrivate)).map((t) => t.id));
+        if (awaiting.size === 0) return toolSuccess({ count: 0, tasks: [] });
+        tasks = tasks.filter((t) => awaiting.has(t.id));
+      }
+
       // Sem filtro de tag: corta ANTES de buscar tags (não busca tags de itens que
       // serão descartados). Com filtro de tag: precisa das tags de todas pra filtrar,
       // então o slice vem depois. Ver spec 15 item 8.
@@ -158,6 +177,11 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
           column: col ? { id: col.id, label: col.label } : null,
           project: proj ? { id: proj.id, label: proj.label } : null,
           assignees: (assigneesById.get(t.id) ?? []).map((a) => ({ id: a.id, name: a.name, type: a.type })),
+          // Claim ATIVO (spec 88): quem está trabalhando agora e até quando. null =
+          // livre (inclui lease vencido). `by` é user_id — nome completo no get_task.
+          claim: claimActive(t, now)
+            ? { by: t.claimed_by, expires_at: t.claim_expires_at, expires_brt: formatBrtDateTime(t.claim_expires_at!) }
+            : null,
           comment_count: commentCounts.get(t.id) ?? 0,
           updated_at: t.updated_at,
           url: noteUrl(env, t.id),

@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { newId } from '../util/id.js';
-import { listTasksDueBefore, countPendingInbox } from '../db/queries.js';
+import { listTasksDueBefore, countPendingInbox, countTasksAwaitingOwner } from '../db/queries.js';
 import {
   upsertPushSubscription, deletePushSubscriptionByEndpoint,
   listPushSubscriptions, markPushSubscriptionOk,
@@ -136,12 +136,16 @@ export async function sendPushToAll(env: Env, nowMs: number): Promise<PushSendRe
 // Pendências do dono (o que a notificação anuncia): tasks atrasadas + vencendo em
 // 24h + itens do inbox. Compartilhado entre o handler /app/push/pending (SW) e o
 // gate do cron (só empurra push se há o que anunciar).
-async function pendingSummary(env: Env, nowMs: number): Promise<{ overdue: number; today: number; inbox: number }> {
+async function pendingSummary(env: Env, nowMs: number): Promise<{ overdue: number; today: number; inbox: number; blocked: number }> {
   const tasks = await listTasksDueBefore(env, nowMs + 24 * 3600_000, true);
   const overdue = tasks.filter((t) => t.due_at !== null && t.due_at < nowMs).length;
   const today = tasks.length - overdue;
   const inbox = await countPendingInbox(env);
-  return { overdue, today, inbox };
+  // Fila "aguardando o dono" (spec 88): agente travou num [bloqueio] sem resposta.
+  // O comment_task já empurra push na hora do bloqueio; aqui a contagem entra no
+  // TEXTO da notificação e no gate do digest (bloqueio sozinho já justifica push).
+  const blocked = await countTasksAwaitingOwner(env);
+  return { overdue, today, inbox, blocked };
 }
 
 // Cron diário (scheduled.ts): empurra o push pros dispositivos SE houver pendência.
@@ -152,7 +156,7 @@ export async function runPushDigest(env: Env, nowMs: number): Promise<PushSendRe
   const subs = await listPushSubscriptions(env);
   if (subs.length === 0) return { configured: true, sent: 0, removed: 0, failed: 0, skipped: 'sem assinaturas' };
   const p = await pendingSummary(env, nowMs);
-  if (p.overdue + p.today + p.inbox === 0) {
+  if (p.overdue + p.today + p.inbox + p.blocked === 0) {
     return { configured: true, sent: 0, removed: 0, failed: 0, skipped: 'nada pendente' };
   }
   return sendPushToAll(env, nowMs);
@@ -216,15 +220,17 @@ export async function handlePushPendingGet(req: Request, env: Env): Promise<Resp
   const now = Date.now();
   const p = await pendingSummary(env, now);
   const parts: string[] = [];
+  // Bloqueio primeiro: agente PARADO esperando decisão é a pendência mais cara.
+  if (p.blocked) parts.push(`${p.blocked} aguardando decisão sua`);
   if (p.overdue) parts.push(`${p.overdue} task(s) atrasada(s)`);
   if (p.today) parts.push(`${p.today} vence(m) hoje`);
   if (p.inbox) parts.push(`${p.inbox} no inbox`);
-  const badge = p.overdue + p.today + p.inbox;
+  const badge = p.overdue + p.today + p.inbox + p.blocked;
   return json({
     title: 'Expert Brain',
     body: parts.length ? parts.join(' · ') : 'Tudo em dia.',
     badge_count: badge,
-    url: p.inbox && !p.overdue && !p.today ? '/app/inbox' : '/app',
+    url: p.blocked ? '/app/tasks' : p.inbox && !p.overdue && !p.today ? '/app/inbox' : '/app',
   });
 }
 

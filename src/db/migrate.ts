@@ -554,6 +554,21 @@ const MIGRATION_0026_STMTS: string[] = [
   )`,
 ];
 
+// 0027 — FROTA: claim/lease + comentários tipados (specs/80-frota-agentes/88). Claim
+// mora nas colunas da própria task (notes, kind='task'): posse TEMPORÁRIA com lease —
+// expirado = livre, avaliado na leitura/escrita (lazy, sem cron de limpeza; crash de
+// agente nunca prende task além do lease). `task_comments.kind` tipa a convenção
+// [pedido]/[entrega]/[bloqueio]/[info] que a frota já escreve no corpo — NULL =
+// comentário comum (todos os legados). O índice serve a fila "aguardando o dono"
+// (último bloqueio sem resposta do owner) sem varrer threads. Tudo aditivo.
+const MIGRATION_0027_STMTS: string[] = [
+  `ALTER TABLE notes ADD COLUMN claimed_by TEXT`,
+  `ALTER TABLE notes ADD COLUMN claimed_at INTEGER`,
+  `ALTER TABLE notes ADD COLUMN claim_expires_at INTEGER`,
+  `ALTER TABLE task_comments ADD COLUMN kind TEXT`,
+  `CREATE INDEX IF NOT EXISTS idx_task_comments_kind ON task_comments(task_id, kind, created_at)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -581,6 +596,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0024_project_shares', stmts: MIGRATION_0024_STMTS },
   { id: '0025_inbox_media', stmts: MIGRATION_0025_STMTS },
   { id: '0026_push_subscriptions', stmts: MIGRATION_0026_STMTS },
+  { id: '0027_fleet_claim_comment_kind', stmts: MIGRATION_0027_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

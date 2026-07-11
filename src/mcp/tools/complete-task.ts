@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
-import { completeTask, getTaskById } from '../../db/queries.js';
+import { completeTask, getTaskById, clearTaskClaim } from '../../db/queries.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
 const inputSchema = {
@@ -66,6 +66,10 @@ export function registerCompleteTask(server: any, env: Env, auth: AuthContext): 
           url: noteUrl(env, input.id),
         });
       }
+
+      // Claim/lease (spec 88): task concluída não fica "possuída" — limpa o claim
+      // incondicionalmente (no-op quando não havia).
+      await clearTaskClaim(env, input.id);
 
       // Sucesso: usar os valores efetivamente persistidos (não hardcodar `now`).
       const task = result;

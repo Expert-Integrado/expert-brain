@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
-import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById, listAssigneesForTask, resolveActorProfile } from '../../db/queries.js';
+import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById, listAssigneesForTask, resolveActorProfile, claimActive, getUserByIdOrName } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 import { mentionsForOutput } from '../mentions.js';
 
@@ -13,7 +13,7 @@ const DESCRIPTION = `Reads a single TASK by id, with its full task state.
 
 get_note returns a NOTE shape (title/body/tldr/domains) WITHOUT status/due/priority — it does NOT serve tasks. Use get_task to read a task's status, due date, priority, completed_at, tags and body in one call.
 
-Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, assignees, created_by, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`assignees\` is who is RESPONSIBLE for the task ([{id,name,type}], set via save_task/update_task). \`created_by\` is which credential CREATED it ({actor, user, key_name} | null — automatic audit trail, distinct from assignees). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_user ({id,name,type} | null — the credential-linked user that SIGNED the comment, spec 81; null = legacy/unsigned), author_name (complementary label), body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
+Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, assignees, created_by, claim, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`assignees\` is who is RESPONSIBLE for the task ([{id,name,type}], set via save_task/update_task). \`created_by\` is which credential CREATED it ({actor, user, key_name} | null — automatic audit trail, distinct from assignees). \`claim\` is the active work LEASE ({ user {id,name,type}, claimed_at, expires_at, expires_brt } | null — null means FREE; see claim_task, spec 88). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_user ({id,name,type} | null — the credential-linked user that SIGNED the comment, spec 81; null = legacy/unsigned), author_name (complementary label), kind (pedido|entrega|bloqueio|info|null — typed agent protocol, spec 88), body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
 
 interface GetTaskInput { id: string; }
 
@@ -56,6 +56,17 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       const assignees = await listAssigneesForTask(env, input.id);
       const createdBy = t.created_by ? await resolveActorProfile(env, t.created_by) : null;
       const now = Date.now();
+      // Claim/lease (spec 88): só o ATIVO aparece — lease vencido = task livre, e as
+      // colunas vencidas são ruído interno (ninguém as limpa proativamente).
+      const claimUser = claimActive(t, now) ? await getUserByIdOrName(env, t.claimed_by!, false) : null;
+      const claim = claimUser
+        ? {
+            user: { id: claimUser.id, name: claimUser.name, type: claimUser.type },
+            claimed_at: t.claimed_at ?? null,
+            expires_at: t.claim_expires_at ?? null,
+            expires_brt: t.claim_expires_at != null ? formatBrtDateTime(t.claim_expires_at) : null,
+          }
+        : null;
       return toolSuccess({
         id: t.id,
         url: noteUrl(env, t.id),
@@ -74,6 +85,7 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
         project: proj ? { id: proj.id, label: proj.label } : null,
         assignees: assignees.map((a) => ({ id: a.id, name: a.name, type: a.type })),
         created_by: createdBy,
+        claim,
         private: t.private === 1,
         origin_note_id: t.origin_note_id ?? null,
         mentions,
@@ -85,6 +97,8 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
           // null = comentário legado/externo sem autor verificável.
           author_user: c.author_user ? { id: c.author_user.id, name: c.author_user.name, type: c.author_user.type } : null,
           author_name: c.author_name,
+          // Tipo do protocolo de agentes (spec 88): pedido|entrega|bloqueio|info|null.
+          kind: c.kind ?? null,
           body: c.body,
           created_at: c.created_at,
           created_brt: formatBrtDateTime(c.created_at),

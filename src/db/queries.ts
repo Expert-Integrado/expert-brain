@@ -574,6 +574,12 @@ export interface TaskRow {
   // tipo porque a maioria das queries de task (TASK_COLS) não os seleciona.
   share_token?: string | null;
   share_expires_at?: number | null;
+  // Claim/lease da frota (migration 0027, spec 88): posse TEMPORÁRIA — claimed_by é
+  // user_id (users, spec 80); lease vencido (claim_expires_at < now) = task LIVRE,
+  // avaliado na leitura (lazy, sem cron). Opcionais: selects parciais não os trazem.
+  claimed_by?: string | null;
+  claimed_at?: number | null;
+  claim_expires_at?: number | null;
 }
 
 export interface InsertTaskInput {
@@ -597,7 +603,7 @@ export interface InsertTaskInput {
   origin_note_id?: string | null;
 }
 
-const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_by, created_at, updated_at, share_token, share_expires_at`;
+const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_by, created_at, updated_at, share_token, share_expires_at, claimed_by, claimed_at, claim_expires_at`;
 
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
@@ -1238,6 +1244,10 @@ export interface TaskComment {
   // chave o comentário entrou (identidade vs privada, nova vs antiga). NULL em
   // OAuth/legado/externo.
   author_key_id?: string | null;
+  // Tipo do comentário (migration 0027, spec 88): pedido | entrega | bloqueio | info.
+  // NULL = comentário comum (todos os legados). Derivado no comment_task do parâmetro
+  // explícito ou do prefixo [kind] no corpo — a convenção que a frota já escreve.
+  kind?: string | null;
 }
 
 // Shape de LEITURA da thread: o comentário + o perfil do assinante resolvido via
@@ -1252,9 +1262,9 @@ export interface TaskCommentView extends TaskComment {
 // podem ser null). O CHECK de length(body) na migration é a última linha de defesa.
 export async function addTaskComment(env: Env, c: TaskComment): Promise<void> {
   await env.DB.prepare(
-    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at, author_user_id, author_key_id)
-     VALUES (?,?,?,?,?,?,?,?)`
-  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id ?? null, c.author_key_id ?? null).run();
+    `INSERT INTO task_comments (id, task_id, author, author_name, body, created_at, author_user_id, author_key_id, kind)
+     VALUES (?,?,?,?,?,?,?,?,?)`
+  ).bind(c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id ?? null, c.author_key_id ?? null, c.kind ?? null).run();
 }
 
 // Lista os comentários de UMA task em ordem cronológica, com o perfil do assinante
@@ -1266,7 +1276,7 @@ export async function listTaskComments(
   env: Env, taskId: string, limit = 200, offset = 0
 ): Promise<TaskCommentView[]> {
   const r = await env.DB.prepare(
-    `SELECT c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id,
+    `SELECT c.id, c.task_id, c.author, c.author_name, c.body, c.created_at, c.author_user_id, c.kind,
             u.name AS au_name, u.type AS au_type, (u.avatar_key IS NOT NULL) AS au_avatar
      FROM task_comments c
      JOIN notes n ON n.id = c.task_id
@@ -1298,6 +1308,97 @@ export async function countTaskComments(
     ? env.DB.prepare(`${base} AND c.author = ?`).bind(taskId, author)
     : env.DB.prepare(base).bind(taskId);
   const row = await stmt.first<{ c: number }>();
+  return row?.c ?? 0;
+}
+
+// ───────── Claim/lease de task (migration 0027, spec 80-frota-agentes/88) ─────────
+
+// Um claim está ATIVO se tem detentor e o lease não venceu. Helper compartilhado
+// entre as tools (filtro `available`, exposição de claim) — a expiração é sempre
+// avaliada assim, na leitura; ninguém limpa colunas vencidas proativamente.
+export function claimActive(t: Pick<TaskRow, 'claimed_by' | 'claim_expires_at'>, nowMs: number): boolean {
+  return t.claimed_by != null && t.claim_expires_at != null && t.claim_expires_at > nowMs;
+}
+
+// Pega (ou renova) a posse temporária de uma task. ATÔMICO: o WHERE decide num
+// statement só — livre, vencida ou já minha = ganho; claim ativo de OUTRO usuário =
+// meta.changes 0 (o caller lê o estado pra montar o erro orientado). Só task viva
+// e aberta é claimável (done/canceled não entra em fila de trabalho).
+export async function claimTask(
+  env: Env, taskId: string, userId: string, nowMs: number, leaseMs: number
+): Promise<boolean> {
+  const r = await env.DB.prepare(
+    `UPDATE notes SET claimed_by = ?, claimed_at = ?, claim_expires_at = ?
+     WHERE id = ? AND kind = 'task' AND deleted_at IS NULL
+       AND status IN ('open','in_progress')
+       AND (claimed_by IS NULL OR claimed_by = ? OR claim_expires_at IS NULL OR claim_expires_at <= ?)`
+  ).bind(userId, nowMs, nowMs + leaseMs, taskId, userId, nowMs).run();
+  return (r.meta?.changes ?? 0) > 0;
+}
+
+// Solta o claim — só o detentor solta (soltar task livre/de outro = changes 0; o
+// caller decide se isso é no-op ok ou erro). NÃO checa expiração: soltar lease
+// vencido próprio é inofensivo e idempotente.
+export async function releaseTaskClaim(env: Env, taskId: string, userId: string): Promise<boolean> {
+  const r = await env.DB.prepare(
+    `UPDATE notes SET claimed_by = NULL, claimed_at = NULL, claim_expires_at = NULL
+     WHERE id = ? AND kind = 'task' AND claimed_by = ?`
+  ).bind(taskId, userId).run();
+  return (r.meta?.changes ?? 0) > 0;
+}
+
+// Limpa o claim incondicionalmente — caminho do complete_task (task concluída não
+// fica "possuída"). Best-effort por natureza: task sem claim = no-op.
+export async function clearTaskClaim(env: Env, taskId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE notes SET claimed_by = NULL, claimed_at = NULL, claim_expires_at = NULL
+     WHERE id = ? AND kind = 'task' AND claimed_by IS NOT NULL`
+  ).bind(taskId).run();
+}
+
+// ───────── Fila "aguardando o dono" (spec 88 §3) ─────────
+
+// Tasks abertas cujo ÚLTIMO comentário [bloqueio] é mais recente que o último
+// comentário do OWNER — i.e., um agente travou esperando decisão e o dono ainda não
+// respondeu no thread. Responder (qualquer comentário do owner) tira da fila — zero
+// estado extra. Alimenta o filtro awaiting_owner do list_tasks e o gate/texto do
+// web push (pendingSummary). Ordena por bloqueio mais antigo primeiro (quem espera
+// há mais tempo aparece no topo).
+export async function listTasksAwaitingOwner(env: Env, includePrivate = false): Promise<TaskRow[]> {
+  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
+  const r = await env.DB.prepare(
+    `SELECT ${TASK_COLS.split(', ').map((c) => `n.${c}`).join(', ')},
+            (SELECT MAX(b.created_at) FROM task_comments b
+              WHERE b.task_id = n.id AND b.kind = 'bloqueio') AS last_block_at
+     FROM notes n
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL
+       AND n.status IN ('open','in_progress')${priv}
+       AND EXISTS (
+         SELECT 1 FROM task_comments b
+         WHERE b.task_id = n.id AND b.kind = 'bloqueio'
+           AND b.created_at > COALESCE(
+             (SELECT MAX(o.created_at) FROM task_comments o
+               WHERE o.task_id = n.id AND o.author = 'owner'), 0)
+       )
+     ORDER BY last_block_at ASC`
+  ).all<TaskRow>();
+  return r.results ?? [];
+}
+
+// Contagem da fila acima — pro gate/texto do push sem materializar as linhas.
+export async function countTasksAwaitingOwner(env: Env): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT count(*) AS c FROM notes n
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL
+       AND n.status IN ('open','in_progress')
+       AND EXISTS (
+         SELECT 1 FROM task_comments b
+         WHERE b.task_id = n.id AND b.kind = 'bloqueio'
+           AND b.created_at > COALESCE(
+             (SELECT MAX(o.created_at) FROM task_comments o
+               WHERE o.task_id = n.id AND o.author = 'owner'), 0)
+       )`
+  ).first<{ c: number }>();
   return row?.c ?? 0;
 }
 

@@ -110,7 +110,8 @@ const FIXTURE_COUNTS: Record<string, number> = {
   // spec 68 adicionou 0025 (inbox_media) e 0026 (push_subscriptions) — entram vazias no fixture.
   inbox_media: 0,
   push_subscriptions: 0,
-  _migrations: 26,
+  // spec 88 adicionou 0027 (claim/lease + kind de comentário) — só ALTERs, sem tabela nova.
+  _migrations: 27,
 };
 
 beforeAll(async () => {
@@ -142,8 +143,8 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    // Bump pra 0022 (spec 82 — mailbox por agente).
-    expect(manifest.schema_version).toBe('0026_push_subscriptions');
+    // Bump pra 0027 (spec 88 — claim/lease + kind de comentário).
+    expect(manifest.schema_version).toBe('0027_fleet_claim_comment_kind');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });
