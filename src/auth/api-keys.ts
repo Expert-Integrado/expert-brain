@@ -133,6 +133,17 @@ export async function revokeApiKey(env: Env, ownerEmail: string, id: string): Pr
   return (res.meta?.changes ?? 0) > 0;
 }
 
+// Vínculo tardio de dono em chave ÓRFÃ (adendo spec 87, 11/07/2026): a criação exige
+// dono, mas as chaves emitidas antes da 0021 nasceram sem — e a listagem não tinha
+// como corrigir. Orphan-only de propósito: re-apontar uma chave que JÁ assina como
+// alguém trocaria a identidade de um agente vivo em silêncio; pra isso, revoga e cria.
+export async function assignApiKeyUser(env: Env, ownerEmail: string, id: string, userId: string): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE api_keys SET user_id = ? WHERE id = ? AND owner_email = ? AND revoked_at IS NULL AND user_id IS NULL`
+  ).bind(userId, id, ownerEmail).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
 export async function validateApiKey(
   env: Env,
   plainKey: string,

@@ -36,6 +36,10 @@ Bloco destacado inconfundível; botão copiar com feedback "copiado"; o ÚNICO j
 
 Agrupar por `system` (frota primeiro), efêmeras colapsadas por default. Sem mudança de comportamento — só ordenação/rotulagem.
 
+### 6. Adendo 11/07 (pós-ship): vincular dono em chave órfã
+
+O form de criação exige dono, mas as chaves emitidas ANTES da migration 0021 (Fase 0: `pat-pc-desktop`, `pat-openclaw`...) ficaram órfãs sem nenhuma saída na UI — o selo "sem dono" era só diagnóstico. Corrigido: chave órfã ATIVA rende um form inline (select de users ativos + "Vincular") que faz POST `/app/api-keys/owner`; o UPDATE é orphan-only (`AND user_id IS NULL`) — chave que já assina como alguém não é re-apontável pela UI (trocar identidade = revogar e criar outra). Testes em `test/config-ux-keys.test.ts`.
+
 ## Critérios de aceite
 
 - [ ] Criar chave sem dono é impossível pela UI; o dono aparece na listagem.

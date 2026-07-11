@@ -624,11 +624,25 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     if (h < 48) return `há ${h}h`;
     return `há ${Math.floor(h / 24)}d`;
   };
+  // Chave órfã ATIVA ganha o form de vincular dono inline (adendo spec 87): antes o
+  // "sem dono" era só um selo sem saída — as chaves emitidas antes da 0021 não tinham
+  // como ganhar dono pela UI. Orphan-only: chave com dono não expõe edição (trocar
+  // identidade de agente vivo = revogar e criar outra).
+  const ownerOptions = allUsers
+    .filter((u) => u.archived_at === null)
+    .map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`)
+    .join('');
   const keyRow = (k: (typeof keys)[number], revoked: boolean): string => {
     const ownerName = k.user_id ? (userNameById.get(k.user_id) ?? k.user_id) : null;
     const ownerCell = ownerName
       ? esc(ownerName)
-      : `<span class="badge-pill badge-warn">sem dono</span>`;
+      : revoked
+        ? `<span class="badge-pill badge-warn">sem dono</span>`
+        : `<form method="post" action="/app/api-keys/owner" style="display:inline-flex;gap:6px;align-items:center">
+             <input type="hidden" name="id" value="${esc(k.id)}">
+             <select name="user_id" required><option value="">sem dono — vincular…</option>${ownerOptions}</select>
+             <button type="submit" class="btn btn-sm">Vincular</button>
+           </form>`;
     const lastRef = k.last_used_at ?? k.created_at;
     const dormant = !revoked && Date.now() - lastRef > DORMANT_MS;
     const lastUsed = k.last_used_at ? esc(relUse(k.last_used_at)) : 'nunca';

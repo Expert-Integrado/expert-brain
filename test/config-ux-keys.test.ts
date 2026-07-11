@@ -114,6 +114,39 @@ describe('throttle do last_used_at (máx 1 escrita/h por chave)', () => {
   });
 });
 
+describe('POST /app/api-keys/owner — vincular dono em chave órfã', () => {
+  it('órfã ativa + usuário ativo → vincula e redireciona', async () => {
+    await createUser(E, { id: 'user_pc', name: 'PC Desktop', type: 'agent', bio: null, api_key_id: null }, 1);
+    const { row } = await createApiKey(E, E.OWNER_EMAIL, 'pat-orfa', 'full', null);
+    const res = await postForm('/app/api-keys/owner', { id: row.id, user_id: 'user_pc' }, await cookie());
+    expect(res.status).toBe(302);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    expect(keys.find((k) => k.id === row.id)?.user_id).toBe('user_pc');
+  });
+
+  it('chave que JÁ tem dono não é re-apontada (400, dono intacto)', async () => {
+    await createUser(E, { id: 'user_a', name: 'A', type: 'agent', bio: null, api_key_id: null }, 1);
+    await createUser(E, { id: 'user_b', name: 'B', type: 'agent', bio: null, api_key_id: null }, 1);
+    const { row } = await createApiKey(E, E.OWNER_EMAIL, 'pat-fixa', 'full', 'user_a');
+    const res = await postForm('/app/api-keys/owner', { id: row.id, user_id: 'user_b' }, await cookie());
+    expect(res.status).toBe(400);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    expect(keys.find((k) => k.id === row.id)?.user_id).toBe('user_a');
+  });
+
+  it('usuário inexistente/arquivado → 400; chave revogada → 400', async () => {
+    const { row } = await createApiKey(E, E.OWNER_EMAIL, 'pat-x', 'full', null);
+    const ck = await cookie();
+    expect((await postForm('/app/api-keys/owner', { id: row.id, user_id: 'user_fantasma' }, ck)).status).toBe(400);
+
+    await createUser(E, { id: 'user_ok', name: 'Ok', type: 'agent', bio: null, api_key_id: null }, 1);
+    await E.DB.prepare(`UPDATE api_keys SET revoked_at = ? WHERE id = ?`).bind(Date.now(), row.id).run();
+    expect((await postForm('/app/api-keys/owner', { id: row.id, user_id: 'user_ok' }, ck)).status).toBe(400);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    expect(keys.find((k) => k.id === row.id)?.user_id).toBeNull();
+  });
+});
+
 describe('/app/config — banner one-time e listagem agrupada', () => {
   it('banner da chave recém-criada tem copiar + "já salvei" (fecha só por ele)', async () => {
     await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: null }, 1);
@@ -152,6 +185,17 @@ describe('/app/config — banner one-time e listagem agrupada', () => {
     // Dono na listagem + selo dormindo na chave parada há 40 dias.
     expect(html).toContain('Claude VPS');
     expect(html).toContain('dormindo');
+  });
+
+  it('chave órfã ativa mostra o form de vincular dono; chave com dono não', async () => {
+    await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: null }, 1);
+    const orfa = await createApiKey(E, E.OWNER_EMAIL, 'pat-orfa', 'full', null);
+    await createApiKey(E, E.OWNER_EMAIL, 'pat-com-dono', 'full', 'user_vps');
+    const html = await (await SELF.fetch('https://x/app/config', { headers: { cookie: await cookie() } })).text();
+    expect(html).toContain('action="/app/api-keys/owner"');
+    expect(html).toContain(`name="id" value="${orfa.row.id}"`);
+    // Só 1 form de vínculo (o da órfã) — a chave com dono rende texto simples.
+    expect(html.split('action="/app/api-keys/owner"').length - 1).toBe(1);
   });
 
   it('chaves revogadas ficam colapsadas num details próprio', async () => {

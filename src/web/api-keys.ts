@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
-import { ApiKeyLimitError, createApiKey, revokeApiKey, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
+import { ApiKeyLimitError, assignApiKeyUser, createApiKey, revokeApiKey, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
 import { getUserById } from '../db/queries.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
@@ -70,6 +70,23 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
     status: 302,
     headers: { location: `/app/config?flash=${id}#api-keys` },
   });
+}
+
+// Vínculo tardio de dono em chave órfã (adendo spec 87): mesma validação de dono da
+// criação; orphan-only é garantido no UPDATE (assignApiKeyUser) — chave com dono,
+// revogada ou inexistente cai no 400 genérico sem vazar qual das três.
+export async function handleApiKeyOwner(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+  const id = String(form.get('id') ?? '').trim();
+  const userId = String(form.get('user_id') ?? '').trim();
+  if (!id || !userId) return htmlResponse('id e user_id obrigatórios', 400);
+  const owner = await getUserById(env, userId);
+  if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
+  const ok = await assignApiKeyUser(env, session.email, id, userId);
+  if (!ok) return htmlResponse('Chave não encontrada, revogada ou já tem dono — pra trocar identidade, revogue e crie outra', 400);
+  return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }
 
 export async function handleApiKeyRevoke(req: Request, env: Env): Promise<Response> {

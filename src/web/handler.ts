@@ -12,7 +12,7 @@ import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost, handleConfigOwnerInstructionsPost } from './config.js';
 import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from './taxonomy-config.js';
 import { handleBackupNowPost, handleExportGet } from './backup.js';
-import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyRevoke } from './api-keys.js';
+import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyOwner, handleApiKeyRevoke } from './api-keys.js';
 import { handleProjectShareCreate, handleProjectShareRevoke } from './project-share.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
 import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost, handleTagRenamePost, handleTagDeletePost } from './tasks.js';
@@ -249,6 +249,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/api-keys' && req.method === 'GET') return handleApiKeysPage(req, env);
   if (path === '/app/api-keys/create' && req.method === 'POST') return handleApiKeyCreate(req, env);
   if (path === '/app/api-keys/revoke' && req.method === 'POST') return handleApiKeyRevoke(req, env);
+  if (path === '/app/api-keys/owner' && req.method === 'POST') return handleApiKeyOwner(req, env);
 
   // Share de board por projeto (spec 80-frota-agentes/85): gestão no console.
   if (path === '/app/project-shares/create' && req.method === 'POST') return handleProjectShareCreate(req, env);
