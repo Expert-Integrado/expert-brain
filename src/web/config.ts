@@ -529,42 +529,90 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   // API Keys — integrado dentro de Config (antes era page separada /app/api-keys).
   // (leitura já feita no Promise.all acima, junto com usersSection.)
-  const keyRows = keys
-    .map((k) => {
-      const created = new Date(k.created_at).toLocaleString('pt-BR');
-      const lastUsed = k.last_used_at ? new Date(k.last_used_at).toLocaleString('pt-BR') : '—';
-      const revoked = k.revoked_at !== null;
-      // Revogação lógica (spec 17): a linha permanece como trilha de auditoria. Sem
-      // botão Excluir numa chave já revogada (e não há "un-revoke").
-      const statusBadge = revoked
-        ? `<span class="badge-pill badge-warn">● revogada</span>`
-        : `<span class="badge-pill badge-ok">● ativa</span>`;
-      const revokeBtn = revoked
-        ? '—'
-        : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
-             <input type="hidden" name="id" value="${esc(k.id)}">
-             <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
-           </form>`;
-      // Escopo (spec 17 + 31): CSV — base full/read + escopo aditivo 'private'.
-      // Mostra o CSV integral (ex.: 'full,private') pra o dono ver o alcance real.
-      const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
-      return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
-        <td><strong>${esc(k.name)}</strong></td>
-        <td><code>${esc(k.prefix)}…</code></td>
-        <td><span class="badge-pill">${esc(scopeLabel)}</span></td>
-        <td>${statusBadge}</td>
-        <td>${esc(created)}</td>
-        <td>${esc(lastUsed)}</td>
-        <td>${revokeBtn}</td>
-      </tr>`;
+  // Listagem AGRUPADA por sistema (spec 87): a tela plana escondia qual chave vive
+  // onde — o bug do PC assinando como Claude VPS ficou invisível nela. Agora: grupos
+  // por `system` (frota primeiro), coluna Dono (identidade de assinatura), último uso
+  // relativo com selo "dormindo" (30+ dias sem uso = candidata a revogação) e as
+  // revogadas colapsadas num details próprio (trilha de auditoria, não poluição).
+  const userNameById = new Map(allUsers.map((u) => [u.id, u.name] as const));
+  const DORMANT_MS = 30 * 24 * 3600_000;
+  const relUse = (ms: number): string => {
+    const h = Math.floor((Date.now() - ms) / 3600_000);
+    if (h < 1) return 'há menos de 1h';
+    if (h < 48) return `há ${h}h`;
+    return `há ${Math.floor(h / 24)}d`;
+  };
+  const keyRow = (k: (typeof keys)[number], revoked: boolean): string => {
+    const ownerName = k.user_id ? (userNameById.get(k.user_id) ?? k.user_id) : null;
+    const ownerCell = ownerName
+      ? esc(ownerName)
+      : `<span class="badge-pill badge-warn">sem dono</span>`;
+    const lastRef = k.last_used_at ?? k.created_at;
+    const dormant = !revoked && Date.now() - lastRef > DORMANT_MS;
+    const lastUsed = k.last_used_at ? esc(relUse(k.last_used_at)) : 'nunca';
+    const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
+    const revokeBtn = revoked
+      ? '—'
+      : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
+           <input type="hidden" name="id" value="${esc(k.id)}">
+           <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
+         </form>`;
+    return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
+      <td><strong>${esc(k.name)}</strong>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}</td>
+      <td><code>${esc(k.prefix)}…</code></td>
+      <td>${ownerCell}</td>
+      <td><span class="badge-pill">${esc(scopeLabel)}</span></td>
+      <td>${lastUsed}</td>
+      <td>${revokeBtn}</td>
+    </tr>`;
+  };
+  const keysTableHead = `<thead><tr><th>Nome</th><th>Prefixo</th><th>Dono</th><th>Escopo</th><th>Último uso</th><th></th></tr></thead>`;
+  const activeKeys = keys.filter((k) => k.revoked_at === null);
+  const revokedKeys = keys.filter((k) => k.revoked_at !== null);
+  const groupOf = (k: (typeof keys)[number]): string => (k.system ?? '').trim();
+  const groupNames = [...new Set(activeKeys.map(groupOf))].sort((a, b) => {
+    // 'frota' sempre primeiro (é o grupo operacional do barramento); vazio (sem
+    // sistema) sempre por último; o resto alfabético.
+    if (a === b) return 0;
+    if (a === 'frota') return -1;
+    if (b === 'frota') return 1;
+    if (a === '') return 1;
+    if (b === '') return -1;
+    return a.localeCompare(b, 'pt-BR');
+  });
+  const keyGroups = groupNames
+    .map((g) => {
+      const rows = activeKeys.filter((k) => groupOf(k) === g).map((k) => keyRow(k, false)).join('');
+      return `<div class="key-group" data-key-group="${esc(g)}">
+        <h4 style="margin:14px 0 6px">${g ? esc(g) : 'Sem sistema'}</h4>
+        <table class="keys-table">${keysTableHead}<tbody>${rows}</tbody></table>
+      </div>`;
     })
     .join('');
+  const revokedBlock = revokedKeys.length === 0
+    ? ''
+    : `<details id="keys-revoked" style="margin-top:14px">
+        <summary style="cursor:pointer;color:var(--text-dim)">Revogadas (${revokedKeys.length}) — trilha de auditoria</summary>
+        <table class="keys-table" style="margin-top:8px">${keysTableHead}<tbody>${revokedKeys.map((k) => keyRow(k, true)).join('')}</tbody></table>
+      </details>`;
+  const keysListing = keys.length === 0
+    ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>'
+    : `${keyGroups}${revokedBlock}`;
+  // Datalist do campo Sistema: os valores já usados + 'frota' como semente.
+  const knownSystems = [...new Set(['frota', ...keys.map((k) => (k.system ?? '').trim()).filter(Boolean)])];
 
+  // Banner one-time (spec 87): a chave plaintext aparece UMA vez e o fechamento é um
+  // ato consciente — botão "Já salvei no 1Password" (JS em config-script.ts pede
+  // confirm se fechar sem ter copiado). Sem X, sem fechar clicando fora.
   const createdBanner = justCreatedKey
-    ? `<div class="key-flash">
-         <h2>Chave criada — copie agora</h2>
-         <p>Essa é a única vez que a chave completa aparece. Clique no campo pra selecionar tudo e Ctrl+C.</p>
-         <input type="text" readonly class="key-flash-value" value="${esc(justCreatedKey)}">
+    ? `<div class="key-flash" id="key-flash">
+         <h2>Chave criada — copie AGORA</h2>
+         <p>Essa é a <strong>única vez</strong> que a chave completa aparece — não dá pra recuperar depois, só criar outra. Copie e guarde no seu gerenciador de senhas.</p>
+         <div class="row" style="gap:8px">
+           <input type="text" readonly id="key-flash-value" class="key-flash-value" value="${esc(justCreatedKey)}">
+           <button type="button" id="key-flash-copy" data-copy="key-flash-value">Copiar</button>
+         </div>
+         <button type="button" class="btn btn-primary" id="key-flash-ack" style="margin-top:10px">Já salvei no 1Password</button>
        </div>`
     : '';
 
@@ -666,6 +714,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <label>Nome (pra você lembrar onde usa)
               <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
             </label>
+            <label style="display:block;margin-top:12px">Sistema <span style="color:var(--text-dim)">— agrupa a listagem (opcional): frota, hermes, openclaw...</span>
+              <input type="text" name="system" maxlength="40" list="key-systems" placeholder="frota" class="input-text" style="display:block;margin-top:4px">
+            </label>
+            <datalist id="key-systems">${knownSystems.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
             <label style="display:block;margin-top:12px">Dono da chave (spec 86 — a credencial ASSINA como este usuário)
               <select name="user_id" required class="input-text" style="display:block;margin-top:4px">
                 <option value="">— escolha o usuário —</option>
@@ -680,20 +732,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             </label>
             <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
               <input type="checkbox" name="private_scope" value="1">
-              <span>Acesso a notas privadas <span style="color:var(--text-dim)">— sem isto, a chave NÃO vê notas marcadas como privadas (spec 31)</span></span>
+              <span>Acesso a notas privadas <span style="color:var(--text-dim)">— capacidade sensível: prefira uma chave SEPARADA só pra isso, em vez de dar acesso privado à chave do dia a dia (spec 86 §4). Sem isto, a chave não vê notas privadas.</span></span>
             </label>
             <button type="submit" class="btn btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>
         <div class="adv-section">
           <h3>Suas chaves</h3>
-          ${keys.length === 0 ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>' : `
-          <table class="keys-table">
-            <thead><tr>
-              <th>Nome</th><th>Prefixo</th><th>Escopo</th><th>Status</th><th>Criada em</th><th>Último uso</th><th></th>
-            </tr></thead>
-            <tbody>${keyRows}</tbody>
-          </table>`}
+          ${keysListing}
         </div>
       </div>
     </details>

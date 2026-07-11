@@ -106,7 +106,7 @@ const FIXTURE_COUNTS: Record<string, number> = {
   task_activity: 0,
   // spec 82 adicionou a 0022 (mailbox_items) — entra vazia no dump do fixture.
   mailbox_items: 0,
-  _migrations: 22,
+  _migrations: 23,
 };
 
 beforeAll(async () => {
@@ -139,7 +139,7 @@ describe('snapshot — dump e manifest (spec 67)', () => {
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
     // Bump pra 0022 (spec 82 — mailbox por agente).
-    expect(manifest.schema_version).toBe('0022_agent_mailbox');
+    expect(manifest.schema_version).toBe('0023_api_key_meta');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

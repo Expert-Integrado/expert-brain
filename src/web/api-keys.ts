@@ -48,9 +48,13 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   if (!userId) return htmlResponse('Dono da chave obrigatório — escolha o usuário que esta credencial identifica', 400);
   const owner = await getUserById(env, userId);
   if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
+  // Sistema (spec 87): texto livre curto pro agrupamento da listagem ('frota',
+  // 'hermes'...). Opcional — vazio vira NULL (grupo "sem sistema").
+  const systemRaw = String(form.get('system') ?? '').trim().slice(0, 40);
+  const system = systemRaw || null;
   let plainKey: string;
   try {
-    const created = await createApiKey(env, session.email, name, scopes, userId);
+    const created = await createApiKey(env, session.email, name, scopes, userId, system);
     plainKey = created.plainKey;
   } catch (err) {
     if (err instanceof ApiKeyLimitError) {

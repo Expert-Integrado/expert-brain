@@ -479,6 +479,16 @@ const MIGRATION_0022_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_mailbox_unread ON mailbox_items(user_id, read_at, created_at)`,
 ];
 
+// 0023 — METADADO DE FROTA NA CHAVE (spec 80-frota-agentes/87). `system` agrupa as
+// chaves por sistema na listagem do /app/config ('frota', 'hermes', 'openclaw'...) —
+// texto livre curto, NULL = chave sem sistema. É SÓ esta coluna: `last_used_at` já
+// existe desde a 0003 e validateApiKey já a toca a cada uso (a spec 87 adiciona apenas
+// o THROTTLE via KV, sem schema). O número 0024 citado na spec era reserva de nome —
+// o próximo livre real é 0023. Espelho .sql: src/db/migrations/0009_api_key_meta.sql.
+const MIGRATION_0023_STMTS: string[] = [
+  `ALTER TABLE api_keys ADD COLUMN system TEXT`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -502,6 +512,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0020_comment_author_user', stmts: MIGRATION_0020_STMTS },
   { id: '0021_api_key_user', stmts: MIGRATION_0021_STMTS },
   { id: '0022_agent_mailbox', stmts: MIGRATION_0022_STMTS },
+  { id: '0023_api_key_meta', stmts: MIGRATION_0023_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

@@ -7,7 +7,7 @@
 import type { Env } from '../env.js';
 import { handleApp } from './handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from './share.js';
-import { handleMailboxSummary } from './mailbox-api.js';
+import { handleMailboxSummary, handleWhoami } from './mailbox-api.js';
 
 export default {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -33,9 +33,13 @@ export default {
       }
       return shareNotFound();
     }
-    // Espelha o /api/mailbox/summary (spec 83), que em prod vive no auth/handler.ts.
+    // Espelha o /api/mailbox/summary (spec 83) e o /api/whoami (spec 87), que em
+    // prod vivem no auth/handler.ts.
     if (url.pathname === '/api/mailbox/summary' && req.method === 'GET') {
       return handleMailboxSummary(req, env);
+    }
+    if (url.pathname === '/api/whoami' && req.method === 'GET') {
+      return handleWhoami(req, env);
     }
     const res = await handleApp(req, env);
     if (res) return res;

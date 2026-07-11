@@ -55,6 +55,9 @@ export interface ApiKeyRow {
   // assinatura resolve por aqui). NULL = chave legada sem dono (segue funcionando,
   // sem assinatura, via fallback users.api_key_id quando existir).
   user_id: string | null;
+  // Sistema onde a chave vive (spec 87 — 'frota', 'hermes', 'openclaw'...): só
+  // agrupamento na listagem do /app/config. NULL = sem sistema.
+  system: string | null;
 }
 
 // Retorno de validateApiKey: quem é o dono, os escopos da chave (CSV) e o id dela (pra
@@ -84,7 +87,8 @@ export async function createApiKey(
   ownerEmail: string,
   name: string,
   scopes: string = 'full', // CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'
-  userId: string | null = null // dono da chave (spec 86) — o caller valida que o usuário existe/ativo
+  userId: string | null = null, // dono da chave (spec 86) — o caller valida que o usuário existe/ativo
+  system: string | null = null // sistema/dispositivo (spec 87) — só agrupamento visual
 ): Promise<CreateApiKeyResult> {
   // Cap por owner pra evitar criação ilimitada via sessão comprometida. revokeApiKey
   // faz UPDATE (revogação lógica), então o count precisa filtrar revoked_at IS NULL
@@ -102,17 +106,17 @@ export async function createApiKey(
   const now = Date.now();
   const prefix = plainKey.slice(0, PREFIX.length + 6);
   await env.DB.prepare(
-    `INSERT INTO api_keys (id, owner_email, name, prefix, key_hash, scopes, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(id, ownerEmail, name, prefix, keyHash, scopes, now, userId).run();
+    `INSERT INTO api_keys (id, owner_email, name, prefix, key_hash, scopes, created_at, user_id, system) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(id, ownerEmail, name, prefix, keyHash, scopes, now, userId, system).run();
   return {
-    row: { id, owner_email: ownerEmail, name, prefix, scopes, created_at: now, last_used_at: null, revoked_at: null, user_id: userId },
+    row: { id, owner_email: ownerEmail, name, prefix, scopes, created_at: now, last_used_at: null, revoked_at: null, user_id: userId, system },
     plainKey,
   };
 }
 
 export async function listApiKeys(env: Env, ownerEmail: string): Promise<ApiKeyRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, owner_email, name, prefix, scopes, created_at, last_used_at, revoked_at, user_id
+    `SELECT id, owner_email, name, prefix, scopes, created_at, last_used_at, revoked_at, user_id, system
      FROM api_keys WHERE owner_email = ? ORDER BY created_at DESC`
   ).bind(ownerEmail).all<ApiKeyRow>();
   return res.results ?? [];
@@ -145,10 +149,23 @@ export async function validateApiKey(
   // o runtime do Workers pode cancelar a promise depois de enviar a resposta e o
   // "último uso" fica silenciosamente desatualizado. Fallback pro .catch() flutuante
   // quando não há ctx (ex.: chamadas de teste), pra não travar a validação.
-  const touch = env.DB.prepare(`UPDATE api_keys SET last_used_at = ? WHERE key_hash = ?`)
-    .bind(Date.now(), keyHash).run();
-  if (ctx) ctx.waitUntil(touch.then(() => undefined).catch(() => {}));
-  else void touch.catch(() => {});
+  // Throttle (spec 87): máx 1 escrita por hora por chave — com o heartbeat da frota
+  // a cada 30min, sem isto cada request viraria um UPDATE no D1 só pra granularidade
+  // de "usada há Xh". Flag `pat_touch:<keyId>` no KV com TTL 1h: presente → pula a
+  // escrita. O get/put é awaited (decide a escrita); KV indisponível → grava como antes
+  // (o throttle é otimização, nunca pode derrubar a validação).
+  let shouldTouch = true;
+  try {
+    const flagKey = `pat_touch:${row.id}`;
+    if (await env.OAUTH_KV.get(flagKey)) shouldTouch = false;
+    else await env.OAUTH_KV.put(flagKey, '1', { expirationTtl: 3600 });
+  } catch { /* KV fora do ar → mantém o comportamento histórico (grava) */ }
+  if (shouldTouch) {
+    const touch = env.DB.prepare(`UPDATE api_keys SET last_used_at = ? WHERE key_hash = ?`)
+      .bind(Date.now(), keyHash).run();
+    if (ctx) ctx.waitUntil(touch.then(() => undefined).catch(() => {}));
+    else void touch.catch(() => {});
+  }
   // scopes é um CSV (spec 31) — preservado NA ÍNTEGRA (ex.: 'read,private'). NÃO
   // reduzir a 'full'|'read' aqui: isso descartaria o escopo 'private'. Valor
   // null/vazio (legado/corrompido) cai em 'full' (comportamento histórico — nunca

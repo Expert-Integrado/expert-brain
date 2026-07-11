@@ -14,7 +14,11 @@ test('detalhe renderiza título, sidebar e o seletor de visibilidade', async ({ 
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByRole('heading', { name: 'Visibilidade' })).toBeVisible();
   await expect(sidebar.locator('input[name="visibility"]')).toHaveCount(3);
-  await expect(sidebar.getByText('NÃO fica na internet')).toBeVisible();
+  // Reforma UX 10/07 (c3087ff): o hint textual saiu do seletor — os 3 níveis
+  // agora são labels do radiogroup. Asserta os níveis, não a copy.
+  await expect(sidebar.getByRole('radio', { name: 'Privado' })).toBeVisible();
+  await expect(sidebar.getByRole('radio', { name: 'Normal' })).toBeVisible();
+  await expect(sidebar.getByRole('radio', { name: 'Link público' })).toBeVisible();
 });
 
 test('comentário novo aparece na página após o post', async ({ page }) => {

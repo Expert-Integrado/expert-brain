@@ -7,7 +7,7 @@ import { assetVersion } from '../web/asset-version.js';
 import { esc } from '../util/html.js';
 import { handleApp } from '../web/handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
-import { handleMailboxSummary } from '../web/mailbox-api.js';
+import { handleMailboxSummary, handleWhoami } from '../web/mailbox-api.js';
 
 export const authHandler = {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -51,6 +51,8 @@ export const authHandler = {
     // Heartbeat da frota (spec 82/83): "tem algo pra mim?" com Bearer PAT, sem
     // sessão MCP. Read-only, no-store — o cron/hook dos dispositivos bate aqui.
     if (url.pathname === '/api/mailbox/summary' && req.method === 'GET') return handleMailboxSummary(req, env);
+    // Identidade da credencial (spec 87): a máquina confere COMO QUEM ela assina.
+    if (url.pathname === '/api/whoami' && req.method === 'GET') return handleWhoami(req, env);
     if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(req, env);
     if (url.pathname === '/setup/backfill-similar' && req.method === 'POST') return handleBackfillSimilar(req, env);
 

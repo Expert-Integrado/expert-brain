@@ -100,6 +100,24 @@ export function configPageScript(): string {
     el.addEventListener('click', function () { el.select(); });
   });
 
+  // Banner one-time da chave criada (spec 87): fechar é ato consciente. O banner só
+  // sai da tela pelo botão "Já salvei no 1Password"; fechar sem ter copiado pede
+  // confirm — o token não é re-exibível (o KV single-use já foi consumido).
+  (function () {
+    var flash = document.getElementById('key-flash');
+    if (!flash) return;
+    var copied = false;
+    var copyBtn = document.getElementById('key-flash-copy');
+    var value = document.getElementById('key-flash-value');
+    if (copyBtn) copyBtn.addEventListener('click', function () { copied = true; });
+    if (value) value.addEventListener('copy', function () { copied = true; });
+    var ack = document.getElementById('key-flash-ack');
+    if (ack) ack.addEventListener('click', function () {
+      if (!copied && !window.confirm('Você ainda não copiou a chave — depois de fechar não dá pra ver de novo. Fechar mesmo assim?')) return;
+      flash.remove();
+    });
+  })();
+
   // ── Áreas e tipos (taxonomia configurável — spec 54) ──
   // Slugifica um label pro mesmo formato exigido no servidor (DOMAIN_SLUG_REGEX:
   // minúsculo, kebab-case ASCII, começa com letra, 2-40 chars).

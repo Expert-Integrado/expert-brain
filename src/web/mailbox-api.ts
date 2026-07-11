@@ -17,13 +17,41 @@ const json = (data: unknown, status = 200): Response =>
     status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
 
-export async function handleMailboxSummary(req: Request, env: Env): Promise<Response> {
+// PAT do header Authorization validado → ValidatedApiKey, ou uma Response 401 pronta.
+async function bearerPat(req: Request, env: Env): Promise<{ v: Awaited<ReturnType<typeof validateApiKey>> } | { err: Response }> {
   const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i);
   if (!m || !m[1].trim().startsWith('eb_pat_')) {
-    return json({ error: 'Bearer PAT (eb_pat_...) required' }, 401);
+    return { err: json({ error: 'Bearer PAT (eb_pat_...) required' }, 401) };
   }
   const v = await validateApiKey(env, m[1].trim());
-  if (!v) return json({ error: 'invalid or revoked API key' }, 401);
+  if (!v) return { err: json({ error: 'invalid or revoked API key' }, 401) };
+  return { v };
+}
+
+// GET /api/whoami (spec 87) — "quem sou eu com ESTA credencial?". Um curl e a máquina
+// confere a própria identidade antes de assinar qualquer coisa (o bug do PC assinando
+// como Claude VPS teria morrido aqui). Chave sem dono → 200 com user null: é
+// DIAGNÓSTICO ("sua chave está órfã, vincule em /app/config"), não erro de acesso.
+export async function handleWhoami(req: Request, env: Env): Promise<Response> {
+  const auth = await bearerPat(req, env);
+  if ('err' in auth) return auth.err;
+  const v = auth.v!;
+  const key = await env.DB.prepare(`SELECT name, system FROM api_keys WHERE id = ?`)
+    .bind(v.keyId).first<{ name: string; system: string | null }>();
+  const user = await getUserByApiKeyId(env, v.keyId);
+  return json({
+    key_name: key?.name ?? null,
+    system: key?.system ?? null,
+    scopes: v.scopes,
+    user: user ? { id: user.id, name: user.name, type: user.type } : null,
+    hint: user ? undefined : 'Chave sem usuário vinculado — o dono vincula em /app/config (Usuários). Sem vínculo, escritas não assinam e não há mailbox.',
+  });
+}
+
+export async function handleMailboxSummary(req: Request, env: Env): Promise<Response> {
+  const auth = await bearerPat(req, env);
+  if ('err' in auth) return auth.err;
+  const v = auth.v!;
 
   const user = await getUserByApiKeyId(env, v.keyId);
   if (!user) {
