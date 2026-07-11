@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
-import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTask, getTaskById, getProjectById, setTaskPrivate } from '../../db/queries.js';
+import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTask, getTaskById, getProjectById, setTaskPrivate, listKanbanColumns, moveTaskToColumn } from '../../db/queries.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
@@ -19,7 +19,10 @@ const inputSchema = {
   ),
   due_at: z.number().int().optional().describe('New due timestamp as unix epoch MILLISECONDS. Only use if you already have the exact epoch; otherwise pass `due`. Cannot be passed together with due.'),
   priority: z.union([z.number().int().min(1).max(4), z.null()]).optional().describe('New priority 1 (highest) to 4 (lowest). Pass null to REMOVE the priority.'),
-  status: z.enum(TASK_STATUSES).optional().describe("New status. done/canceled stamp completed_at=now; reopening (open/in_progress) clears it. To finish a task with an outcome note, prefer complete_task."),
+  status: z.enum(TASK_STATUSES).optional().describe("New status. done/canceled stamp completed_at=now; reopening (open/in_progress) clears it. To finish a task with an outcome note, prefer complete_task. Cannot be combined with `stage` (the stage's column already defines the status)."),
+  stage: z.string().min(1).max(80).optional().describe(
+    'Move the task to a BOARD COLUMN (visual stage) by column id (col_...) or label (case-insensitive), e.g. "Validação humana". The status is aligned to the column\'s category automatically (same as dragging on the /app/tasks board) — so do NOT pass status together with stage. Use this to hand agent-finished work to the human-validation column instead of completing it.'
+  ),
   domains: z.array(z.string().min(1)).min(1).max(3).optional().describe('New canonical English slugs (1-3).'),
   tags: z.array(z.string()).optional().describe('New tags — REPLACES all existing tags. Pass [] to clear. Reserved dedupe: tags are preserved automatically unless you pass a new dedupe: tag explicitly.'),
   project: z.string().max(40).optional().describe(
@@ -55,6 +58,7 @@ Behavior:
 - Pass either \`due\` (BRT string) or \`due_at\` (unix ms), never both — passing both errors.
 - Changing \`title\` also updates the tldr (a task's tldr mirrors its title).
 - status done/canceled stamps completed_at; reopening clears it. For finishing WITH an outcome note, prefer complete_task.
+- \`stage\` moves the task to a board COLUMN (id col_... or label, case-insensitive; active columns only) and aligns the status to the column's category — exactly like dragging the card on /app/tasks. Never pass status together with stage. Work finished by an agent that requires the owner's sign-off goes to the "Validação humana" stage, NOT to complete_task.
 - Tasks are NOT embedded — editing one never touches recall/the graph. Cheap edit.
 - Optimistic concurrency (optional): pass \`expected_updated_at\` (the updated_at you last read) to guard against concurrent writes — if the task changed since, the edit fails with a conflict error instead of silently overwriting. Omit for last-write-wins.
 - Reserved \`dedupe:\` tags are preserved automatically when you pass \`tags\` (so a dedupe key survives a retag), unless the new array explicitly includes a \`dedupe:\` tag.
@@ -69,6 +73,7 @@ interface UpdateTaskInput {
   due_at?: number;
   priority?: number | null;
   status?: TaskStatus;
+  stage?: string;
   domains?: string[];
   tags?: string[];
   project?: string;
@@ -111,14 +116,33 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       const touchesMentions = (input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0;
       // Responsáveis (spec 37): replace-set. `[]` limpa; undefined não toca.
       const touchesAssignees = input.assignees !== undefined;
+      const wantsStage = input.stage !== undefined;
       const hasFieldEdit =
         input.title !== undefined || input.details !== undefined ||
         input.due !== undefined || input.due_at !== undefined ||
         input.priority !== undefined || input.status !== undefined ||
         input.domains !== undefined || input.tags !== undefined ||
         input.project !== undefined;
-      if (!hasFieldEdit && !wantsPrivate && !touchesMentions && !touchesAssignees) {
-        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, domains, tags, project, assignees, private (true only), mentions, mentions_remove.');
+      if (!hasFieldEdit && !wantsPrivate && !touchesMentions && !touchesAssignees && !wantsStage) {
+        return toolError('Nothing to update. Pass at least one of: title, details, due/due_at, priority, status, stage, domains, tags, project, assignees, private (true only), mentions, mentions_remove.');
+      }
+
+      // Stage (coluna do board): resolve ANTES de qualquer escrita — stage inválido
+      // aborta o update inteiro. Só colunas ATIVAS resolvem (arquivada não é destino
+      // válido, igual ao board). status junto é ambíguo: a coluna JÁ define o status.
+      let stageCol: { id: string; label: string } | null = null;
+      if (wantsStage) {
+        if (input.status !== undefined) {
+          return toolError('Pass either `stage` or `status`, not both — the stage\'s column already defines the status (invariant of the board).');
+        }
+        const ref = input.stage!.trim().toLowerCase();
+        const cols = await listKanbanColumns(env, false);
+        const found = cols.find((c) => c.id === input.stage!.trim() || c.label.toLowerCase() === ref);
+        if (!found) {
+          const available = cols.map((c) => `"${c.label}" (${c.id})`).join(', ');
+          return toolError(`Stage "${input.stage}" not found among the ACTIVE board columns. Available: ${available}.`);
+        }
+        stageCol = { id: found.id, label: found.label };
       }
 
       // Resolve os responsáveis ANTES de qualquer escrita — ref inválida aborta
@@ -178,13 +202,21 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         }
       }
 
-      // Se não há edição de campo (só private:true, menções e/ou responsáveis), valida
-      // existência/visibilidade aqui (espelha mark_private de nota): caller sem escopo
-      // não enxerga task privada → "not found", e nunca mexe numa task que não pode ver.
+      // Se não há edição de campo (só private:true, menções, responsáveis e/ou stage),
+      // valida existência/visibilidade aqui (espelha mark_private de nota): caller sem
+      // escopo não enxerga task privada → "not found", e nunca mexe numa task que não pode ver.
       let task: TaskRow | undefined;
-      if (!hasFieldEdit && (wantsPrivate || touchesMentions || touchesAssignees)) {
+      if (!hasFieldEdit && (wantsPrivate || touchesMentions || touchesAssignees || wantsStage)) {
         const visible = await getTaskById(env, input.id, canSeePrivate(auth));
         if (!visible) return toolError(notFoundMsg());
+        // updateTask não roda neste caminho, então o guard otimista é checado aqui —
+        // um move de stage com leitura defasada conflita igual a um patch de campo.
+        if (input.expected_updated_at !== undefined && visible.updated_at !== input.expected_updated_at) {
+          return toolError(
+            `Task '${input.id}' changed since you read it (current updated_at: ${visible.updated_at}). ` +
+            `Your edit was NOT applied. Re-read the task via list_tasks / get_task and reapply your patch with the fresh expected_updated_at.`
+          );
+        }
         task = visible;
       }
 
@@ -201,6 +233,15 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
           );
         }
         task = result;
+      }
+
+      // Stage: move DEPOIS do patch de campos (conflito otimista do updateTask já
+      // abortou antes de chegar aqui). Mesmo caminho do drag do board: column_id +
+      // status = category + completed_at quando a coluna fecha, com log de atividade.
+      if (stageCol) {
+        const moved = await moveTaskToColumn(env, input.id, stageCol.id, now, writeActor(auth));
+        if (moved === 'column-not-found' || moved === 'not-found') return toolError(notFoundMsg());
+        task = moved;
       }
 
       // Marcar privada (spec 59): one-way via MCP, revoga share vivo na mesma escrita.
@@ -263,6 +304,7 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         project: proj ? { id: proj.id, label: proj.label } : null,
         private: task.private === 1,
         assignees: assigneesOut,
+        ...(stageCol ? { column: stageCol } : {}),
         updated_at: task.updated_at,
         ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
       };
