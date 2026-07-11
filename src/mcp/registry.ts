@@ -30,6 +30,8 @@ import { registerDeleteNoteMedia } from './tools/delete-note-media.js';
 import { registerContactsTools } from './tools/contacts.js';
 import { registerDigest } from './tools/digest.js';
 import { registerListUsers } from './tools/list-users.js';
+import { registerCheckMailbox } from './tools/check-mailbox.js';
+import { registerAckMailbox } from './tools/ack-mailbox.js';
 
 // Gate de escopo (spec 17): num PAT com scopes='read', envolve o server num Proxy
 // que só deixa passar `registerTool` de tools com `annotations.readOnlyHint === true`.
@@ -91,6 +93,12 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   // Recebe `auth` (spec 81): a autoria é assinada pela credencial via resolveMe —
   // PAT sem perfil vinculado é rejeitado fail-closed no call.
   registerCommentTask(reg, env, auth);
+  // Mailbox por agente (spec 82): fila de menções/atribuições endereçadas ao perfil
+  // da credencial. Registradas SEMPRE (PAT sem vínculo recebe erro instrutivo no call
+  // — descoberta > sumiço silencioso). check_mailbox passa no escopo read
+  // (readOnlyHint:true); ack_mailbox é escrita e o guarda a suprime no read.
+  registerCheckMailbox(reg, env, auth);
+  registerAckMailbox(reg, env, auth);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
   registerShareTask(reg, env);
   registerUnshareTask(reg, env);

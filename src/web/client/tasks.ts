@@ -41,6 +41,7 @@ interface TaskView {
   private: boolean; // selo de privacidade (spec 59): badge 🔒 no card
   search_text: string; // título + descrição + tags, minúsculo/sem acento (Onda 8) — vem pronto do server
   assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
+  mention_me: boolean; // menção NÃO-LIDA ao dono (spec 82) — filtro "menções a mim"
 }
 
 interface BoardColumn {
@@ -63,9 +64,11 @@ interface BoardData {
   now: number;
   columns: BoardColumn[];
   projects: BoardProject[];
+  // Mailbox (spec 82): não-lidas por usuário — chips na toolbar.
+  mailbox_unread?: Array<{ id: string; name: string; count: number }>;
 }
 
-type Filter = 'all' | 'today' | 'week' | 'overdue';
+type Filter = 'all' | 'today' | 'week' | 'overdue' | 'mentions';
 
 let board: BoardData | null = null;
 let filter: Filter = 'all';
@@ -103,6 +106,7 @@ async function load() {
     projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
     refreshTagFilterOptions();
     render();
+    renderMailboxBadges();
     focusTaskFromQuery();
   } catch (err) {
     console.warn('tasks: load failed', err);
@@ -153,8 +157,21 @@ function endOfDayBRT(now: number): number {
   return now + (86_400_000 - elapsedMs) - 1;
 }
 
+// Chips de não-lidas do mailbox por usuário (spec 82) na toolbar. Só usuários com
+// count > 0; some por completo quando a frota está em dia.
+function renderMailboxBadges() {
+  const el = document.getElementById('task-mailbox-badges');
+  if (!el) return;
+  const rows = (board?.mailbox_unread ?? []).filter((u) => u.count > 0);
+  el.innerHTML = rows.map((u) =>
+    `<span class="task-mailbox-chip" title="Itens não lidos no mailbox de ${esc(u.name)}">${esc(u.name)} <b>${u.count}</b></span>`
+  ).join('');
+}
+
 function passesFilter(t: TaskView, now: number): boolean {
   if (filter === 'all') return true;
+  // Menções a mim (spec 82): cards com menção não-lida ao dono, com ou sem prazo.
+  if (filter === 'mentions') return t.mention_me;
   if (t.due_at === null) return false;
   if (filter === 'overdue') return t.overdue;
   if (filter === 'today') return t.due_at <= endOfDayBRT(now);

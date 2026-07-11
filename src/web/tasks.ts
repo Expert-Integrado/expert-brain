@@ -47,6 +47,7 @@ import {
   getOwnerUser,
 } from '../db/queries.js';
 import { renameTag, deleteTag } from '../db/tag-admin.js';
+import { produceCommentMailbox, getBoardMailboxInfo } from '../db/mailbox.js';
 import { validateDomains } from '../db/validation.js';
 import { logTaskActivity } from '../db/task-activity.js';
 import { createShare, revokeShare } from './share.js';
@@ -93,6 +94,7 @@ interface TaskView {
   private: boolean; // selo de privacidade (spec 59): badge 🔒 no card + detalhe
   search_text: string; // título + descrição + tags, minúsculo e sem acento — busca client-side (Onda 8)
   assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
+  mention_me: boolean; // menção NÃO-LIDA ao dono nesta task (spec 82) — filtro "menções a mim"
 }
 
 // Texto de busca do card (Onda 8): título + corpo (quando não é eco do título) +
@@ -109,7 +111,7 @@ export function visibleTags(tags: string[]): string[] {
   return tags.filter((t) => !t.startsWith('dedupe:'));
 }
 
-function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = []): TaskView {
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = [], mentionMe = false): TaskView {
   const due = t.due_at ?? null;
   const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
@@ -137,6 +139,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], 
       `${t.title}\n${t.body && t.body !== t.title ? t.body : ''}\n${tags.join(' ')}`
     ).slice(0, 800),
     assignees,
+    mention_me: mentionMe,
   };
 }
 
@@ -164,6 +167,8 @@ interface BoardProject {
 interface BoardPayload {
   columns: BoardColumn[];
   projects: BoardProject[];
+  // Mailbox (spec 82): contagem de não-lidas por usuário (badge da toolbar).
+  mailbox_unread: Array<{ id: string; name: string; count: number }>;
 }
 
 // Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
@@ -191,11 +196,17 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
   // renderizadas. Tags reservadas dedupe:* são filtradas AQUI — nunca chegam ao
   // TaskView (defesa única, board e nenhum outro read path de card as vaza).
   const allIds = [...active, ...closed].map((t) => t.id);
-  const [commentCounts, tagsById, assigneesById] = await Promise.all([
+  const [commentCounts, tagsById, assigneesById, mailboxInfo] = await Promise.all([
     countTaskCommentsBatch(env, allIds),
     getTagsForNotes(env, allIds),
     // Responsáveis em lote (spec 37): bolinhas do card, 1 query chunked.
     listAssigneesForTasks(env, allIds),
+    // Mailbox (spec 82): badge por usuário + tasks com menção não-lida ao dono.
+    // Best-effort: o board nunca quebra por causa do mailbox.
+    getBoardMailboxInfo(env).catch((err) => {
+      console.error('mailbox: info do board falhou (best-effort):', err instanceof Error ? err.message : err);
+      return { unreadByUser: [], ownerMentionTaskIds: new Set<string>() };
+    }),
   ]);
 
   const buckets = new Map<string, TaskView[]>();
@@ -208,7 +219,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     if (assigned && assigned.category === status) colId = assigned.id;
     else colId = defaultByCat.get(status)?.id ?? null;
     const tags = visibleTags(tagsById.get(t.id) ?? []);
-    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? []));
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? [], mailboxInfo.ownerMentionTaskIds.has(t.id)));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -227,7 +238,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     color: p.color,
     archived: p.archived_at !== null,
   }));
-  return { columns, projects };
+  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser };
 }
 
 // Total de tasks abertas (categorias open + in_progress) no board — pro contador do
@@ -254,8 +265,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const { columns, projects } = await buildBoard(env, now);
-  return json({ now, columns, projects });
+  const { columns, projects, mailbox_unread } = await buildBoard(env, now);
+  return json({ now, columns, projects, mailbox_unread });
 }
 
 // POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
@@ -784,9 +795,14 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   // (mesma resolução do resolveMe em sessão OAuth). Se o seed user_owner sumir
   // (estado impossível em prática), grava sem assinatura — comportamento legado.
   const owner = await getOwnerUser(env);
+  const commentId = `cmt_${newId()}`;
   await addTaskComment(env, {
-    id: `cmt_${newId()}`, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
+    id: commentId, task_id: taskId, author: 'owner', author_name: null, body, created_at: Date.now(),
     author_user_id: owner?.id ?? null,
+  });
+  // Mailbox (spec 82): @menções do dono + comment_on_assigned. Best-effort.
+  await produceCommentMailbox(env, {
+    taskId, commentId, body, actorUserId: owner?.id ?? null,
   });
   return taskDetailRedirect(taskId);
 }
@@ -1212,6 +1228,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="today" type="button">Vencem hoje</button>
       <button class="task-filter" data-filter="week" type="button">Esta semana</button>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
+      <button class="task-filter" data-filter="mentions" type="button">Menções a mim</button>
+      <span class="task-mailbox-badges" id="task-mailbox-badges"></span>
       <div class="task-date-filter" id="task-date-filter" title="Filtrar por intervalo de vencimento">
         <input type="date" class="task-date-input" id="task-date-from" aria-label="Vencimento a partir de" />
         <span class="task-date-sep">até</span>
@@ -1325,6 +1343,12 @@ export const TASKS_CSS = `
 }
 .task-filter:hover { color: var(--text); border-color: var(--border-strong); }
 .task-filter.active { color: var(--accent-lav); border-color: var(--border-strong); background: rgba(167,139,250,0.1); }
+.task-mailbox-badges { display: inline-flex; gap: 6px; align-items: center; }
+.task-mailbox-chip {
+  font-size: 11px; color: var(--text-dim); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.task-mailbox-chip b { color: var(--accent-lav); font-weight: 600; margin-left: 2px; }
 
 /* Board: colunas customizáveis (N variável) — grid horizontal com scroll quando
    passa da largura, cada coluna com largura mínima confortável (spec 51). */

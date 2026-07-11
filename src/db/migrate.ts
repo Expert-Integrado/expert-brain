@@ -455,6 +455,30 @@ const MIGRATION_0021_STMTS: string[] = [
   `ALTER TABLE task_comments ADD COLUMN author_key_id TEXT`,
 ];
 
+// 0022 — MAILBOX POR AGENTE (spec 80-frota-agentes/82). O board vira barramento:
+// cada item endereça UM usuário (destinatário) e nasce de menção @Nome em comentário
+// ('mention'), de atribuição de task ('assignment') ou de comentário em task atribuída
+// ('comment_on_assigned' — só quando o assignee não foi mencionado, menção tem
+// precedência). Enum de kind fechado em CÓDIGO (src/db/mailbox.ts, mesmo racional do
+// TaskActivityField). Sem FK deliberado: a produção é best-effort e nunca pode derrubar
+// a escrita principal; leitura faz JOIN com notes (task apagada some do mailbox).
+// "mailbox" ≠ "inbox" (0014, captura do dono). O número 0021 citado na spec era reserva
+// de nome — o próximo livre real é 0022.
+// Espelho .sql de referência: src/db/migrations/0008_agent_mailbox.sql.
+const MIGRATION_0022_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS mailbox_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    comment_id TEXT,
+    actor_user_id TEXT,
+    created_at INTEGER NOT NULL,
+    read_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_mailbox_unread ON mailbox_items(user_id, read_at, created_at)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -477,6 +501,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0019_task_activity', stmts: MIGRATION_0019_STMTS },
   { id: '0020_comment_author_user', stmts: MIGRATION_0020_STMTS },
   { id: '0021_api_key_user', stmts: MIGRATION_0021_STMTS },
+  { id: '0022_agent_mailbox', stmts: MIGRATION_0022_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

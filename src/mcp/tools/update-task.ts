@@ -5,7 +5,8 @@ import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTas
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
-import { resolveAssigneeRefs, toAssigneeRef } from './user-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef, resolveMe } from './user-ref.js';
+import { produceAssignmentMailbox } from '../../db/mailbox.js';
 import { setTaskAssignees, listAssigneesForTask, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
 
@@ -216,7 +217,17 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
 
       // Responsáveis (spec 37): replace-set DEPOIS do patch (task já validada/atualizada).
       if (newAssignees !== null) {
+        // Mailbox (spec 82): item 'assignment' só pra quem foi ADICIONADO agora
+        // (set novo menos set atual, lido ANTES do replace). Remoção não gera item.
+        const before = new Set((await listAssigneesForTask(env, task.id)).map((a) => a.id));
         await setTaskAssignees(env, task.id, newAssignees.map((u) => u.id), now);
+        const added = newAssignees.map((u) => u.id).filter((uid) => !before.has(uid));
+        if (added.length > 0) {
+          const actor = await resolveMe(env, auth);
+          await produceAssignmentMailbox(env, {
+            taskId: task.id, addedUserIds: added, actorUserId: actor?.id ?? null, now,
+          });
+        }
       }
 
       // Menções (spec 62): add/remove. DEPOIS do patch/privacidade — o retorno reflete o

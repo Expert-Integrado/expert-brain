@@ -29,9 +29,10 @@ describe('buildServerInstructions', () => {
     expect(text).not.toContain('Contexto do dono (definido em /app/config):');
   });
 
-  it('mentions all 29 registered tools by name', () => {
+  it('mentions all 31 registered tools by name', () => {
     const text = buildServerInstructions(null);
-    expect(TOOL_NAMES).toHaveLength(29);
+    // 29 + check_mailbox/ack_mailbox (spec 82).
+    expect(TOOL_NAMES).toHaveLength(31);
     for (const name of TOOL_NAMES) {
       expect(text, `instructions devem citar a tool ${name}`).toContain(name);
     }

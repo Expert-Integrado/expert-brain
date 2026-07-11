@@ -23,6 +23,8 @@ const TOOL_NAMES = [
   'share_task',
   'unshare_task',
   'list_users',
+  'check_mailbox',
+  'ack_mailbox',
   'capture',
   'list_inbox',
   'resolve_inbox',
@@ -95,6 +97,8 @@ Fluxo recomendado:
 ${hasMedia ? `14. Mídia: \`attach_media_to_note\` anexa arquivo (base64 ou URL) numa nota com dedup por SHA-256 no R2 e retorna URL assinada válida por ~1h; \`get_note_media\` lista a mídia de uma nota (URLs assinadas ~1h); \`delete_note_media\` remove um anexo. ARQUIVO LOCAL: não gere base64 como texto (corrompe silenciosamente acima de poucos KB) — use o upload direto multipart: \`curl -F file=@arquivo <worker>/app/notes/{id}/media\` com o MESMO Bearer eb_pat_ deste MCP (detalhes na description da tool).
 ` : ''}${hasContacts ? `15. Contatos (read-only): \`list_contacts\`, \`search_contacts\`, \`get_contact\` e \`get_contact_by_phone\` leem o vault de contatos — use quando a pergunta é sobre UMA pessoa/empresa específica (telefone, e-mail, cargo, relações). Use \`recall\` quando a pergunta é sobre ideias/conceitos, não sobre uma entidade. \`get_contact_by_phone\` é match exato de telefone; \`search_contacts\` é busca por nome/semântica.
 ` : ''}
+Mailbox entre agentes (frota): ao abrir a sessão, chame \`check_mailbox\` — devolve os itens NÃO-LIDOS endereçados ao SEU perfil (menções @SeuNome em comentários, tasks atribuídas a você, comentários em tasks suas), já com o corpo do comentário e o autor assinado. Pra endereçar outro agente/pessoa, comente na task mencionando \`@Nome\` (nomes exatos em \`list_users\`; \`@"Nome Com Espaço"\` também vale). Ler NÃO marca como lido: chame \`ack_mailbox\` só DEPOIS de agir no item. Este mailbox é o barramento entre agentes — não confundir com o inbox de captura do dono (\`capture\`/\`list_inbox\`), que é outra coisa.
+
 Domínios canônicos do vault (TRAVA, não é sugestão):
 management | sales | marketing | education | ai-applied | leadership | product | operations | personal-development | entrepreneurship | music | cognitive-science
 

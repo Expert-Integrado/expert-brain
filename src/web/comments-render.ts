@@ -44,6 +44,28 @@ export interface RenderThreadOpts {
   // A página pública NÃO passa — /app/users/<id>/avatar exige sessão do dono (o <img>
   // quebraria pra convidado); lá a assinatura aparece só como nome.
   withAvatars?: boolean;
+  // Realce de @menção (spec 82): nomes de usuários ATIVOS — @Nome (e @"Nome") que
+  // resolve pra um deles ganha um <span class="cmt-mention"> INERTE (sem link).
+  // Nome não cadastrado fica texto puro (comentário não valida contra o cadastro).
+  mentionNames?: string[];
+}
+
+const RE_ESCAPE = /[.*+?^${}()|[\]\\]/g;
+
+// Envolve as @menções resolvidas num span inerte. Roda DEPOIS do escMultiline: o
+// pattern é montado sobre o texto JÁ escapado (aspas viram &quot;), então o replace
+// nunca reabre HTML do usuário — só injeta o span próprio. Passe ÚNICO com os nomes
+// em alternância ordenada por comprimento desc: o nome mais longo vence no mesmo
+// ponto e nada é envolvido duas vezes ("@Ana Almeida" não re-marca o prefixo "Ana").
+function highlightMentions(html: string, names: string[]): string {
+  const sorted = names.map((n) => n.trim()).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (sorted.length === 0) return html;
+  const alts = sorted.map((name) => {
+    const e = esc(name).replace(RE_ESCAPE, '\\$&');
+    return `&quot;${e}&quot;|${e}(?![\\p{L}\\p{N}_])`;
+  }).join('|');
+  const re = new RegExp(`@(?:${alts})`, 'giu');
+  return html.replace(re, (m) => `<span class="cmt-mention">${m}</span>`);
 }
 
 // Avatar do assinante (só console, ver RenderThreadOpts.withAvatars). Mesmo fallback
@@ -87,7 +109,7 @@ export function renderCommentThread(comments: TaskCommentView[], opts: RenderThr
         <time class="cmt-time">${esc(formatBrtDateTime(c.created_at))}</time>
         ${del}
       </div>
-      <div class="cmt-body">${escMultiline(c.body)}</div>
+      <div class="cmt-body">${opts.mentionNames ? highlightMentions(escMultiline(c.body), opts.mentionNames) : escMultiline(c.body)}</div>
     </li>`;
   }).join('');
   return `<ul class="cmt-thread">${items}</ul>`;

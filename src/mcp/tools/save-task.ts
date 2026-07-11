@@ -6,7 +6,8 @@ import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskB
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
-import { resolveAssigneeRefs, toAssigneeRef } from './user-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef, resolveMe } from './user-ref.js';
+import { produceAssignmentMailbox } from '../../db/mailbox.js';
 import { setTaskAssignees, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
 
@@ -241,6 +242,14 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       // Responsáveis (spec 37): grava os vínculos resolvidos acima.
       if (assignedUsers.length > 0) {
         await setTaskAssignees(env, id, assignedUsers.map((u) => u.id), now);
+        // Mailbox (spec 82): item 'assignment' pra cada atribuído ≠ ator. Best-effort
+        // por construção — a task já está commitada. Ator = perfil da credencial
+        // (null quando o PAT não tem vínculo: todos os atribuídos recebem).
+        const actor = await resolveMe(env, auth);
+        await produceAssignmentMailbox(env, {
+          taskId: id, addedUserIds: assignedUsers.map((u) => u.id),
+          actorUserId: actor?.id ?? null, now,
+        });
       }
 
       // Menções (spec 62): explícitas ou herdadas da nota de origem. Tolerante a falha

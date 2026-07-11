@@ -15,8 +15,9 @@ import { logTaskActivity } from '../db/task-activity.js';
 import {
   USER_CAP, USER_TYPES, type UserType, type BrainUser,
   listUsers, getUserById, countUsers, createUser, updateUser, setUserAvatar,
-  setUserArchived, getTaskById, setTaskAssignees, listAssigneesForTask,
+  setUserArchived, getTaskById, setTaskAssignees, listAssigneesForTask, getOwnerUser,
 } from '../db/queries.js';
+import { produceAssignmentMailbox } from '../db/mailbox.js';
 
 // ─────────────── Avatar (R2, binding MEDIA) ───────────────
 // Foto de perfil mora em avatars/<user_id> — key fixa por usuário (re-upload
@@ -322,6 +323,18 @@ export async function handleTaskAssigneesPost(req: Request, env: Env): Promise<R
 
   const now = Date.now();
   await setTaskAssignees(env, taskId, rawIds, now);
+
+  // Mailbox (spec 82): item 'assignment' só pra quem foi ADICIONADO agora (o set
+  // anterior está em `current`, lido antes do replace). Ator = perfil do dono
+  // (sessão de browser). Best-effort por construção.
+  const currentIds = new Set(current.map((a) => a.id));
+  const added = rawIds.filter((uid) => !currentIds.has(uid));
+  if (added.length > 0) {
+    const owner = await getOwnerUser(env);
+    await produceAssignmentMailbox(env, {
+      taskId, addedUserIds: added, actorUserId: owner?.id ?? null, now,
+    });
+  }
 
   // Log de atividade (spec 74): nomes legíveis, ANTES (já lido acima em `current`) vs
   // DEPOIS (relido pra refletir o replace-set que acabou de gravar, na mesma ordem

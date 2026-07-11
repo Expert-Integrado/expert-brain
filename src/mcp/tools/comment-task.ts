@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { getTaskById, addTaskComment, countTaskComments } from '../../db/queries.js';
 import { resolveMe } from './user-ref.js';
+import { produceCommentMailbox } from '../../db/mailbox.js';
 import { newId } from '../../util/id.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
@@ -66,6 +67,11 @@ export function registerCommentTask(server: any, env: Env, auth?: AuthContext): 
         // Forense por chave (spec 86): registra POR QUAL credencial o comentário
         // entrou. NULL em sessão OAuth do dono (sem keyId).
         author_key_id: auth?.keyId ?? null,
+      });
+      // Mailbox (spec 82): @menções + comment_on_assigned pros assignees. Best-effort
+      // POR CONSTRUÇÃO — o comentário acima já está commitado; falha aqui só loga.
+      await produceCommentMailbox(env, {
+        taskId: input.task_id, commentId: id, body, actorUserId: me.id,
       });
       const commentCount = await countTaskComments(env, input.task_id);
       return toolSuccess({
