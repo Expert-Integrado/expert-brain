@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
-import { ApiKeyLimitError, assignApiKeyUser, createApiKey, revokeApiKey, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
+import { ApiKeyLimitError, assignApiKeyUser, createApiKey, revokeApiKey, setApiKeySystem, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
 import { getUserById } from '../db/queries.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
@@ -86,6 +86,20 @@ export async function handleApiKeyOwner(req: Request, env: Env): Promise<Respons
   if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
   const ok = await assignApiKeyUser(env, session.email, id, userId);
   if (!ok) return htmlResponse('Chave não encontrada, revogada ou já tem dono — pra trocar identidade, revogue e crie outra', 400);
+  return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
+}
+
+// Edição tardia do sistema (pedido 11/07): o agrupamento nascia na criação e
+// ficava travado — agora edita inline na listagem. Só chave ativa; vazio limpa.
+export async function handleApiKeySystem(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const form = await req.formData();
+  const id = String(form.get('id') ?? '').trim();
+  if (!id) return htmlResponse('id obrigatório', 400);
+  const systemRaw = String(form.get('system') ?? '').trim().slice(0, 40);
+  const ok = await setApiKeySystem(env, session.email, id, systemRaw || null);
+  if (!ok) return htmlResponse('Chave não encontrada ou revogada', 400);
   return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }
 

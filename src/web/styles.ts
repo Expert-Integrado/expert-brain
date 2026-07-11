@@ -1153,6 +1153,47 @@ export const SURFACES_CSS = `
 .key-chip form { display: inline; }
 .key-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
+/* Listagem "Suas chaves" (pedido 11/07): grupo por sistema + 1 card por chave */
+.key-group { margin-top: 18px; }
+.key-group-title {
+  font-family: var(--font-display); font-weight: 600; font-size: 12px;
+  letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-subtle);
+  margin: 0 0 8px;
+}
+.key-group-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px;
+  border-radius: 999px; font-size: 11px;
+  background: rgba(167, 139, 250, 0.12); border: 1px solid var(--border);
+  color: var(--text-dim); vertical-align: middle;
+}
+.key-rows { display: flex; flex-direction: column; gap: 8px; }
+.key-row {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 10px 14px;
+  background: rgba(167, 139, 250, 0.04);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  transition: border-color 160ms var(--ease);
+}
+.key-row:hover { border-color: var(--border-strong); }
+.key-row-revoked { opacity: 0.55; }
+.key-row-id { display: flex; flex-direction: column; gap: 2px; min-width: 180px; }
+.key-row-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.key-row-name .badge-pill { margin-left: 0; }
+.key-row-prefix { font-size: 11.5px; color: var(--text-subtle); }
+.key-row-meta {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: 1;
+  font-size: 12.5px; color: var(--text-dim);
+}
+.key-row-meta .badge-pill { margin-left: 0; }
+.key-row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+.key-system-form { display: inline-flex; gap: 6px; align-items: center; }
+.key-system-input { width: 120px; font-size: 12.5px; padding: 5px 8px; }
+@media (max-width: 640px) {
+  .key-row-id { min-width: 0; }
+  .key-row-actions { margin-left: 0; }
+}
+
 /* ---- Rodape: status do vault (movido do topo) ---- */
 .vault-stats-foot { margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
 .vault-stats-foot h3 {

@@ -144,6 +144,16 @@ export async function assignApiKeyUser(env: Env, ownerEmail: string, id: string,
   return (res.meta?.changes ?? 0) > 0;
 }
 
+// Edição do `system` (agrupamento da listagem) de chave ATIVA — pedido 11/07.
+// Diferente do dono (identidade, orphan-only acima), o sistema é só rótulo de
+// organização: editável a qualquer momento; NULL volta pro grupo "Sem sistema".
+export async function setApiKeySystem(env: Env, ownerEmail: string, id: string, system: string | null): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE api_keys SET system = ? WHERE id = ? AND owner_email = ? AND revoked_at IS NULL`
+  ).bind(system, id, ownerEmail).run();
+  return (res.meta?.changes ?? 0) > 0;
+}
+
 export async function validateApiKey(
   env: Env,
   plainKey: string,

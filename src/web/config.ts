@@ -626,10 +626,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     .filter((u) => u.archived_at === null)
     .map((u) => `<option value="${esc(u.id)}">${esc(u.name)}</option>`)
     .join('');
+  // Linha de chave redesenhada (pedido 11/07): a tabela crua vira um card
+  // horizontal por chave — identidade à esquerda, meta no meio, ações à direita
+  // (editar sistema inline + revogar). Mesmas rotas POST; a única nova é
+  // /app/api-keys/system (edição tardia do agrupamento).
   const keyRow = (k: (typeof keys)[number], revoked: boolean): string => {
     const ownerName = k.user_id ? (userNameById.get(k.user_id) ?? k.user_id) : null;
     const ownerCell = ownerName
-      ? esc(ownerName)
+      ? `<span title="Dono — a chave assina como este perfil">${esc(ownerName)}</span>`
       : revoked
         ? `<span class="badge-pill badge-warn">sem dono</span>`
         : `<form method="post" action="/app/api-keys/owner" style="display:inline-flex;gap:6px;align-items:center">
@@ -641,22 +645,32 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     const dormant = !revoked && Date.now() - lastRef > KEY_DORMANT_MS;
     const lastUsed = k.last_used_at ? esc(relKeyUse(k.last_used_at)) : 'nunca';
     const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
-    const revokeBtn = revoked
-      ? '—'
-      : `<form method="post" action="/app/api-keys/revoke" style="display:inline">
-           <input type="hidden" name="id" value="${esc(k.id)}">
-           <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
-         </form>`;
-    return `<tr${revoked ? ' style="opacity:0.55"' : ''}>
-      <td><strong>${esc(k.name)}</strong>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}</td>
-      <td><code>${esc(k.prefix)}…</code></td>
-      <td>${ownerCell}</td>
-      <td><span class="badge-pill">${esc(scopeLabel)}</span></td>
-      <td>${lastUsed}</td>
-      <td>${revokeBtn}</td>
-    </tr>`;
+    const actions = revoked
+      ? ''
+      : `<div class="key-row-actions">
+           <form method="post" action="/app/api-keys/system" class="key-system-form" title="Sistema — agrupa a listagem; vazio volta pra 'Sem sistema'">
+             <input type="hidden" name="id" value="${esc(k.id)}">
+             <input type="text" name="system" value="${esc(k.system ?? '')}" list="key-systems" maxlength="40" placeholder="sem sistema" class="input-text key-system-input" aria-label="Sistema de ${esc(k.name)}">
+             <button type="submit" class="btn btn-sm">Salvar</button>
+           </form>
+           <form method="post" action="/app/api-keys/revoke" style="display:inline">
+             <input type="hidden" name="id" value="${esc(k.id)}">
+             <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
+           </form>
+         </div>`;
+    return `<div class="key-row${revoked ? ' key-row-revoked' : ''}">
+      <div class="key-row-id">
+        <span class="key-row-name"><strong>${esc(k.name)}</strong>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}</span>
+        <code class="key-row-prefix">${esc(k.prefix)}…</code>
+      </div>
+      <div class="key-row-meta">
+        ${ownerCell}
+        <span class="badge-pill" title="Escopo">${esc(scopeLabel)}</span>
+        <span title="Último uso">${k.last_used_at ? `usada ${lastUsed}` : 'nunca usada'}</span>
+      </div>
+      ${actions}
+    </div>`;
   };
-  const keysTableHead = `<thead><tr><th>Nome</th><th>Prefixo</th><th>Dono</th><th>Escopo</th><th>Último uso</th><th></th></tr></thead>`;
   const activeKeys = keys.filter((k) => k.revoked_at === null);
   const revokedKeys = keys.filter((k) => k.revoked_at !== null);
   const groupOf = (k: (typeof keys)[number]): string => (k.system ?? '').trim();
@@ -672,10 +686,11 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   });
   const keyGroups = groupNames
     .map((g) => {
-      const rows = activeKeys.filter((k) => groupOf(k) === g).map((k) => keyRow(k, false)).join('');
+      const mine = activeKeys.filter((k) => groupOf(k) === g);
+      const rows = mine.map((k) => keyRow(k, false)).join('');
       return `<div class="key-group" data-key-group="${esc(g)}">
-        <h4 style="margin:14px 0 6px">${g ? esc(g) : 'Sem sistema'}</h4>
-        <table class="keys-table">${keysTableHead}<tbody>${rows}</tbody></table>
+        <h4 class="key-group-title">${g ? esc(g) : 'Sem sistema'} <span class="key-group-count">${mine.length}</span></h4>
+        <div class="key-rows">${rows}</div>
       </div>`;
     })
     .join('');
@@ -683,7 +698,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ? ''
     : `<details id="keys-revoked" style="margin-top:14px">
         <summary style="cursor:pointer;color:var(--text-dim)">Revogadas (${revokedKeys.length}) — trilha de auditoria</summary>
-        <table class="keys-table" style="margin-top:8px">${keysTableHead}<tbody>${revokedKeys.map((k) => keyRow(k, true)).join('')}</tbody></table>
+        <div class="key-rows" style="margin-top:8px">${revokedKeys.map((k) => keyRow(k, true)).join('')}</div>
       </details>`;
   const keysListing = keys.length === 0
     ? '<p style="color:var(--text-dim)">Nenhuma chave ainda.</p>'
