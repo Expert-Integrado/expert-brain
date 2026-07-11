@@ -21,4 +21,6 @@ O dono opera uma frota de instâncias Claude Code (PC, notebook, containers na V
 
 ## Ordem de execução
 
-81 → 82 → 83 → 85 (84 corre em paralelo no repo skills). Cada spec só fecha com o ciclo real provado no Worker de produção, não só suite verde.
+81 → **86** → 82 → 83 → **87** → 85 (84 corre em paralelo no repo skills). Cada spec só fecha com o ciclo real provado no Worker de produção, não só suite verde.
+
+Adendo 11/07 (achados da Fase 0 operacional, task `ns5e5l1023ui`): a Fase 0 emitiu os 5 PATs mas travou 3 vínculos no 1:1 de `users.api_key_id` — a spec **86** (chave pertence ao usuário, 1:N + credencial privada separada, nota `0ddnsnhzcwys`) destrava e entra logo após a 81; a spec **87** corrige a UX do /app/config que originou o vínculo errado do PC. Dívida registrada: remoção da coluna legada `users.api_key_id` fica pra uma migration de limpeza futura, após a frota inteira migrar.
