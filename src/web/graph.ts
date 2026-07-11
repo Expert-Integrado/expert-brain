@@ -618,11 +618,14 @@ async function renderGraphLikePage(
           <select id="graph-group-select" class="graph-select" aria-label="Filtrar por grupo do WhatsApp">
             <option value="">Todos os grupos</option>
           </select>
-          <small>Foca o grupo escolhido e mostra os membros no painel</small>
+          <small>Mostra só o grupo escolhido e seus membros no grafo</small>
         </div>` : ''}
 
+        <!-- Contatos: nasce LIGADO — a maioria do vault é contato importado sem
+             nenhuma ligação; visíveis por padrão viram um amontoado ilegível
+             (reclamação do dono, 11/07). O client respeita pref salva do usuário. -->
         <label class="graph-check-label graph-orphans-toggle">
-          <input type="checkbox" id="hide-orphans" />
+          <input type="checkbox" id="hide-orphans"${isContacts ? ' checked' : ''} />
           <span>Esconder isoladas</span>
         </label>
 

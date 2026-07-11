@@ -274,6 +274,10 @@ async function main() {
     hideSimilar: false,
     domainFilter: null as Set<string> | null,  // null = all visible
     kindFilter: null as Set<string> | null,
+    // Filtro "Grupo" (contatos): grupo selecionado + membros (vizinhos explícitos).
+    // null = sem filtro. Diferente dos chips (que só apagam a cor), quem está fora
+    // do grupo é ESCONDIDO de verdade — "mostrar só esse grupo" é o pedido do dono.
+    groupFilter: null as { id: string; label: string; members: Set<string> } | null,
     searchQuery: '',
     searchMatches: new Set<string>(),
     selectedNodeId: null as string | null,
@@ -555,7 +559,17 @@ async function main() {
     // A.22 — hide orphans: nó sem nenhuma edge EXPLÍCITA é considerado órfão
     // (explicitDegreeById; o degreeById geral inclui semânticas e mentiria aqui).
     if (isOrphanConcealed(id)) return false;
+    if (isGroupConcealed(id)) return false;
     return true;
+  }
+
+  // Filtro "Grupo" ativo: quem não é membro SOME (hidden no nodeReducer, igual
+  // órfã escondida). Mesmas exceções de isOrphanConcealed — match da busca, nó
+  // selecionado e hover continuam visíveis pra busca/foco não virar beco morto.
+  function isGroupConcealed(id: string): boolean {
+    if (!state.groupFilter) return false;
+    if (state.groupFilter.members.has(id)) return false;
+    return !state.searchMatches.has(id) && state.selectedNodeId !== id && state.hoveredNode !== id;
   }
 
   // Órfã que deve sumir com "Esconder isoladas" ativo. Exceções: match da busca,
@@ -588,7 +602,7 @@ async function main() {
     // ocupando tela e bbox — o toggle parecia não fazer nada. Exceções (busca/
     // seleção/hover) vivem em isOrphanConcealed — a órfã excetuada segue ATIVA
     // (isNodeActive true) e cai nos branches normais de busca/hover/default.
-    if (isOrphanConcealed(n)) {
+    if (isOrphanConcealed(n) || isGroupConcealed(n)) {
       return { ...attrs, hidden: true, label: '' };
     }
 
@@ -707,13 +721,15 @@ async function main() {
   // a partir do meta) ANTES de inicializar a simulação: seta state + forces2d/3d e
   // sincroniza os inputs/checkboxes/chips do painel. Sem nada salvo, mantém os
   // defaults dos próprios inputs HTML. CSP-safe: lê de data-attribute, não inline JS.
-  function applySavedPrefs() {
+  // Retorna as prefs cruas parseadas (ou null) — quem chama precisa saber se um
+  // campo veio SALVO ou se ficou no default (ex.: hideOrphans em contatos abaixo).
+  function applySavedPrefs(): any {
     const canvas = document.getElementById('graph-canvas');
     const raw = canvas?.dataset.graphPrefs;
-    if (!raw) return;
+    if (!raw) return null;
     let p: any;
-    try { p = JSON.parse(raw); } catch { return; }
-    if (!p || typeof p !== 'object') return;
+    try { p = JSON.parse(raw); } catch { return null; }
+    if (!p || typeof p !== 'object') return null;
     const clamp = (v: any, lo: number, hi: number, d: number) =>
       (typeof v === 'number' && isFinite(v)) ? Math.min(hi, Math.max(lo, v)) : d;
     if (p.forces && typeof p.forces === 'object') {
@@ -767,8 +783,20 @@ async function main() {
     document.querySelectorAll('.graph-color-chip').forEach((el) => {
       el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === state.colorMode);
     });
+    return p;
   }
-  applySavedPrefs();
+  const savedPrefs = applySavedPrefs();
+
+  // Contatos: "Esconder isoladas" nasce LIGADO (o SSR já rende o checkbox
+  // checked) — a maioria do vault é contato importado sem nenhuma ligação e o
+  // grafo virava um amontoado. Só quando o usuário nunca salvou uma escolha:
+  // pref salva (true OU false) vence, diferente do override de colorMode acima,
+  // que não distingue "salvou neutral" de "nunca salvou".
+  if (isContacts && typeof savedPrefs?.hideOrphans !== 'boolean') {
+    state.hideOrphans = true;
+    const ho = document.getElementById('hide-orphans') as HTMLInputElement | null;
+    if (ho) ho.checked = true;
+  }
 
   // Contatos: cor por TIPO (Pessoa/Empresa/...) é o default certo — grafo todo
   // cinza esconde a informação mais básica do vault (o print do "damásio" era
@@ -862,14 +890,16 @@ async function main() {
   // bbox — o miolo conectado encolhe no centro. Nesse regime, o enquadramento
   // passa a considerar só os nós CONECTADOS (grau explícito > 0); as órfãs
   // continuam visíveis, apenas não mandam na moldura inicial.
-  // NUNCA no vault de contatos: lá os ~6,5k isolados são carregados de
-  // propósito (all=1, decisão de produto) e a fração de órfãs é sempre alta —
-  // o connectedOnly cortaria a maioria dos contatos da moldura inicial E do
-  // botão "Ajustar à tela" (mesma função), sem rota de recuperação na UI.
+  // No vault de contatos o corte segue o toggle "Esconder isoladas" (default
+  // LIGADO desde 11/07): com as órfãs escondidas do canvas, deixá-las na bbox
+  // enquadraria um mar de vazio ao redor do miolo conectado. Com o toggle
+  // DESLIGADO os ~6,5k isolados são visíveis de propósito (all=1, decisão de
+  // produto) e a moldura precisa incluí-los — senão "Ajustar à tela" (mesma
+  // função) cortaria a maioria dos contatos sem rota de recuperação na UI.
   function applyCoreBBox() {
     const total = graph.order;
     const orphanShare = total > 0 ? (total - explicitDegreeById.size) / total : 0;
-    const connectedOnly = !isContacts && orphanShare > 0.25;
+    const connectedOnly = isContacts ? state.hideOrphans : orphanShare > 0.25;
     const xs: number[] = [];
     const ys: number[] = [];
     graph.forEachNode((id, attr) => {
@@ -1826,7 +1856,9 @@ async function main() {
     // segue visível e arrastável mas sem efeito nenhum (mesmo comportamento de
     // hoje: nunca foi empurrado pro palco 3D via push3D).
     onTextFadeMult: (v) => { setVisual({ textFadeMult: v }); renderer.refresh(); },
-    onHideOrphans: (hide) => { state.hideOrphans = hide; (window as any).__updateActiveFilters?.(); renderer.refresh(); push3D((c) => c.applyFilters()); },
+    // applyCoreBBox: em contatos a moldura segue o toggle (órfãs escondidas
+    // ficam fora da bbox) — recalcular aqui evita zoom "flutuando no vazio".
+    onHideOrphans: (hide) => { state.hideOrphans = hide; (window as any).__updateActiveFilters?.(); applyCoreBBox(); renderer.refresh(); push3D((c) => c.applyFilters()); },
     // A.29 — Forces (live, ranges Obsidian-like)
     onForceCenter: (v) => { setForces({ center: v }); push3D((c) => c.applyForces()); },
     onForceRepel: (v) => { setForces({ repel: v }); push3D((c) => c.applyForces()); },
@@ -1908,10 +1940,17 @@ async function main() {
       state.hideSimilar = false;
       state.hideOrphans = false;
       state.noOverlap = false;
-      applySavedPrefs();
+      const restoredPrefs = applySavedPrefs();
       // Contatos: default de coloração por TIPO (pessoa/empresa) — mesmo
       // override do boot; restaurar não pode devolver a nuvem cinza.
       if (isContacts && state.colorMode === 'neutral') state.colorMode = 'domain';
+      // Contatos: fábrica de "Esconder isoladas" é LIGADO (mesma regra do boot);
+      // pref salva explícita continua vencendo.
+      if (isContacts && typeof restoredPrefs?.hideOrphans !== 'boolean') state.hideOrphans = true;
+      // Filtro "Grupo" é exploração — zera junto com busca e chips.
+      state.groupFilter = null;
+      const groupSel = document.getElementById('graph-group-select') as HTMLSelectElement | null;
+      if (groupSel) groupSel.value = '';
       // 3. Reaplica nos palcos: física 2D com o perfil FINAL (salvo ou fábrica),
       // collide conforme o padrão, e posições de volta ao snapshot inicial.
       worker.postMessage({ type: 'forces', forces: mapForces(forces2d), alpha: 0.5 });
@@ -1954,6 +1993,9 @@ async function main() {
       clearSearchState();
       state.domainFilter = null;
       state.kindFilter = null;
+      state.groupFilter = null;
+      const groupSel = document.getElementById('graph-group-select') as HTMLSelectElement | null;
+      if (groupSel) groupSel.value = '';
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
       (window as any).__updateActiveFilters?.();
       renderer.refresh();
@@ -1961,16 +2003,29 @@ async function main() {
     },
     // Toggle 2D/3D — troca o palco sem recarregar; lazy-load do bundle 3D na 1ª vez.
     onToggle3D: () => { void toggleMode(); },
-    // Filtro "Grupo" (Contatos, pedido do dono: "a tela de contatos não
-    // consegue filtrar por grupos de WhatsApp"). Reusa o MESMO focusNode() que
-    // a busca, a paleta Cmd+K e o deep-link ?focus= já usam — o painel do
-    // grupo já lista "Membros (N)" via /entity (openContactPanel acima), zero
-    // mecanismo novo. "Todos os grupos" (valor vazio) reusa clearSearchState()
-    // — mesma rota do botão "Limpar" e do ✕ da busca — pra devolver o
-    // enquadramento padrão quando a câmera tinha se movido pro foco.
+    // Filtro "Grupo" (Contatos): virou filtro DE VERDADE (11/07) — o v1 só
+    // focava a câmera no grupo e os outros milhares de nós continuavam na tela.
+    // Membros = vizinhos EXPLÍCITOS do nó do grupo no graphology (só edges
+    // explícitas entram no graph; as semânticas ficam no overlay), então o set
+    // é exatamente grupo + member_of. focusNode() continua: câmera vai até o
+    // grupo e o painel abre com "Membros (N)". "Todos os grupos" (valor vazio)
+    // desfaz o filtro e reusa clearSearchState() pro enquadramento padrão.
     onGroupSelect: (id) => {
-      if (id) focusNode(id);
-      else clearSearchState();
+      if (id && graph.hasNode(id)) {
+        const members = new Set<string>([id]);
+        graph.forEachNeighbor(id, (nb) => members.add(nb));
+        state.groupFilter = { id, label: baseLabel.get(id) ?? 'grupo', members };
+        (window as any).__updateActiveFilters?.();
+        renderer.refresh();
+        push3D((c) => c.applyFilters());
+        focusNode(id);
+      } else {
+        state.groupFilter = null;
+        (window as any).__updateActiveFilters?.();
+        renderer.refresh();
+        push3D((c) => c.applyFilters());
+        clearSearchState();
+      }
     },
   }, payload.nodes, taxonomy);
 
@@ -2306,6 +2361,7 @@ async function main() {
     if (state.kindFilter && state.kindFilter.size > 0) {
       parts.push(`${state.kindFilter.size} ${state.kindFilter.size === 1 ? 'tipo' : 'tipos'}`);
     }
+    if (state.groupFilter) parts.push(`grupo "${state.groupFilter.label}"`);
     if (state.hideOrphans) parts.push('isoladas escondidas');
     if (state.hideSimilar) parts.push('semânticas escondidas');
     if (parts.length === 0) {
