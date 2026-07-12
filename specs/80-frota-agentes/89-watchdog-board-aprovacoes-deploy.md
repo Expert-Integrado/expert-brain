@@ -65,3 +65,26 @@ instalação, que provisiona sem auth). Erro de rede no preflight → warning e 
 - Notebook na frota (task m9uyj6mb7iqv — depende do dono).
 - Webhook wake, subtasks, DoD/verifier, WIP/aging, telemetria (tasks do board,
   spec 88 "fora de escopo").
+
+## Registro de implantação (12/07/2026)
+
+Em prod ~00h25 (commits 3d1fdaa, 6646590, 41e42b6, ada3b68; suite 1153/1153 no
+tree deployado). Primeiro firing do watchdog provado às 00:30 (outcome
+`cron:fleet-watchdog` = sucesso + 5 streaks criados em KV).
+
+**Incidente que mudou o desenho — limite de crons por CONTA:** o plano free do
+Cloudflare limita a conta INTEIRA (todos os Workers somados) a 5 cron triggers.
+Registrar o 4º cron deste Worker estourou o teto (erro 10072, "You have exceeded
+the limit of 5 cron triggers") e o `wrangler deploy` publicava o código mas
+falhava nos triggers. Solução de causa raiz: **consolidação em 1 trigger único**
+`*/30 * * * *` — o braço do watchdog em `src/scheduled.ts` despacha os jobs de
+horário fixo por relógio UTC (backup segunda 05:00, re-pass 08:00, fluxo diário
+11:00; todos caem em minuto :00, que o */30 cobre). Braços por expressão exata
+mantidos (compat + testes); `runScheduled` ganhou `nowMs` opcional pra teste.
+Liberou 2 slots de cron na conta (3 → 1 neste Worker).
+
+**Lição de working tree compartilhado:** duas sessões editando o mesmo repo =
+commits por hunk (patch cirúrgico via `git apply --cached`, nunca stash/add -A)
+e deploy SEMPRE de worktree limpo no HEAD commitado (`git worktree add` +
+`cp wrangler.toml` + `npm ci`; o postinstall `install-hooks.mjs` falha em
+worktree porque `.git` é arquivo — inofensivo).
