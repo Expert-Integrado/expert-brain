@@ -35,6 +35,7 @@ import {
 } from '../db/queries.js';
 import { validateDomains } from '../db/validation.js';
 import { listTaskActivity } from '../db/task-activity.js';
+import { listTaskSubtasks, subtaskProgress, type TaskSubtask } from '../db/subtasks.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { applyMentions } from '../mcp/mentions.js';
 import { newId } from '../util/id.js';
@@ -1214,7 +1215,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
   // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
   // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
-  const [comments, taxonomy, taskMentions, allUsers, taskAssignees, createdBy] = await Promise.all([
+  const [comments, taxonomy, taskMentions, allUsers, taskAssignees, createdBy, subtasks] = await Promise.all([
     listTaskComments(env, task.id, 500, 0),
     getTaxonomyConfig(env),
     // Menções (spec 62): contatos que esta task cita (chips de leitura + link).
@@ -1223,11 +1224,41 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     listUsers(env, true),
     listAssigneesForTask(env, task.id),
     resolveActorProfile(env, task.created_by),
+    // Subtarefas/checklist (spec 38).
+    listTaskSubtasks(env, task.id),
   ]);
   // Origem (spec 62): nota que originou a task ("Criar task desta nota").
   const originNote = task.origin_note_id
     ? await getNoteById(env, task.origin_note_id, false, /* includePrivate */ true)
     : null;
+  // Subtarefas/checklist (spec 38): seção sempre presente (o dono pode adicionar
+  // itens a qualquer task); o contador "3/8" fica `hidden` quando não há itens e o
+  // client o revela/atualiza. Markup CSP-safe (só data-attributes) — o wiring de
+  // toggle/adicionar/renomear/remover vive em client/task-edit.ts, via os 4
+  // endpoints JSON /app/tasks/subtask/* (src/web/tasks.ts).
+  const subProgress = subtaskProgress(subtasks);
+  const subtaskItemHtml = (s: TaskSubtask): string => `
+        <li class="task-subtask${s.done_at !== null ? ' done' : ''}" data-subtask-id="${esc(s.id)}">
+          <label class="task-subtask-check">
+            <input type="checkbox" data-subtask-toggle${s.done_at !== null ? ' checked' : ''} aria-label="Marcar subtarefa" />
+            <span class="task-subtask-title" data-subtask-title title="Duplo clique renomeia">${esc(s.title)}</span>
+          </label>
+          <button type="button" class="task-subtask-remove" data-subtask-remove title="Remover subtarefa" aria-label="Remover subtarefa">×</button>
+        </li>`;
+  const subtasksSection = `
+    <section class="task-subtasks" id="subtarefas" data-subtasks data-subtasks-task="${esc(task.id)}">
+      <div class="task-subtasks-head">
+        <span class="task-edit-lbl">Subtarefas</span>
+        <span class="task-subtasks-progress" data-subtasks-progress${subProgress.total > 0 ? '' : ' hidden'}>${subProgress.done}/${subProgress.total}</span>
+        <span class="task-subtasks-msg" data-subtasks-msg role="status" aria-live="polite"></span>
+      </div>
+      <ul class="task-subtasks-list" data-subtasks-list>${subtasks.map(subtaskItemHtml).join('')}
+      </ul>
+      <form class="task-subtask-add" data-subtask-add>
+        <input type="text" class="task-subtask-input" data-subtask-input maxlength="200" placeholder="+ adicionar subtarefa" aria-label="Adicionar subtarefa" />
+      </form>
+    </section>`;
+
   const activitySection = `
     <section class="task-activity" id="atividade">
       <h2>Atividade</h2>
@@ -1420,6 +1451,9 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       case 'visibility': return `visibilidade: ${nv}`;
       case 'share': return nv;
       case 'status': return `status: ${nv}`;
+      // Subtarefas (spec 38): old_value = ação PT (adicionada/concluída/reaberta/
+      // renomeada/removida), new_value = título truncado.
+      case 'subtask': return `subtarefa ${ov}: "${nv}"`;
       default: return `${e.field}: ${nv}`;
     }
   };
@@ -1512,6 +1546,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
           </div>
 
           <div class="task-edit-status" data-editstatus role="status" aria-live="polite"></div>
+
+          ${subtasksSection}
 
           ${activitySection}
         </div>
@@ -1678,6 +1714,42 @@ const TASK_DETAIL_CSS = `
 .task-funnel-step.current.cat-canceled { background:var(--surface-raised); color:var(--text-dim); }
 .task-funnel-step.archived { cursor:default; opacity:0.6; }
 .task-funnel-lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Subtarefas/checklist (spec 38): lista tickável entre a descrição e a atividade */
+.task-subtasks { margin:4px 0 26px; }
+.task-subtasks-head { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.task-subtasks-progress {
+  font-size:12px; font-weight:600; color:var(--text-dim);
+  font-variant-numeric:tabular-nums; background:var(--bg-accent);
+  border-radius:999px; padding:1px 9px;
+}
+.task-subtasks-msg { font-size:12px; color:var(--text-subtle); }
+.task-subtasks-msg.err { color:var(--danger, #c0392b); }
+.task-subtasks-list { list-style:none; margin:0; padding:0; }
+.task-subtask {
+  display:flex; align-items:center; gap:8px; padding:6px 4px;
+  border-bottom:1px solid var(--border); font-size:14px;
+}
+.task-subtask-check { display:flex; align-items:center; gap:9px; flex:1; min-width:0; cursor:pointer; }
+.task-subtask-check input { cursor:pointer; accent-color:var(--accent-lav); }
+.task-subtask-title { overflow-wrap:anywhere; }
+.task-subtask.done .task-subtask-title { text-decoration:line-through; color:var(--text-subtle); }
+.task-subtask-rename {
+  flex:1; min-width:0; font:inherit; color:var(--text); background:var(--surface);
+  border:1px solid var(--accent-lav); border-radius:var(--radius-sm); padding:2px 6px;
+}
+.task-subtask-remove {
+  background:none; border:none; cursor:pointer; color:var(--text-subtle);
+  font-size:15px; line-height:1; padding:2px 7px; opacity:0; transition:opacity 120ms var(--ease);
+}
+.task-subtask:hover .task-subtask-remove, .task-subtask-remove:focus-visible { opacity:1; }
+.task-subtask-remove:hover { color:var(--danger, #c0392b); }
+.task-subtask-input {
+  width:100%; margin-top:6px; font:inherit; font-size:13.5px; color:var(--text);
+  background:transparent; border:1px dashed var(--border); border-radius:var(--radius-sm);
+  padding:6px 10px; transition:border-color 140ms var(--ease), background 140ms var(--ease);
+}
+.task-subtask-input:focus { outline:none; border-style:solid; border-color:var(--accent-lav); background:var(--surface); }
 
 /* Histórico (10/07/2026): feed compacto de edições na sidebar */
 .task-history { border-top:1px dashed var(--border); padding-top:12px; }

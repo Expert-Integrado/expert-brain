@@ -16,7 +16,7 @@ import { handleBackupNowPost, handleExportGet } from './backup.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyOwner, handleApiKeyRevoke, handleApiKeySystem } from './api-keys.js';
 import { handleProjectShareCreate, handleProjectShareRevoke } from './project-share.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
-import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost, handleTagRenamePost, handleTagDeletePost } from './tasks.js';
+import { handleTasksPage, handleTasksData, handleTaskStatusPost, handleTaskCompletePost, handleTaskUpdatePost, handleTaskCreatePost, handleTaskMovePost, handleTaskSharePost, handleTaskUnsharePost, handleTaskPrivatePost, handleTaskCommentPost, handleTaskCommentDeletePost, handleSubtaskAddPost, handleSubtaskTogglePost, handleSubtaskUpdatePost, handleSubtaskDeletePost, handleColumnCreatePost, handleColumnUpdatePost, handleColumnReorderPost, handleColumnArchivePost, handleProjectCreatePost, handleProjectUpdatePost, handleProjectReorderPost, handleProjectArchivePost, handleTagRenamePost, handleTagDeletePost } from './tasks.js';
 import { handleMediaUpload, handleMediaList, handleMediaServe, handleMediaDelete } from './media.js';
 import { handleInboxPage, handleInboxAddPost, handleInboxResolvePost, handleInboxToNotePost, handleInboxToTaskPost, handleInboxSharePost, handleInboxShareUploadPost, handleInboxMediaServe } from './inbox.js';
 import { handlePushVapidKeyGet, handlePushSubscribePost, handlePushUnsubscribePost, handlePushPendingGet, handlePushTestPost } from './push.js';
@@ -141,6 +141,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/tasks/comment/delete' && req.method === 'POST') return handleTaskCommentDeletePost(req, env);
   // Responsáveis da task (spec 37): replace-set via checkboxes da sidebar do detalhe.
   if (path === '/app/tasks/assignees' && req.method === 'POST') return handleTaskAssigneesPost(req, env);
+  // Subtarefas/checklist (spec 38): endpoints JSON do detalhe. Paths exatos, ANTES
+  // do taskMatch (que só casa GET de 1 segmento) — mesmo racional dos comentários.
+  if (path === '/app/tasks/subtask/add' && req.method === 'POST') return handleSubtaskAddPost(req, env);
+  if (path === '/app/tasks/subtask/toggle' && req.method === 'POST') return handleSubtaskTogglePost(req, env);
+  if (path === '/app/tasks/subtask/update' && req.method === 'POST') return handleSubtaskUpdatePost(req, env);
+  if (path === '/app/tasks/subtask/delete' && req.method === 'POST') return handleSubtaskDeletePost(req, env);
 
   // Detalhe de uma task (superfície própria — NÃO o editor de nota). Vem DEPOIS dos
   // paths exatos acima pra não capturar /data /status /complete. /bundle.js tem ponto,

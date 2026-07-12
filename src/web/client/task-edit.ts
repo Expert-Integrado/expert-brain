@@ -422,6 +422,162 @@ if (assigneesRoot) {
   });
 }
 
+// ── Subtarefas / checklist (spec 38) ──
+// Delegação de eventos na seção [data-subtasks] (itens entram e saem do DOM):
+// checkbox → /subtask/toggle; form de adicionar → /subtask/add; × → /subtask/delete;
+// duplo clique no título → input inline que salva em /subtask/update. Nenhuma
+// dessas mutações toca o updated_at da task, então NADA aqui mexe no
+// expectedUpdatedAt do editor — checklist e edição otimista não se atropelam.
+const subtasksRoot = document.querySelector<HTMLElement>('[data-subtasks]');
+if (subtasksRoot) {
+  const subTaskId = subtasksRoot.dataset.subtasksTask || '';
+  const listEl = subtasksRoot.querySelector<HTMLElement>('[data-subtasks-list]');
+  const progressEl = subtasksRoot.querySelector<HTMLElement>('[data-subtasks-progress]');
+  const addForm = subtasksRoot.querySelector<HTMLFormElement>('[data-subtask-add]');
+  const addInput = subtasksRoot.querySelector<HTMLInputElement>('[data-subtask-input]');
+  const msgEl = subtasksRoot.querySelector<HTMLElement>('[data-subtasks-msg]');
+
+  function setSubMsg(text: string, isErr = false) {
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.className = 'task-subtasks-msg' + (isErr ? ' err' : '');
+    if (text && !isErr) setTimeout(() => { if (msgEl.textContent === text) msgEl.textContent = ''; }, 1500);
+  }
+
+  function setProgress(p: { done: number; total: number } | undefined) {
+    if (!progressEl || !p) return;
+    progressEl.textContent = `${p.done}/${p.total}`;
+    progressEl.hidden = p.total === 0;
+  }
+
+  // POST comum: devolve o JSON em sucesso, null em erro (com feedback no msg).
+  async function subPost(op: string, body: Record<string, unknown>): Promise<any | null> {
+    try {
+      const res = await appFetch(`/app/tasks/subtask/${op}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ task_id: subTaskId, ...body }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSubMsg('Erro: ' + ((data as any)?.error ?? res.status), true);
+        return null;
+      }
+      setSubMsg('');
+      return data;
+    } catch {
+      setSubMsg('Falha de conexão', true);
+      return null;
+    }
+  }
+
+  // Monta um <li> novo (item recém-adicionado) — via DOM API, nunca innerHTML
+  // com texto do usuário.
+  function buildItem(sub: { id: string; title: string }): HTMLLIElement {
+    const li = document.createElement('li');
+    li.className = 'task-subtask';
+    li.dataset.subtaskId = sub.id;
+    const label = document.createElement('label');
+    label.className = 'task-subtask-check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.setAttribute('data-subtask-toggle', '');
+    cb.setAttribute('aria-label', 'Marcar subtarefa');
+    const span = document.createElement('span');
+    span.className = 'task-subtask-title';
+    span.setAttribute('data-subtask-title', '');
+    span.title = 'Duplo clique renomeia';
+    span.textContent = sub.title;
+    label.append(cb, span);
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'task-subtask-remove';
+    rm.setAttribute('data-subtask-remove', '');
+    rm.title = 'Remover subtarefa';
+    rm.setAttribute('aria-label', 'Remover subtarefa');
+    rm.textContent = '×';
+    li.append(label, rm);
+    return li;
+  }
+
+  // Adicionar: Enter no input (submit do form).
+  addForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = (addInput?.value ?? '').trim();
+    if (!title) return;
+    const data = await subPost('add', { title });
+    if (!data) return;
+    listEl?.appendChild(buildItem(data.subtask));
+    if (addInput) { addInput.value = ''; addInput.focus(); }
+    setProgress(data.progress);
+  });
+
+  // Toggle: change delegado nos checkboxes.
+  listEl?.addEventListener('change', async (e) => {
+    const cb = (e.target as HTMLElement).closest<HTMLInputElement>('[data-subtask-toggle]');
+    if (!cb) return;
+    const li = cb.closest<HTMLElement>('[data-subtask-id]');
+    if (!li) return;
+    const done = cb.checked;
+    const data = await subPost('toggle', { id: li.dataset.subtaskId, done });
+    if (!data) { cb.checked = !done; return; } // reverte em erro
+    li.classList.toggle('done', done);
+    setProgress(data.progress);
+  });
+
+  // Remover: click delegado no ×.
+  listEl?.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-subtask-remove]');
+    if (!btn) return;
+    const li = btn.closest<HTMLElement>('[data-subtask-id]');
+    if (!li) return;
+    btn.disabled = true;
+    const data = await subPost('delete', { id: li.dataset.subtaskId });
+    btn.disabled = false;
+    if (!data) return;
+    li.remove();
+    setProgress(data.progress);
+  });
+
+  // Renomear: duplo clique no título troca por input inline. Enter/blur salvam
+  // (se mudou), Esc cancela. O checkbox do label ignora cliques enquanto edita
+  // (o input é irmão do span, fora do fluxo do toggle).
+  listEl?.addEventListener('dblclick', (e) => {
+    const span = (e.target as HTMLElement).closest<HTMLElement>('[data-subtask-title]');
+    if (!span) return;
+    const li = span.closest<HTMLElement>('[data-subtask-id]');
+    if (!li || li.querySelector('.task-subtask-rename')) return;
+    const original = span.textContent ?? '';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'task-subtask-rename';
+    input.maxLength = 200;
+    input.value = original;
+    span.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    const finish = async (save: boolean) => {
+      if (finished) return;
+      finished = true;
+      const title = input.value.trim();
+      if (save && title && title !== original) {
+        const data = await subPost('update', { id: li.dataset.subtaskId, title });
+        span.textContent = data ? data.subtask.title : original;
+      } else {
+        span.textContent = original;
+      }
+      input.replaceWith(span);
+    };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); void finish(true); }
+      if (ev.key === 'Escape') { ev.preventDefault(); void finish(false); }
+    });
+    input.addEventListener('blur', () => { void finish(true); });
+  });
+}
+
 // ── Visibilidade (spec 65) ──
 // Wiring no módulo compartilhado (visibility-ui.ts) — a mesma seção existe no
 // detalhe de NOTA (note-edit.ts). Endpoints vêm dos data-attributes da seção.

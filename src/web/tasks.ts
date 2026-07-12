@@ -50,6 +50,15 @@ import {
   claimActive,
   listAwaitingOwnerBanner,
 } from '../db/queries.js';
+import {
+  addTaskSubtasks,
+  setSubtaskDone,
+  retitleSubtask,
+  deleteSubtask,
+  countTaskSubtasksBatch,
+  MAX_SUBTASKS_PER_TASK,
+  type SubtaskProgress,
+} from '../db/subtasks.js';
 import { renameTag, deleteTag } from '../db/tag-admin.js';
 import { produceCommentMailbox, getBoardMailboxInfo } from '../db/mailbox.js';
 import { validateDomains } from '../db/validation.js';
@@ -851,6 +860,119 @@ export async function handleTaskCommentDeletePost(req: Request, env: Env): Promi
   return taskId
     ? taskDetailRedirect(taskId)
     : new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+}
+
+// ─────────────── Subtarefas / checklist (spec 38) ───────────────
+// 4 endpoints JSON no padrão das rotas irmãs (/app/tasks/update|move): Bearer
+// 'tasks' OU sessão de browser; o client bundle do detalhe consome sem reload.
+// Mutação de subtask NÃO toca notes.updated_at (tick não pode invalidar o
+// expected_updated_at de quem edita a task ao lado) — por isso a resposta também
+// não devolve updated_at novo. Cada mutação loga task_activity field='subtask'
+// (old_value = ação PT, new_value = título truncado — formato do historyPhrase).
+
+const SUBTASK_LOG_MAX = 80;
+
+// Auth + identidade comum dos 4 endpoints: sessão do dono enxerga task privada
+// (seePrivate) e assina o log como 'oauth:<email>'; Bearer genérico não enxerga
+// privada e loga actor null (mesmo racional de handleTaskMovePost).
+async function subtaskAuth(
+  req: Request, env: Env
+): Promise<{ denied: Response } | { denied: null; actor: string | null; seePrivate: boolean }> {
+  const denied = await authTask(req, env);
+  if (denied) return { denied };
+  const session = await requireSession(req, env);
+  return session.ok
+    ? { denied: null, actor: `oauth:${session.email}`, seePrivate: true }
+    : { denied: null, actor: null, seePrivate: false };
+}
+
+async function subtaskProgressOf(env: Env, taskId: string): Promise<SubtaskProgress> {
+  return (await countTaskSubtasksBatch(env, [taskId])).get(taskId) ?? { done: 0, total: 0 };
+}
+
+// POST /app/tasks/subtask/add — { task_id, title }. Anexa 1 item ao fim do checklist.
+export async function handleSubtaskAddPost(req: Request, env: Env): Promise<Response> {
+  const auth = await subtaskAuth(req, env);
+  if (auth.denied) return auth.denied;
+  let body: { task_id?: string; title?: string };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const taskId = (body.task_id || '').trim();
+  if (!taskId) return json({ error: 'task_id required' }, 400);
+  const title = (typeof body.title === 'string' ? body.title : '').trim();
+  if (title.length < 1 || title.length > 200) return json({ error: 'title must be 1-200 chars' }, 400);
+
+  const task = await getTaskById(env, taskId, auth.seePrivate);
+  if (!task) return json({ error: 'task not found' }, 404);
+  const created = await addTaskSubtasks(env, taskId, [title], auth.actor, Date.now());
+  if (created === 'cap-exceeded') return json({ error: `subtask limit reached (${MAX_SUBTASKS_PER_TASK} per task)` }, 400);
+  await logTaskActivity(env, taskId, auth.actor, [
+    { field: 'subtask', old_value: 'adicionada', new_value: title.slice(0, SUBTASK_LOG_MAX) },
+  ]);
+  return json({ ok: true, subtask: created[0], progress: await subtaskProgressOf(env, taskId) });
+}
+
+// POST /app/tasks/subtask/toggle — { task_id, id, done }. Marca/desmarca um item.
+export async function handleSubtaskTogglePost(req: Request, env: Env): Promise<Response> {
+  const auth = await subtaskAuth(req, env);
+  if (auth.denied) return auth.denied;
+  let body: { task_id?: string; id?: string; done?: unknown };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const taskId = (body.task_id || '').trim();
+  const subId = (body.id || '').trim();
+  if (!taskId || !subId) return json({ error: 'task_id and id required' }, 400);
+  const done = body.done === true;
+
+  const task = await getTaskById(env, taskId, auth.seePrivate);
+  if (!task) return json({ error: 'task not found' }, 404);
+  const r = await setSubtaskDone(env, taskId, subId, done, auth.actor, Date.now());
+  if (r === 'not-found') return json({ error: 'subtask not found' }, 404);
+  await logTaskActivity(env, taskId, auth.actor, [
+    { field: 'subtask', old_value: done ? 'concluída' : 'reaberta', new_value: r.title.slice(0, SUBTASK_LOG_MAX) },
+  ]);
+  return json({ ok: true, subtask: r, progress: await subtaskProgressOf(env, taskId) });
+}
+
+// POST /app/tasks/subtask/update — { task_id, id, title }. Renomeia um item.
+export async function handleSubtaskUpdatePost(req: Request, env: Env): Promise<Response> {
+  const auth = await subtaskAuth(req, env);
+  if (auth.denied) return auth.denied;
+  let body: { task_id?: string; id?: string; title?: string };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const taskId = (body.task_id || '').trim();
+  const subId = (body.id || '').trim();
+  if (!taskId || !subId) return json({ error: 'task_id and id required' }, 400);
+  const title = (typeof body.title === 'string' ? body.title : '').trim();
+  if (title.length < 1 || title.length > 200) return json({ error: 'title must be 1-200 chars' }, 400);
+
+  const task = await getTaskById(env, taskId, auth.seePrivate);
+  if (!task) return json({ error: 'task not found' }, 404);
+  const r = await retitleSubtask(env, taskId, subId, title);
+  if (r === 'not-found') return json({ error: 'subtask not found' }, 404);
+  await logTaskActivity(env, taskId, auth.actor, [
+    { field: 'subtask', old_value: 'renomeada', new_value: title.slice(0, SUBTASK_LOG_MAX) },
+  ]);
+  return json({ ok: true, subtask: r, progress: await subtaskProgressOf(env, taskId) });
+}
+
+// POST /app/tasks/subtask/delete — { task_id, id }. Remove um item (hard — não é nota,
+// não tem soft-delete próprio; o histórico guarda o título removido).
+export async function handleSubtaskDeletePost(req: Request, env: Env): Promise<Response> {
+  const auth = await subtaskAuth(req, env);
+  if (auth.denied) return auth.denied;
+  let body: { task_id?: string; id?: string };
+  try { body = await req.json(); } catch { return json({ error: 'invalid json' }, 400); }
+  const taskId = (body.task_id || '').trim();
+  const subId = (body.id || '').trim();
+  if (!taskId || !subId) return json({ error: 'task_id and id required' }, 400);
+
+  const task = await getTaskById(env, taskId, auth.seePrivate);
+  if (!task) return json({ error: 'task not found' }, 404);
+  const removed = await deleteSubtask(env, taskId, subId);
+  if (removed === 'not-found') return json({ error: 'subtask not found' }, 404);
+  await logTaskActivity(env, taskId, auth.actor, [
+    { field: 'subtask', old_value: 'removida', new_value: removed.title.slice(0, SUBTASK_LOG_MAX) },
+  ]);
+  return json({ ok: true, progress: await subtaskProgressOf(env, taskId) });
 }
 
 // ─────────────── Gestão de colunas do Kanban (spec 51) ───────────────
