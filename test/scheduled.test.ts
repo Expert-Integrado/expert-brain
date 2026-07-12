@@ -11,7 +11,7 @@ import { RESURFACE_DIGEST_META_KEY } from '../src/digest/resurface.js';
 // o OAuth provider / Durable Object.
 
 const E = env as any;
-const CRON_JOBS = ['backup', 'similar-repass', 'hygiene-digest', 'due-reminder'];
+const CRON_JOBS = ['backup', 'similar-repass', 'hygiene-digest', 'due-reminder', 'fleet-watchdog'];
 
 // Contexto forjado: coleta os waitUntil pra podermos aguardar o término.
 function fakeCtx() {
@@ -89,6 +89,57 @@ describe('runScheduled — dispatch por cron (spec 67)', () => {
     const { ctx, settle } = fakeCtx();
     runScheduled('*/5 * * * *', E, ctx);
     await settle();
+    expect(await lastBackupValue()).toBeNull();
+  });
+});
+
+describe('runScheduled — trigger consolidado "*/30 * * * *" (spec 80-frota-agentes/89)', () => {
+  beforeEach(async () => {
+    await clearCronKeys();
+  });
+
+  it('firing em :30 roda SÓ o watchdog — nenhum job diário dispara', async () => {
+    const { ctx, settle } = fakeCtx();
+    runScheduled('*/30 * * * *', E, ctx, Date.UTC(2026, 6, 14, 11, 30)); // terça 11:30 UTC
+    await settle();
+    expect(await E.GRAPH_CACHE.get('cron:fleet-watchdog:consecutive_failures')).toBe('0');
+    expect(await lastBackupValue()).toBeNull();
+    expect(await resurfaceDigestValue()).toBeNull();
+  });
+
+  it('firing segunda 05:00 UTC dispara watchdog + backup', async () => {
+    const { ctx, settle } = fakeCtx();
+    runScheduled('*/30 * * * *', E, ctx, Date.UTC(2026, 6, 13, 5, 0)); // segunda
+    await settle();
+    expect(await E.GRAPH_CACHE.get('cron:fleet-watchdog:consecutive_failures')).toBe('0');
+    const value = await lastBackupValue();
+    expect(value).not.toBeNull();
+    expect(JSON.parse(value!).ok).toBe(true);
+  });
+
+  it('firing 05:00 UTC que NÃO é segunda não gera backup', async () => {
+    const { ctx, settle } = fakeCtx();
+    runScheduled('*/30 * * * *', E, ctx, Date.UTC(2026, 6, 14, 5, 0)); // terça
+    await settle();
+    expect(await lastBackupValue()).toBeNull();
+  });
+
+  it('firing 08:00 UTC dispara o re-pass (cron:similar-repass zera)', async () => {
+    const { ctx, settle } = fakeCtx();
+    runScheduled('*/30 * * * *', E, ctx, Date.UTC(2026, 6, 14, 8, 0));
+    await settle();
+    expect(await E.GRAPH_CACHE.get('cron:similar-repass:consecutive_failures')).toBe('0');
+    expect(await lastBackupValue()).toBeNull();
+  });
+
+  it('firing 11:00 UTC dispara o fluxo diário (resurface + due-reminder), sem backup', async () => {
+    const { ctx, settle } = fakeCtx();
+    runScheduled('*/30 * * * *', E, ctx, Date.UTC(2026, 6, 14, 11, 0));
+    await settle();
+    const value = await resurfaceDigestValue();
+    expect(value).not.toBeNull();
+    expect(JSON.parse(value!).version).toBe(1);
+    expect(await E.GRAPH_CACHE.get('cron:due-reminder:consecutive_failures')).toBe('0');
     expect(await lastBackupValue()).toBeNull();
   });
 });

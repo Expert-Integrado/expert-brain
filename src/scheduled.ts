@@ -7,15 +7,20 @@ import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js
 import { runPushDigest } from './web/push.js';
 import { WATCHDOG_CRON, runFleetWatchdog } from './fleet-watchdog.js';
 
-// Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
-// wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
-// pelo controller.cron. Vive fora de src/index.ts pra ser testável sem carregar
-// o OAuth provider / Durable Object.
+// Dispatch do cron (specs/50-console-v2/67-backup-export.md, consolidado no spec
+// 80-frota-agentes/89): o Worker decide pelo controller.cron. Vive fora de
+// src/index.ts pra ser testável sem carregar o OAuth provider / Durable Object.
 //
-// Fail-safe deliberado: qualquer expressão desconhecida cai no fluxo diário
-// original (digest de tasks) — mudar o horário do digest no toml sem tocar aqui
-// não mata o lembrete; só a expressão EXATA do backup dispara o snapshot.
+// CONSOLIDAÇÃO (spec 89, incidente 12/07/2026): o plano free do Cloudflare limita
+// a CONTA a 5 cron triggers somando todos os Workers (erro 10072) — o 4º cron
+// deste Worker estourou o teto. O wrangler.toml agora registra UM único trigger
+// ("*/30 * * * *") e o braço do watchdog despacha os jobs de horário fixo por
+// relógio UTC (todos caem em minuto :00, que o */30 cobre): backup segunda 05:00,
+// re-pass 08:00, fluxo diário 11:00. Os braços por expressão exata continuam
+// (compat com toml antigo + testes); expressão desconhecida segue caindo no
+// fluxo diário original (fail-safe).
 export const BACKUP_CRON = '0 5 * * 1'; // segunda 05:00 UTC = 02:00 BRT
+const DAILY_CRON = '0 11 * * *'; // 08:00 BRT — digest de tasks + resurface + hygiene (segunda)
 
 // Contador de falhas consecutivas POR JOB de cron em KV (spec 70-grafo-higiene/76,
 // evoluindo o antigo spec 40-ops/43 que só cobria o due-reminder): sem isso, o
@@ -57,78 +62,78 @@ export async function trackCronOutcome(env: Env, job: string, ok: boolean, messa
   }
 }
 
-export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): void {
-  if (cron === BACKUP_CRON) {
-    // Falha de snapshot loga e NÃO derruba o resto: runSnapshot já captura os
-    // próprios erros (grava ok:false em meta.last_backup); o catch é cinto extra.
-    // trackCronOutcome por job (spec 76): r.ok vindo do PRÓPRIO runSnapshot conta
-    // como o resultado do job (ele já engoliu a exceção internamente); o catch
-    // cobre o caso ainda mais raro de o próprio .then explodir.
-    ctx.waitUntil(
-      runSnapshot(env)
-        .then(async (r) => {
-          console.log(
-            'backup',
-            JSON.stringify({ ok: r.ok, date: r.date, total_rows: r.total_rows, bytes: r.bytes, error: r.error ?? null })
-          );
-          await trackCronOutcome(env, 'backup', r.ok, r.error);
-        })
-        .catch(async (e) => {
-          console.error('backup failed', e);
-          await trackCronOutcome(env, 'backup', false, String((e as Error)?.message ?? e));
-        })
-    );
-    return;
-  }
-  // Watchdog da frota (spec 80-frota-agentes/89): braço EXATO obrigatório — se o
-  // */30 caísse no fail-safe diário, o digest de tasks dispararia 48x/dia. Alertas
-  // e retornos vão pro mesmo Telegram dos alertas de cron (no-op sem secrets).
-  if (cron === WATCHDOG_CRON) {
-    ctx.waitUntil(
-      runFleetWatchdog(env, Date.now())
-        .then(async (r) => {
-          if (r.alerts.length || r.recovered.length) {
-            console.log('fleet-watchdog', JSON.stringify({ checked: r.checked, alerts: r.alerts.length, recovered: r.recovered.length }));
-          }
-          for (const msg of [...r.alerts, ...r.recovered]) await sendTelegram(env, msg);
-          await trackCronOutcome(env, 'fleet-watchdog', true);
-        })
-        .catch(async (e) => {
-          console.error('fleet-watchdog failed', e);
-          await trackCronOutcome(env, 'fleet-watchdog', false, String((e as Error)?.message ?? e));
-        })
-    );
-    return;
-  }
-  // Re-pass das similar_edges (spec 70-grafo-higiene/72): braço próprio, ANTES
-  // do fail-safe diário. Expressão tem que existir no toml no MESMO deploy.
-  if (cron === REPASS_CRON) {
-    ctx.waitUntil(
-      runSimilarRepass(env, Date.now())
-        .then(async (r) => {
-          console.log('similar-repass', JSON.stringify(r));
-          await trackCronOutcome(env, 'similar-repass', true);
-        })
-        .catch(async (e) => {
-          console.error('similar-repass failed', e);
-          await trackCronOutcome(env, 'similar-repass', false, String((e as Error)?.message ?? e));
-        })
-    );
-    return;
-  }
+// Snapshot semanal de backup pro R2 (spec 67). Falha loga e NÃO derruba o resto:
+// runSnapshot já captura os próprios erros (grava ok:false em meta.last_backup);
+// o catch é cinto extra. trackCronOutcome por job (spec 76): r.ok vindo do PRÓPRIO
+// runSnapshot conta como o resultado do job (ele já engoliu a exceção internamente);
+// o catch cobre o caso ainda mais raro de o próprio .then explodir.
+function dispatchBackup(env: Env, ctx: ExecutionContext): void {
+  ctx.waitUntil(
+    runSnapshot(env)
+      .then(async (r) => {
+        console.log(
+          'backup',
+          JSON.stringify({ ok: r.ok, date: r.date, total_rows: r.total_rows, bytes: r.bytes, error: r.error ?? null })
+        );
+        await trackCronOutcome(env, 'backup', r.ok, r.error);
+      })
+      .catch(async (e) => {
+        console.error('backup failed', e);
+        await trackCronOutcome(env, 'backup', false, String((e as Error)?.message ?? e));
+      })
+  );
+}
+
+// Watchdog da frota (spec 80-frota-agentes/89): agente que provou cadência e ficou
+// mudo 2h+ alerta no Telegram — mesmo canal dos alertas de cron (no-op sem secrets).
+function dispatchWatchdog(env: Env, ctx: ExecutionContext, nowMs: number): void {
+  ctx.waitUntil(
+    runFleetWatchdog(env, nowMs)
+      .then(async (r) => {
+        if (r.alerts.length || r.recovered.length) {
+          console.log('fleet-watchdog', JSON.stringify({ checked: r.checked, alerts: r.alerts.length, recovered: r.recovered.length }));
+        }
+        for (const msg of [...r.alerts, ...r.recovered]) await sendTelegram(env, msg);
+        await trackCronOutcome(env, 'fleet-watchdog', true);
+      })
+      .catch(async (e) => {
+        console.error('fleet-watchdog failed', e);
+        await trackCronOutcome(env, 'fleet-watchdog', false, String((e as Error)?.message ?? e));
+      })
+  );
+}
+
+// Re-pass das similar_edges (spec 70-grafo-higiene/72).
+function dispatchRepass(env: Env, ctx: ExecutionContext, nowMs: number): void {
+  ctx.waitUntil(
+    runSimilarRepass(env, nowMs)
+      .then(async (r) => {
+        console.log('similar-repass', JSON.stringify(r));
+        await trackCronOutcome(env, 'similar-repass', true);
+      })
+      .catch(async (e) => {
+        console.error('similar-repass failed', e);
+        await trackCronOutcome(env, 'similar-repass', false, String((e as Error)?.message ?? e));
+      })
+  );
+}
+
+// Fluxo diário original: auto-cancel + hygiene digest (gate por cron/segunda) +
+// web push + lembrete de tasks. `cron` decide o gate do hygiene digest.
+function dispatchDaily(cron: string, env: Env, ctx: ExecutionContext, nowMs: number): void {
   // Auto-cancel opcional (spec 30-features/32 §4): no-op sem a env var. Braço
   // próprio de waitUntil — falha aqui não derruba o lembrete, e vice-versa.
   ctx.waitUntil(
-    runTaskAutocancel(env, Date.now())
+    runTaskAutocancel(env, nowMs)
       .then((r) => console.log('task-autocancel', JSON.stringify(r)))
       .catch((e) => console.error('task-autocancel failed', e))
   );
   // Digest de higiene do grafo (spec 70-grafo-higiene/73): só segunda, mensagem
   // PRÓPRIA no Telegram (sendTelegram é no-op seguro sem os secrets). Braço
   // isolado — falha aqui não derruba o lembrete de tasks nem o resurface.
-  if (shouldSendHygieneDigest(cron, Date.now())) {
+  if (shouldSendHygieneDigest(cron, nowMs)) {
     ctx.waitUntil(
-      buildHygieneDigest(env, Date.now())
+      buildHygieneDigest(env, nowMs)
         .then(async (text) => {
           await sendTelegram(env, text);
           await trackCronOutcome(env, 'hygiene-digest', true);
@@ -143,12 +148,12 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
   // quando há pendência (task vencendo/atrasada ou inbox). Braço próprio — falha
   // aqui não derruba o digest do Telegram, e vice-versa. No-op sem VAPID/assinaturas.
   ctx.waitUntil(
-    runPushDigest(env, Date.now())
+    runPushDigest(env, nowMs)
       .then((r) => console.log('push-digest', JSON.stringify(r)))
       .catch((e) => console.error('push-digest failed', e))
   );
   ctx.waitUntil(
-    runDueReminder(env, Date.now())
+    runDueReminder(env, nowMs)
       .then(async (r) => {
         console.log('due-reminder', JSON.stringify(r));
         await trackCronOutcome(env, 'due-reminder', true);
@@ -158,4 +163,33 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
         await trackCronOutcome(env, 'due-reminder', false, String((e as Error)?.message ?? e));
       })
   );
+}
+
+export function runScheduled(cron: string, env: Env, ctx: ExecutionContext, nowMs: number = Date.now()): void {
+  if (cron === BACKUP_CRON) {
+    dispatchBackup(env, ctx);
+    return;
+  }
+  // Trigger consolidado (spec 89): watchdog a cada firing + jobs de horário fixo
+  // despachados por relógio UTC quando o firing cai no minuto :00 deles. Braço
+  // EXATO obrigatório — se o */30 caísse no fail-safe diário, o digest de tasks
+  // dispararia 48x/dia.
+  if (cron === WATCHDOG_CRON) {
+    dispatchWatchdog(env, ctx, nowMs);
+    const d = new Date(nowMs);
+    if (d.getUTCMinutes() === 0) {
+      if (d.getUTCHours() === 5 && d.getUTCDay() === 1) dispatchBackup(env, ctx);
+      if (d.getUTCHours() === 8) dispatchRepass(env, ctx, nowMs);
+      // Passa DAILY_CRON (não o */30) pro gate do hygiene digest enxergar o
+      // fluxo diário legítimo — shouldSendHygieneDigest compara com a expressão.
+      if (d.getUTCHours() === 11) dispatchDaily(DAILY_CRON, env, ctx, nowMs);
+    }
+    return;
+  }
+  // Braço por expressão exata (compat com toml antigo), ANTES do fail-safe diário.
+  if (cron === REPASS_CRON) {
+    dispatchRepass(env, ctx, nowMs);
+    return;
+  }
+  dispatchDaily(cron, env, ctx, nowMs);
 }
