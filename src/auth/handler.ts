@@ -9,14 +9,21 @@ import { handleApp } from '../web/handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
 import { handleMailboxSummary, handleWhoami } from '../web/mailbox-api.js';
 import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from '../web/project-share.js';
+import { notFoundResponse, internalErrorResponse } from '../web/error-pages.js';
 
 export const authHandler = {
   async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname.startsWith('/app')) {
-      const res = await handleApp(req, env);
-      if (res) return res;
+      // Casca 5xx com id de correlação (spec 97): exceção num handler de página
+      // vira página com marca (o id vai junto pro log). APIs recebem texto puro.
+      try {
+        const res = await handleApp(req, env);
+        if (res) return res;
+      } catch (err) {
+        return internalErrorResponse(req, err);
+      }
     }
 
     // Rota PÚBLICA read-only de nota/task compartilhada (SEM auth). Vive fora de /app,
@@ -110,7 +117,8 @@ export const authHandler = {
       return renderLogin(null, url.search);
     }
 
-    return new Response('Não encontrado', { status: 404 });
+    // 404 com marca pra navegação HTML; texto puro pro resto (spec 97).
+    return notFoundResponse(req);
   },
 };
 

@@ -1175,6 +1175,23 @@ export const SURFACES_CSS = `
 .note-danger form { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 .note-danger-hint { color: var(--text-dim); font-size: 12.5px; }
 
+/* Páginas 404/5xx com marca (spec 97) — casca sem sessão, fora do shell. */
+.error-page { min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: var(--space-6); }
+.error-card { max-width: 460px; text-align: center; padding: var(--space-8) var(--space-6); background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-2); }
+.error-card .logo { justify-content: center; margin-bottom: var(--space-4); }
+.error-card h1 { font-family: var(--font-display); font-size: var(--text-xl); margin: 0 0 var(--space-3); }
+.error-card p { color: var(--text-dim); font-size: var(--text-sm); line-height: var(--leading-sm); margin: 0 0 var(--space-5); }
+.error-card .error-hint { margin: var(--space-5) 0 0; font-size: var(--text-xs); color: var(--text-subtle); }
+.error-card code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
+
+/* Modal de atalhos "?" (spec 97) — corpo gerado de SHORTCUT_DEFS. */
+.shortcuts-dialog { max-width: 420px; }
+.shortcuts-group h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-subtle); margin: var(--space-4) 0 var(--space-2); }
+.shortcuts-group:first-child h3 { margin-top: 0; }
+.shortcuts-row { display: flex; align-items: center; gap: var(--space-4); padding: 6px 0; }
+.shortcuts-row kbd { min-width: 72px; text-align: center; font-size: 12px; padding: 3px 8px; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text); font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.shortcuts-row span { color: var(--text-dim); font-size: var(--text-sm); }
+
 /* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
 .tax-swatch {
   width: 40px; height: 30px; padding: 2px;

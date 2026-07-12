@@ -15,6 +15,7 @@ import { loadMeta, type NoteMeta } from './meta-cache.js';
 import { toast } from './toast.js';
 import { wireAjaxForms } from './ajax-form.js';
 import { confirmModal } from './confirm-modal.js';
+import { SHORTCUT_DEFS, shortcutsModalHtml } from './shortcuts.js';
 
 interface Command {
   id: string;
@@ -532,20 +533,71 @@ function isTypingInInput(): boolean {
   return tag === 'input' || tag === 'textarea' || (el as HTMLElement).isContentEditable;
 }
 
+// Binds dirigidos por SHORTCUT_DEFS (spec 91/97) — a MESMA lista gera o modal
+// de ajuda ("?"): atalho novo entra em shortcuts.ts + uma ação aqui.
+const SHORTCUT_ACTIONS: Record<string, () => void> = {
+  palette: () => { if (open) close(); else openPalette(); },
+  sidebar: () => toggleSidebar(),
+  help: () => toggleShortcutsModal(),
+  graph: () => { window.location.href = '/app/graph'; },
+  notes: () => { window.location.href = '/app/notes'; },
+  tasks: () => { window.location.href = '/app/tasks'; },
+  config: () => { window.location.href = '/app/config'; },
+};
+
 function onKey(e: KeyboardEvent) {
   const meta = e.ctrlKey || e.metaKey;
+  // Ctrl+K é especial: funciona até com a palette aberta (toggle) e digitando.
   if (meta && e.key.toLowerCase() === 'k') {
     e.preventDefault();
-    if (open) close(); else openPalette();
+    SHORTCUT_ACTIONS.palette();
     return;
   }
   if (open) return;
   if (isTypingInInput()) return;
-  if (meta && e.key.toLowerCase() === 'g') { e.preventDefault(); window.location.href = '/app/graph'; }
-  else if (meta && e.key.toLowerCase() === 'n') { e.preventDefault(); window.location.href = '/app/notes'; }
-  else if (meta && e.key.toLowerCase() === 't') { e.preventDefault(); window.location.href = '/app/tasks'; }
-  else if (meta && e.key.toLowerCase() === 'b') { e.preventDefault(); toggleSidebar(); }
-  else if (meta && e.key === ',') { e.preventDefault(); window.location.href = '/app/config'; }
+  for (const s of SHORTCUT_DEFS) {
+    if (s.id === 'palette') continue;
+    const keyMatch = s.key.length === 1 && /[a-z]/.test(s.key) ? e.key.toLowerCase() === s.key : e.key === s.key;
+    if (keyMatch && (s.meta ? meta : !meta)) {
+      e.preventDefault();
+      SHORTCUT_ACTIONS[s.id]?.();
+      return;
+    }
+  }
+}
+
+// ─────────────── Modal de atalhos "?" (spec 91/97) ───────────────
+let shortcutsModal: HTMLDivElement | null = null;
+
+function toggleShortcutsModal() {
+  if (shortcutsModal) { closeShortcutsModal(); return; }
+  const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+  const modal = document.createElement('div');
+  modal.className = 'modal shortcuts-modal';
+  modal.setAttribute('role', 'dialog');
+  modal.setAttribute('aria-modal', 'true');
+  modal.setAttribute('aria-label', 'Atalhos do teclado');
+  modal.innerHTML = `
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog shortcuts-dialog">
+      <div class="modal-head"><strong>Atalhos do teclado</strong><button class="modal-x" type="button" aria-label="Fechar">✕</button></div>
+      <div class="modal-body">${shortcutsModalHtml(isMac)}</div>
+    </div>`;
+  modal.querySelector('.modal-backdrop')!.addEventListener('click', closeShortcutsModal);
+  modal.querySelector('.modal-x')!.addEventListener('click', closeShortcutsModal);
+  document.addEventListener('keydown', onShortcutsEsc, true);
+  document.body.appendChild(modal);
+  shortcutsModal = modal;
+}
+
+function closeShortcutsModal() {
+  shortcutsModal?.remove();
+  shortcutsModal = null;
+  document.removeEventListener('keydown', onShortcutsEsc, true);
+}
+
+function onShortcutsEsc(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.stopPropagation(); closeShortcutsModal(); }
 }
 
 function wireSidebarToggle() {

@@ -1,6 +1,6 @@
 # Descoberta de atalhos ("?") e páginas 404/erro com marca
 
-> **Status:** draft · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P2 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** nenhuma
 
 ## Contexto
@@ -51,11 +51,11 @@ marca e um caminho de volta.
 
 ## Critérios de aceite
 
-- [ ] `?` abre o cheatsheet em qualquer tela `/app/*`; `Esc` fecha; não dispara dentro de input/textarea/contenteditable.
-- [ ] Todo atalho listado no modal funciona, e todo bind do shell aparece no modal (fonte única).
-- [ ] `GET /app/rota-inexistente` autenticado: página 404 com marca, botão de volta, status 404 e `no-store`.
-- [ ] Exceção forçada num handler de página (teste): casca 5xx com marca, sem stack trace no HTML.
-- [ ] Rotas de API continuam respondendo texto/JSON como hoje (sem regressão de contrato).
+- [x] `?` abre o cheatsheet em qualquer tela `/app/*`; `Esc` fecha; não dispara dentro de input/textarea/contenteditable.
+- [x] Todo atalho listado no modal funciona, e todo bind do shell aparece no modal (fonte única).
+- [x] `GET /app/rota-inexistente` autenticado: página 404 com marca, botão de volta, status 404 e `no-store`.
+- [x] Exceção forçada num handler de página (teste): casca 5xx com marca, sem stack trace no HTML.
+- [x] Rotas de API continuam respondendo texto/JSON como hoje (sem regressão de contrato).
 
 ## Validação
 
@@ -75,3 +75,35 @@ marca e um caminho de volta.
 
 Baixo. O único cuidado real é o bind de `?` não sequestrar digitação (filtro de alvo).
 Reversão: remover o modal e devolver as duas `Response` de texto.
+
+## Nota de implementação (12/07/2026)
+
+Entregue conforme o design, com quatro desvios documentados:
+
+1. **Casca 404/5xx foi pra `src/web/error-pages.ts` (novo), não pra `layout.ts`** — a
+   spec apontava `layout.ts`, mas esse arquivo é o layout de FORÇAS DO GRAFO
+   (forceAtlas2), não de páginas. `error-pages.ts` exporta `notFoundResponse(req)` e
+   `internalErrorResponse(req, err)`: navegação (accept `text/html`) recebe página com
+   marca, logo, botão pra `/app` e hint do Ctrl+K; qualquer outro request (API, script,
+   monitor) segue recebendo texto puro — o contrato antigo é preservado por sniffing de
+   `accept`, sem tocar nas rotas de API.
+2. **A lista única de atalhos virou módulo folha** (`src/web/client/shortcuts.ts` com
+   `SHORTCUT_DEFS`, `isTypingTarget` e `shortcutsModalHtml`) em vez de constante dentro
+   do `shell.ts` — o shell é monolítico com side effects e não importa em teste jsdom;
+   o módulo folha é testável e o shell consome dele (binds do `onKey` + modal), então a
+   garantia "atalho novo aparece na ajuda de graça" vale igual.
+3. **Grupos do modal são Global/Navegação** (não Global/Board/Nota): os binds reais do
+   shell hoje são todos globais ou de navegação — não existe atalho por contexto de
+   board/nota pra agrupar.
+4. **Item "Atalhos no menu/config" coberto pelo próprio `?`** e pelo hint permanente da
+   página de erro; um item de menu dedicado ficou dispensado nesta rodada (o sidebar
+   não tem seção de ajuda e criar uma só pra isso seria UI nova fora do esforço S).
+5. **Catch do 5xx instalado nos DOIS entries** (`src/auth/handler.ts` prod e
+   `src/web/worker.ts` testes) em volta do `handleApp`, com id curto de correlação
+   (`crypto.randomUUID().slice(0,8)`) que sai no `console.error` e no corpo — sem stack
+   no HTML. O critério "exceção forçada" é coberto por unit test direto do
+   `internalErrorResponse` (test/web/error-pages.test.ts).
+
+Testes: `test/web/error-pages.test.ts` (5) e `test/client/shortcuts.test.ts` (5).
+Detalhe de ambiente: `isTypingTarget` checa o atributo `contenteditable` além de
+`isContentEditable` (jsdom não implementa a propriedade).

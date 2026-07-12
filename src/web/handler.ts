@@ -23,6 +23,7 @@ import { handleContactsSso } from './contacts-sso.js';
 import { handleReleasesPage } from './releases.js';
 import { handleUserCreatePost, handleUserUpdatePost, handleUserArchivePost, handleUserAvatarPost, handleUserAvatarGet, handleTaskAssigneesPost } from './users.js';
 import { NEBULA_CSS, THEME_BOOT_JS } from './styles.js';
+import { notFoundResponse } from './error-pages.js';
 
 export async function handleApp(req: Request, env: Env): Promise<Response | null> {
   const url = new URL(req.url);
@@ -368,5 +369,6 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
     });
   }
 
-  return new Response('Não encontrado', { status: 404 });
+  // 404 com marca pra navegação HTML; texto puro pra API/fetch (spec 97).
+  return notFoundResponse(req);
 }
