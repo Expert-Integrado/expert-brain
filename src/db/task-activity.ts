@@ -10,7 +10,8 @@ import { formatBrtDateTime } from '../util/time.js';
 // sincronia com os campos realmente logados por queries.ts e pelos handlers web.
 export type TaskActivityField =
   | 'created' | 'title' | 'body' | 'column' | 'priority' | 'due'
-  | 'tags' | 'project' | 'assignees' | 'visibility' | 'share' | 'status';
+  | 'tags' | 'project' | 'assignees' | 'visibility' | 'share' | 'status'
+  | 'subtask';
 
 export interface TaskActivityEntry {
   id: number;

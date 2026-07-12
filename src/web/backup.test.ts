@@ -79,8 +79,8 @@ describe('GET /app/export', () => {
 
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
-    // Bump pra 0028 (spec 99 — índices de janela temporal do insights).
-    expect(manifest.schema_version).toBe('0028_insights_indexes');
+    // Bump pra 0029 (spec 38 — subtarefas/checklist de task).
+    expect(manifest.schema_version).toBe('0029_task_subtasks');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {

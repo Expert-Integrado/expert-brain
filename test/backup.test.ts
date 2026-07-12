@@ -112,7 +112,9 @@ const FIXTURE_COUNTS: Record<string, number> = {
   push_subscriptions: 0,
   // spec 88 adicionou 0027 (claim/lease + kind de comentário) — só ALTERs, sem
   // tabela nova. Spec 99 adicionou 0028 (índices de janela temporal do insights).
-  _migrations: 28,
+  // Spec 38 adicionou 0029 (task_subtasks) — entra vazia no fixture.
+  task_subtasks: 0,
+  _migrations: 29,
 };
 
 beforeAll(async () => {
@@ -144,8 +146,8 @@ describe('snapshot — dump e manifest (spec 67)', () => {
       for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
     }
     // Versão do schema = último id de _migrations; mídia só REFERENCIADA (keys).
-    // Bump pra 0028 (spec 99 — índices de janela temporal do insights).
-    expect(manifest.schema_version).toBe('0028_insights_indexes');
+    // Bump pra 0029 (spec 38 — subtarefas/checklist de task).
+    expect(manifest.schema_version).toBe('0029_task_subtasks');
     expect(manifest.media_r2_keys).toEqual(['sha256/feedface.jpg']);
     expect(manifest.created_at).toBe(NOW);
   });

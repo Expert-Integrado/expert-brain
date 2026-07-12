@@ -580,6 +580,30 @@ const MIGRATION_0028_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_task_activity_at ON task_activity(at)`,
 ];
 
+// 0029 — subtarefas/checklist dentro de uma task (spec 30-features/38). Tabela
+// FILHA no molde de task_comments: não é nota (não embeda, não entra em grafo/
+// recall), cascateia no hard-delete e os read paths filtram a task viva via JOIN
+// (soft-delete não cascateia de propósito — restore_note traz o checklist de
+// volta intacto). `done_at` é o ÚNICO marcador de estado (sem boolean redundante:
+// NULL = aberta, timestamp = feita e quando). `done_by`/`created_by` seguem o
+// formato writeActor ('oauth:<email>' | id de PAT) — mesma convenção de autoria
+// dono-vs-agente das notas e do dashboard de insights (spec 99). `position` é
+// append-only (max+1); reordenação ficou fora da v1. Cap de 100 itens por task
+// vive em código (MAX_SUBTASKS_PER_TASK em src/db/subtasks.ts).
+const MIGRATION_0029_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS task_subtasks (
+    id         TEXT PRIMARY KEY,
+    task_id    TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
+    position   INTEGER NOT NULL,
+    done_at    INTEGER,
+    done_by    TEXT,
+    created_by TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_subtasks_task ON task_subtasks(task_id, position)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -609,6 +633,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0026_push_subscriptions', stmts: MIGRATION_0026_STMTS },
   { id: '0027_fleet_claim_comment_kind', stmts: MIGRATION_0027_STMTS },
   { id: '0028_insights_indexes', stmts: MIGRATION_0028_STMTS },
+  { id: '0029_task_subtasks', stmts: MIGRATION_0029_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor
