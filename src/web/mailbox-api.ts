@@ -7,7 +7,8 @@
 // intocado — ack é ato explícito da instância depois de AGIR (ack_mailbox).
 
 import type { Env } from '../env.js';
-import { validateApiKey, hasScope } from '../auth/api-keys.js';
+import { validateApiKey } from '../auth/api-keys.js';
+import { scopesSeePrivate } from '../auth/visibility.js';
 import { getUserByApiKeyId } from '../db/queries.js';
 import { countMailboxUnread } from '../db/mailbox.js';
 import type { MailboxKind } from '../db/mailbox.js';
@@ -95,7 +96,7 @@ export async function handleMailboxWait(req: Request, env: Env): Promise<Respons
   // ?timeout=<s> clampado 0–25; ausente = 25. timeout=0 vira check único imediato.
   const raw = new URL(req.url).searchParams.get('timeout');
   const timeoutS = raw === null ? WAIT_MAX_TIMEOUT_S : Math.min(Math.max(Number(raw) || 0, 0), WAIT_MAX_TIMEOUT_S);
-  const seePrivate = hasScope(v.scopes, 'private');
+  const seePrivate = scopesSeePrivate(v.scopes, false);
   const { unread, waitedMs } = await waitForUnread(
     () => countMailboxUnread(env, user.id, seePrivate),
     timeoutS * 1000,
@@ -119,7 +120,7 @@ export async function handleMailboxSummary(req: Request, env: Env): Promise<Resp
 
   // 1 query no índice idx_mailbox_unread: top 5 + total via window function (o
   // count(*) OVER () é computado ANTES do LIMIT — total de não-lidos, não 5).
-  const priv = hasScope(v.scopes, 'private') ? '' : ' AND n.private = 0';
+  const priv = scopesSeePrivate(v.scopes, false) ? '' : ' AND n.private = 0';
   const r = await env.DB.prepare(
     `SELECT m.kind, m.task_id, m.created_at, n.title AS task_title, count(*) OVER () AS unread_total
      FROM mailbox_items m

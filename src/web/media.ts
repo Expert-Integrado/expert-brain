@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { authorizeBearer } from './bearer-auth.js';
 import { validateApiKey, hasScope } from '../auth/api-keys.js';
+import { scopesSeePrivate } from '../auth/visibility.js';
 import { getNoteById } from '../db/queries.js';
 import {
   attachMedia, listMediaViews, removeMedia, fetchBlob, getMediaById, verifyMediaToken,
@@ -36,8 +37,9 @@ async function authReq(req: Request, env: Env, write = false): Promise<MediaAuth
   return s.ok ? { level: 'owner' } : s.response;
 }
 
+// Delegado ao núcleo único (auth/visibility.ts, spec 91) — antes era cópia local.
 function canSeePrivate(auth: MediaAuth): boolean {
-  return auth.level === 'owner' || hasScope(auth.scopes, 'private');
+  return scopesSeePrivate(auth.level === 'pat' ? auth.scopes : undefined, auth.level === 'owner');
 }
 
 // Gate de privacidade do caminho PAT (fail-closed, espelha recall/get_note): nota
