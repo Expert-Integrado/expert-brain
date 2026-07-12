@@ -1251,6 +1251,11 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       </button>
     </div>
     ${formErrorBanner(url)}
+    ${columns.every((c) => c.tasks.length === 0) ? `<div class="empty-state tasks-empty-state">
+      <p class="empty-state-title">Nenhuma task ainda</p>
+      <p>O board organiza o que você e seus agentes estão tocando — comece pela primeira.</p>
+      <button type="button" class="btn btn-primary" data-click-proxy="task-new-btn">Criar primeira tarefa</button>
+    </div>` : ''}
 
     <div class="task-toolbar" role="toolbar" aria-label="Filtros de tarefas">
       <input type="search" class="task-search" id="task-search" placeholder="Buscar por título, descrição ou tag…"

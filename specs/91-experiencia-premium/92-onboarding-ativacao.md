@@ -1,6 +1,6 @@
 # Onboarding e ativação: checklist "Comece aqui" + empty states guiados
 
-> **Status:** draft · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma dura (usa `.empty-state` da `60-ux-reforma/64`; coordena com `91-experiencia-premium/93`)
 
 ## Contexto
@@ -70,12 +70,19 @@ capturada sem abrir documentação externa.
 
 ## Critérios de aceite
 
-- [ ] Vault zerado (seed vazio no wrangler dev): home mostra o card "Comece aqui" com os 4 passos pendentes.
-- [ ] Conectar uma chave e usá-la 1x marca o passo 1 sem nenhuma ação manual.
-- [ ] Card some quando os 4 passos completam; dismiss manual persiste entre sessões.
-- [ ] `/app/notes`, `/app/tasks`, `/app/graph` e `/app/contacts` vazios renderizam `.empty-state` com CTA funcional (nada de parágrafo cru).
-- [ ] Vault populado: nenhuma regressão visual nas 4 telas (empty state não aparece).
-- [ ] Zero requisição externa nova; zero migration.
+- [x] Vault zerado (seed vazio no wrangler dev): home mostra o card "Comece aqui" com os 4 passos pendentes.
+- [x] Conectar uma chave e usá-la 1x marca o passo 1 sem nenhuma ação manual (derivado de `api_keys.last_used_at`).
+- [x] Card some quando os 4 passos completam; dismiss manual persiste entre sessões (flag `startDismissed` no blob `home_prefs`, preservada pelo save de layout).
+- [x] `/app/notes`, `/app/tasks`, `/app/graph` e `/app/contacts` vazios renderizam `.empty-state` com CTA funcional (nada de parágrafo cru). Grafo/contatos: overlay central no client (0 nós), CTA clicável.
+- [x] Vault populado: nenhuma regressão visual nas 4 telas (empty state não aparece; suite completa verde).
+- [x] Zero requisição externa nova; zero migration.
+
+> Implementado em 12/07/2026: `getActivationState`/`renderStartHereCard` em home.ts (1 query
+> derivada), dismiss via `POST /app/home/start-dismiss` + flag em home-prefs, CTAs dos empty
+> states via delegação `data-click-proxy` no shell (reusa os botões "+ Nova nota"/"Nova tarefa"
+> já wireados). Testes em `test/web/onboarding.test.ts`. Item 3 (wizard.ts): o
+> `renderNotConfigured` atual JÁ cumpre o objetivo — marca via BASE_CSS + passos concretos de
+> setup pelo agente — nenhum retoque necessário nesta rodada.
 
 ## Validação
 

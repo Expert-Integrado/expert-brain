@@ -303,7 +303,12 @@ export async function handleNotesList(req: Request, env: Env): Promise<Response>
       </div>
     </div>
 
-    ${total === 0 ? '<p style="color:var(--text-dim)">Nenhuma nota ainda.</p>' : ''}
+    ${total === 0 ? `<div class="empty-state notes-empty-state">
+      <p class="empty-state-title">Nenhuma nota ainda</p>
+      <p>Seu cérebro nasce da primeira captura — uma ideia, uma decisão, um insight.</p>
+      <button type="button" class="btn btn-primary" data-click-proxy="notes-new-btn">Criar primeira nota</button>
+      <p class="empty-state-hint">Ou peça pro seu agente salvar: ele grava direto por aqui via MCP.</p>
+    </div>` : ''}
     <div id="notes-list" data-layout="cards">${ssrItems}</div>
     ${loadMoreHtml}
 

@@ -543,6 +543,15 @@ export const COMPONENTS_CSS = `
   font-size: var(--text-sm);
   text-align: center;
 }
+/* Empty states guiados (spec 91/92): título + frase + CTA + dica. */
+.empty-state-title { font-family: var(--font-display); font-size: 17px; color: var(--text); margin: 0 0 6px; }
+.empty-state .btn { margin-top: 10px; }
+.empty-state-hint { font-size: 12px; color: var(--text-subtle); margin-top: 10px; }
+.notes-empty-state, .tasks-empty-state { margin: 8px 0 16px; }
+/* Grafo/contatos com 0 nós: o box central vira mensagem clicável (o
+   .center-loading padrão é pointer-events:none pro canvas continuar arrastável). */
+.center-loading.graph-empty { pointer-events: auto; }
+.center-loading.graph-empty p { margin: 0; max-width: 360px; }
 .skeleton {
   border-radius: var(--radius-sm);
   background: linear-gradient(100deg, var(--surface-0) 40%, var(--surface-1) 50%, var(--surface-0) 60%);

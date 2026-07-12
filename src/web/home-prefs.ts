@@ -31,10 +31,13 @@ export const HOME_BOX_DEFAULTS: Record<HomeBoxKey, number> = {
 // Alturas por caixa (chave ausente = default do CSS).
 export type HomePrefs = Partial<Record<HomeBoxKey, number>>;
 
-// Estado completo persistido: alturas + ordem das caixas (null = ordem default).
+// Estado completo persistido: alturas + ordem das caixas (null = ordem default)
+// + dismiss do card "Comece aqui" (spec 91/92 — o card de ativação some manual
+// mesmo com passos pendentes; concluir os 4 passos também o esconde, derivado).
 export interface HomePrefsState {
   heights: HomePrefs;
   order: HomeBoxKey[] | null;
+  startDismissed: boolean;
 }
 
 const clampBox = (v: unknown): number | null => {
@@ -52,9 +55,10 @@ export function sanitizeHomePrefs(raw: unknown): HomePrefsState | null {
   if (!raw || typeof raw !== 'object') return null;
   const heightsRaw = (raw as Record<string, unknown>).heights;
   const orderRaw = (raw as Record<string, unknown>).order;
+  const startDismissed = (raw as Record<string, unknown>).startDismissed === true;
   const hasHeights = !!heightsRaw && typeof heightsRaw === 'object';
   const hasOrder = Array.isArray(orderRaw);
-  if (!hasHeights && !hasOrder) return null;
+  if (!hasHeights && !hasOrder && !startDismissed) return null;
 
   const heights: HomePrefs = {};
   if (hasHeights) {
@@ -78,12 +82,12 @@ export function sanitizeHomePrefs(raw: unknown): HomePrefsState | null {
     order = o;
   }
 
-  return { heights, order };
+  return { heights, order, startDismissed };
 }
 
 // Lê as prefs salvas; estado vazio (defaults) se nada salvo/ilegível.
 export async function getHomePrefs(env: Env): Promise<HomePrefsState> {
-  const empty: HomePrefsState = { heights: {}, order: null };
+  const empty: HomePrefsState = { heights: {}, order: null, startDismissed: false };
   const row = await env.DB.prepare(`SELECT value FROM meta WHERE key = ?`)
     .bind(HOME_PREFS_META_KEY).first<{ value: string }>();
   if (!row?.value) return empty;
@@ -104,8 +108,26 @@ export async function handleHomePrefsPost(req: Request, env: Env): Promise<Respo
   if (state === null) {
     return new Response(JSON.stringify({ error: 'invalid prefs' }), { status: 400, headers: { 'content-type': 'application/json' } });
   }
+  // O client de layout só manda heights/order — preserva o dismiss do "Comece
+  // aqui" já salvo (spec 92), senão arrastar uma caixa ressuscitava o card.
+  if ((body as Record<string, unknown>).startDismissed === undefined) {
+    state.startDismissed = (await getHomePrefs(env)).startDismissed;
+  }
   await env.DB.prepare(
     `INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
   ).bind(HOME_PREFS_META_KEY, JSON.stringify(state)).run();
   return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
+}
+
+// POST /app/home/start-dismiss — form nativo (CSP-safe) do card "Comece aqui"
+// (spec 91/92): marca o dismiss no MESMO blob do layout e volta pra home.
+export async function handleStartDismissPost(req: Request, env: Env): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+  const state = await getHomePrefs(env);
+  state.startDismissed = true;
+  await env.DB.prepare(
+    `INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).bind(HOME_PREFS_META_KEY, JSON.stringify(state)).run();
+  return new Response(null, { status: 302, headers: { location: '/app' } });
 }

@@ -565,6 +565,21 @@ function wireSearchTriggers() {
   });
 }
 
+// CTA proxy dos empty states (spec 91/92): botão marcado com
+// data-click-proxy="<id>" dispara o click do elemento com aquele id (ex.: o
+// "Criar primeira nota" reusa o fluxo do botão "+ Nova nota" já wireado pelo
+// bundle da página) — CSP-safe, sem duplicar lógica de modal.
+function wireClickProxies() {
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.('[data-click-proxy]') as HTMLElement | null;
+    if (!btn) return;
+    const target = document.getElementById(btn.dataset.clickProxy ?? '');
+    if (!target || target === btn) return;
+    e.preventDefault();
+    target.click();
+  });
+}
+
 function escText(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     switch (c) {
@@ -582,6 +597,7 @@ ensurePalette();
 wire();
 wireSidebarToggle();
 wireSearchTriggers();
+wireClickProxies();
 wireAjaxForms();
 window.addEventListener('keydown', onKey);
 // loadNotes() removido do boot (spec 23): o meta agora carrega lazy na 1ª abertura

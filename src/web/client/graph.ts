@@ -193,6 +193,25 @@ async function main() {
 
   renderLegend(payload.nodes, taxonomy);
 
+  // Empty state guiado (spec 91/92): 0 nós era um canvas escuro mudo. Vira a
+  // mensagem central com CTA — reusa o box do loading (já centralizado no palco)
+  // e para por aqui: sem nó não há o que simular/renderizar.
+  if (payload.nodes.length === 0) {
+    const box = document.getElementById('graph-center-loading');
+    if (box) {
+      box.classList.remove('hidden');
+      box.classList.add('graph-empty');
+      box.innerHTML = isContacts
+        ? '<div class="empty-state-title">Nenhum contato ainda</div>' +
+          '<p>O vault de contatos é alimentado pelo seu agente (integração de contatos).</p>' +
+          '<a class="btn btn-primary" href="/app/config#panel-integracoes">Ver integrações</a>'
+        : '<div class="empty-state-title">Seu grafo nasce da segunda nota</div>' +
+          '<p>Cada nota vira um nó; as ligações aparecem quando as ideias se conectam.</p>' +
+          '<a class="btn btn-primary" href="/app/notes">Criar primeira nota</a>';
+    }
+    return;
+  }
+
   // ────────────────────────────────────────────────────────────────────────
   // Sigma renderer — label thresholds deliberately conservative so labels
   // ONLY appear on hover or when the camera zooms deep into a cluster. The

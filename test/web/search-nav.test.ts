@@ -48,9 +48,12 @@ describe('gatilhos da palette sem teclado (spec 93)', () => {
     expect(nav).toMatch(/<button[^>]*data-cmd-open/);
   });
 
-  it('shell inteiro segue com exatamente 2 gatilhos (sidebar + bottom-nav)', async () => {
+  it('sidebar e bottom-nav têm exatamente 1 gatilho cada (páginas podem somar CTAs próprios)', async () => {
     const res = await SELF.fetch('https://x.test/app/notes', { headers: { cookie: await authCookie() } });
     const html = await res.text();
-    expect(html.split('data-cmd-open').length - 1).toBe(2);
+    const sidebar = html.slice(html.indexOf('<aside class="sidebar"'), html.indexOf('</aside>'));
+    const nav = html.slice(html.indexOf('<nav class="bottom-nav"'), html.indexOf('</nav>'));
+    expect(sidebar.split('data-cmd-open').length - 1).toBe(1);
+    expect(nav.split('data-cmd-open').length - 1).toBe(1);
   });
 });

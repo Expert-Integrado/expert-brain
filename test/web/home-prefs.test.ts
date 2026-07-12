@@ -99,7 +99,7 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(clear.status).toBe(200);
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value)).toEqual({ heights: {}, order: null });
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, order: null, startDismissed: false });
   });
 
   it('body inválido → 400', async () => {

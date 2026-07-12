@@ -4,7 +4,7 @@ import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePo
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
 import { handleHomePage } from './home.js';
-import { handleHomePrefsPost } from './home-prefs.js';
+import { handleHomePrefsPost, handleStartDismissPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
 import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
@@ -35,6 +35,8 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if ((path === '/app' || path === '/app/') && req.method === 'GET') return handleHomePage(req, env);
   // Alturas das caixas da home (Onda 9, spec 71) — persistidas por dono na meta.
   if (path === '/app/home/prefs' && req.method === 'POST') return handleHomePrefsPost(req, env);
+  // Dismiss do card 'Comece aqui' (spec 92) — form nativo, CSP-safe.
+  if (path === '/app/home/start-dismiss' && req.method === 'POST') return handleStartDismissPost(req, env);
   if (path === '/app/login' && req.method === 'GET') return handleLoginGet(req);
   if (path === '/app/login' && req.method === 'POST') return handleLoginPost(req, env);
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);

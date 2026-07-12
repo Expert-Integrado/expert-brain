@@ -117,6 +117,28 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
 }
 .home-card:hover .home-resize::after, .home-activity:hover .home-resize::after,
 .home-resize.active::after { opacity: .9; background: var(--accent-lav); }
+/* Card "Comece aqui" (spec 92): checklist de ativação acima do grid. */
+.start-here { margin-bottom: 18px; }
+.start-here h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; }
+.start-here h2 form { margin: 0; }
+.start-dismiss {
+  background: none; border: none; color: var(--text-subtle); font-size: 11.5px;
+  font-family: inherit; cursor: pointer; padding: 2px 4px;
+}
+.start-dismiss:hover { color: var(--text-dim); }
+.start-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; counter-reset: none; }
+.start-step { display: flex; align-items: center; gap: 10px; font-size: 13.5px; line-height: 1.45; }
+.start-check {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  border: 1px solid var(--border-strong); display: inline-flex; align-items: center;
+  justify-content: center; font-size: 12px; color: var(--ok, #34d399);
+}
+.start-step-done .start-check { border-color: var(--ok, #34d399); }
+.start-step-done .start-step-body { color: var(--text-subtle); text-decoration: line-through; }
+.start-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.start-hint { font-size: 12px; color: var(--text-subtle); overflow-wrap: anywhere; }
+.start-hint code { font-size: 11px; }
+.start-step .btn { flex-shrink: 0; }
 `;
 
 // Atributos do ALVO DE ALTURA (o elemento que recebe --home-card-h): identidade da
@@ -134,6 +156,65 @@ const itemAttr = (box: HomeBoxKey): string => ` data-home-item="${box}"`;
 // Alça de redimensionamento (borda de baixo). aria-hidden: interação de ponteiro;
 // o teclado tem o fallback natural (o conteúdo rola de qualquer jeito).
 const resizeHandle = '<div class="home-resize" aria-hidden="true"></div>';
+
+// ── Card "Comece aqui" (spec 91/92) ─────────────────────────────────────────
+// Ativação SEM tabela nova: os 4 passos são DERIVADOS dos dados que já existem.
+// agent = alguma chave de API já foi USADA (conectar sem usar não conta);
+// note = alguma nota viva que não é task; install = assinatura de push como
+// proxy de "instalou o PWA"; task = alguma task viva.
+export interface ActivationState {
+  agent: boolean;
+  note: boolean;
+  install: boolean;
+  task: boolean;
+}
+
+export async function getActivationState(env: Env): Promise<ActivationState> {
+  const row = await env.DB.prepare(
+    `SELECT
+      EXISTS(SELECT 1 FROM api_keys WHERE last_used_at IS NOT NULL) AS agent,
+      EXISTS(SELECT 1 FROM notes WHERE kind != 'task' AND deleted_at IS NULL) AS note,
+      EXISTS(SELECT 1 FROM push_subscriptions) AS install,
+      EXISTS(SELECT 1 FROM notes WHERE kind = 'task' AND deleted_at IS NULL) AS task`
+  ).first<{ agent: number; note: number; install: number; task: number }>();
+  return {
+    agent: row?.agent === 1,
+    note: row?.note === 1,
+    install: row?.install === 1,
+    task: row?.task === 1,
+  };
+}
+
+// Card do checklist de ativação. Some sozinho quando os 4 passos completam
+// (retorna '') — o dismiss manual é decidido pelo caller (home-prefs).
+// origin = origem da instância (o comando de conexão do agente é copiável).
+export function renderStartHereCard(state: ActivationState, origin: string): string {
+  if (state.agent && state.note && state.install && state.task) return '';
+  const step = (done: boolean, title: string, ctaHtml: string, hint = '') =>
+    `<li class="start-step${done ? ' start-step-done' : ''}">
+      <span class="start-check" aria-hidden="true">${done ? '✓' : ''}</span>
+      <span class="start-step-body"><strong>${title}</strong>${hint ? `<span class="start-hint">${hint}</span>` : ''}</span>
+      ${done ? '' : ctaHtml}
+    </li>`;
+  return `<section class="card start-here" id="start-here">
+    <h2>Comece aqui
+      <form method="post" action="/app/home/start-dismiss"><button type="submit" class="start-dismiss" title="Dispensar este card" aria-label="Dispensar o card Comece aqui">dispensar ✕</button></form>
+    </h2>
+    <ol class="start-steps">
+      ${step(state.agent, 'Conecte seu primeiro agente',
+        `<a class="btn btn-sm" href="/app/config#api-keys">criar chave</a>`,
+        `no seu Claude Code: <code>claude mcp add --transport http expert-brain ${esc(origin)}/mcp</code>`)}
+      ${step(state.note, 'Capture sua primeira nota',
+        `<button type="button" class="btn btn-sm" data-cmd-open>capturar</button>`,
+        'pela busca (Ctrl+K), pelo card Inbox ou peça pro seu agente salvar')}
+      ${step(state.install, 'Instale no celular',
+        `<a class="btn btn-sm" href="/app/config#pwa-install">instalar</a>`,
+        'PWA com compartilhamento direto pro inbox e lembrete diário')}
+      ${step(state.task, 'Crie sua primeira task',
+        `<a class="btn btn-sm" href="/app/tasks">abrir o board</a>`)}
+    </ol>
+  </section>`;
+}
 
 function taskWhenHtml(t: TaskRow, now: number): string {
   if (t.due_at === null) return '';
@@ -247,11 +328,23 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   const now = Date.now();
 
   // Layout salvo das caixas (Onda 9b) — falha na leitura degrada pros defaults.
-  let prefsState: HomePrefsState = { heights: {}, order: null };
+  let prefsState: HomePrefsState = { heights: {}, order: null, startDismissed: false };
   try { prefsState = await getHomePrefs(env); } catch (e) {
     console.error('home: falha ao ler home_prefs (defaults aplicados)', e);
   }
   const prefs = prefsState.heights;
+
+  // Card "Comece aqui" (spec 92): acima do grid, fora do sistema de caixas
+  // arrastáveis (é temporário por natureza). Falha na derivação NÃO vira card de
+  // erro — ativação é acessório, a home nunca piora por causa dele.
+  let startHereHtml = '';
+  if (!prefsState.startDismissed) {
+    try {
+      startHereHtml = renderStartHereCard(await getActivationState(env), new URL(req.url).origin);
+    } catch (e) {
+      console.error('home: falha ao derivar o checklist de ativação (card omitido)', e);
+    }
+  }
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
@@ -312,6 +405,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
 
   const body = `
     <div class="page-header"><h1>Início</h1><span class="home-arrange-hint">arraste pelo título pra reorganizar · puxe a borda de baixo pra redimensionar</span></div>
+    ${startHereHtml}
     <div class="home-grid">
       ${gridHtml}
     </div>
