@@ -46,6 +46,9 @@ import {
   TASK_PROJECT_CAP,
   listAssigneesForTasks,
   getOwnerUser,
+  listUsers,
+  claimActive,
+  listAwaitingOwnerBanner,
 } from '../db/queries.js';
 import { renameTag, deleteTag } from '../db/tag-admin.js';
 import { produceCommentMailbox, getBoardMailboxInfo } from '../db/mailbox.js';
@@ -55,7 +58,7 @@ import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, type AssigneeDot } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -96,6 +99,9 @@ interface TaskView {
   search_text: string; // título + descrição + tags, minúsculo e sem acento — busca client-side (Onda 8)
   assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
   mention_me: boolean; // menção NÃO-LIDA ao dono nesta task (spec 82) — filtro "menções a mim"
+  // Claim/lease ATIVO (spec 88/89): quem está trabalhando AGORA e até quando —
+  // chip no card. null = livre (inclui lease vencido, filtrado no buildBoard).
+  claim: ClaimChip | null;
 }
 
 // Texto de busca do card (Onda 8): título + corpo (quando não é eco do título) +
@@ -112,7 +118,7 @@ export function visibleTags(tags: string[]): string[] {
   return tags.filter((t) => !t.startsWith('dedupe:'));
 }
 
-function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = [], mentionMe = false): TaskView {
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = [], mentionMe = false, claim: ClaimChip | null = null): TaskView {
   const due = t.due_at ?? null;
   const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
@@ -141,6 +147,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], 
     ).slice(0, 800),
     assignees,
     mention_me: mentionMe,
+    claim,
   };
 }
 
@@ -170,6 +177,9 @@ interface BoardPayload {
   projects: BoardProject[];
   // Mailbox (spec 82): contagem de não-lidas por usuário (badge da toolbar).
   mailbox_unread: Array<{ id: string; name: string; count: number }>;
+  // "Aguardando você" (spec 89): tasks com bloqueio pendente de resposta do dono —
+  // banner acima do board (fila de aprovações da frota). Ordem: bloqueio mais antigo primeiro.
+  awaiting: AwaitingItem[];
 }
 
 // Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
@@ -179,14 +189,22 @@ interface BoardPayload {
 // cuja categoria não tem NENHUMA coluna ativa (ex.: canceladas com col_cancelado
 // arquivado) simplesmente não renderizam, mantendo o comportamento histórico do board.
 async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
-  const [activeCols, active, closed, allProjects] = await Promise.all([
+  const [activeCols, active, closed, allProjects, allUsers, awaiting] = await Promise.all([
     listKanbanColumns(env, false),
     // includePrivate=true (spec 59): o board é superfície do dono (sessão OU bearer de
     // tasks) — mostra task privada com badge 🔒. O gate por escopo é dos read paths MCP.
     listActiveTasks(env, true),
     listRecentClosedTasks(env, 100, true),
     listTaskProjects(env, true),
+    // Usuários (spec 89): resolver claimed_by → nome pro chip de claim do card.
+    listUsers(env, true),
+    // "Aguardando você" (spec 89): best-effort — o board nunca quebra por causa disto.
+    listAwaitingOwnerBanner(env).catch((err) => {
+      console.error('awaiting-owner: banner do board falhou (best-effort):', err instanceof Error ? err.message : err);
+      return [];
+    }),
   ]);
+  const userNameById = new Map(allUsers.map((u) => [u.id, u.name]));
   const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
   // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
   const defaultByCat = new Map<string, KanbanColumn>();
@@ -220,7 +238,11 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     if (assigned && assigned.category === status) colId = assigned.id;
     else colId = defaultByCat.get(status)?.id ?? null;
     const tags = visibleTags(tagsById.get(t.id) ?? []);
-    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? [], mailboxInfo.ownerMentionTaskIds.has(t.id)));
+    // Chip de claim (spec 89): só claim ATIVO (lease vencido = livre = null).
+    const claim: ClaimChip | null = claimActive(t, now)
+      ? { name: userNameById.get(t.claimed_by!) ?? t.claimed_by!, expires_brt: formatBrtShort(t.claim_expires_at!) }
+      : null;
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? [], mailboxInfo.ownerMentionTaskIds.has(t.id), claim));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -239,7 +261,14 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     color: p.color,
     archived: p.archived_at !== null,
   }));
-  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser };
+  const awaitingViews: AwaitingItem[] = awaiting.map((a) => ({
+    id: a.id,
+    title: a.title,
+    block_body: a.block_body,
+    block_author: a.block_author,
+    block_at_brt: formatBrtShort(a.block_at),
+  }));
+  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser, awaiting: awaitingViews };
 }
 
 // Total de tasks abertas (categorias open + in_progress) no board — pro contador do
@@ -266,8 +295,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const { columns, projects, mailbox_unread } = await buildBoard(env, now);
-  return json({ now, columns, projects, mailbox_unread });
+  const { columns, projects, mailbox_unread, awaiting } = await buildBoard(env, now);
+  return json({ now, columns, projects, mailbox_unread, awaiting });
 }
 
 // POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
@@ -1131,7 +1160,7 @@ function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): st
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''}>
     <div class="task-card-top"><a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a></div>
     ${cardProjectCrumb(v, projectsById)}
-    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}${assigneeDotsHtml(v.assignees)}</div>
+    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}${claimChipHtml(v.claim)}${assigneeDotsHtml(v.assignees)}</div>
     ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
@@ -1179,7 +1208,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const now = Date.now();
-  const { columns, projects } = await buildBoard(env, now);
+  const { columns, projects, awaiting } = await buildBoard(env, now);
   const totalOpen = countOpenOnBoard(columns);
   const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
 
@@ -1255,6 +1284,10 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
         </div>
       </div>
       ${renderProjectFilter(projects, initialProject)}
+    </div>
+
+    <div class="task-awaiting" id="task-awaiting"${awaiting.length ? '' : ' hidden'}>
+      ${awaitingBannerHtml(awaiting)}
     </div>
 
     <div class="task-board" id="task-board">
@@ -1351,6 +1384,38 @@ export const TASKS_CSS = `
   border-radius: 999px; padding: 2px 9px; white-space: nowrap;
 }
 .task-mailbox-chip b { color: var(--accent-lav); font-weight: 600; margin-left: 2px; }
+
+/* Banner "Aguardando você" (spec 89): fila de bloqueios da frota pendentes de
+   resposta do dono, acima do board. Some inteiro quando vazio ([hidden]). */
+.task-awaiting {
+  background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.35);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 20px;
+}
+.task-awaiting[hidden] { display: none; }
+.task-awaiting-head {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #fbbf24; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+}
+.task-awaiting-count {
+  font-size: 11px; background: rgba(251,191,36,0.15); border-radius: 999px;
+  padding: 1px 8px; font-variant-numeric: tabular-nums;
+}
+.task-awaiting-list { display: flex; flex-direction: column; gap: 6px; }
+.task-awaiting-item {
+  display: flex; align-items: baseline; gap: 10px; text-decoration: none;
+  padding: 6px 8px; border-radius: var(--radius-sm); transition: background 140ms var(--ease);
+}
+.task-awaiting-item:hover { background: rgba(251,191,36,0.08); }
+.task-awaiting-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; flex: none; }
+.task-awaiting-body { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.task-awaiting-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
+
+/* Chip de claim do card (spec 88/89): quem detém o lease de trabalho agora. */
+.task-claim-chip {
+  font-size: 11px; color: #6ee7b7; border: 1px solid rgba(110,231,183,0.35);
+  background: rgba(110,231,183,0.08); border-radius: 999px; padding: 1px 8px;
+  white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* Board: colunas customizáveis (N variável) — grid horizontal com scroll quando
    passa da largura, cada coluna com largura mínima confortável (spec 51). */
