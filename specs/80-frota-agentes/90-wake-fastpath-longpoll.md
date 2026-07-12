@@ -17,8 +17,8 @@ dispositivo). Descartado na v1 pelo terreno real da frota:
 
 - **PC Desktop está atrás de NAT** — o Worker não alcança um listener local sem
   túnel (Cloudflare Tunnel = mais uma peça de infra residente pra operar).
-- **VPS precisaria de porta aberta + HMAC** — listener residente + secret distribuído
-  + firewall. O custo residente é o mesmo do long-poll, com MAIS superfície.
+- **VPS precisaria de porta aberta + HMAC** — listener residente, secret
+  distribuído e firewall. O custo residente é o mesmo do long-poll, com MAIS superfície.
 - **OpenClaw não tem API de wake** — ficaria de fora de qualquer jeito.
 
 Long-poll entrega o mesmo corte de latência com UMA peça só, do lado que já
@@ -76,3 +76,13 @@ telemetria de custo (llidmyyusqvm).
 - 12/07/2026 ~01h-02h: endpoint + testes + daemon do PC implementados (sessão
   interativa do PC, task a5nr6dwfjxuz claimada). Deploy do Worker GATED em OK do
   Eric (regra de deploy de produção); instalação VPS na sequência do deploy.
+- 12/07/2026 ~09h57: OK do Eric → deploy em produção (version 78e0bdfa, suite
+  1210/1210 no worktree limpo, provision 2×200). Endpoint verificado vivo:
+  `timeout=0` respondeu em 116ms; `timeout=5` segurou 5111ms server-side.
+- 12/07/2026 ~09h59: `brain-wake@main`/`brain-wake@backup` ativos no host da VPS
+  (systemd, PAT lido de dentro do container, header via stdin — nunca em ps/disco).
+- **E2E de latência (12/07 09:59)**: [pedido] com @menção criado 09:59:27 →
+  wake injetou o ciclo no container `claude-code` às 09:59:28 (**~1s**) → resposta
+  [entrega] assinada do Claude VPS no thread às 10:00:03 (**~36s de ida-e-volta
+  completa**). Baseline do polling */30: ~15min de média. Corte real de latência
+  de detecção: >99%.
