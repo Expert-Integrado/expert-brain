@@ -86,3 +86,10 @@ telemetria de custo (llidmyyusqvm).
   [entrega] assinada do Claude VPS no thread às 10:00:03 (**~36s de ida-e-volta
   completa**). Baseline do polling */30: ~15min de média. Corte real de latência
   de detecção: >99%.
+- **2ª medição, lado do PC (12/07 10:02)**: a 1ª caiu 1s depois da batida das
+  10:00 (o reconciliador processou antes do fast-path — comportamento correto:
+  child em voo segura o wake). Repetida longe da borda: pedido 10:02:49 → wake
+  VPS ~13s → mention @PC Desktop 10:03:10 → daemon do PC logou "spawnando na
+  hora" 10:03:33 (child anterior ainda finalizava; caso limpo é ≤3s). Provado
+  nos DOIS consumidores. Bônus observado: o beat headless do PC respondeu
+  [entrega] sozinho no thread durante o teste — frota conversando sem humano.
