@@ -231,6 +231,8 @@ describe('trackCronOutcome — contador de falhas POR JOB + alerta (spec 70-graf
     expect(body.cron_jobs['similar-repass']).toEqual({ consecutive_failures: 0, last_error: null });
     expect(body.cron_jobs['hygiene-digest']).toEqual({ consecutive_failures: 0, last_error: null });
     expect(body.cron_jobs['due-reminder']).toBeDefined();
+    expect(body.cron_jobs['fleet-watchdog']).toBeDefined(); // spec 89
+
   });
 
   it('erro do KV nao propaga (alerting nunca derruba o cron)', async () => {
