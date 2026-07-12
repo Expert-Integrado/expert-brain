@@ -1,6 +1,10 @@
 import ForceGraph3D from '3d-force-graph';
 import { forceManyBody, forceCenter, forceCollide } from 'd3-force-3d';
+import { Vector2 } from 'three';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { domainColor } from '../domain-colors.js';
+import { computeCore, cageRadius, buildCage, buildYearSprite, disposeScenery, YEAR_CANVAS_W, YEAR_CANVAS_H } from './graph3d-scenery.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Grafo 3D — o "globo que gira", agora como um MODO do /app/graph (não mais uma
@@ -46,8 +50,9 @@ interface SharedState {
 }
 interface Forces { center: number; repel: number; link: number; distance: number; }
 // Perfil visual do palco 3D — sem textFadeMult (sem equivalente no 3D: rótulo
-// só aparece no hover).
-interface Visual3D { nodeSizeMult: number; lineSizeMult: number; }
+// só aparece no hover). `glow` (spec 104) é o DESEJO do dono; o efetivo ainda
+// passa pelos guards tema escuro + desktop (ver glowEffective no init).
+interface Visual3D { nodeSizeMult: number; lineSizeMult: number; glow: boolean; }
 
 // Contexto injetado pelo client 2D. Reusa as MESMAS funções de filtro/cor do 2D
 // (isNodeActive / pickNodeColor) pra o comportamento bater exatamente entre palcos.
@@ -71,8 +76,13 @@ export interface Graph3DController {
   applyForces: () => void;    // 4 sliders de força → d3-force-3d + reheat
   applyNoOverlap: () => void; // colisão forte
   applySearch: () => void;    // busca: acende matches, apaga o resto (spec 29)
+  applyGlow: () => void;      // switch Brilho (spec 104): liga/desliga bloom + alfa das arestas
   flyTo: (id: string) => void;// busca/focar nota → câmera voa até o nó
   resize: () => void;
+  // Pausa/retoma o loop de render (spec 104): SEM isso o 3D continua queimando
+  // GPU escondido quando o dono volta pro 2D (o container só ganha display:none).
+  pause: () => void;
+  resume: () => void;
   dispose: () => void;
 }
 
@@ -113,6 +123,12 @@ const ORPHAN_GRAVITY_3D = DOMAIN_GRAVITY_3D * 4; // 0.12 — anel próximo, sem 
 
 function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const { payload, state } = ctx;
+
+  // Guards do glow/perf (spec 104), lidos UMA vez no init — tema sem reação viva
+  // (mesma limitação do BG_COLOR acima: trocar o tema com o 3D aberto mantém as
+  // cores antigas até recarregar; registrado na spec, commit opcional separado).
+  const isMobile = window.matchMedia('(max-width: 767px)').matches;
+  const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') !== 'light';
 
   // Nós no formato do 3d-force-graph. Guardamos o GraphNode original em `_n` pra
   // os accessors de cor reusarem pickNodeColor do 2D (mesma coloração exata).
@@ -196,7 +212,8 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Esferas REDONDAS: 16 segmentos (default 8 deixava facetas visíveis de
     // perto). Tradeoff APROVADO pelo dono: ~4x mais triângulos por esfera (os
     // segmentos dobram em latitude E longitude) — ~1.8k nós seguem leves na GPU.
-    .nodeResolution(16)
+    // Mobile (spec 104): 8 segmentos — GPU de celular não paga as facetas.
+    .nodeResolution(isMobile ? 8 : 16)
     // Opacidade de linha na lib = linkOpacity · alpha(rgba do linkColor). O
     // default 0.2 esmagava TUDO (explícita 0.4 → 0.08 efetivo: "a linha nem
     // aparece"; semântica 0.18 → 0.036). Com 1, o alfa do rgba dos accessors
@@ -211,6 +228,109 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     .linkWidth((l: any) => linkWidth(l))
     // Clique abre o MESMO painel de nota do 2D (não navega pra fora).
     .onNodeClick((n: any) => { const id = String(n.id ?? ''); if (id) ctx.onNodeOpen(id); });
+
+  // ── Perf mobile (spec 104): pixelRatio ≤1.5 no renderer E no composer — o
+  // clamp default da lib (2) ainda é caro em tela retina de celular; e o bloom
+  // renderiza em N render targets do MESMO tamanho, então o composer precisa do
+  // mesmo teto ou a economia some.
+  if (isMobile) {
+    const pr = Math.min(window.devicePixelRatio || 1, 1.5);
+    try {
+      graph.renderer()?.setPixelRatio?.(pr);
+      graph.postProcessingComposer()?.setPixelRatio?.(pr);
+    } catch { /* renderer ainda não pronto — segue com o default da lib */ }
+  }
+
+  // ── Bloom (spec 104): UnrealBloomPass + OutputPass no composer QUE A LIB JÁ
+  // USA (three-render-objects renderiza via EffectComposer+RenderPass — plugar é
+  // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
+  // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
+  // pipeline volta byte-idêntico ao original — toggle limpo.
+  // Knobs (ajuste fino da validação visual): strength 1.0 / radius 0.6 /
+  // threshold 0.15 — threshold BAIXO acende as esferas coloridas, mas fica ACIMA
+  // do fantasma de busca (rgba 0.22), então busca com glow segue legível
+  // (matches acesos, resto apagado).
+  let bloomPass: UnrealBloomPass | null = null;
+  let outputPass: OutputPass | null = null;
+  try {
+    const composer = graph.postProcessingComposer?.();
+    if (composer?.addPass) {
+      bloomPass = new UnrealBloomPass(
+        new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
+        1.0, 0.6, 0.15,
+      );
+      outputPass = new OutputPass();
+      bloomPass.enabled = false;
+      outputPass.enabled = false;
+      composer.addPass(bloomPass);
+      composer.addPass(outputPass);
+    }
+  } catch { /* sem composer (lib mudou?) — palco segue sem glow */ }
+
+  // Efetivo = desejo do dono (pref) E tema escuro E desktop. Em fundo claro o
+  // bloom lava a imagem; mobile v1 força off (GPU).
+  const glowEffective = () => !!ctx.getVisual().glow && isDark && !isMobile && !!bloomPass;
+  let glowOn = false;
+  function applyGlow() {
+    glowOn = glowEffective();
+    if (bloomPass) bloomPass.enabled = glowOn;
+    if (outputPass) outputPass.enabled = glowOn;
+    // Arestas explícitas saturam sob bloom — alfa cai 0.55→0.35 com glow ativo
+    // (o accessor lê glowOn; rechamar linkColor faz a lib reavaliar tudo).
+    graph.linkColor((l: any) => linkColor(l));
+  }
+
+  // ── Cenografia "cosmos" (spec 104): gaiola esférica + ano no topo, num grupo
+  // adicionado à cena da lib — a cena NUNCA é recriada (filtros/busca/reheat só
+  // mexem em graphData), então os objetos persistem. Posição/raio seguem o
+  // computeCore nos MESMOS momentos do frameCore (30 ticks + engineStop);
+  // nascem invisíveis até a primeira medida.
+  let cage: ReturnType<typeof buildCage> | null = null;
+  let yearSprite: ReturnType<typeof buildYearSprite> = null;
+  try {
+    const scene = graph.scene?.();
+    if (scene?.add) {
+      const cageColor = isDark ? '#93a1c8' : '#3c4262';
+      const yearColor = isDark ? '#e8ecff' : '#2c3050';
+      const fontDisplay = (getComputedStyle(document.documentElement)
+        .getPropertyValue('--font-display').trim()) || 'system-ui';
+      cage = buildCage(cageColor, 0.15);
+      cage.visible = false;
+      cage.renderOrder = -1; // atrás dos nós — arame é cenário, não conteúdo
+      scene.add(cage);
+      yearSprite = buildYearSprite(new Date().getFullYear(), fontDisplay, yearColor);
+      if (yearSprite) {
+        yearSprite.visible = false;
+        scene.add(yearSprite);
+      }
+    }
+  } catch { /* cena indisponível — palco segue sem cenografia */ }
+
+  // Pontos vivos da nuvem (a engine muta x/y/z nos objetos de `nodes`).
+  const livePts = () => (nodes as any[]).filter((n) => typeof n.x === 'number' && isFinite(n.x)
+    && typeof n.y === 'number' && isFinite(n.y) && typeof n.z === 'number' && isFinite(n.z));
+
+  function updateScenery() {
+    if (!cage) return;
+    const core = computeCore(livePts());
+    if (!core) {
+      cage.visible = false;
+      if (yearSprite) yearSprite.visible = false;
+      return;
+    }
+    const r = cageRadius(core);
+    cage.visible = true;
+    cage.position.set(core.cx, core.cy, core.cz);
+    cage.scale.setScalar(r);
+    if (yearSprite) {
+      // Ano flutuando logo acima do "polo norte" da gaiola, sempre de frente
+      // (sprite). Escala preserva o aspecto do canvas pra não esticar o texto.
+      const w = r * 0.55;
+      yearSprite.visible = true;
+      yearSprite.position.set(core.cx, core.cy + r * 1.12, core.cz);
+      yearSprite.scale.set(w, w * (YEAR_CANVAS_H / YEAR_CANVAS_W), 1);
+    }
+  }
 
   // Multiplicador de tamanho do painel (slider "Tamanho das bolinhas") aplicado
   // sobre o val base. Recalculado via graph.nodeVal(...) no applyNodeSize.
@@ -252,7 +372,8 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Explícita um degrau acima do discreto ("a linha nem aparece" — feedback do
     // dono): alfa 0.55 + tom um pouco mais claro. Com linkOpacity(1), esse alfa
     // vale literalmente (antes era multiplicado pelo 0.2 default da lib).
-    return 'rgba(150, 150, 172, 0.55)';
+    // Com glow ativo (spec 104) as linhas saturam sob o bloom — alfa cai pra 0.35.
+    return `rgba(150, 150, 172, ${glowOn ? 0.35 : 0.55})`;
   }
   function linkWidth(l: any): number {
     if (l._sim) return 0.4; // fio fino pras semânticas
@@ -360,17 +481,14 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // câmera posicionada NA MÃO (cameraPosition) pra caber ESSE raio no fov
   // vertical, preservando a direção atual câmera→centróide (não "pula" o
   // auto-rotate). Fallback: zoomToFit clássico se a nuvem for pequena demais.
-  const CORE_PCT = 0.88;   // percentil do raio do núcleo (85-90 por espec do dono)
-  const CORE_MARGIN = 1.15; // folga de 15% pra borda do núcleo não colar na moldura
+  // Percentil do núcleo (0.88) agora vive no computeCore (graph3d-scenery) —
+  // gaiola e moldura medem a MESMA esfera. Margem 1.30 (era 1.15): a gaiola
+  // fica ENTRE o núcleo e a moldura, e não pode colar na borda da tela.
+  const CORE_MARGIN = 1.30;
   function frameCore(ms: number) {
-    const pts = (nodes as any[]).filter((n) => typeof n.x === 'number' && isFinite(n.x)
-      && typeof n.y === 'number' && isFinite(n.y) && typeof n.z === 'number' && isFinite(n.z));
-    if (pts.length < 8) { graph.zoomToFit(ms, 60); return; }
-    let cx = 0, cy = 0, cz = 0;
-    for (const p of pts) { cx += p.x; cy += p.y; cz += p.z; }
-    cx /= pts.length; cy /= pts.length; cz /= pts.length;
-    const dists = pts.map((p) => Math.hypot(p.x - cx, p.y - cy, p.z - cz)).sort((a, b) => a - b);
-    const r = dists[Math.min(dists.length - 1, Math.floor(dists.length * CORE_PCT))] || 1;
+    const core = computeCore(livePts());
+    if (!core) { graph.zoomToFit(ms, 60); return; }
+    const { cx, cy, cz, r88: r } = core;
     // Distância pra uma esfera de raio r caber no fov VERTICAL (aspect > 1 no
     // desktop → o eixo vertical é o limitante; em telas retrato sobra margem).
     const cam = graph.camera() as any;
@@ -405,6 +523,9 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (!autoFitDone) frameCore(0);
   }, 1500);
   graph.onEngineStop(() => {
+    // Cenografia acompanha TODO assentamento (reheat de slider também) — só o
+    // enquadramento é one-shot.
+    updateScenery();
     if (engineStoppedOnce) return;
     engineStoppedOnce = true;
     if (!autoFitDone) frameCore(600);
@@ -426,12 +547,19 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       return;
     }
     settleTicks++;
-    if (!autoFitDone && !engineStoppedOnce && settleTicks % 30 === 0) frameCore(200);
+    if (settleTicks % 30 === 0) {
+      // Gaiola/ano seguem a nuvem durante o assentamento SEMPRE (barato: um
+      // percentil sobre ~2k pontos); a moldura continua bloqueável pelo usuário.
+      updateScenery();
+      if (!autoFitDone && !engineStoppedOnce) frameCore(200);
+    }
   });
 
   // Configura a física inicial já com os valores atuais dos sliders, MAS sem
   // reaquecer aqui (síncrono, antes da engine existir) — o reheat vem no 1º tick.
   applyForces(false);
+  // Glow inicial conforme pref + guards (tema/mobile) — antes do 1º frame.
+  applyGlow();
 
   const resize = () => {
     graph.width(container.clientWidth || window.innerWidth);
@@ -451,11 +579,20 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Busca (spec 29): rechama os accessors de cor e tamanho — a lib reavalia
     // todos os nós (mesmo mecanismo dos outros applyX; sem refresh manual).
     applySearch: () => { graph.nodeColor((n: any) => nodeColorFn(n)); graph.nodeVal((n: any) => nodeVal(n)); },
+    applyGlow,
     flyTo,
     resize,
+    // pauseAnimation congela o loop rAF da lib (render + tick); resumeAnimation
+    // retoma. O 2D chama no exit3D/enter3D — 3D escondido não queima GPU.
+    pause: () => { try { graph.pauseAnimation?.(); } catch { /* best-effort */ } },
+    resume: () => { try { graph.resumeAnimation?.(); } catch { /* best-effort */ } },
     dispose: () => {
       window.removeEventListener('resize', resize);
       if (resumeTimer) clearTimeout(resumeTimer);
+      // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
+      // targets por sessão 3D); cenografia idem (geometria/material/textura).
+      try { bloomPass?.dispose?.(); outputPass?.dispose?.(); } catch { /* best-effort */ }
+      try { disposeScenery(cage, yearSprite); } catch { /* best-effort */ }
       try { graph._destructor?.(); } catch { /* best-effort */ }
     },
   };
