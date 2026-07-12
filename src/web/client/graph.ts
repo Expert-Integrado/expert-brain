@@ -340,7 +340,10 @@ async function main() {
   // catch ("Erro ao carregar grafo") e a simulação NUNCA rodava (nós ficavam nas
   // posições-semente cruas). Manter esta declaração ACIMA dos reducers.
   const VISUAL_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, textFadeMult: 0 };
-  const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1 };
+  // `glow` (spec 104): bloom do palco 3D — default LIGADO; o efetivo ainda passa
+  // pelos guards do graph3d (tema escuro + desktop). MANTER EM SINCRONIA com
+  // VISUAL3D_DEFAULTS do server (src/web/graph-prefs.ts).
+  const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true };
   let visual2d = { ...VISUAL_DEFAULTS };
   let visual3d = { ...VISUAL3D_DEFAULTS };
 
@@ -782,11 +785,12 @@ async function main() {
       textFadeMult: clamp(p.textFadeMult, -3, 3, visual2d.textFadeMult),
     };
     // Aditivo: perfil visual 3D salvo (prefs antigas sem o campo mantêm os
-    // defaults visuais 3D).
+    // defaults visuais 3D). `glow` idem: só boolean explícito sobrescreve.
     if (p.visual3d && typeof p.visual3d === 'object') {
       visual3d = {
         nodeSizeMult: clamp(p.visual3d.nodeSizeMult, 0.3, 3, visual3d.nodeSizeMult),
         lineSizeMult: clamp(p.visual3d.lineSizeMult, 0, 3, visual3d.lineSizeMult),
+        glow: typeof p.visual3d.glow === 'boolean' ? p.visual3d.glow : visual3d.glow,
       };
     }
     if (typeof p.hideOrphans === 'boolean') state.hideOrphans = p.hideOrphans;
@@ -1593,7 +1597,11 @@ async function main() {
     applyFilters: () => void; applyColors: () => void; applySimilar: () => void;
     applyNodeSize: () => void; applyForces: () => void; applyNoOverlap: () => void;
     applySearch: () => void; // busca acende/apaga nós no 3D (paridade com o 2D)
-    flyTo: (id: string) => void; resize: () => void; dispose: () => void;
+    applyGlow: () => void;   // switch Brilho (spec 104) — bloom + alfa das arestas
+    flyTo: (id: string) => void; resize: () => void;
+    // pause/resume (spec 104): 3D escondido não pode continuar renderizando.
+    pause: () => void; resume: () => void;
+    dispose: () => void;
   }
   const wrap = container.closest('.graph-wrap') as HTMLElement | null;
   const can3D = !!document.getElementById('graph3d-stage');
@@ -1644,7 +1652,7 @@ async function main() {
       const stage = document.getElementById('graph3d-stage') as HTMLElement | null;
       const init = (window as any).__initGraph3D as ((el: HTMLElement, c: any) => Graph3DController) | undefined;
       if (stage && init && !g3d) g3d = init(stage, ctx3D());
-      else if (g3d) g3d.resize();
+      else if (g3d) { g3d.resume(); g3d.resize(); } // volta do 2D: religa o loop pausado no exit3D
     } catch (err) {
       console.error('graph: 3D falhou', err);
       wrap?.classList.remove('mode-3d');
@@ -1657,6 +1665,9 @@ async function main() {
 
   function exit3D() {
     wrap?.classList.remove('mode-3d', 'mode-3d-loading');
+    // O palco 3D só fica display:none — sem pause o rAF da lib seguia
+    // renderizando escondido (GPU queimando à toa). enter3D dá o resume.
+    g3d?.pause();
     updateModeUI();
     // Sigma pode ter perdido dimensão enquanto escondido — reajusta o enquadre.
     applyCoreBBox();
@@ -1690,6 +1701,17 @@ async function main() {
     setVal('node-size-mult', v.nodeSizeMult);
     setVal('line-size-mult', v.lineSizeMult);
     setVal('text-fade-mult', visual2d.textFadeMult);
+    // Switch Brilho (spec 104): reflete a PREF (visual3d.glow); quando os guards
+    // do palco (tema claro/mobile) forçam off, o checkbox fica desabilitado —
+    // o help text do SSR já explica o porquê pro leigo.
+    const glowEl = document.getElementById('glow-3d') as HTMLInputElement | null;
+    if (glowEl) {
+      const dark = (document.documentElement.getAttribute('data-theme') || 'dark') !== 'light';
+      const mobile = window.matchMedia('(max-width: 767px)').matches;
+      glowEl.checked = visual3d.glow;
+      glowEl.disabled = !dark || mobile;
+      glowEl.closest('label')?.classList.toggle('is-disabled', glowEl.disabled);
+    }
   }
 
   // Sincroniza rótulo/estado do botão + o botão de "conexões sugeridas" (que só
@@ -1892,6 +1914,13 @@ async function main() {
       worker.postMessage({ type: 'collide', noOverlap: on });
       push3D((c) => c.applyNoOverlap());
     },
+    // Switch Brilho (spec 104): pref do perfil visual 3D — o palco aplica os
+    // guards (tema/mobile) por conta própria no applyGlow. 3D-only: nada de
+    // renderer.refresh() do Sigma aqui.
+    onGlowToggle: (on) => {
+      visual3d = { ...visual3d, glow: on };
+      push3D((c) => c.applyGlow());
+    },
     // Salva a configuração atual como padrão do dono (persiste no meta, sincroniza
     // entre máquinas). Filtros/busca NÃO entram — são exploração, não preferência.
     onSavePrefs: () => {
@@ -2003,7 +2032,7 @@ async function main() {
       (window as any).__updateActiveFilters?.();
       renderer.refresh();
       // Espelha a restauração completa no palco 3D quando ativo.
-      push3D((c) => { c.applyFilters(); c.applyColors(); c.applySearch(); c.applySimilar(); c.applyNodeSize(); c.applyForces(); c.applyNoOverlap(); });
+      push3D((c) => { c.applyFilters(); c.applyColors(); c.applySearch(); c.applySimilar(); c.applyNodeSize(); c.applyForces(); c.applyNoOverlap(); c.applyGlow(); });
     },
     // "Limpar" (indicador de filtros ativos) — SÓ exploração: busca + chips de
     // categoria/tipo. Visual, forças, cores, toggles e posições são CONFIGURAÇÃO
@@ -2670,6 +2699,8 @@ interface ControlCallbacks {
   onColorMode: (mode: string) => void;
   // Não-sobrepor as bolinhas (collide forte) + salvar config como padrão do dono.
   onNoOverlap: (on: boolean) => void;
+  // Switch Brilho do palco 3D (spec 104).
+  onGlowToggle: (on: boolean) => void;
   onSavePrefs: () => void;
   // Alterna o palco 2D/3D na mesma tela (lazy-load do bundle 3D na 1ª vez).
   onToggle3D: () => void;
@@ -2779,6 +2810,10 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: Taxono
   const noOverlap = document.getElementById('no-overlap') as HTMLInputElement | null;
   if (noOverlap) {
     noOverlap.addEventListener('change', () => cb.onNoOverlap(noOverlap.checked));
+  }
+  const glow3d = document.getElementById('glow-3d') as HTMLInputElement | null;
+  if (glow3d) {
+    glow3d.addEventListener('change', () => cb.onGlowToggle(glow3d.checked));
   }
   // Populate kind chips from nodes that carry `kind`
   const kindsEl = document.getElementById('graph-kinds');

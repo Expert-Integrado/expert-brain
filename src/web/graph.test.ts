@@ -150,6 +150,14 @@ describe('/app/graph?mode=3d (modo 3D dentro da mesma tela)', () => {
     expect(html).toContain('id="graph3d-stage"');
     expect(html).not.toContain('mode-3d mode-3d-loading');
   });
+
+  // Spec 104: switch "Brilho" do bloom — gated por can3D (contatos não tem 3D).
+  it('switch Brilho (#glow-3d) presente em notas, ausente em contatos', async () => {
+    const notes = await SELF.fetch('https://x.test/app/graph', { headers: { cookie: await authCookie() } });
+    expect(await notes.text()).toContain('id="glow-3d"');
+    const contacts = await SELF.fetch('https://x.test/app/contacts', { headers: { cookie: await authCookie() } });
+    expect(await contacts.text()).not.toContain('id="glow-3d"');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

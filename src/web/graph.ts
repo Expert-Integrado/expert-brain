@@ -485,6 +485,15 @@ async function renderGraphLikePage(
       }
       .graph-wrap.mode-3d.mode-3d-loading #graph3d-loading { display: flex; }
 
+      /* Switch "Brilho" (spec 104): controle exclusivo do palco 3D — fora dele
+         some (element+classe ganha da .graph-check-label de styles.css sem
+         !important). Desabilitado (tema claro/mobile) fica visível mas inerte. */
+      label.graph-3d-only, small.graph-3d-only { display: none; }
+      .graph-wrap.mode-3d label.graph-3d-only { display: inline-flex; }
+      .graph-wrap.mode-3d small.graph-3d-only { display: block; }
+      label.graph-3d-only.is-disabled { opacity: 0.45; cursor: not-allowed; }
+      label.graph-3d-only.is-disabled input { cursor: not-allowed; }
+
       /* Estado de erro do grafo (auditoria UI 2026-07, item P1): /meta ou /data
          falharam (ex. worker de contatos fora do ar em dev local, 503). Reaproveita
          o mesmo #graph-center-loading do spinner — troca pra mensagem + motivo
@@ -715,6 +724,11 @@ async function renderGraphLikePage(
             <input type="range" id="text-fade-mult" min="-3" max="3" step="0.1" value="0" aria-label="Fade do texto" />
             <small class="graph-slider-help">Quão cedo os nomes das notas aparecem ao dar zoom</small>
           </label>
+          ${can3D ? `<label class="graph-check-label graph-3d-only">
+            <input type="checkbox" id="glow-3d" checked aria-label="Brilho no 3D" />
+            <span>Brilho (3D)</span>
+          </label>
+          <small class="graph-slider-help graph-3d-only">Halo incandescente das bolinhas no 3D — desliga sozinho no tema claro e no celular</small>` : ''}
         </details>
 
         <button id="graph-save-prefs" class="graph-reset-btn graph-reset-all" data-graph-action="save-prefs" title="Salva forças, cores, visual e não-sobrepor como seu padrão — abre sempre assim e o Restaurar padrão volta pra cá (sincroniza entre seus dispositivos)">Salvar como padrão</button>
