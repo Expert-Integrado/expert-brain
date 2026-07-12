@@ -209,6 +209,16 @@ Todas as specs da árvore, com prioridade, esforço e dependências. **Manutenç
 | `60-ux-reforma/66-onda5-fix-list-por-tela.md` | Onda 5: fix list aplicando tokens e componentes tela a tela (home, board, shell, graph, notes, share) | P1 | L | expert-brain | `60-ux-reforma/65` |
 | `60-ux-reforma/67-onda6-identidade-a11y.md` | Onda 6: aplicação da identidade escolhida + gate de contraste AA + acessibilidade/responsivo | P1 | M | expert-brain | `60-ux-reforma/62`, `60-ux-reforma/66` |
 | `60-ux-reforma/68-onda7-verificacao-deploy.md` | Onda 7: verificação final, checklist manual, validação do dono e deploy único de produção | P0 | S | expert-brain | `60-ux-reforma/67` |
+| `80-frota-agentes/89-fleet-view.md` | Fleet view: painel operacional da frota de agentes (status, atividade do dia, fila de validação) | P1 | M-L | expert-brain | `80-frota-agentes/81`, `82`, `86` (suaves: `83`, `88`) |
+| `91-experiencia-premium/91-visao-geral.md` | Experiência premium do console: visão geral e ordem de ataque da série 91-99 | P0 | S | expert-brain | nenhuma |
+| `91-experiencia-premium/92-onboarding-ativacao.md` | Onboarding e ativação: checklist "Comece aqui" + empty states guiados | P0 | M | expert-brain | nenhuma (usa componentes da `60-ux-reforma/64`) |
+| `91-experiencia-premium/93-busca-mobile.md` | Busca no celular: abrir a command palette sem teclado físico | P0 | S | expert-brain | nenhuma |
+| `91-experiencia-premium/94-erros-validacao-inline.md` | Erros e validação inline: matar a página de texto puro 400 na administração | P0 | M | expert-brain | nenhuma |
+| `91-experiencia-premium/95-undo-e-confirmacoes.md` | Undo com toast e confirmações dignas: aposentar o confirm() nativo | P1 | M | expert-brain | nenhuma (coordena com `94`) |
+| `91-experiencia-premium/96-tema-claro.md` | Tema claro: segunda cartela de tokens + toggle | P1 | M | expert-brain | `60-ux-reforma/63` (done) |
+| `91-experiencia-premium/97-ajuda-atalhos-e-paginas-de-erro.md` | Descoberta de atalhos ("?") e páginas 404/erro com marca | P2 | S | expert-brain | nenhuma |
+| `91-experiencia-premium/98-config-redesign.md` | Config redesign: de acordeão de 1.000 linhas pra abas com cards | P1 | L | expert-brain | `91-experiencia-premium/94` (suave: `80-frota-agentes/87`) |
+| `91-experiencia-premium/99-dashboard-seu-cerebro.md` | Dashboard "Seu cérebro este mês": superfície de valor percebido | P1 | M | expert-brain | nenhuma (suave: `80-frota-agentes/89`) |
 | `90-roadmap.md` | Roadmap de execução com fases, dependências e gates | P0 | S | ambos | nenhuma |
 
 ## Fora de escopo
