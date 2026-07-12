@@ -7,7 +7,7 @@
 import type { Env } from '../env.js';
 import { handleApp } from './handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from './share.js';
-import { handleMailboxSummary, handleWhoami } from './mailbox-api.js';
+import { handleMailboxSummary, handleMailboxWait, handleWhoami } from './mailbox-api.js';
 import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from './project-share.js';
 import { notFoundResponse, internalErrorResponse } from './error-pages.js';
 
@@ -39,6 +39,9 @@ export default {
     // prod vivem no auth/handler.ts.
     if (url.pathname === '/api/mailbox/summary' && req.method === 'GET') {
       return handleMailboxSummary(req, env);
+    }
+    if (url.pathname === '/api/mailbox/wait' && req.method === 'GET') {
+      return handleMailboxWait(req, env);
     }
     if (url.pathname === '/api/whoami' && req.method === 'GET') {
       return handleWhoami(req, env);

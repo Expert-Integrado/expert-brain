@@ -7,7 +7,7 @@ import { assetVersion } from '../web/asset-version.js';
 import { esc } from '../util/html.js';
 import { handleApp } from '../web/handler.js';
 import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFound, SHARE_TOKEN_RE } from '../web/share.js';
-import { handleMailboxSummary, handleWhoami } from '../web/mailbox-api.js';
+import { handleMailboxSummary, handleMailboxWait, handleWhoami } from '../web/mailbox-api.js';
 import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from '../web/project-share.js';
 import { notFoundResponse, internalErrorResponse } from '../web/error-pages.js';
 
@@ -76,6 +76,8 @@ export const authHandler = {
     // Heartbeat da frota (spec 82/83): "tem algo pra mim?" com Bearer PAT, sem
     // sessão MCP. Read-only, no-store — o cron/hook dos dispositivos bate aqui.
     if (url.pathname === '/api/mailbox/summary' && req.method === 'GET') return handleMailboxSummary(req, env);
+    // Wake fast-path (spec 90): long-poll — responde na hora que nasce item não-lido.
+    if (url.pathname === '/api/mailbox/wait' && req.method === 'GET') return handleMailboxWait(req, env);
     // Identidade da credencial (spec 87): a máquina confere COMO QUEM ela assina.
     if (url.pathname === '/api/whoami' && req.method === 'GET') return handleWhoami(req, env);
     if (url.pathname === '/setup/provision' && req.method === 'POST') return handleProvision(req, env);

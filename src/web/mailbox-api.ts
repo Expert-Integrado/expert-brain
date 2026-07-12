@@ -9,6 +9,7 @@
 import type { Env } from '../env.js';
 import { validateApiKey, hasScope } from '../auth/api-keys.js';
 import { getUserByApiKeyId } from '../db/queries.js';
+import { countMailboxUnread } from '../db/mailbox.js';
 import type { MailboxKind } from '../db/mailbox.js';
 import { formatBrtDateTime } from '../util/time.js';
 
@@ -46,6 +47,61 @@ export async function handleWhoami(req: Request, env: Env): Promise<Response> {
     user: user ? { id: user.id, name: user.name, type: user.type } : null,
     hint: user ? undefined : 'Chave sem usuário vinculado — o dono vincula em /app/config (Usuários). Sem vínculo, escritas não assinam e não há mailbox.',
   });
+}
+
+// Long-poll do wake (spec 80-frota-agentes/90) — fast-path de latência da frota.
+// O dispositivo segura este GET aberto (~25s); nascendo item não-lido, a resposta
+// sai em ≤WAIT_POLL_MS em vez de esperar a próxima batida do polling */30 (que
+// continua como reconciliador). Long-poll em vez de webhook de propósito: o PC
+// está atrás de NAT, a VPS não precisa abrir porta nem receber secret HMAC, e o
+// PAT existente já autentica. SEM side-effect (read_at intocado, igual summary).
+export const WAIT_POLL_MS = 3000;
+export const WAIT_MAX_TIMEOUT_S = 25;
+
+// Núcleo puro do loop, testável sem relógio real. O teto de iterações é dobrado
+// de segurança: encerra mesmo se o clock congelar (Workers só avança Date.now()
+// em I/O) e limita o número de subrequests D1 por request (cap de 50 do free tier).
+export async function waitForUnread(
+  check: () => Promise<number>,
+  timeoutMs: number,
+  pollMs: number,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<{ unread: number; waitedMs: number }> {
+  const start = Date.now();
+  let unread = await check();
+  const maxIters = Math.ceil(timeoutMs / Math.max(pollMs, 1)) + 1;
+  for (let i = 0; unread === 0 && i < maxIters; i++) {
+    const elapsed = Date.now() - start;
+    if (elapsed >= timeoutMs) break;
+    await sleep(Math.min(pollMs, timeoutMs - elapsed));
+    unread = await check();
+  }
+  return { unread, waitedMs: Date.now() - start };
+}
+
+export async function handleMailboxWait(req: Request, env: Env): Promise<Response> {
+  const auth = await bearerPat(req, env);
+  if ('err' in auth) return auth.err;
+  const v = auth.v!;
+
+  const user = await getUserByApiKeyId(env, v.keyId);
+  if (!user) {
+    return json({
+      error: 'This credential has no linked user profile, so it has no mailbox. ' +
+        'The owner links this PAT to an agent user at /app/config (Usuários).',
+    }, 403);
+  }
+
+  // ?timeout=<s> clampado 0–25; ausente = 25. timeout=0 vira check único imediato.
+  const raw = new URL(req.url).searchParams.get('timeout');
+  const timeoutS = raw === null ? WAIT_MAX_TIMEOUT_S : Math.min(Math.max(Number(raw) || 0, 0), WAIT_MAX_TIMEOUT_S);
+  const seePrivate = hasScope(v.scopes, 'private');
+  const { unread, waitedMs } = await waitForUnread(
+    () => countMailboxUnread(env, user.id, seePrivate),
+    timeoutS * 1000,
+    WAIT_POLL_MS,
+  );
+  return json({ user: { id: user.id, name: user.name }, wake: unread > 0, unread, waited_ms: waitedMs });
 }
 
 export async function handleMailboxSummary(req: Request, env: Env): Promise<Response> {
