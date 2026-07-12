@@ -2,10 +2,12 @@ import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
 import { TASK_STATUSES, type TaskStatus, type TaskPatch, type TaskRow, updateTask, getTaskById, getProjectById, setTaskPrivate, listKanbanColumns, moveTaskToColumn } from '../../db/queries.js';
+import { OWNER_TASK_VIS } from '../../auth/visibility.js';
+import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
-import { resolveAssigneeRefs, toAssigneeRef, resolveMe } from './user-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef, resolveMe, resolveTaskVis } from './user-ref.js';
 import { produceAssignmentMailbox } from '../../db/mailbox.js';
 import { setTaskAssignees, listAssigneesForTask, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
@@ -103,6 +105,23 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       const notFoundMsg = () =>
         `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks_due_today or the /app/tasks board. Do NOT retry with this id.`;
 
+      // Visibilidade row-level (spec 91): resolvida por chamada e usada nas pré-leituras
+      // dos DOIS caminhos (field-edit via updateTask e o caminho sem field-edit abaixo)
+      // — task invisível = 'not-found' idêntico a inexistente.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const vis = visR.vis;
+
+      // Superfície de contatos (spec 91): sob contacts:none, menções são rejeitadas —
+      // o param aceita entity ids do vault de Contacts, que esta credencial não acessa.
+      if (hasScope(auth?.scopes, SCOPE_CONTACTS_NONE) &&
+          ((input.mentions?.length ?? 0) > 0 || (input.mentions_remove?.length ?? 0) > 0)) {
+        return toolError(
+          'This credential has no access to the Contacts vault (scope contacts:none), so `mentions`/' +
+          '`mentions_remove` are not allowed. Retry WITHOUT these params.'
+        );
+      }
+
       // Selo de privacidade (spec 59): desmarcar (private:false) é PROIBIDO via tool —
       // só a UI logada do dono torna pública, pra um agente comprometido não
       // des-privatizar em massa. Marcar (true) é ok e revoga share vivo (setTaskPrivate).
@@ -155,6 +174,29 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         newAssignees = ar.users;
       }
 
+      // Reatribuição sob tasks:assigned (spec 91): PROIBIDA — o replace-set era a
+      // escalada clássica (robô se auto-atribui e REMOVE os outros). O máximo permitido
+      // é REMOVER A SI MESMO (abrir mão do próprio vínculo): nenhuma adição, e toda
+      // remoção tem que ser o próprio user. Delegação nova = task [pedido] via
+      // save_task, ou pedir ao dono no thread. Checado ANTES de qualquer escrita
+      // (nunca aplica metade) e DEPOIS do gate de visibilidade (anti-oráculo: task
+      // invisível responde not-found, nunca "cannot reassign").
+      if (newAssignees !== null && vis.assignedOnlyUserId !== null) {
+        const visible = await getTaskById(env, input.id, vis);
+        if (!visible) return toolError(notFoundMsg());
+        const current = new Set((await listAssigneesForTask(env, input.id)).map((a) => a.id));
+        const newSet = new Set(newAssignees.map((u) => u.id));
+        const added = [...newSet].filter((uid) => !current.has(uid));
+        const removedOthers = [...current].filter((uid) => !newSet.has(uid) && uid !== vis.assignedOnlyUserId);
+        if (added.length > 0 || removedOthers.length > 0) {
+          return toolError(
+            'This credential is restricted to assigned tasks (tasks:assigned) and cannot REASSIGN a task: ' +
+            'the only allowed assignee change is removing YOURSELF. To delegate, create a new [pedido] task ' +
+            'via save_task, or ask the owner in the task thread (comment_task).'
+          );
+        }
+      }
+
       const patch: TaskPatch = {};
       if (input.title !== undefined) patch.title = input.title.trim();
       if (input.details !== undefined) patch.body = input.details.trim();
@@ -205,10 +247,11 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
 
       // Se não há edição de campo (só private:true, menções, responsáveis e/ou stage),
       // valida existência/visibilidade aqui (espelha mark_private de nota): caller sem
-      // escopo não enxerga task privada → "not found", e nunca mexe numa task que não pode ver.
+      // visão da task (privada sem escopo / alheia sob tasks:assigned) → "not found",
+      // e nunca mexe numa task que não pode ver.
       let task: TaskRow | undefined;
       if (!hasFieldEdit && (wantsPrivate || touchesMentions || touchesAssignees || wantsStage)) {
-        const visible = await getTaskById(env, input.id, canSeePrivate(auth));
+        const visible = await getTaskById(env, input.id, vis);
         if (!visible) return toolError(notFoundMsg());
         // updateTask não roda neste caminho, então o guard otimista é checado aqui —
         // um move de stage com leitura defasada conflita igual a um patch de campo.
@@ -222,11 +265,12 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       }
 
       if (hasFieldEdit) {
-        const result = await updateTask(env, input.id, patch, now, input.expected_updated_at, writeActor(auth));
+        const result = await updateTask(env, input.id, patch, vis, now, input.expected_updated_at, writeActor(auth));
         if (result === 'not-found') return toolError(notFoundMsg());
         if (result === 'conflict') {
           // Reler pra devolver o updated_at atual + campos, evitando um round-trip.
-          const current = await getTaskById(env, input.id, true);
+          // OWNER_TASK_VIS ok: 'conflict' só ocorre em task que o gate acima já viu.
+          const current = await getTaskById(env, input.id, OWNER_TASK_VIS);
           const currentUpdated = current?.updated_at ?? null;
           return toolError(
             `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
@@ -252,7 +296,9 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
         const r = await setTaskPrivate(env, input.id, 1, now, writeActor(auth));
         if (!r.ok) return toolError(notFoundMsg());
         shareRevoked = r.shareRevoked;
-        task = (await getTaskById(env, input.id, true)) ?? task;
+        // OWNER_TASK_VIS de propósito: a task acabou de ficar privada — o eco final
+        // é da escrita que o próprio caller fez, não uma leitura nova.
+        task = (await getTaskById(env, input.id, OWNER_TASK_VIS)) ?? task;
       }
 
       if (!task) return toolError(notFoundMsg());

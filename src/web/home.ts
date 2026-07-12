@@ -4,6 +4,7 @@ import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { assetVersion } from './asset-version.js';
 import { listTasksDueBefore, listInboxItems, countPendingInbox, INBOX_BODY_MAX, type TaskRow, type InboxItem } from '../db/queries.js';
+import { OWNER_TASK_VIS } from '../auth/visibility.js';
 import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js';
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
@@ -352,9 +353,9 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
   let todayCardHtml = '';
   try {
-    // includePrivate=true: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
+    // OWNER_TASK_VIS: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
     // convenção do board de tasks e do lembrete diário.
-    const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, true);
+    const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, OWNER_TASK_VIS);
     todayCardHtml = renderTodayCard(tasks, now, prefs);
   } catch (e) {
     console.error('home: falha ao carregar tasks de hoje', e);

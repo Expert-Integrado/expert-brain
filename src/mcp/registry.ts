@@ -132,8 +132,9 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   registerCheckMailbox(reg, env, auth);
   registerAckMailbox(reg, env, auth);
   // Compartilhamento público read-only de task (/s/<token>) — cria/revoga o link.
-  registerShareTask(reg, env);
-  registerUnshareTask(reg, env);
+  // Recebem `auth` (spec 91): pre-check de kind='task' + visibilidade do caller.
+  registerShareTask(reg, env, auth);
+  registerUnshareTask(reg, env, auth);
   // Captura sem fricção + inbox de triagem (spec 50-console-v2/63). As TRÊS são
   // registradas via `reg`: como todas têm readOnlyHint:false (inclusive list_inbox, de
   // propósito — o inbox é superfície pré-triagem do dono), o guarda de escopo `read`

@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import {
@@ -82,7 +83,7 @@ describe('task activity log (migration 0019)', () => {
       created_at: now, updated_at: now,
     });
 
-    asTask(await updateTask(E, 'diff1', { title: 'Titulo novo', priority: 1 }, now + 1));
+    asTask(await updateTask(E, 'diff1', { title: 'Titulo novo', priority: 1 }, OWNER_TASK_VIS, now + 1));
     const afterChange = await listTaskActivity(E, 'diff1');
     const changeEntries = afterChange.filter((e) => e.field === 'title' || e.field === 'priority');
     expect(changeEntries.length).toBe(2);
@@ -98,7 +99,7 @@ describe('task activity log (migration 0019)', () => {
     // Patch repetindo os MESMOS valores já vigentes: zero entradas novas (nenhuma
     // mudança real de fato) — só o count total não deve crescer.
     const countBefore = (await listTaskActivity(E, 'diff1')).length;
-    asTask(await updateTask(E, 'diff1', { title: 'Titulo novo', priority: 1 }, now + 2));
+    asTask(await updateTask(E, 'diff1', { title: 'Titulo novo', priority: 1 }, OWNER_TASK_VIS, now + 2));
     const countAfter = (await listTaskActivity(E, 'diff1')).length;
     expect(countAfter).toBe(countBefore);
   });
@@ -111,7 +112,7 @@ describe('task activity log (migration 0019)', () => {
     });
     await insertTags(E, 'tagdiff', ['dedupe:xyz', 'alpha']);
 
-    asTask(await updateTask(E, 'tagdiff', { tags: ['beta'] }, now + 1));
+    asTask(await updateTask(E, 'tagdiff', { tags: ['beta'] }, OWNER_TASK_VIS, now + 1));
 
     const activity = await listTaskActivity(E, 'tagdiff');
     const tagEntry = activity.find((e) => e.field === 'tags');
@@ -149,7 +150,7 @@ describe('task activity log (migration 0019)', () => {
 
     let updated: TaskRow;
     try {
-      updated = asTask(await updateTask(E, 'resilient', { title: 'new title', priority: 2 }, now + 1));
+      updated = asTask(await updateTask(E, 'resilient', { title: 'new title', priority: 2 }, OWNER_TASK_VIS, now + 1));
     } finally {
       E.DB.batch = originalBatch;
     }

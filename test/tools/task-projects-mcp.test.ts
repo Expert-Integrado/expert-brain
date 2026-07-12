@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import { registerSaveTask } from '../../src/mcp/tools/save-task.js';
@@ -40,7 +41,7 @@ describe('save_task project — auto-create + dedupe case-insensitive', () => {
     const p = out(await save()({ title: 'Ligar', project: 'Cliente ACME' }));
     expect(p.project).toBeTruthy();
     expect(p.project.label).toBe('Cliente ACME');
-    const row = await getTaskById(E, p.id);
+    const row = await getTaskById(E, p.id, OWNER_TASK_VIS);
     expect(row?.project_id).toBe(p.project.id);
     expect(await countTaskProjects(E)).toBe(1);
   });
@@ -80,7 +81,7 @@ describe('save_task project — auto-create + dedupe case-insensitive', () => {
   it('sem project → task sem projeto (não muda o comportamento existente)', async () => {
     const p = out(await save()({ title: 'Sem pasta' }));
     expect(p.project).toBeNull();
-    expect((await getTaskById(E, p.id))?.project_id).toBeNull();
+    expect((await getTaskById(E, p.id, OWNER_TASK_VIS))?.project_id).toBeNull();
   });
 });
 
@@ -150,7 +151,7 @@ describe('update_task project — desvincular e projeto arquivado', () => {
     expect(p.project).toBeTruthy();
     const u = out(await upd()({ id: p.id, project: '' }));
     expect(u.project).toBeNull();
-    expect((await getTaskById(E, p.id))?.project_id).toBeNull();
+    expect((await getTaskById(E, p.id, OWNER_TASK_VIS))?.project_id).toBeNull();
   });
 
   it('project por label muda de projeto e ecoa o novo', async () => {

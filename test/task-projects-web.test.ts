@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
@@ -128,12 +129,12 @@ describe('/app/tasks/update — patch.project_id (spec 58)', () => {
     // vincula
     let res = await jsonPost('/app/tasks/update', { id: 't1', patch: { project_id: 'proj_a' } }, ck);
     expect(res.status).toBe(200);
-    expect((await getTaskById(E, 't1'))?.project_id).toBe('proj_a');
+    expect((await getTaskById(E, 't1', OWNER_TASK_VIS))?.project_id).toBe('proj_a');
 
     // desvincula (null)
     res = await jsonPost('/app/tasks/update', { id: 't1', patch: { project_id: null } }, ck);
     expect(res.status).toBe(200);
-    expect((await getTaskById(E, 't1'))?.project_id).toBeNull();
+    expect((await getTaskById(E, 't1', OWNER_TASK_VIS))?.project_id).toBeNull();
 
     // projeto arquivado → 404
     res = await jsonPost('/app/tasks/update', { id: 't1', patch: { project_id: 'proj_arq' } }, ck);
@@ -225,7 +226,7 @@ describe('arquivar projeto com tasks: tasks continuam no board (spec 58)', () =>
     await formPost('/app/tasks/projects/archive', { id: 'proj_a', archived: '1' }, ck);
 
     // task intocada
-    expect((await getTaskById(E, 't1'))?.project_id).toBe('proj_a');
+    expect((await getTaskById(E, 't1', OWNER_TASK_VIS))?.project_id).toBe('proj_a');
     // ainda no board (coluna A fazer), com project_id no payload
     const data = (await (await SELF.fetch('https://x/app/tasks/data', { headers: { accept: 'application/json', cookie: ck } })).json()) as any;
     const open = data.columns.find((c: any) => c.id === 'col_aberto');

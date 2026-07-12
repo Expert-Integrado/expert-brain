@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { taskVisPublic } from '../../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
@@ -200,10 +201,10 @@ describe('privacidade de task — read paths (vazamento por superfície)', () =>
   // ── query-level (listTasksDueBefore) ──────────────────────────────────────
   it('listTasksDueBefore: includePrivate=false esconde a privada; true a revela', async () => {
     const beforeMs = Date.now() + 24 * 3600_000;
-    const without = await listTasksDueBefore(E, beforeMs, false);
+    const without = await listTasksDueBefore(E, beforeMs, taskVisPublic(false));
     expect(without.map((t) => t.id)).toContain('pub1');
     expect(without.map((t) => t.id)).not.toContain('priv1');
-    const withPriv = await listTasksDueBefore(E, beforeMs, true);
+    const withPriv = await listTasksDueBefore(E, beforeMs, taskVisPublic(true));
     expect(withPriv.map((t) => t.id)).toContain('priv1');
   });
 });
@@ -221,8 +222,17 @@ describe('privacidade de task — share público', () => {
     expect(await shareTokenOf('priv1')).toBeNull();
   });
 
-  it('share_task (tool) numa task privada → erro claro; task pública → cria link', async () => {
-    const c = collector(); registerShareTask(c.server, E);
+  it('share_task (tool) em privada: SEM escopo = not found (anti-oráculo); COM escopo = erro PRIVATE; pública cria link', async () => {
+    // Pre-check de visibilidade (spec 91): caller sem escopo private nem descobre que
+    // a task existe — antes o erro "is PRIVATE" vazava existência + status.
+    const c0 = collector(); registerShareTask(c0.server, E, NO_PRIV);
+    const ghost = await c0.tools.share_task({ id: 'priv1' });
+    expect(ghost.isError).toBe(true);
+    expect(ghost.content[0].text).not.toMatch(/PRIVATE/);
+    expect(ghost.content[0].text).toMatch(/not found/);
+
+    // Quem VÊ a privada ainda não pode compartilhá-la (selo da spec 59, intocado).
+    const c = collector(); registerShareTask(c.server, E, WITH_PRIV);
     const err = await c.tools.share_task({ id: 'priv1' });
     expect(err.isError).toBe(true);
     expect(err.content[0].text).toMatch(/PRIVATE/);
@@ -231,6 +241,18 @@ describe('privacidade de task — share público', () => {
     const ok = await c.tools.share_task({ id: 'pub1' });
     expect(ok.isError).toBeUndefined();
     expect(JSON.parse(ok.content[0].text).url).toMatch(/\/s\/ebs_/);
+  });
+
+  it('share_task (tool) numa NOTA de conhecimento por id → not found (kind gate, spec 91)', async () => {
+    await E.DB.prepare(
+      `INSERT INTO notes (id,title,body,tldr,domains,kind,private,created_at,updated_at)
+       VALUES ('note1','Nota','corpo','tl','["operations"]','insight',0,?,?)`
+    ).bind(T0, T0).run();
+    const c = collector(); registerShareTask(c.server, E, WITH_PRIV);
+    const res = await c.tools.share_task({ id: 'note1' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/not found|not a task/);
+    expect(await shareTokenOf('note1')).toBeNull();
   });
 
   it('marcar privada (setTaskPrivate) revoga o share vivo na mesma escrita → /s/<token> 404', async () => {

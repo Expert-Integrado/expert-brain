@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolSuccess, toolError, noteUrl, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolSuccess, toolError, noteUrl } from '../helpers.js';
 import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, getUserByIdOrName, taskIdsAssignedTo, listAssigneesForTasks, claimActive, listTasksAwaitingOwner, type TaskRow, type TaskProject } from '../../db/queries.js';
-import { resolveMe } from './user-ref.js';
+import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -27,9 +27,9 @@ Use this to (a) see everything on the plate, (b) find or check if a task already
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; assignee?: string; available?: boolean; awaiting_owner?: boolean; limit?: number; }
 
 export function registerListTasks(server: any, env: Env, auth?: AuthContext): void {
-  // Selo de privacidade (spec 59): sem escopo `private`, task privada some de TODAS as
-  // superfícies deste tool (base ativa/fechada e o caminho FTS de ?query).
-  const seePrivate = canSeePrivate(auth);
+  // Visibilidade (specs 59 + 91): resolvida por chamada via resolveTaskVis — task
+  // privada (sem escopo `private`) e task alheia (sob tasks:assigned) somem de TODAS
+  // as superfícies deste tool (base ativa/fechada e o caminho FTS de ?query).
   server.registerTool(
     'list_tasks',
     {
@@ -46,12 +46,19 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
     safeToolHandler(async (input: ListInput) => {
       const now = Date.now();
       const limit = input.limit ?? 200;
+      // Visibilidade row-level (spec 91): o filtro roda no SQL de TODAS as bases deste
+      // tool — sob tasks:assigned, o servidor restringe às atribuídas/mencionadas/
+      // criadas-por-mim ANTES de qualquer filtro do cliente (assignee/status/etc só
+      // INTERSECTAM por cima, nunca alargam).
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const vis = visR.vis;
 
       let tasks: TaskRow[];
       if (input.query) {
         // Busca textual sobre TASKS (título+corpo), cobre TODOS os status — dedup
         // precisa enxergar fechadas. Filtros de status/tag aplicam por cima.
-        tasks = await ftsSearchTasks(env, input.query, limit, seePrivate);
+        tasks = await ftsSearchTasks(env, input.query, limit, vis);
       } else {
         // base set: ativas (open+in_progress) + fechadas recentes quando pedidas.
         // Fechadas entram se include_closed OU se o status pedido inclui done/canceled
@@ -59,9 +66,9 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
         const wantsClosed =
           input.include_closed === true ||
           (input.status?.some((s) => s === 'done' || s === 'canceled') ?? false);
-        tasks = await listActiveTasks(env, seePrivate);
+        tasks = await listActiveTasks(env, vis);
         if (wantsClosed) {
-          tasks = tasks.concat(await listRecentClosedTasks(env, limit, seePrivate));
+          tasks = tasks.concat(await listRecentClosedTasks(env, limit, vis));
         }
       }
 
@@ -82,7 +89,7 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
 
       // filtro de menção (spec 62): "tasks com essa pessoa". Cruza com o conjunto de
       // note_ids que mencionam a entidade. As tasks já vêm gateadas por privacidade
-      // (listActiveTasks/ftsSearchTasks com seePrivate), então filtrar aqui é seguro.
+      // (listActiveTasks/ftsSearchTasks com a visão do caller), então filtrar aqui é seguro.
       if (input.mentions_entity !== undefined && input.mentions_entity.trim() !== '') {
         const mentioned = await listNoteIdsMentioning(env, input.mentions_entity.trim());
         if (mentioned.size === 0) return toolSuccess({ count: 0, tasks: [] });
@@ -127,7 +134,7 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
       // com o conjunto "último bloqueio sem resposta do owner" (SQL dedicado; a base
       // já veio gateada por privacidade, então intersectar por id é seguro).
       if (input.awaiting_owner === true) {
-        const awaiting = new Set((await listTasksAwaitingOwner(env, seePrivate)).map((t) => t.id));
+        const awaiting = new Set((await listTasksAwaitingOwner(env, vis)).map((t) => t.id));
         if (awaiting.size === 0) return toolSuccess({ count: 0, tasks: [] });
         tasks = tasks.filter((t) => awaiting.has(t.id));
       }

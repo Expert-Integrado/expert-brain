@@ -1,8 +1,9 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
+import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { revokeShare } from '../../web/share.js';
 import { getTaskById } from '../../db/queries.js';
+import { resolveTaskVis } from './user-ref.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id whose public link you want to revoke.'),
@@ -16,7 +17,7 @@ Returns { revoked: true|false }.`;
 
 interface UnshareTaskInput { id: string; }
 
-export function registerUnshareTask(server: any, env: Env): void {
+export function registerUnshareTask(server: any, env: Env, auth?: AuthContext): void {
   server.registerTool(
     'unshare_task',
     {
@@ -31,7 +32,10 @@ export function registerUnshareTask(server: any, env: Env): void {
       },
     },
     safeToolHandler(async (input: UnshareTaskInput) => {
-      const task = await getTaskById(env, input.id);
+      // Visibilidade do caller (spec 91): revogar share exige ENXERGAR a task.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const task = await getTaskById(env, input.id, visR.vis);
       if (!task) {
         return toolError(
           `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`

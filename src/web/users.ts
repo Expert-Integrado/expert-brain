@@ -6,6 +6,7 @@
 // (CSP sem inline), igual colunas/projetos.
 
 import type { Env } from '../env.js';
+import { OWNER_TASK_VIS } from '../auth/visibility.js';
 import { esc } from '../util/html.js';
 import { newId } from '../util/id.js';
 import { requireSession } from './session.js';
@@ -360,7 +361,7 @@ export async function handleTaskAssigneesPost(req: Request, env: Env): Promise<R
 
   const taskId = String(form.get('task_id') ?? '').trim();
   if (!taskId) return formError(req, 'task_id obrigatório', { returnTo: '/app/tasks' });
-  const task = await getTaskById(env, taskId, true);
+  const task = await getTaskById(env, taskId, OWNER_TASK_VIS);
   if (!task) return formError(req, 'Task não encontrada', { status: 404, returnTo: '/app/tasks' });
 
   const rawIds = form.getAll('user_ids').map((v) => String(v).trim()).filter(Boolean);

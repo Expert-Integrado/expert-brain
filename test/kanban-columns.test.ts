@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import {
@@ -135,33 +136,33 @@ describe('escrita de task realoca column_id pela categoria (spec 51)', () => {
 
   it('insertTask aloca a coluna default da categoria do status', async () => {
     await insertTask(E, { id: 'a', title: 'a', body: 'a', tldr: 'a', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1 });
-    expect((await getTaskById(E, 'a'))?.column_id).toBe('col_aberto');
+    expect((await getTaskById(E, 'a', OWNER_TASK_VIS))?.column_id).toBe('col_aberto');
     await insertTask(E, { id: 'd', title: 'd', body: 'd', tldr: 'd', domains: '["operations"]', status: 'done', due_at: null, priority: null, created_at: 1, updated_at: 1 });
-    expect((await getTaskById(E, 'd'))?.column_id).toBe('col_concluido');
+    expect((await getTaskById(E, 'd', OWNER_TASK_VIS))?.column_id).toBe('col_concluido');
   });
 
   it('setTaskStatus realoca column_id e mantém completed_at coerente', async () => {
     await insertTask(E, { id: 't', title: 't', body: 't', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1 });
     await setTaskStatus(E, 't', 'done', 500);
-    let row = await getTaskById(E, 't');
+    let row = await getTaskById(E, 't', OWNER_TASK_VIS);
     expect(row?.column_id).toBe('col_concluido');
     expect(row?.completed_at).toBe(500);
     await setTaskStatus(E, 't', 'open', 600);
-    row = await getTaskById(E, 't');
+    row = await getTaskById(E, 't', OWNER_TASK_VIS);
     expect(row?.column_id).toBe('col_aberto');
     expect(row?.completed_at).toBeNull();
   });
 
   it('updateTask por status realoca pra coluna default da nova categoria', async () => {
     await insertTask(E, { id: 't', title: 't', body: 't', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1 });
-    const updated = asTask(await updateTask(E, 't', { status: 'in_progress' }, 700));
+    const updated = asTask(await updateTask(E, 't', { status: 'in_progress' }, OWNER_TASK_VIS, 700));
     expect(updated.status).toBe('in_progress');
     expect(updated.column_id).toBe('col_progresso');
   });
 
   it('completeTask realoca pra coluna default de done', async () => {
     await insertTask(E, { id: 't', title: 't', body: 't', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1 });
-    const done = asTask(await completeTask(E, 't', 800));
+    const done = asTask(await completeTask(E, 't', OWNER_TASK_VIS, 800));
     expect(done.status).toBe('done');
     expect(done.column_id).toBe('col_concluido');
   });
@@ -280,7 +281,7 @@ describe('contrato MCP: get_task / list_tasks retornam column (spec 51)', () => 
     let p = JSON.parse((await regList().list_tasks({})).content[0].text);
     expect(p.tasks[0].column).toEqual({ id: 'col_aberto', label: 'A fazer' });
     // muda status por MCP → realoca coluna default da nova categoria
-    await updateTask(E, 't', { status: 'in_progress' }, 500);
+    await updateTask(E, 't', { status: 'in_progress' }, OWNER_TASK_VIS, 500);
     p = JSON.parse((await regList().list_tasks({})).content[0].text);
     expect(p.tasks[0].column).toEqual({ id: 'col_progresso', label: 'Em progresso' });
   });

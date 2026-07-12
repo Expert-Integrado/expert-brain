@@ -7,6 +7,7 @@ import { env } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { AuthContext } from '../../src/env.js';
+import { OWNER_TASK_VIS } from '../../src/auth/visibility.js';
 import {
   insertTask, addTaskComment, createUser,
   claimTask, releaseTaskClaim, clearTaskClaim, claimActive,
@@ -196,7 +197,7 @@ describe('comentários tipados + fila aguardando o dono (spec 88)', () => {
     await seedTask('t2');
     await reg(PAT_A).comment_task({ task_id: 't1', body: '[bloqueio] preciso de OK' });
     expect(await countTasksAwaitingOwner(E)).toBe(1);
-    expect((await listTasksAwaitingOwner(E)).map((t) => t.id)).toEqual(['t1']);
+    expect((await listTasksAwaitingOwner(E, OWNER_TASK_VIS)).map((t) => t.id)).toEqual(['t1']);
     // Filtro do list_tasks (a fila de aprovação do dono).
     const q = parse(await reg(PAT_B).list_tasks({ awaiting_owner: true }));
     expect(q.tasks.map((t: any) => t.id)).toEqual(['t1']);

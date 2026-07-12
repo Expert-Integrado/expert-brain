@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { ftsSearch, ftsSearchTasks } from '../db/queries.js';
+import { OWNER_TASK_VIS } from '../auth/visibility.js';
 import { firstDomain } from './graph-data.js';
 import { fetchContactsSearchServerSide } from './contacts-data.js';
 import { formatBrtDateTime } from '../util/time.js';
@@ -54,7 +55,7 @@ export async function handleSearchAll(req: Request, env: Env): Promise<Response>
 
   const [notesResult, tasksResult, contactsResult] = await Promise.allSettled([
     ftsSearch(env, q, SEARCH_ALL_CAP, /* prefix */ true, /* includePrivate */ true),
-    ftsSearchTasks(env, q, SEARCH_ALL_CAP, /* includePrivate */ true),
+    ftsSearchTasks(env, q, SEARCH_ALL_CAP, OWNER_TASK_VIS),
     fetchContactsSearchServerSide(env, q, SEARCH_ALL_CAP),
   ]);
 

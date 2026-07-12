@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listTaskComments, countTaskComments, getProjectById, listAssigneesForTask, resolveActorProfile, claimActive, getUserByIdOrName } from '../../db/queries.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 import { mentionsForOutput } from '../mentions.js';
+import { resolveTaskVis } from './user-ref.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id (from save_task / list_tasks / list_tasks_due_today / the /app/tasks board).'),
@@ -18,9 +19,8 @@ Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at
 interface GetTaskInput { id: string; }
 
 export function registerGetTask(server: any, env: Env, auth?: AuthContext): void {
-  // Selo de privacidade (spec 59): sem escopo `private`, task privada = mesmo "not found"
-  // de inexistente (não vaza que existe).
-  const seePrivate = canSeePrivate(auth);
+  // Visibilidade (specs 59 + 91): task privada sem escopo OU alheia sob tasks:assigned
+  // = mesmo "not found" de inexistente (não vaza que existe).
   server.registerTool(
     'get_task',
     {
@@ -29,7 +29,11 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       annotations: { title: 'Get a task', resource: 'tasks', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: GetTaskInput) => {
-      const t = await getTaskById(env, input.id, seePrivate);
+      // Visibilidade row-level (spec 91): resolvida POR CHAMADA (o vínculo PAT→user
+      // pode mudar). Task fora da visão = MESMO "not found" de inexistente.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const t = await getTaskById(env, input.id, visR.vis);
       if (!t) {
         return toolError(
           `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`
@@ -50,7 +54,7 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       const proj = t.project_id ? await getProjectById(env, t.project_id) : null;
       // Menções (spec 62): contatos que esta task cita. Label omitido pra contato privado
       // quando o caller não tem escopo `private`.
-      const mentions = await mentionsForOutput(env, input.id, seePrivate);
+      const mentions = await mentionsForOutput(env, input.id, visR.vis.includePrivate);
       // Responsáveis + autoria (spec 37): quem É responsável (decisão de quem criou) vs
       // qual credencial CRIOU (automático). Campos distintos por design.
       const assignees = await listAssigneesForTask(env, input.id);

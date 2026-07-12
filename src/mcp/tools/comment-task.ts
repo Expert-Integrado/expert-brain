@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { getTaskById, addTaskComment, countTaskComments } from '../../db/queries.js';
-import { resolveMe } from './user-ref.js';
+import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { produceCommentMailbox } from '../../db/mailbox.js';
 import { sendPushToAll } from '../../web/push.js';
 import { newId } from '../../util/id.js';
@@ -47,9 +47,12 @@ export function registerCommentTask(server: any, env: Env, auth?: AuthContext): 
       annotations: { title: 'Comment on a task', resource: 'tasks', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: CommentTaskInput) => {
-      // Valida que o id é uma task viva (getTaskById filtra kind='task' + deleted_at
-      // IS NULL) ANTES de gravar — mesmo padrão de share_task/complete_task.
-      const task = await getTaskById(env, input.task_id);
+      // Valida que o id é uma task viva E VISÍVEL pro caller (spec 91) antes de gravar.
+      // De carona conserta o bug antigo: a pré-leitura era public-only até pro DONO —
+      // o dono não conseguia comentar task privada via MCP.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const task = await getTaskById(env, input.task_id, visR.vis);
       if (!task) {
         return toolError(
           `Task '${input.task_id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`
@@ -92,9 +95,17 @@ export function registerCommentTask(server: any, env: Env, auth?: AuthContext): 
       // Bloqueio = agente parado esperando decisão do DONO (spec 88 §3): empurra push
       // pros dispositivos dele NA HORA (o SW monta o texto via /app/push/pending).
       // Best-effort como o mailbox — o comentário já está commitado; falha só loga.
+      // Throttle (spec 91): 1 push por (credencial, task) a cada 30min via KV — um
+      // robô em loop de [bloqueio] não vira spam no celular do dono (os comentários
+      // continuam entrando; só o push é suprimido dentro da janela).
       if (kind === 'bloqueio') {
         try {
-          await sendPushToAll(env, now);
+          const rlKey = `pushrl:bloqueio:${auth?.keyId ?? `oauth:${auth?.email ?? 'anon'}`}:${input.task_id}`;
+          const throttled = await env.GRAPH_CACHE.get(rlKey);
+          if (throttled === null) {
+            await env.GRAPH_CACHE.put(rlKey, '1', { expirationTtl: 1800 });
+            await sendPushToAll(env, now);
+          }
         } catch (err) {
           console.warn('comment_task: push de bloqueio falhou', err);
         }

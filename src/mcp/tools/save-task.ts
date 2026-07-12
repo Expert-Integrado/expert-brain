@@ -3,10 +3,11 @@ import type { Env, AuthContext } from '../../env.js';
 import { newId } from '../../util/id.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor, canSeePrivate } from '../helpers.js';
 import { TASK_STATUSES, type TaskStatus, insertTask, insertTags, findActiveTaskByTag, findSimilarActiveTasksByTitle, getNoteById, listMentionsForNote } from '../../db/queries.js';
+import { hasScope, SCOPE_NOTES_NONE, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 import { validateDomains } from '../../db/validation.js';
 import { parseDueToMs, formatBrtDateTime } from '../../util/time.js';
 import { resolveProjectForWrite } from './project-ref.js';
-import { resolveAssigneeRefs, toAssigneeRef, resolveMe } from './user-ref.js';
+import { resolveAssigneeRefs, toAssigneeRef, resolveMe, resolveTaskVis } from './user-ref.js';
 import { produceAssignmentMailbox } from '../../db/mailbox.js';
 import { setTaskAssignees, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
@@ -98,6 +99,31 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       const domainError = validateDomains(domains, { allowNewDomain: input.allow_new_domain ?? false });
       if (domainError) return toolError(domainError);
 
+      // Superfícies restritas (spec 91), checadas ANTES de qualquer leitura/escrita:
+      // - notes:none: origin_note_id é rejeitado — o param é um oráculo de nota (erro
+      //   "not found" vs sucesso revela existência) e herda menções de uma nota que a
+      //   credencial não pode ler.
+      // - contacts:none: mentions são rejeitadas — entity ids vêm do vault de Contacts,
+      //   que esta credencial não acessa.
+      if (hasScope(auth.scopes, SCOPE_NOTES_NONE) && input.origin_note_id !== undefined) {
+        return toolError(
+          'This credential has no access to notes (scope notes:none), so `origin_note_id` is not allowed. ' +
+          'Retry WITHOUT it.'
+        );
+      }
+      if (hasScope(auth.scopes, SCOPE_CONTACTS_NONE) && (input.mentions?.length ?? 0) > 0) {
+        return toolError(
+          'This credential has no access to the Contacts vault (scope contacts:none), so `mentions` is not ' +
+          'allowed. Retry WITHOUT it.'
+        );
+      }
+
+      // Visibilidade row-level (spec 91): usada no dedupe e no aviso de duplicata —
+      // colisão com task INVISÍVEL cria task nova sem ecoar a existente.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const vis = visR.vis;
+
       // due + due_at simultâneos: erro em vez de reconciliar silenciosamente (o
       // agente acharia que gravou um e gravou o outro). Ver spec 15.
       if (typeof input.due_at === 'number' && input.due !== undefined) {
@@ -130,7 +156,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       // (spec 15): senão o lookup por dedupe:Card-ABC não acharia dedupe:card-abc.
       const dedupeTag = input.dedupe_key ? `dedupe:${input.dedupe_key}`.trim().toLowerCase() : null;
       if (dedupeTag) {
-        const existing = await findActiveTaskByTag(env, dedupeTag);
+        const existing = await findActiveTaskByTag(env, dedupeTag, vis);
         if (existing) {
           return toolSuccess({
             deduped: true,
@@ -157,7 +183,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       let possibleDuplicates: Array<{ id: string; title: string; status: string | null; due_brt: string | null }> = [];
       if (!dedupeTag) {
         try {
-          const sims = await findSimilarActiveTasksByTitle(env, title);
+          const sims = await findSimilarActiveTasksByTitle(env, title, vis);
           possibleDuplicates = sims.map((s) => ({
             id: s.id,
             title: s.title,

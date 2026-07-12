@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
@@ -44,7 +45,7 @@ describe('POST /app/tasks/create (criação de task pela UI — spec 36 fase 2)'
     expect(data.priority).toBeNull();
     expect(data.due_at).toBeNull();
     // Persistiu no banco como task open, domínio default ['operations'].
-    const t = await getTaskById(E, data.id);
+    const t = await getTaskById(E, data.id, OWNER_TASK_VIS);
     expect(t?.title).toBe('Comprar leite');
     expect(t?.status).toBe('open');
     expect(t?.kind).toBe('task');
@@ -63,7 +64,7 @@ describe('POST /app/tasks/create (criação de task pela UI — spec 36 fase 2)'
     const data = (await res.json()) as any;
     expect(data.priority).toBe(1);
     expect(typeof data.due_at).toBe('number');
-    const t = await getTaskById(E, data.id);
+    const t = await getTaskById(E, data.id, OWNER_TASK_VIS);
     expect(t?.priority).toBe(1);
     expect(t?.body).toBe('Contexto aqui');
     expect(t?.due_at).not.toBeNull();
@@ -76,7 +77,7 @@ describe('POST /app/tasks/create (criação de task pela UI — spec 36 fase 2)'
     const data = (await res.json()) as any;
     // due_brt omite a hora quando é fim-de-dia-sem-hora (convenção 23:59).
     expect(data.due_brt).toBe('10/07/2026');
-    const t = await getTaskById(E, data.id);
+    const t = await getTaskById(E, data.id, OWNER_TASK_VIS);
     expect(t?.due_at).not.toBeNull();
   });
 
@@ -85,7 +86,7 @@ describe('POST /app/tasks/create (criação de task pela UI — spec 36 fase 2)'
     const res = await post({ title: 'Estudar', domains: ['education'] }, cookie);
     expect(res.status).toBe(201);
     const data = (await res.json()) as any;
-    const t = await getTaskById(E, data.id);
+    const t = await getTaskById(E, data.id, OWNER_TASK_VIS);
     expect(t?.domains).toBe('["education"]');
   });
 
@@ -145,7 +146,7 @@ describe('POST /app/tasks/create com column_id (criação inline no rodapé da c
     const data = (await res.json()) as any;
     expect(data.status).toBe('in_progress');
     expect(data.column_id).toBe(col.id);
-    const t = await getTaskById(E, data.id);
+    const t = await getTaskById(E, data.id, OWNER_TASK_VIS);
     expect(t?.column_id).toBe(col.id);
     expect(t?.status).toBe('in_progress');
   });

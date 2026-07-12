@@ -1,4 +1,5 @@
 import type { Env } from '../env.js';
+import { OWNER_TASK_VIS } from '../auth/visibility.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
@@ -1188,8 +1189,8 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
 
-  // includePrivate=true (spec 59): o detalhe é a sessão do dono — vê task privada.
-  const task = await getTaskById(env, id, true);
+  // OWNER_TASK_VIS (specs 59 + 91): o detalhe é a sessão do dono — vê task privada.
+  const task = await getTaskById(env, id, OWNER_TASK_VIS);
   if (!task) {
     return htmlResponse(
       await renderShell({

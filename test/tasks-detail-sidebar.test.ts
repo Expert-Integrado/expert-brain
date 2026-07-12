@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
@@ -108,7 +109,7 @@ describe('detalhe de task — sidebar de metadados em duas colunas (spec 52)', (
     expect(html).toContain('Atualizada');
     expect(html).not.toContain('Concluída');
 
-    await completeTask(E, 't1', Date.now());
+    await completeTask(E, 't1', OWNER_TASK_VIS, Date.now());
     html = await detail('t1');
     expect(html).toContain('Concluída');
   });

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolSuccess, toolError, noteUrl } from '../helpers.js';
 import { listTasksDueBefore, listAssigneesForTasks } from '../../db/queries.js';
+import { resolveTaskVis } from './user-ref.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -17,8 +18,8 @@ Each task includes: id, title, due (BRT), a human "when" string (e.g. "vence em 
 interface ListInput { horizon_hours?: number; }
 
 export function registerListTasksDueToday(server: any, env: Env, auth?: AuthContext): void {
-  // Selo de privacidade (spec 59): sem escopo `private`, task privada não entra no digest.
-  const seePrivate = canSeePrivate(auth);
+  // Visibilidade (specs 59 + 91): resolvida por chamada — privada sem escopo e task
+  // alheia sob tasks:assigned ficam fora do digest.
   server.registerTool(
     'list_tasks_due_today',
     {
@@ -33,9 +34,11 @@ export function registerListTasksDueToday(server: any, env: Env, auth?: AuthCont
       },
     },
     safeToolHandler(async (input: ListInput) => {
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
       const now = Date.now();
       const horizon = (input.horizon_hours ?? 24) * 60 * 60 * 1000;
-      const tasks = await listTasksDueBefore(env, now + horizon, seePrivate);
+      const tasks = await listTasksDueBefore(env, now + horizon, visR.vis);
       // Responsáveis em lote (spec 37): 1 query (chunked), nunca N+1.
       const assigneesById = await listAssigneesForTasks(env, tasks.map((t) => t.id));
 

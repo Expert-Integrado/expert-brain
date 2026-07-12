@@ -1,5 +1,6 @@
 import type { Env } from './env.js';
 import { listTasksDueBefore, type TaskRow } from './db/queries.js';
+import { OWNER_TASK_VIS } from './auth/visibility.js';
 import { formatBrtShort, relativeDue } from './util/time.js';
 import { getResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from './digest/resurface.js';
 
@@ -130,9 +131,9 @@ export async function sendTelegram(env: Env, text: string): Promise<{ sent: bool
 // transiente etc.) NUNCA derruba o lembrete de tasks: cai no catch e segue só com
 // o bloco de tasks (ou nada, se também não houver tasks vencendo).
 export async function runDueReminder(env: Env, now: number): Promise<{ sent: boolean; count: number; reason?: string }> {
-  // includePrivate=true (spec 59): o digest vai pro próprio dono (Telegram dele) — inclui
-  // tasks privadas. É superfície do dono, não credencial de terceiro.
-  const tasks = await listTasksDueBefore(env, now + 24 * 3600_000, true);
+  // OWNER_TASK_VIS (specs 59 + 91): o digest vai pro próprio dono (Telegram dele) —
+  // inclui tasks privadas. É superfície do dono, não credencial de terceiro.
+  const tasks = await listTasksDueBefore(env, now + 24 * 3600_000, OWNER_TASK_VIS);
   const dueText = buildDueDigest(tasks, now, env.WORKER_URL);
 
   let resurfaceText: string | null = null;

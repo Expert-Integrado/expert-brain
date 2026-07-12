@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { newId } from '../util/id.js';
 import { listTasksDueBefore, countPendingInbox, countTasksAwaitingOwner } from '../db/queries.js';
+import { OWNER_TASK_VIS } from '../auth/visibility.js';
 import {
   upsertPushSubscription, deletePushSubscriptionByEndpoint,
   listPushSubscriptions, markPushSubscriptionOk,
@@ -137,7 +138,7 @@ export async function sendPushToAll(env: Env, nowMs: number): Promise<PushSendRe
 // 24h + itens do inbox. Compartilhado entre o handler /app/push/pending (SW) e o
 // gate do cron (só empurra push se há o que anunciar).
 async function pendingSummary(env: Env, nowMs: number): Promise<{ overdue: number; today: number; inbox: number; blocked: number }> {
-  const tasks = await listTasksDueBefore(env, nowMs + 24 * 3600_000, true);
+  const tasks = await listTasksDueBefore(env, nowMs + 24 * 3600_000, OWNER_TASK_VIS);
   const overdue = tasks.filter((t) => t.due_at !== null && t.due_at < nowMs).length;
   const today = tasks.length - overdue;
   const inbox = await countPendingInbox(env);

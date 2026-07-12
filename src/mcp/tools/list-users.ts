@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolSuccess } from '../helpers.js';
 import { listUsers } from '../../db/queries.js';
+import { hasScope, SCOPE_NOTES_NONE } from '../../auth/api-keys.js';
 import { resolveMe } from './user-ref.js';
 
 const inputSchema = {
@@ -37,13 +38,17 @@ export function registerListUsers(server: any, env: Env, auth: AuthContext): voi
         listUsers(env, input.include_archived === true),
         resolveMe(env, auth),
       ]);
+      // Credencial restrita (spec 91, notes:none): a lista vem SEM `bio` — o campo
+      // descreve papel/contexto de cada perfil (estrutura organizacional), acima do
+      // que um robô de frota precisa pra endereçar uma task (id/name/type bastam).
+      const omitBio = hasScope(auth.scopes, SCOPE_NOTES_NONE);
       return toolSuccess({
         count: users.length,
         users: users.map((u) => ({
           id: u.id,
           name: u.name,
           type: u.type,
-          bio: u.bio,
+          ...(omitBio ? {} : { bio: u.bio }),
           is_me: me !== null && me.id === u.id,
           ...(u.archived_at !== null ? { archived: true } : {}),
         })),

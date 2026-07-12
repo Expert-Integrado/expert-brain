@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
@@ -99,7 +100,7 @@ describe('POST /app/tasks/move (spec 51)', () => {
     await seedTask('t1', 'open');
     const res = await jsonPost('/app/tasks/move', { id: 't1', column_id: 'col_progresso' }, await cookie());
     expect(res.status).toBe(200);
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.column_id).toBe('col_progresso');
     expect(t?.status).toBe('in_progress');
     expect(t?.completed_at).toBeNull();
@@ -109,7 +110,7 @@ describe('POST /app/tasks/move (spec 51)', () => {
     await seedTask('t1', 'open');
     const res = await jsonPost('/app/tasks/move', { id: 't1', column_id: 'col_concluido' }, await cookie());
     expect(res.status).toBe(200);
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.status).toBe('done');
     expect(t?.completed_at).not.toBeNull();
   });
@@ -125,7 +126,7 @@ describe('POST /app/tasks/move (spec 51)', () => {
     const res = await jsonPost('/app/tasks/move', { id: 't1', column_id: 'col_progresso' }, await cookie());
     const data = (await res.json()) as any;
     expect(typeof data.updated_at).toBe('number');
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(data.updated_at).toBe(t?.updated_at);
   });
 });
@@ -197,8 +198,8 @@ describe('gestão de colunas via /app/config (spec 51)', () => {
     const ok = await formPost('/app/tasks/columns/archive', { id: wait.id, archived: '1', to: 'col_aberto' }, ck);
     expect(ok.status).toBe(302);
     expect((await getColumnById(E, wait.id))?.archived_at).not.toBeNull();
-    expect((await getTaskById(E, 't1'))?.column_id).toBe('col_aberto');
-    expect((await getTaskById(E, 't2'))?.column_id).toBe('col_aberto');
+    expect((await getTaskById(E, 't1', OWNER_TASK_VIS))?.column_id).toBe('col_aberto');
+    expect((await getTaskById(E, 't2', OWNER_TASK_VIS))?.column_id).toBe('col_aberto');
   });
 
   it('archive: não arquiva col_aberto quando é a última coluna ativa de open', async () => {

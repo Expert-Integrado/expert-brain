@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, writeActor } from '../helpers.js';
 import { completeTask, getTaskById, clearTaskClaim } from '../../db/queries.js';
 import { formatBrtDateTime } from '../../util/time.js';
+import { resolveTaskVis } from './user-ref.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id to complete.'),
@@ -37,8 +38,12 @@ export function registerCompleteTask(server: any, env: Env, auth: AuthContext): 
       },
     },
     safeToolHandler(async (input: CompleteInput) => {
+      // Gate de visibilidade (spec 91): a pré-leitura do completeTask usa a visão do
+      // caller — task invisível = 'not-found' idêntico a inexistente.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
       const now = Date.now();
-      const result = await completeTask(env, input.id, now, input.outcome, input.expected_updated_at, writeActor(auth));
+      const result = await completeTask(env, input.id, visR.vis, now, input.outcome, input.expected_updated_at, writeActor(auth));
 
       if (result === 'not-found') {
         return toolError(
@@ -46,7 +51,7 @@ export function registerCompleteTask(server: any, env: Env, auth: AuthContext): 
         );
       }
       if (result === 'conflict') {
-        const current = await getTaskById(env, input.id);
+        const current = await getTaskById(env, input.id, visR.vis);
         const currentUpdated = current?.updated_at ?? null;
         return toolError(
           `Task '${input.id}' changed since you read it (current updated_at: ${currentUpdated}). ` +
@@ -55,7 +60,7 @@ export function registerCompleteTask(server: any, env: Env, auth: AuthContext): 
       }
       if (result === 'already-done') {
         // Idempotência: nada foi escrito; devolvemos o completed_at ORIGINAL.
-        const existing = await getTaskById(env, input.id);
+        const existing = await getTaskById(env, input.id, visR.vis);
         return toolSuccess({
           id: input.id,
           title: existing?.title ?? null,

@@ -1,7 +1,7 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { authorizeBearer } from './bearer-auth.js';
-import { validateApiKey, hasScope } from '../auth/api-keys.js';
+import { validateApiKey, hasScope, SCOPE_NOTES_NONE } from '../auth/api-keys.js';
 import { scopesSeePrivate } from '../auth/visibility.js';
 import { getNoteById } from '../db/queries.js';
 import {
@@ -29,6 +29,12 @@ async function authReq(req: Request, env: Env, write = false): Promise<MediaAuth
   if (m && m[1].trim().startsWith('eb_pat_')) {
     const v = await validateApiKey(env, m[1].trim());
     if (!v) return json({ error: 'invalid or revoked API key' }, 401);
+    // Mídia É superfície de notas (spec 91): credencial notes:none não passa por esta
+    // rota HTTP em NENHUM verbo — as tools MCP de mídia dela já nem são registradas
+    // (resource notes.media no scopeGuard); aqui fecha o caminho curl com o mesmo PAT.
+    if (hasScope(v.scopes, SCOPE_NOTES_NONE)) {
+      return json({ error: "this key has no notes access (scope 'notes:none') — media routes are part of the notes surface" }, 403);
+    }
     if (write && !hasScope(v.scopes, 'full')) return json({ error: "write requires a 'full'-scope key" }, 403);
     return { level: 'pat', scopes: v.scopes };
   }

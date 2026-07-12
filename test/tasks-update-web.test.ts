@@ -1,4 +1,5 @@
 import { env, SELF } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
@@ -69,7 +70,7 @@ describe('POST /app/tasks/update (edição inline de task — spec 36)', () => {
     expect(data.status).toBe('in_progress');
     expect(typeof data.due_at).toBe('number');
     // Persistiu no banco.
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.priority).toBe(1);
     expect(t?.status).toBe('in_progress');
     expect(t?.due_at).not.toBeNull();
@@ -81,7 +82,7 @@ describe('POST /app/tasks/update (edição inline de task — spec 36)', () => {
     const cookie = await sessionCookieHeader();
     const res = await post({ id: 't1', patch: { due: null } }, cookie);
     expect(res.status).toBe(200);
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.due_at).toBeNull();
   });
 
@@ -90,7 +91,7 @@ describe('POST /app/tasks/update (edição inline de task — spec 36)', () => {
     const cookie = await sessionCookieHeader();
     const res = await post({ id: 't1', patch: { title: 'Novo título', body: 'Novo corpo' } }, cookie);
     expect(res.status).toBe(200);
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.title).toBe('Novo título');
     expect(t?.body).toBe('Novo corpo');
     expect(t?.tldr).toBe('Novo título'); // tldr espelha o título
@@ -107,7 +108,7 @@ describe('POST /app/tasks/update (edição inline de task — spec 36)', () => {
     expect(data.error).toBe('conflict');
     expect(data.current_updated_at).toBe(2000);
     // Não sobrescreveu.
-    const t = await getTaskById(E, 't1');
+    const t = await getTaskById(E, 't1', OWNER_TASK_VIS);
     expect(t?.title).toBe('Editada por outro');
   });
 

@@ -1,4 +1,5 @@
 import type { Env } from '../env.js';
+import { OWNER_TASK_VIS, taskVisPublic } from '../auth/visibility.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { authorizeBearer } from './bearer-auth.js';
@@ -200,10 +201,10 @@ interface BoardPayload {
 async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
   const [activeCols, active, closed, allProjects, allUsers, awaiting] = await Promise.all([
     listKanbanColumns(env, false),
-    // includePrivate=true (spec 59): o board é superfície do dono (sessão OU bearer de
+    // OWNER_TASK_VIS (specs 59 + 91): o board é superfície do dono (sessão OU bearer de
     // tasks) — mostra task privada com badge 🔒. O gate por escopo é dos read paths MCP.
-    listActiveTasks(env, true),
-    listRecentClosedTasks(env, 100, true),
+    listActiveTasks(env, OWNER_TASK_VIS),
+    listRecentClosedTasks(env, 100, OWNER_TASK_VIS),
     listTaskProjects(env, true),
     // Usuários (spec 89): resolver claimed_by → nome pro chip de claim do card.
     listUsers(env, true),
@@ -299,8 +300,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
 
   if (scope === 'due') {
     const horizon = Math.min(Math.max(Number(url.searchParams.get('horizon_hours')) || 24, 1), 168);
-    // includePrivate=true (spec 59): superfície do dono (sessão OU bearer de tasks).
-    const rows = await listTasksDueBefore(env, now + horizon * 3600_000, true);
+    // OWNER_TASK_VIS (specs 59 + 91): superfície do dono (sessão OU bearer de tasks).
+    const rows = await listTasksDueBefore(env, now + horizon * 3600_000, OWNER_TASK_VIS);
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
@@ -368,7 +369,7 @@ export async function handleTaskCompletePost(req: Request, env: Env): Promise<Re
   // 'not-found' | 'conflict' | 'already-done'. O board não usa versionamento
   // otimista (sem expected_updated_at), então 'conflict' não ocorre aqui;
   // 'already-done' é um no-op idempotente que também terminou como done.
-  const result = await completeTask(env, id, Date.now(), body.outcome, undefined, completeActor);
+  const result = await completeTask(env, id, OWNER_TASK_VIS, Date.now(), body.outcome, undefined, completeActor);
   if (result === 'not-found') return json({ error: 'task not found' }, 404);
   return json({ ok: true, id, status: 'done' });
 }
@@ -521,12 +522,12 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     return json({ error: 'patch must include at least one of: title, body, due, priority, status, domains, tags, project_id' }, 400);
   }
 
-  const result = await updateTask(env, id, patch, Date.now(), expectedUpdatedAt);
+  const result = await updateTask(env, id, patch, OWNER_TASK_VIS, Date.now(), expectedUpdatedAt);
   if (result === 'not-found') return json({ error: 'task not found' }, 404);
   if (result === 'conflict') {
     // 409: relê pra devolver o updated_at atual — a UI mostra "editado em outro
     // lugar, recarregue" sem sobrescrever. Mesmo espírito do erro do MCP.
-    const current = await getTaskById(env, id);
+    const current = await getTaskById(env, id, OWNER_TASK_VIS);
     return json({
       error: 'conflict',
       message: 'Esta task foi editada em outro lugar. Recarregue antes de salvar.',
@@ -723,7 +724,7 @@ export async function handleTaskSharePost(req: Request, env: Env): Promise<Respo
   // atende nota de conhecimento (alias /app/notes/share), que não tem feed de
   // atividade de task. createShare não devolve o `kind`, então confirma via getTaskById
   // (mesma leitura que já filtra kind='task' + viva).
-  const sharedTask = await getTaskById(env, id, true);
+  const sharedTask = await getTaskById(env, id, OWNER_TASK_VIS);
   if (sharedTask) {
     const days = Math.round((result.expires_at - now) / (24 * 60 * 60 * 1000));
     await logTaskActivity(env, id, `oauth:${session.email}`, [
@@ -827,7 +828,9 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   const body = String(form.get('body') ?? '').trim().slice(0, OWNER_COMMENT_MAX);
   if (!body) return formError(req, 'Comentário vazio', { field: 'body', returnTo: `/app/tasks/${encodeURIComponent(taskId)}#atividade` });
 
-  const task = await getTaskById(env, taskId);
+  // OWNER_TASK_VIS: form da sessão do dono — de carona conserta o dono não conseguir
+  // comentar task privada pelo console (a leitura era public-only).
+  const task = await getTaskById(env, taskId, OWNER_TASK_VIS);
   if (!task) return formError(req, 'Tarefa não encontrada', { status: 404, returnTo: '/app/tasks' });
 
   // Assinatura (spec 81): o comentário do console também aponta pro perfil do dono
@@ -901,7 +904,7 @@ export async function handleSubtaskAddPost(req: Request, env: Env): Promise<Resp
   const title = (typeof body.title === 'string' ? body.title : '').trim();
   if (title.length < 1 || title.length > 200) return json({ error: 'title must be 1-200 chars' }, 400);
 
-  const task = await getTaskById(env, taskId, auth.seePrivate);
+  const task = await getTaskById(env, taskId, taskVisPublic(auth.seePrivate));
   if (!task) return json({ error: 'task not found' }, 404);
   const created = await addTaskSubtasks(env, taskId, [title], auth.actor, Date.now());
   if (created === 'cap-exceeded') return json({ error: `subtask limit reached (${MAX_SUBTASKS_PER_TASK} per task)` }, 400);
@@ -922,7 +925,7 @@ export async function handleSubtaskTogglePost(req: Request, env: Env): Promise<R
   if (!taskId || !subId) return json({ error: 'task_id and id required' }, 400);
   const done = body.done === true;
 
-  const task = await getTaskById(env, taskId, auth.seePrivate);
+  const task = await getTaskById(env, taskId, taskVisPublic(auth.seePrivate));
   if (!task) return json({ error: 'task not found' }, 404);
   const r = await setSubtaskDone(env, taskId, subId, done, auth.actor, Date.now());
   if (r === 'not-found') return json({ error: 'subtask not found' }, 404);
@@ -944,7 +947,7 @@ export async function handleSubtaskUpdatePost(req: Request, env: Env): Promise<R
   const title = (typeof body.title === 'string' ? body.title : '').trim();
   if (title.length < 1 || title.length > 200) return json({ error: 'title must be 1-200 chars' }, 400);
 
-  const task = await getTaskById(env, taskId, auth.seePrivate);
+  const task = await getTaskById(env, taskId, taskVisPublic(auth.seePrivate));
   if (!task) return json({ error: 'task not found' }, 404);
   const r = await retitleSubtask(env, taskId, subId, title);
   if (r === 'not-found') return json({ error: 'subtask not found' }, 404);
@@ -965,7 +968,7 @@ export async function handleSubtaskDeletePost(req: Request, env: Env): Promise<R
   const subId = (body.id || '').trim();
   if (!taskId || !subId) return json({ error: 'task_id and id required' }, 400);
 
-  const task = await getTaskById(env, taskId, auth.seePrivate);
+  const task = await getTaskById(env, taskId, taskVisPublic(auth.seePrivate));
   if (!task) return json({ error: 'task not found' }, 404);
   const removed = await deleteSubtask(env, taskId, subId);
   if (removed === 'not-found') return json({ error: 'subtask not found' }, 404);

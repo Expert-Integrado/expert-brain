@@ -1,4 +1,5 @@
 import type { Env } from '../env.js';
+import { OWNER_TASK_VIS, type TaskVisibility } from '../auth/visibility.js';
 import { priorityLabel } from '../util/priority.js';
 import {
   logTaskActivity, truncateForActivity, dueLabelForActivity,
@@ -605,28 +606,59 @@ export interface InsertTaskInput {
 
 const TASK_COLS = `id, title, body, tldr, domains, kind, status, due_at, priority, completed_at, column_id, project_id, private, origin_note_id, created_by, created_at, updated_at, share_token, share_expires_at, claimed_by, claimed_at, claim_expires_at`;
 
+// Predicado SQL da visibilidade row-level de TASK (spec 80-frota-agentes/91).
+// Substitui o antigo boolean includePrivate nas funções base de leitura de task —
+// além do eixo private, aplica o eixo assigned-only em 3 ramos (EXISTS na PK, não
+// Set em memória: get_task por id precisa de gate POR LINHA, e o LIMIT 500 do
+// listActiveTasks quebraria um filtro pós-query):
+//   1. atribuída a mim (task_assignees) — o vínculo canônico;
+//   2. MENCIONADO pra mim no thread (mailbox_items kind='mention') — menção CONCEDE
+//      visibilidade (senão o mailbox entregaria item de task ilegível = beco); SÓ o
+//      kind mention concede, então DESATRIBUIR revoga (itens assignment antigos não
+//      re-concedem);
+//   3. criada por uma credencial do MEU usuário (created_by IN chaves do user) — o
+//      robô não perde de vista a task [pedido] que ele criou pro dono. O vínculo
+//      PAT↔user existe nas DUAS direções do schema (api_keys.user_id E a legada
+//      users.api_key_id — espelho do getUserByApiKeyId), então o IN cobre ambas.
+// `p` é o prefixo de alias da tabela notes na query chamadora (ex.: 'n.').
+export function taskVisFilter(vis: TaskVisibility, p: string): { sql: string; binds: string[] } {
+  let sql = '';
+  const binds: string[] = [];
+  if (!vis.includePrivate) sql += ` AND ${p}${PUBLIC_ONLY_FILTER}`;
+  if (vis.assignedOnlyUserId !== null) {
+    sql +=
+      ` AND (EXISTS (SELECT 1 FROM task_assignees tv_a WHERE tv_a.note_id = ${p}id AND tv_a.user_id = ?)` +
+      ` OR EXISTS (SELECT 1 FROM mailbox_items tv_m WHERE tv_m.task_id = ${p}id AND tv_m.user_id = ? AND tv_m.kind = 'mention')` +
+      ` OR ${p}created_by IN (` +
+      `SELECT tv_k.id FROM api_keys tv_k WHERE tv_k.user_id = ?` +
+      ` UNION SELECT tv_u.api_key_id FROM users tv_u WHERE tv_u.id = ? AND tv_u.api_key_id IS NOT NULL))`;
+    binds.push(vis.assignedOnlyUserId, vis.assignedOnlyUserId, vis.assignedOnlyUserId, vis.assignedOnlyUserId);
+  }
+  return { sql, binds };
+}
+
 // Busca FTS restrita a TASKS — o espelho do ftsSearch, que as exclui. As linhas de
 // task JÁ estão no notes_fts (os triggers da migration 0001 indexam TODAS as notas);
 // aqui só se ABRE o caminho de leitura. Zero migration. Usa prefix=true (busca
 // exploratória p/ dedupe por fragmento de título). Devolve TaskRow completo — o
 // list_tasks precisa de status/due/priority pra montar o card. Ver spec 15 item 1.
 export async function ftsSearchTasks(
-  env: Env, query: string, limit: number, includePrivate = false
+  env: Env, query: string, limit: number, vis: TaskVisibility
 ): Promise<TaskRow[]> {
   const safe = sanitizeFtsQuery(query, true);
   if (!safe) return [];
   const cols = TASK_COLS.split(', ').map((c) => `n.${c}`).join(', ');
-  // Selo de privacidade (spec 59): default false appenda `AND n.private = 0` — o caminho
-  // FTS de task (usado por list_tasks?query) não pode vazar task privada pra caller sem escopo.
-  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
+  // Visibilidade (specs 59 + 91): o caminho FTS de task (list_tasks?query) não pode
+  // vazar task privada nem, sob tasks:assigned, task alheia.
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
     `SELECT ${cols}
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
-     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL AND n.kind = 'task'${priv}
+     WHERE notes_fts MATCH ? AND n.deleted_at IS NULL AND n.kind = 'task'${f.sql}
      ORDER BY rank
      LIMIT ?`
-  ).bind(safe, limit).all<TaskRow>();
+  ).bind(safe, ...f.binds, limit).all<TaskRow>();
   return r.results ?? [];
 }
 
@@ -659,14 +691,18 @@ export async function insertTask(env: Env, t: InsertTaskInput, actor?: string | 
 // janela residual é de milissegundos — o alvo é matar retry de rede e criação por
 // convenção, não tráfego adversarial. Só bate contra tasks ATIVAS: uma dedupe_key
 // de task já concluída não bloqueia recriar.
-export async function findActiveTaskByTag(env: Env, tag: string): Promise<TaskRow | null> {
+// Visibilidade (spec 91): o dedupe respeita a visão do CALLER — dedupe_key colidindo
+// com task invisível (privada sem escopo, ou alheia sob tasks:assigned) cria task nova
+// SEM ecoar a existente (não vira oráculo de existência).
+export async function findActiveTaskByTag(env: Env, tag: string, vis: TaskVisibility): Promise<TaskRow | null> {
+  const f = taskVisFilter(vis, 'n.');
   return env.DB.prepare(
     `SELECT ${TASK_COLS} FROM notes n
      JOIN tags t ON t.note_id = n.id
      WHERE t.tag = ? AND n.kind = 'task' AND n.deleted_at IS NULL
-       AND n.status IN ('open','in_progress')
+       AND n.status IN ('open','in_progress')${f.sql}
      LIMIT 1`
-  ).bind(tag).first<TaskRow>();
+  ).bind(tag, ...f.binds).first<TaskRow>();
 }
 
 // Match barato de possível duplicata por título (aviso, NÃO bloqueia). Bate contra
@@ -679,20 +715,23 @@ export async function findActiveTaskByTag(env: Env, tag: string): Promise<TaskRo
 // sanitizeFtsQuery(prefix=true) já neutraliza AND/OR/NOT/NEAR e pontuação
 // (':','(',')','—' etc. nunca chegam à query). Sem título com token válido
 // (ex.: title só com pontuação), devolve [] sem tocar o banco.
+// Visibilidade (spec 91): possible_duplicates respeita a visão do CALLER — sem o
+// filtro, títulos de tasks privadas/alheias vazariam no eco do save_task.
 export async function findSimilarActiveTasksByTitle(
-  env: Env, title: string
+  env: Env, title: string, vis: TaskVisibility
 ): Promise<Array<Pick<TaskRow,'id'|'title'|'status'|'due_at'>>> {
   const safe = sanitizeFtsQuery(title, true);
   if (!safe) return [];
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
     `SELECT n.id, n.title, n.status, n.due_at
      FROM notes_fts f
      JOIN notes n ON n.rowid = f.rowid
      WHERE notes_fts MATCH ? AND n.deleted_at IS NULL
-       AND n.kind = 'task' AND n.status IN ('open','in_progress')
+       AND n.kind = 'task' AND n.status IN ('open','in_progress')${f.sql}
      ORDER BY rank
      LIMIT 5`
-  ).bind(safe).all<Pick<TaskRow,'id'|'title'|'status'|'due_at'>>();
+  ).bind(safe, ...f.binds).all<Pick<TaskRow,'id'|'title'|'status'|'due_at'>>();
   return r.results ?? [];
 }
 
@@ -731,68 +770,67 @@ export async function findActiveNoteIdByTag(env: Env, tag: string): Promise<stri
   return row?.id ?? null;
 }
 
-// Selo de privacidade (spec 59): includePrivate default false appenda `AND private = 0`,
-// então uma credencial sem escopo `private` recebe null numa task privada (indistinguível
-// de inexistente — get_task devolve o MESMO erro de "not found"). A sessão do dono, o
-// bearer de tasks e os read-backs internos de escrita (complete/update/move) passam true.
-export async function getTaskById(env: Env, id: string, includePrivate = false): Promise<TaskRow | null> {
-  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+// Visibilidade (specs 59 + 91): task fora da visão do caller (privada sem escopo, ou
+// alheia sob tasks:assigned) devolve null — indistinguível de inexistente (get_task
+// responde o MESMO "not found", anti-oráculo). SEM default: cada call-site declara a
+// intenção (OWNER_TASK_VIS nas superfícies do dono e nos read-backs internos pós-gate).
+export async function getTaskById(env: Env, id: string, vis: TaskVisibility): Promise<TaskRow | null> {
+  const f = taskVisFilter(vis, 'n.');
   return env.DB.prepare(
-    `SELECT ${TASK_COLS} FROM notes WHERE id = ? AND kind = 'task' AND deleted_at IS NULL${priv}`
-  ).bind(id).first<TaskRow>();
+    `SELECT ${TASK_COLS} FROM notes n WHERE n.id = ? AND n.kind = 'task' AND n.deleted_at IS NULL${f.sql}`
+  ).bind(id, ...f.binds).first<TaskRow>();
 }
 
 // Tasks ativas (open + in_progress), ordenadas por vencimento (sem due primeiro? não:
 // NULLs por último), depois prioridade (1 = mais alta). Usado pela coluna esquerda do
 // Kanban e como base das outras visões.
-export async function listActiveTasks(env: Env, includePrivate = false): Promise<TaskRow[]> {
-  // Selo de privacidade (spec 59): default false esconde task privada; board web e
-  // bearer de tasks (superfícies do dono) passam true.
-  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+export async function listActiveTasks(env: Env, vis: TaskVisibility): Promise<TaskRow[]> {
+  // Visibilidade (specs 59 + 91): o filtro roda no SQL, ANTES do LIMIT — um filtro
+  // pós-query devolveria menos de 500 linhas visíveis num vault com muitas invisíveis.
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
     // LIMIT 500 defensivo = teto do `limit` da tool list_tasks; evita puxar milhares
     // de tasks abertas num vault que cresceu (o slice da tool já corta, mas o SQL não
     // deve materializar tudo). Ver spec 15 item 8.
-    `SELECT ${TASK_COLS} FROM notes
-     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('open','in_progress')${priv}
+    `SELECT ${TASK_COLS} FROM notes n
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL AND n.status IN ('open','in_progress')${f.sql}
      ORDER BY (due_at IS NULL) ASC, due_at ASC, COALESCE(priority, 9) ASC, created_at ASC
      LIMIT 500`
-  ).all<TaskRow>();
+  ).bind(...f.binds).all<TaskRow>();
   return r.results ?? [];
 }
 
 // Tasks finalizadas (done/canceled) mais recentes — limitadas pra a coluna direita
 // do Kanban não crescer pra sempre conforme o histórico acumula.
-export async function listRecentClosedTasks(env: Env, limit = 100, includePrivate = false): Promise<TaskRow[]> {
-  // Selo de privacidade (spec 59): default false esconde task privada fechada.
-  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+export async function listRecentClosedTasks(env: Env, limit: number, vis: TaskVisibility): Promise<TaskRow[]> {
+  // Visibilidade (specs 59 + 91): filtro no SQL, antes do LIMIT.
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
-    `SELECT ${TASK_COLS} FROM notes
-     WHERE kind = 'task' AND deleted_at IS NULL AND status IN ('done','canceled')${priv}
+    `SELECT ${TASK_COLS} FROM notes n
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL AND n.status IN ('done','canceled')${f.sql}
      ORDER BY COALESCE(completed_at, updated_at) DESC
      LIMIT ?`
-  ).bind(limit).all<TaskRow>();
+  ).bind(...f.binds, limit).all<TaskRow>();
   return r.results ?? [];
 }
 
 // Tasks que vencem até `beforeMs` (inclui as já vencidas, pois due_at < now < beforeMs).
 // Só conta tasks com due_at definido e ainda abertas. Ordenadas por vencimento +
 // prioridade. Base do list_tasks_due_today e do lembrete da VPS.
-export async function listTasksDueBefore(env: Env, beforeMs: number, includePrivate = false, limit = 200): Promise<TaskRow[]> {
-  // Selo de privacidade (spec 59): default false esconde task privada. O digest do dono
-  // (cron/bearer) e a visão "due" do board passam true; o list_tasks_due_today MCP passa
-  // canSeePrivate do PAT.
+export async function listTasksDueBefore(env: Env, beforeMs: number, vis: TaskVisibility, limit = 200): Promise<TaskRow[]> {
+  // Visibilidade (specs 59 + 91): o digest do dono (cron/bearer) e a visão "due" do
+  // board passam OWNER_TASK_VIS; o list_tasks_due_today MCP passa a visão do PAT.
   // LIMIT defensivo (spec 30-features/32): o principal consumidor é o digest do
   // Telegram (teto físico de 4096 chars) — leitura ilimitada não fazia sentido.
-  const priv = includePrivate ? '' : ` AND ${PUBLIC_ONLY_FILTER}`;
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
-    `SELECT ${TASK_COLS} FROM notes
-     WHERE kind = 'task' AND deleted_at IS NULL
-       AND status IN ('open','in_progress')
-       AND due_at IS NOT NULL AND due_at <= ?${priv}
+    `SELECT ${TASK_COLS} FROM notes n
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL
+       AND n.status IN ('open','in_progress')
+       AND n.due_at IS NOT NULL AND n.due_at <= ?${f.sql}
      ORDER BY due_at ASC, COALESCE(priority, 9) ASC
      LIMIT ?`
-  ).bind(beforeMs, limit).all<TaskRow>();
+  ).bind(beforeMs, ...f.binds, limit).all<TaskRow>();
   return r.results ?? [];
 }
 
@@ -825,11 +863,13 @@ export type UpdateResult = TaskRow | 'not-found' | 'conflict';
 // segundo complete afeta 0 linhas e cai em 'already-done'. `expectedUpdatedAt`
 // (opt-in) adiciona If-Match: só escreve se updated_at ainda for o lido.
 export async function completeTask(
-  env: Env, id: string, now: number, outcome?: string, expectedUpdatedAt?: number, actor?: string | null
+  env: Env, id: string, vis: TaskVisibility, now: number, outcome?: string, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<CompleteResult> {
-  // includePrivate=true: concluir é operação de escrita do dono — precisa enxergar
-  // task privada (o gate de leitura da spec 59 é nos read paths, não no write).
-  const before = await getTaskById(env, id, true);
+  // Gate de visibilidade do CALLER (spec 91): a pré-leitura usa a visão de quem chama
+  // — task invisível (privada sem escopo / alheia sob tasks:assigned) = 'not-found',
+  // nunca mais "completa por id" o que não pode ler. Superfícies do dono passam
+  // OWNER_TASK_VIS (comportamento anterior preservado).
+  const before = await getTaskById(env, id, vis);
   if (!before) return 'not-found';
   // Idempotência: já concluída → no-op (não re-appenda o body, não avança timestamps).
   if (before.status === 'done') return 'already-done';
@@ -859,7 +899,7 @@ export async function completeTask(
 
   if ((res.meta?.changes ?? 0) === 0) {
     // Alguém venceu a corrida ou a versão não bateu. Reler pra decidir o sentinel.
-    const after = await getTaskById(env, id, true);
+    const after = await getTaskById(env, id, OWNER_TASK_VIS);
     if (!after) return 'not-found';
     if (after.status === 'done') return 'already-done';
     return 'conflict';
@@ -871,7 +911,7 @@ export async function completeTask(
     { field: 'status', old_value: statusLabelForActivity(before.status), new_value: 'concluída' },
   ]);
 
-  const after = await getTaskById(env, id, true);
+  const after = await getTaskById(env, id, OWNER_TASK_VIS);
   return after ?? 'not-found';
 }
 
@@ -903,12 +943,12 @@ export interface TaskPatch {
 // 'conflict' (escrita concorrente detectada). Sem o parâmetro, comportamento
 // last-write-wins idêntico ao anterior (retrocompatível).
 export async function updateTask(
-  env: Env, id: string, patch: TaskPatch, now: number, expectedUpdatedAt?: number, actor?: string | null
+  env: Env, id: string, patch: TaskPatch, vis: TaskVisibility, now: number, expectedUpdatedAt?: number, actor?: string | null
 ): Promise<UpdateResult> {
-  // includePrivate=true: editar é operação de escrita — enxerga task privada (o gate
-  // da spec 59 é de leitura). A visibilidade por escopo, quando aplicável, é decidida
-  // na tool/endpoint antes de chamar aqui.
-  const task = await getTaskById(env, id, true);
+  // Gate de visibilidade do CALLER (spec 91): a pré-leitura usa a visão de quem chama
+  // — o caminho de field-edit não escreve mais em task que o caller não enxerga
+  // ('not-found' idêntico a inexistente). Superfícies do dono passam OWNER_TASK_VIS.
+  const task = await getTaskById(env, id, vis);
   if (!task) return 'not-found';
 
   // Log de atividade (spec 74): diff ANTES vs patch, montado ANTES do UPDATE (com o
@@ -1021,7 +1061,7 @@ export async function updateTask(
 
   await logTaskActivity(env, id, actor, activityEntries);
 
-  const after = await getTaskById(env, id, true);
+  const after = await getTaskById(env, id, OWNER_TASK_VIS);
   return after ?? 'not-found';
 }
 
@@ -1096,7 +1136,7 @@ export async function moveTaskToColumn(
   if (!col) return 'column-not-found';
   // Lido ANTES do UPDATE — dá o column_id/status ANTERIOR pro log de atividade E
   // adianta o 'not-found' (id inexistente/não-task) sem gastar o UPDATE às cegas.
-  const before = await getTaskById(env, id, true);
+  const before = await getTaskById(env, id, OWNER_TASK_VIS);
   if (!before) return 'not-found';
   const closing = col.category === 'done' || col.category === 'canceled';
   const res = await env.DB.prepare(
@@ -1114,7 +1154,7 @@ export async function moveTaskToColumn(
     ]);
   }
 
-  const after = await getTaskById(env, id, true);
+  const after = await getTaskById(env, id, OWNER_TASK_VIS);
   return after ?? 'not-found';
 }
 
@@ -1364,15 +1404,15 @@ export async function clearTaskClaim(env: Env, taskId: string): Promise<void> {
 // estado extra. Alimenta o filtro awaiting_owner do list_tasks e o gate/texto do
 // web push (pendingSummary). Ordena por bloqueio mais antigo primeiro (quem espera
 // há mais tempo aparece no topo).
-export async function listTasksAwaitingOwner(env: Env, includePrivate = false): Promise<TaskRow[]> {
-  const priv = includePrivate ? '' : ` AND n.${PUBLIC_ONLY_FILTER}`;
+export async function listTasksAwaitingOwner(env: Env, vis: TaskVisibility): Promise<TaskRow[]> {
+  const f = taskVisFilter(vis, 'n.');
   const r = await env.DB.prepare(
     `SELECT ${TASK_COLS.split(', ').map((c) => `n.${c}`).join(', ')},
             (SELECT MAX(b.created_at) FROM task_comments b
               WHERE b.task_id = n.id AND b.kind = 'bloqueio') AS last_block_at
      FROM notes n
      WHERE n.kind = 'task' AND n.deleted_at IS NULL
-       AND n.status IN ('open','in_progress')${priv}
+       AND n.status IN ('open','in_progress')${f.sql}
        AND EXISTS (
          SELECT 1 FROM task_comments b
          WHERE b.task_id = n.id AND b.kind = 'bloqueio'
@@ -1381,7 +1421,7 @@ export async function listTasksAwaitingOwner(env: Env, includePrivate = false): 
                WHERE o.task_id = n.id AND o.author = 'owner'), 0)
        )
      ORDER BY last_block_at ASC`
-  ).all<TaskRow>();
+  ).bind(...f.binds).all<TaskRow>();
   return r.results ?? [];
 }
 

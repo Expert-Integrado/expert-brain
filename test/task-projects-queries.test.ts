@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:test';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import {
@@ -53,7 +54,7 @@ describe('migration 0011_task_projects (aditiva)', () => {
       `INSERT INTO notes (id,title,body,tldr,domains,kind,status,created_at,updated_at)
        VALUES ('old','t','b','t','["operations"]','task','open',1,1)`
     ).run();
-    const row = await getTaskById(E, 'old');
+    const row = await getTaskById(E, 'old', OWNER_TASK_VIS);
     expect(row?.project_id).toBeNull();
   });
 });
@@ -117,11 +118,11 @@ describe('vínculo de task a projeto (insert/update)', () => {
       id: 't', title: 't', body: 't', tldr: 't', domains: '["operations"]',
       status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1, project_id: 'proj_a',
     });
-    expect((await getTaskById(E, 't'))?.project_id).toBe('proj_a');
+    expect((await getTaskById(E, 't', OWNER_TASK_VIS))?.project_id).toBe('proj_a');
 
-    let updated = asTask(await updateTask(E, 't', { project_id: 'proj_b' }, 2));
+    let updated = asTask(await updateTask(E, 't', { project_id: 'proj_b' }, OWNER_TASK_VIS, 2));
     expect(updated.project_id).toBe('proj_b');
-    updated = asTask(await updateTask(E, 't', { project_id: null }, 3));
+    updated = asTask(await updateTask(E, 't', { project_id: null }, OWNER_TASK_VIS, 3));
     expect(updated.project_id).toBeNull();
   });
 
@@ -139,7 +140,7 @@ describe('vínculo de task a projeto (insert/update)', () => {
     await createTaskProject(E, { id: 'proj_a', label: 'Alpha', color: null }, 1);
     await insertTask(E, { id: 't', title: 't', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: 1, updated_at: 1, project_id: 'proj_a' });
     await setProjectArchived(E, 'proj_a', 900);
-    expect((await getTaskById(E, 't'))?.project_id).toBe('proj_a'); // intocada
+    expect((await getTaskById(E, 't', OWNER_TASK_VIS))?.project_id).toBe('proj_a'); // intocada
     expect(await countTasksByProject(E, 'proj_a')).toBe(1);
   });
 });

@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
+import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { createShare } from '../../web/share.js';
+import { getTaskById } from '../../db/queries.js';
+import { resolveTaskVis } from './user-ref.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id to share (from save_task / list_tasks / the /app/tasks board).'),
@@ -25,7 +27,7 @@ Returns { url, expires_at, expires_brt } on success (show the url to the owner o
 
 interface ShareTaskInput { id: string; expires_days?: number; renew?: boolean; }
 
-export function registerShareTask(server: any, env: Env): void {
+export function registerShareTask(server: any, env: Env, auth?: AuthContext): void {
   server.registerTool(
     'share_task',
     {
@@ -40,6 +42,18 @@ export function registerShareTask(server: any, env: Env): void {
       },
     },
     safeToolHandler(async (input: ShareTaskInput) => {
+      // Gate ANTES do createShare (spec 91): getTaskById filtra kind='task' — fecha o
+      // buraco de compartilhar uma NOTA por id via esta tool (createShare aceita nota
+      // de propósito, pro trilho web da spec 33) — e aplica a visibilidade do caller
+      // (privada sem escopo / alheia sob tasks:assigned = not found).
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const task = await getTaskById(env, input.id, visR.vis);
+      if (!task) {
+        return toolError(
+          `Task '${input.id}' not found (or it is not a task). Confirm the id via list_tasks or the /app/tasks board. Do NOT retry with this id.`
+        );
+      }
       const result = await createShare(
         env,
         input.id,

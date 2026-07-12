@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { getTaskById, claimTask, releaseTaskClaim, claimActive, getUserByIdOrName } from '../../db/queries.js';
-import { resolveMe } from './user-ref.js';
+import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
 // Claim/lease de task (spec 80-frota-agentes/88): posse TEMPORÁRIA pra frota não
@@ -35,7 +35,6 @@ Returns { claimed:true, task_id, holder {id,name}, expires_at, expires_brt, url 
 interface ClaimInput { task_id: string; minutes?: number; release?: boolean; }
 
 export function registerClaimTask(server: any, env: Env, auth?: AuthContext): void {
-  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'claim_task',
     {
@@ -44,7 +43,11 @@ export function registerClaimTask(server: any, env: Env, auth?: AuthContext): vo
       annotations: { title: 'Claim/release a task lease', resource: 'tasks', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: ClaimInput) => {
-      const task = await getTaskById(env, input.task_id, seePrivate);
+      // Visibilidade (spec 91): claim exige ENXERGAR a task — sob tasks:assigned, task
+      // alheia = not found (o robô row-restrito não leaseia task que não pode ler).
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const task = await getTaskById(env, input.task_id, visR.vis);
       if (!task) {
         return toolError(
           `Task '${input.task_id}' not found (or it is not a task). Confirm the id via list_tasks. Do NOT retry with this id.`
@@ -83,7 +86,7 @@ export function registerClaimTask(server: any, env: Env, auth?: AuthContext): vo
       if (!won) {
         // O UPDATE atômico perdeu: claim ATIVO de outro usuário. Erro orientado —
         // a resposta certa do agente é pegar OUTRA task, nunca re-tentar em loop.
-        const fresh = await getTaskById(env, input.task_id, seePrivate);
+        const fresh = await getTaskById(env, input.task_id, visR.vis);
         const holderId = fresh?.claimed_by ?? task.claimed_by;
         const holder = holderId ? await getUserByIdOrName(env, holderId, false) : null;
         const until = fresh?.claim_expires_at ?? task.claim_expires_at;
