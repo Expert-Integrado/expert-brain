@@ -19,6 +19,8 @@ import { listUsers, type BrainUser } from '../db/queries.js';
 import { listAllTags, type TagUsage } from '../db/tag-admin.js';
 import { renderUsersSection, USERS_SECTION_CSS, KEY_DORMANT_MS, relKeyUse, avatarCell } from './users.js';
 import { connCardSummary, ICON_GOOGLE, ICON_WHATSAPP, ICON_INSTAGRAM, ICON_FUNNEL } from './config-icons.js';
+import { renderTwoFactorCard, twoFactorFlashKey } from './twofactor-config.js';
+import { twoFactorEnabled, twoFactorEnabledAt, pendingTotpSecret, backupCodesRemaining } from '../auth/twofactor.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -605,6 +607,21 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     }
   }
 
+  // Backup codes do 2FA (spec 100-seguranca-conta/102): mesmo padrão one-time
+  // do flash da chave — o confirm grava no KV e redireciona com ?tfflash=<id>.
+  const tfflash = url.searchParams.get('tfflash');
+  let freshBackupCodes: string[] | null = null;
+  if (tfflash && /^[a-f0-9]{32}$/.test(tfflash)) {
+    const key = twoFactorFlashKey(tfflash);
+    const value = await env.OAUTH_KV.get(key);
+    if (value) {
+      freshBackupCodes = value.split('\n').filter(Boolean);
+      await env.OAUTH_KV.delete(key);
+    }
+  }
+  const tferrRaw = url.searchParams.get('tferr');
+  const tferr = tferrRaw === 'code' || tferrRaw === 'disable' ? tferrRaw : null;
+
   // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
   // "Sistemas web" (que contém o prompt) já expandida.
   const savedPrefs = url.searchParams.get('saved') === 'prefs';
@@ -641,6 +658,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     stats,
     lastBackup,
     projectShares,
+    tfEnabled,
+    tfEnabledAt,
+    tfPendingSecret,
+    tfBackupRemaining,
   ] = await Promise.all([
     listKanbanColumns(env, true),
     taskCountsByColumn(env),
@@ -656,7 +677,22 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     getVaultStatus(env),
     readLastBackup(env),
     listProjectShares(env),
+    twoFactorEnabled(env),
+    twoFactorEnabledAt(env),
+    pendingTotpSecret(env),
+    backupCodesRemaining(env),
   ]);
+
+  // Card "Segurança" (spec 100-seguranca-conta/102) — estado + flash one-time.
+  const securityCard = renderTwoFactorCard({
+    enabled: tfEnabled,
+    enabledAt: tfEnabledAt,
+    pendingSecret: tfPendingSecret,
+    backupRemaining: tfBackupRemaining,
+    ownerEmail: env.OWNER_EMAIL ?? session.email,
+    freshBackupCodes,
+    error: tferr,
+  });
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
   const boardSection = renderBoardSection(kanbanColumns, kanbanCounts, savedBoard);
@@ -826,12 +862,15 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // "Agentes". Deep links por hash (#backup, #board...) são resolvidos no client —
   // o servidor não vê o fragment (o alias #conexoes → agentes também vive lá).
   const savedBackup = url.searchParams.get('saved') === 'backup';
+  // Redirects do card Segurança (2FA) reabrem a aba Sistema — inclusive o flash
+  // de backup codes e os banners de erro (tferr), que renderizam dentro dela.
+  const saved2fa = url.searchParams.get('saved') === '2fa';
   // O cast largo evita o narrowing do TS: nenhum ?saved= cai em 'integracoes'
   // hoje (a aba é ativada só no client, via hash/?google=), mas o template dos
   // painéis compara contra ela como qualquer outra.
   const activeTab = (
     savedBoard || savedProjects || savedTaxonomy || savedTags || justCreatedShareUrl !== null
-      ? 'organizacao' : savedBackup ? 'sistema' : 'agentes'
+      ? 'organizacao' : savedBackup || saved2fa ? 'sistema' : 'agentes'
   ) as 'agentes' | 'integracoes' | 'organizacao' | 'sistema';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
@@ -1077,6 +1116,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
       <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
     </div>
+
+    ${securityCard}
 
     <div class="card" id="backup">
       <h2>Backup</h2>

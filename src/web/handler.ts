@@ -1,5 +1,5 @@
 import type { Env } from '../env.js';
-import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
+import { handleLoginGet, handleLoginPost, handleLogoutPost, handleTwoFactorGet, handleTwoFactorPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNoteCreatePost, handleNotePrivatePost, handleTaskFromNotePost, handleNoteDeletePost, handleNoteRestorePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
@@ -13,6 +13,12 @@ import { handleGraphPrefsPost } from './graph-prefs.js';
 import { handleConfigPage, configPageScript, handleConfigPrefsPost, handleConfigOwnerInstructionsPost } from './config.js';
 import { handleTaxonomyGet, handleTaxonomyPost, handleTaxonomyResetPost } from './taxonomy-config.js';
 import { handleBackupNowPost, handleExportGet } from './backup.js';
+import {
+  handleTwoFactorStartPost,
+  handleTwoFactorConfirmPost,
+  handleTwoFactorCancelPost,
+  handleTwoFactorDisablePost,
+} from './twofactor-config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyOwner, handleApiKeyRevoke, handleApiKeySystem } from './api-keys.js';
 import { handleProjectShareCreate, handleProjectShareRevoke } from './project-share.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
@@ -41,6 +47,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/home/start-dismiss' && req.method === 'POST') return handleStartDismissPost(req, env);
   if (path === '/app/login' && req.method === 'GET') return handleLoginGet(req);
   if (path === '/app/login' && req.method === 'POST') return handleLoginPost(req, env);
+  // Segundo passo do login com 2FA ligado (spec 100-seguranca-conta/102).
+  if (path === '/app/login/2fa' && req.method === 'GET') return handleTwoFactorGet(req, env);
+  if (path === '/app/login/2fa' && req.method === 'POST') return handleTwoFactorPost(req, env);
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
   // Journal cronológico unificado (spec 65 §3): notas + tasks + interações de contato.
   if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
@@ -334,6 +343,11 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/users/update' && req.method === 'POST') return handleUserUpdatePost(req, env);
   if (path === '/app/config/users/archive' && req.method === 'POST') return handleUserArchivePost(req, env);
   if (path === '/app/config/users/avatar' && req.method === 'POST') return handleUserAvatarPost(req, env);
+  // Verificação em duas etapas — liga/desliga no card Segurança (spec 102).
+  if (path === '/app/config/2fa/start' && req.method === 'POST') return handleTwoFactorStartPost(req, env);
+  if (path === '/app/config/2fa/confirm' && req.method === 'POST') return handleTwoFactorConfirmPost(req, env);
+  if (path === '/app/config/2fa/cancel' && req.method === 'POST') return handleTwoFactorCancelPost(req, env);
+  if (path === '/app/config/2fa/disable' && req.method === 'POST') return handleTwoFactorDisablePost(req, env);
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);

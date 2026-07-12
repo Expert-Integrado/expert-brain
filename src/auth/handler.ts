@@ -1,6 +1,7 @@
 import type { Env } from '../env.js';
 import { handleRoot, handleProvision, handleStatus, handleBackfillSimilar, isSetup } from './setup.js';
 import { verifyPassword } from './password.js';
+import { twoFactorEnabled, verifySecondFactor } from './twofactor.js';
 import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from './rate-limit.js';
 import { FONT_LINKS } from '../web/styles.js';
 import { assetVersion } from '../web/asset-version.js';
@@ -105,6 +106,22 @@ export const authHandler = {
           return renderLogin('Credenciais inválidas.', url.search);
         }
         await clearLoginFailures(env, ip, email);
+        // 2FA ligado: mesma tela pede o código junto (spec 100-seguranca-conta/102).
+        // Só chega aqui com a senha CERTA — o erro de código não vaza nada novo.
+        if (await twoFactorEnabled(env)) {
+          const gate2fa = await checkLoginAllowed(env, ip, `2fa:${email}`);
+          if (!gate2fa.allowed) {
+            return renderLogin('Muitas tentativas. Aguarde alguns minutos.', url.search, 429, gate2fa.retryAfterS, true);
+          }
+          const code = String(form.get('code') ?? '');
+          const kind = await verifySecondFactor(env, code, Date.now());
+          if (!kind) {
+            const fails = await registerLoginFailure(env, ip, `2fa:${email}`);
+            console.warn('authorize: failed 2fa code', JSON.stringify({ ip, fails }));
+            return renderLogin('Código de verificação inválido.', url.search, 200, undefined, true);
+          }
+          await clearLoginFailures(env, ip, `2fa:${email}`);
+        }
         // parseAuthRequest expects the original GET request; reconstruct it from the query string
         const authReq = await provider.parseAuthRequest(new Request(url.toString(), { method: 'GET' }));
         const result = await provider.completeAuthorization({
@@ -116,7 +133,7 @@ export const authHandler = {
         });
         return Response.redirect(result.redirectTo, 302);
       }
-      return renderLogin(null, url.search);
+      return renderLogin(null, url.search, 200, undefined, await twoFactorEnabled(env));
     }
 
     // 404 com marca pra navegação HTML; texto puro pro resto (spec 97).
@@ -124,7 +141,7 @@ export const authHandler = {
   },
 };
 
-function renderLogin(error: string | null, qs: string, status = 200, retryAfterS?: number): Response {
+function renderLogin(error: string | null, qs: string, status = 200, retryAfterS?: number, has2fa = false): Response {
   return new Response(
     `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -138,6 +155,7 @@ ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/authorize${esc(qs)}">
 <label>E-mail<input type="email" name="email" required autofocus></label>
 <label>Senha<input type="password" name="password" required></label>
+${has2fa ? `<label>Código de verificação<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required></label>` : ''}
 <button type="submit">Autorizar</button>
 </form></div></body></html>`,
     {

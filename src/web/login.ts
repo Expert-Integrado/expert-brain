@@ -2,7 +2,15 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { verifyPassword } from '../auth/password.js';
 import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from '../auth/rate-limit.js';
-import { signSession, sessionCookie } from './session.js';
+import { signSession, sessionCookie, readCookie } from './session.js';
+import {
+  twoFactorEnabled,
+  signTwoFactorToken,
+  verifyTwoFactorToken,
+  verifySecondFactor,
+  twoFactorCookie,
+  TWOFA_COOKIE,
+} from '../auth/twofactor.js';
 import { FONT_LINKS } from './styles.js';
 import { htmlResponse, PWA_HEAD } from './render.js';
 import { assetVersion } from './asset-version.js';
@@ -87,7 +95,23 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   }
   await clearLoginFailures(env, ip, email);
 
-  const token = await signSession(env.OWNER_EMAIL, env.SESSION_SECRET, Math.floor(Date.now() / 1000));
+  const now = Math.floor(Date.now() / 1000);
+
+  // 2FA ligado: a senha certa NÃO emite sessão — emite o token intermediário
+  // (cookie próprio, secret derivado — ver src/auth/twofactor.ts) e manda pra
+  // tela do código. A sessão só nasce no POST /app/login/2fa.
+  if (await twoFactorEnabled(env)) {
+    const twofa = await signTwoFactorToken(env.OWNER_EMAIL, env, now);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `/app/login/2fa?next=${encodeURIComponent(next)}`,
+        'set-cookie': twoFactorCookie(twofa),
+      },
+    });
+  }
+
+  const token = await signSession(env.OWNER_EMAIL, env.SESSION_SECRET, now);
   const safeNext = safeNextPath(next);
   return new Response(null, {
     status: 302,
@@ -96,6 +120,87 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
       'set-cookie': sessionCookie(token),
     },
   });
+}
+
+function renderTwoFactorPage(error: string | null, next: string): string {
+  return `<!doctype html><html lang="pt-BR"><head>
+<meta charset="utf-8">
+${PWA_HEAD}
+<title>Verificação · Expert Brain</title>
+${FONT_LINKS}
+<link rel="stylesheet" href="/app/styles.css?v=${assetVersion('styles.css')}"></head>
+<body><div class="login-wrap">
+<h1>Verificação em duas etapas</h1>
+<p class="subtitle">Digite o código de 6 dígitos do seu app autenticador — ou um dos seus códigos reserva.</p>
+${error ? `<p class="error">${esc(error)}</p>` : ''}
+<form method="post" action="/app/login/2fa">
+<input type="hidden" name="next" value="${esc(next)}">
+<label>Código<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required autofocus></label>
+<button type="submit">Confirmar</button>
+</form>
+<p class="subtitle"><a href="/app/login">Voltar pro login</a></p>
+</div></body></html>`;
+}
+
+/** Portador válido do token intermediário, ou null (aí o caller manda pro login). */
+async function twoFactorBearer(req: Request, env: Env): Promise<string | null> {
+  if (!env.SESSION_SECRET) return null;
+  const token = readCookie(req.headers.get('cookie'), TWOFA_COOKIE);
+  if (!token) return null;
+  return verifyTwoFactorToken(token, env, Math.floor(Date.now() / 1000));
+}
+
+export async function handleTwoFactorGet(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url);
+  const next = url.searchParams.get('next') ?? '/app';
+  const email = await twoFactorBearer(req, env);
+  if (!email) {
+    return new Response(null, {
+      status: 302,
+      headers: { location: `/app/login?next=${encodeURIComponent(next)}` },
+    });
+  }
+  return htmlResponse(renderTwoFactorPage(null, next));
+}
+
+export async function handleTwoFactorPost(req: Request, env: Env): Promise<Response> {
+  if (!checkOrigin(req)) return new Response('Acesso negado', { status: 403 });
+  const form = await req.formData();
+  const code = String(form.get('code') ?? '');
+  const next = String(form.get('next') ?? '/app');
+
+  const email = await twoFactorBearer(req, env);
+  if (!email) {
+    // Token intermediário expirou (5 min) ou não existe: recomeça do login.
+    return new Response(null, {
+      status: 302,
+      headers: { location: `/app/login?next=${encodeURIComponent(next)}` },
+    });
+  }
+
+  // Bucket separado do de senha: errar código não derruba o login por senha e
+  // vice-versa, mas o mecanismo KV (5 falhas/15min) é o mesmo.
+  const ip = clientIp(req);
+  const gate = await checkLoginAllowed(env, ip, `2fa:${email}`);
+  if (!gate.allowed) {
+    const res = htmlResponse(renderTwoFactorPage('Muitas tentativas. Aguarde alguns minutos.', next), 429);
+    if (gate.retryAfterS) res.headers.set('retry-after', String(gate.retryAfterS));
+    return res;
+  }
+
+  const kind = await verifySecondFactor(env, code, Date.now());
+  if (!kind) {
+    const fails = await registerLoginFailure(env, ip, `2fa:${email}`);
+    console.warn('app/login/2fa: failed code', JSON.stringify({ ip, fails }));
+    return htmlResponse(renderTwoFactorPage('Código inválido.', next), 401);
+  }
+  await clearLoginFailures(env, ip, `2fa:${email}`);
+
+  const token = await signSession(email, env.SESSION_SECRET!, Math.floor(Date.now() / 1000));
+  const headers = new Headers({ location: safeNextPath(next) });
+  headers.append('set-cookie', sessionCookie(token));
+  headers.append('set-cookie', twoFactorCookie('', { clear: true }));
+  return new Response(null, { status: 302, headers });
 }
 
 export async function handleLogoutPost(req: Request): Promise<Response> {

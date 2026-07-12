@@ -1457,6 +1457,20 @@ export const SURFACES_CSS = `
 .role-card-text strong { font-size: 13px; color: var(--text); }
 .role-card-sub { color: var(--text-dim); font-size: 12px; line-height: 1.35; }
 
+/* ---- Card Seguranca: 2FA (spec 102) ---- */
+.tf-secret {
+  display: inline-block; font-size: 15px; letter-spacing: 0.12em;
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  background: rgba(167, 139, 250, 0.08); border: 1px solid var(--border);
+  word-break: break-all; user-select: all;
+}
+.tf-codes { display: flex; flex-wrap: wrap; gap: 8px; }
+.tf-codes code {
+  font-size: 14px; letter-spacing: 0.08em; padding: 4px 10px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: rgba(167, 139, 250, 0.08); user-select: all;
+}
+
 /* ---- Rodape: status do vault (movido do topo) ---- */
 .vault-stats-foot { margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
 .vault-stats-foot h3 {
