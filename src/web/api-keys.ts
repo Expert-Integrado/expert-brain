@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { requireSession } from './session.js';
-import { htmlResponse } from './render.js';
+import { formError } from './form-error.js';
 import { ApiKeyLimitError, assignApiKeyUser, createApiKey, revokeApiKey, setApiKeySystem, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
 import { getUserById } from '../db/queries.js';
 
@@ -34,7 +34,7 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   if (!session.ok) return session.response;
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
-  if (!name) return htmlResponse('Nome obrigatório', 400);
+  if (!name) return formError(req, 'Nome obrigatório', { field: 'name', returnTo: '/app/config#api-keys' });
   // Escopo BASE (spec 17): valor inválido/ausente cai em 'full' (histórico).
   const scopeRaw = String(form.get('scope') ?? '');
   const base: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
@@ -45,9 +45,9 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   // mais pela UI (o vínculo esquecível em dois passos foi a origem do bug do PC
   // assinando como Claude VPS). Precisa ser um usuário ATIVO.
   const userId = String(form.get('user_id') ?? '').trim();
-  if (!userId) return htmlResponse('Dono da chave obrigatório — escolha o usuário que esta credencial identifica', 400);
+  if (!userId) return formError(req, 'Dono da chave obrigatório — escolha o usuário que esta credencial identifica', { field: 'user_id', returnTo: '/app/config#api-keys' });
   const owner = await getUserById(env, userId);
-  if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
+  if (!owner || owner.archived_at !== null) return formError(req, 'Usuário dono da chave não existe ou está arquivado', { field: 'user_id', returnTo: '/app/config#api-keys' });
   // Sistema (spec 87): texto livre curto pro agrupamento da listagem ('frota',
   // 'hermes'...). Opcional — vazio vira NULL (grupo "sem sistema").
   const systemRaw = String(form.get('system') ?? '').trim().slice(0, 40);
@@ -58,7 +58,7 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
     plainKey = created.plainKey;
   } catch (err) {
     if (err instanceof ApiKeyLimitError) {
-      return htmlResponse(err.message, 429);
+      return formError(req, err.message, { status: 429, returnTo: '/app/config#api-keys' });
     }
     throw err;
   }
@@ -81,11 +81,11 @@ export async function handleApiKeyOwner(req: Request, env: Env): Promise<Respons
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
   const userId = String(form.get('user_id') ?? '').trim();
-  if (!id || !userId) return htmlResponse('id e user_id obrigatórios', 400);
+  if (!id || !userId) return formError(req, 'id e user_id obrigatórios', { returnTo: '/app/config#api-keys' });
   const owner = await getUserById(env, userId);
-  if (!owner || owner.archived_at !== null) return htmlResponse('Usuário dono da chave não existe ou está arquivado', 400);
+  if (!owner || owner.archived_at !== null) return formError(req, 'Usuário dono da chave não existe ou está arquivado', { field: 'user_id', returnTo: '/app/config#api-keys' });
   const ok = await assignApiKeyUser(env, session.email, id, userId);
-  if (!ok) return htmlResponse('Chave não encontrada, revogada ou já tem dono — pra trocar identidade, revogue e crie outra', 400);
+  if (!ok) return formError(req, 'Chave não encontrada, revogada ou já tem dono — pra trocar identidade, revogue e crie outra', { returnTo: '/app/config#api-keys' });
   return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }
 
@@ -96,10 +96,10 @@ export async function handleApiKeySystem(req: Request, env: Env): Promise<Respon
   if (!session.ok) return session.response;
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/config#api-keys' });
   const systemRaw = String(form.get('system') ?? '').trim().slice(0, 40);
   const ok = await setApiKeySystem(env, session.email, id, systemRaw || null);
-  if (!ok) return htmlResponse('Chave não encontrada ou revogada', 400);
+  if (!ok) return formError(req, 'Chave não encontrada ou revogada', { returnTo: '/app/config#api-keys' });
   return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }
 
@@ -108,7 +108,7 @@ export async function handleApiKeyRevoke(req: Request, env: Env): Promise<Respon
   if (!session.ok) return session.response;
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/config#api-keys' });
   await revokeApiKey(env, session.email, id);
   return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
 }

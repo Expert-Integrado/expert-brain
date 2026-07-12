@@ -941,6 +941,17 @@ export const SURFACES_CSS = `
 .callout-info strong { color: var(--accent-cyan); }
 .callout-info em { font-style: italic; color: var(--text); }
 
+/* Erro de form (spec 91/94): banner do fallback sem JS + inline por campo */
+.callout-error {
+  margin: 12px 0; padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px; line-height: 1.55; color: var(--text);
+  background: color-mix(in srgb, var(--danger) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+}
+.field-error { color: var(--danger); font-size: 13px; margin: 6px 0 0; }
+.field-invalid { border-color: var(--danger) !important; outline: none; }
+
 /* Acao primaria (Salvar prompt): .btn .btn-primary do COMPONENTS_CSS (Onda 5) */
 
 /* Textarea do prompt */

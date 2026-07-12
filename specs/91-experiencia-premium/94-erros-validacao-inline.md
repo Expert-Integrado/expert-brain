@@ -1,6 +1,6 @@
 # Erros e validação inline: matar a página de texto puro 400 na administração
 
-> **Status:** draft · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P0 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma (padrão de referência: toast + validação inline do modal de task)
 
 ## Contexto
@@ -65,11 +65,16 @@ puro; todo erro aparece inline no campo (ou como toast) preservando o que foi di
 
 ## Critérios de aceite
 
-- [ ] Submeter form de usuário com nome vazio: erro inline no campo, valores digitados preservados, URL não muda.
-- [ ] Criar chave de API sem dono: erro inline apontando o select de dono.
-- [ ] Com JavaScript DESLIGADO: mesmo erro vira banner no topo do form após redirect — nunca página de texto puro.
-- [ ] `grep -rn "htmlResponse('" src/web` não retorna nenhuma ocorrência com status 400/413/415 em handler de form POST do console.
-- [ ] Fluxos de sucesso (criar/editar/arquivar usuário, chave, projeto, tag) inalterados.
+- [x] Submeter form de usuário com nome vazio: erro inline no campo, valores digitados preservados, URL não muda.
+- [x] Criar chave de API sem dono: erro inline apontando o select de dono.
+- [x] Com JavaScript DESLIGADO: mesmo erro vira banner no topo do form após redirect — nunca página de texto puro.
+- [x] `grep -rn "htmlResponse('" src/web` não retorna nenhuma ocorrência com status 400/413/415 em handler de form POST do console (restam só 404 de rota GET de mídia, permitido até a spec 97).
+- [x] Fluxos de sucesso (criar/editar/arquivar usuário, chave, projeto, tag) inalterados (suite completa 1156/1156 verde).
+
+> Implementado em 11/07/2026: `src/web/form-error.ts` (formError + formErrorBanner, 15 testes em
+> `src/web/form-error.test.ts`), client `src/web/client/ajax-form.ts` ligado no shell, ~60 sites
+> migrados em users/api-keys/config/tasks/inbox/project-share. Testes antigos que asseravam o
+> contrato velho (4xx texto puro) atualizados pra mandar `accept: application/json`.
 
 ## Validação
 

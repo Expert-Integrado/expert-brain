@@ -31,7 +31,7 @@ function jsonPost(path: string, body: unknown, ck?: string): Promise<Response> {
 }
 
 function formPost(path: string, fields: Record<string, string>, ck?: string): Promise<Response> {
-  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded' };
+  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   if (ck) headers.cookie = ck;
   const body = new URLSearchParams(fields).toString();
   return SELF.fetch(`https://x${path}`, { method: 'POST', headers, body, redirect: 'manual' });
@@ -138,7 +138,13 @@ describe('gestão de colunas via /app/config (spec 51)', () => {
   });
 
   it('sem sessão: redireciona pro login (302)', async () => {
-    const res = await formPost('/app/tasks/columns/create', { label: 'X', category: 'open' });
+    // Form nativo (sem accept: application/json) — o middleware manda pro login.
+    const res = await SELF.fetch('https://x/app/tasks/columns/create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ label: 'X', category: 'open' }).toString(),
+      redirect: 'manual',
+    });
     expect(res.status).toBe(302);
     expect(res.headers.get('location') ?? '').toMatch(/\/app\/login/);
   });

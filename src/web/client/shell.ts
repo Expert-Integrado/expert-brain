@@ -13,6 +13,7 @@ import Fuse from 'fuse.js';
 import { appFetch } from './http.js';
 import { loadMeta, type NoteMeta } from './meta-cache.js';
 import { toast } from './toast.js';
+import { wireAjaxForms } from './ajax-form.js';
 
 interface Command {
   id: string;
@@ -568,6 +569,7 @@ function escText(s: string): string {
 ensurePalette();
 wire();
 wireSidebarToggle();
+wireAjaxForms();
 window.addEventListener('keydown', onKey);
 // loadNotes() removido do boot (spec 23): o meta agora carrega lazy na 1ª abertura
 // da palette (ensureNotesLoaded via openPalette). Páginas sem busca visível não

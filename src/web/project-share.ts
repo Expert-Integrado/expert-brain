@@ -18,6 +18,7 @@ import { esc } from '../util/html.js';
 import { newId } from '../util/id.js';
 import { requireSession } from './session.js';
 import { htmlResponse } from './render.js';
+import { formError } from './form-error.js';
 import { formatBrtDateTime } from '../util/time.js';
 import { PUBLIC_CSS, FONT_LINKS } from './styles.js';
 import {
@@ -400,13 +401,13 @@ export async function handleProjectShareCreate(req: Request, env: Env): Promise<
   const mode: ProjectShareMode = modeRaw === 'comment' ? 'comment' : 'read';
   const daysRaw = String(form.get('expires_days') ?? '').trim();
   const expiresDays = daysRaw ? Number(daysRaw) : null;
-  if (!projectId) return htmlResponse('Projeto obrigatório', 400);
-  if (!label) return htmlResponse('Identidade externa (label) obrigatória — é como o comentário de fora assina', 400);
+  if (!projectId) return formError(req, 'Projeto obrigatório', { field: 'project_id', returnTo: '/app/config#projects' });
+  if (!label) return formError(req, 'Identidade externa (label) obrigatória — é como o comentário de fora assina', { field: 'label', returnTo: '/app/config#projects' });
   let created: CreateProjectShareResult;
   try {
     created = await createProjectShare(env, projectId, { label, mode, expiresDays }, Date.now());
   } catch (err) {
-    return htmlResponse(err instanceof Error ? err.message : 'Falha ao criar o share', 400);
+    return formError(req, err instanceof Error ? err.message : 'Falha ao criar o share', { returnTo: '/app/config#projects' });
   }
   const id = flashId();
   await env.OAUTH_KV.put(pshareFlashKey(id), created.url, { expirationTtl: PSHARE_FLASH_TTL });
@@ -421,7 +422,7 @@ export async function handleProjectShareRevoke(req: Request, env: Env): Promise<
   if (!session.ok) return session.response;
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/config#projects' });
   await revokeProjectShare(env, id);
   return new Response(null, { status: 302, headers: { location: '/app/config?saved=projects#projects' } });
 }

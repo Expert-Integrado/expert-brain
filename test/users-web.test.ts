@@ -25,7 +25,7 @@ async function cookie(): Promise<string> {
 
 // Form POST com suporte a campo repetido (user_ids múltiplos).
 function formPost(path: string, fields: Array<[string, string]>, ck?: string): Promise<Response> {
-  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded' };
+  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   if (ck) headers.cookie = ck;
   const body = new URLSearchParams(fields).toString();
   return SELF.fetch(`https://x${path}`, { method: 'POST', headers, body, redirect: 'manual' });
@@ -124,7 +124,7 @@ describe('avatar (R2/MEDIA)', () => {
     fd.append('id', 'user_1');
     fd.append('file', new File([new Uint8Array([137, 80, 78, 71])], 'foto.png', { type: 'image/png' }));
     const up = await SELF.fetch('https://x/app/config/users/avatar', {
-      method: 'POST', headers: { cookie: ck }, body: fd, redirect: 'manual',
+      method: 'POST', headers: { cookie: ck, accept: 'application/json' }, body: fd, redirect: 'manual',
     });
     expect(up.status).toBe(302);
     expect((await getUserById(E, 'user_1'))?.avatar_key).toBe('avatars/user_1');
@@ -147,7 +147,7 @@ describe('avatar (R2/MEDIA)', () => {
     fd.append('id', 'user_1');
     fd.append('file', new File(['x'], 'x.txt', { type: 'text/plain' }));
     const bad = await SELF.fetch('https://x/app/config/users/avatar', {
-      method: 'POST', headers: { cookie: ck }, body: fd, redirect: 'manual',
+      method: 'POST', headers: { cookie: ck, accept: 'application/json' }, body: fd, redirect: 'manual',
     });
     expect(bad.status).toBe(415);
     const none = await SELF.fetch('https://x/app/users/user_1/avatar', { headers: { cookie: ck } });

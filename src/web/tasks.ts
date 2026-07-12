@@ -3,6 +3,7 @@ import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { authorizeBearer } from './bearer-auth.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
+import { formError, formErrorBanner } from './form-error.js';
 import { assetVersion } from './asset-version.js';
 import {
   TASK_STATUSES,
@@ -724,7 +725,7 @@ export async function handleTaskPrivatePost(req: Request, env: Env): Promise<Res
     id = String(form.get('id') ?? '').trim();
     makePrivate = String(form.get('private') ?? '') === '1';
   }
-  if (!id) return wantsJson ? json({ error: 'id required' }, 400) : htmlResponse('id obrigatório', 400);
+  if (!id) return wantsJson ? json({ error: 'id required' }, 400) : formError(req, 'id obrigatório', { field: 'id', returnTo: '/app/tasks' });
 
   const r = await setTaskPrivate(env, id, makePrivate ? 1 : 0, Date.now(), `oauth:${session.email}`);
   if (!r.ok) {
@@ -784,12 +785,12 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   const form = await req.formData();
 
   const taskId = String(form.get('task_id') ?? '').trim();
-  if (!taskId) return htmlResponse('task_id obrigatório', 400);
+  if (!taskId) return formError(req, 'task_id obrigatório', { returnTo: '/app/tasks' });
   const body = String(form.get('body') ?? '').trim().slice(0, OWNER_COMMENT_MAX);
-  if (!body) return htmlResponse('Comentário vazio', 400);
+  if (!body) return formError(req, 'Comentário vazio', { field: 'body', returnTo: `/app/tasks/${encodeURIComponent(taskId)}#atividade` });
 
   const task = await getTaskById(env, taskId);
-  if (!task) return htmlResponse('Tarefa não encontrada', 404);
+  if (!task) return formError(req, 'Tarefa não encontrada', { status: 404, returnTo: '/app/tasks' });
 
   // Assinatura (spec 81): o comentário do console também aponta pro perfil do dono
   // (mesma resolução do resolveMe em sessão OAuth). Se o seed user_owner sumir
@@ -814,7 +815,7 @@ export async function handleTaskCommentDeletePost(req: Request, env: Env): Promi
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do comentário obrigatório', 400);
+  if (!id) return formError(req, 'id do comentário obrigatório', { returnTo: '/app/tasks' });
   const taskId = String(form.get('task_id') ?? '').trim();
 
   await deleteTaskComment(env, id);
@@ -848,15 +849,15 @@ export async function handleColumnCreatePost(req: Request, env: Env): Promise<Re
   const form = await req.formData();
 
   const label = String(form.get('label') ?? '').trim();
-  if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+  if (label.length < 1 || label.length > 40) return formError(req, 'Nome da coluna deve ter 1 a 40 caracteres', { field: 'label', returnTo: '/app/config#board' });
 
   const category = String(form.get('category') ?? '').trim() as TaskStatus;
   if (!TASK_STATUSES.includes(category)) {
-    return htmlResponse(`Categoria inválida (use uma de: ${TASK_STATUSES.join(', ')})`, 400);
+    return formError(req, `Categoria inválida (use uma de: ${TASK_STATUSES.join(', ')})`, { field: 'category', returnTo: '/app/config#board' });
   }
 
   const color = parseColumnColor(String(form.get('color') ?? ''));
-  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+  if (color === 'invalid') return formError(req, 'Cor deve estar no formato #rrggbb ou vazia', { field: 'color', returnTo: '/app/config' });
 
   await createKanbanColumn(env, { id: `col_${newId().slice(0, 8)}`, label, color, category });
   return boardRedirect();
@@ -869,22 +870,22 @@ export async function handleColumnUpdatePost(req: Request, env: Env): Promise<Re
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+  if (!id) return formError(req, 'id da coluna obrigatório', { returnTo: '/app/config#board' });
 
   const patch: { label?: string; color?: string | null } = {};
   if (form.has('label')) {
     const label = String(form.get('label') ?? '').trim();
-    if (label.length < 1 || label.length > 40) return htmlResponse('Nome da coluna deve ter 1 a 40 caracteres', 400);
+    if (label.length < 1 || label.length > 40) return formError(req, 'Nome da coluna deve ter 1 a 40 caracteres', { field: 'label', returnTo: '/app/config#board' });
     patch.label = label;
   }
   if (form.has('color')) {
     const color = parseColumnColor(String(form.get('color') ?? ''));
-    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    if (color === 'invalid') return formError(req, 'Cor deve estar no formato #rrggbb ou vazia', { field: 'color', returnTo: '/app/config' });
     patch.color = color;
   }
 
   const ok = await updateKanbanColumn(env, id, patch);
-  if (!ok) return htmlResponse('Coluna não encontrada', 404);
+  if (!ok) return formError(req, 'Coluna não encontrada', { status: 404, returnTo: '/app/config#board' });
   return boardRedirect();
 }
 
@@ -897,8 +898,8 @@ export async function handleColumnReorderPost(req: Request, env: Env): Promise<R
 
   const id = String(form.get('id') ?? '').trim();
   const direction = String(form.get('direction') ?? '').trim();
-  if (!id) return htmlResponse('id da coluna obrigatório', 400);
-  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+  if (!id) return formError(req, 'id da coluna obrigatório', { returnTo: '/app/config#board' });
+  if (direction !== 'up' && direction !== 'down') return formError(req, 'direction deve ser up ou down', { returnTo: '/app/config' });
 
   await reorderKanbanColumn(env, id, direction);
   return boardRedirect();
@@ -915,10 +916,10 @@ export async function handleColumnArchivePost(req: Request, env: Env): Promise<R
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id da coluna obrigatório', 400);
+  if (!id) return formError(req, 'id da coluna obrigatório', { returnTo: '/app/config#board' });
 
   const col = await getColumnById(env, id);
-  if (!col) return htmlResponse('Coluna não encontrada', 404);
+  if (!col) return formError(req, 'Coluna não encontrada', { status: 404, returnTo: '/app/config#board' });
 
   const archived = String(form.get('archived') ?? '1').trim() !== '0';
 
@@ -934,7 +935,7 @@ export async function handleColumnArchivePost(req: Request, env: Env): Promise<R
   if ((id === 'col_aberto' || id === 'col_concluido')) {
     const activeInCat = await countActiveColumnsInCategory(env, col.category);
     if (activeInCat <= 1) {
-      return htmlResponse('Não é possível arquivar a última coluna ativa dessa categoria', 400);
+      return formError(req, 'Não é possível arquivar a última coluna ativa dessa categoria', { returnTo: '/app/config#board' });
     }
   }
 
@@ -942,11 +943,11 @@ export async function handleColumnArchivePost(req: Request, env: Env): Promise<R
   const taskCount = await countTasksInColumn(env, id);
   if (taskCount > 0) {
     const to = String(form.get('to') ?? '').trim();
-    if (!to) return htmlResponse('Escolha uma coluna destino pras tarefas antes de arquivar', 400);
-    if (to === id) return htmlResponse('A coluna destino não pode ser a própria coluna arquivada', 400);
+    if (!to) return formError(req, 'Escolha uma coluna destino pras tarefas antes de arquivar', { field: 'to', returnTo: '/app/config#board' });
+    if (to === id) return formError(req, 'A coluna destino não pode ser a própria coluna arquivada', { field: 'to', returnTo: '/app/config#board' });
     const dest = await getColumnById(env, to);
     if (!dest || dest.archived_at !== null || dest.category !== col.category) {
-      return htmlResponse('Coluna destino inválida (deve ser ativa e da mesma categoria)', 400);
+      return formError(req, 'Coluna destino inválida (deve ser ativa e da mesma categoria)', { field: 'to', returnTo: '/app/config#board' });
     }
     await reassignColumn(env, id, to);
   }
@@ -972,15 +973,15 @@ export async function handleProjectCreatePost(req: Request, env: Env): Promise<R
   const form = await req.formData();
 
   const label = String(form.get('label') ?? '').trim();
-  if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+  if (label.length < 1 || label.length > 40) return formError(req, 'Nome do projeto deve ter 1 a 40 caracteres', { field: 'label', returnTo: '/app/config#projects' });
 
   const color = parseColumnColor(String(form.get('color') ?? ''));
-  if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+  if (color === 'invalid') return formError(req, 'Cor deve estar no formato #rrggbb ou vazia', { field: 'color', returnTo: '/app/config' });
 
   // Cap 64 (ativos + arquivados) — mesma regra do auto-create do MCP.
   const count = await countTaskProjects(env);
   if (count >= TASK_PROJECT_CAP) {
-    return htmlResponse(`Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.`, 400);
+    return formError(req, `Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.`, { returnTo: '/app/config#projects' });
   }
 
   await createTaskProject(env, { id: `proj_${newId().slice(0, 8)}`, label, color }, Date.now());
@@ -994,22 +995,22 @@ export async function handleProjectUpdatePost(req: Request, env: Env): Promise<R
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+  if (!id) return formError(req, 'id do projeto obrigatório', { returnTo: '/app/config#projects' });
 
   const patch: { label?: string; color?: string | null } = {};
   if (form.has('label')) {
     const label = String(form.get('label') ?? '').trim();
-    if (label.length < 1 || label.length > 40) return htmlResponse('Nome do projeto deve ter 1 a 40 caracteres', 400);
+    if (label.length < 1 || label.length > 40) return formError(req, 'Nome do projeto deve ter 1 a 40 caracteres', { field: 'label', returnTo: '/app/config#projects' });
     patch.label = label;
   }
   if (form.has('color')) {
     const color = parseColumnColor(String(form.get('color') ?? ''));
-    if (color === 'invalid') return htmlResponse('Cor deve estar no formato #rrggbb ou vazia', 400);
+    if (color === 'invalid') return formError(req, 'Cor deve estar no formato #rrggbb ou vazia', { field: 'color', returnTo: '/app/config' });
     patch.color = color;
   }
 
   const ok = await updateTaskProject(env, id, patch);
-  if (!ok) return htmlResponse('Projeto não encontrado', 404);
+  if (!ok) return formError(req, 'Projeto não encontrado', { status: 404, returnTo: '/app/config#projects' });
   return projectsRedirect();
 }
 
@@ -1022,8 +1023,8 @@ export async function handleProjectReorderPost(req: Request, env: Env): Promise<
 
   const id = String(form.get('id') ?? '').trim();
   const direction = String(form.get('direction') ?? '').trim();
-  if (!id) return htmlResponse('id do projeto obrigatório', 400);
-  if (direction !== 'up' && direction !== 'down') return htmlResponse('direction deve ser up ou down', 400);
+  if (!id) return formError(req, 'id do projeto obrigatório', { returnTo: '/app/config#projects' });
+  if (direction !== 'up' && direction !== 'down') return formError(req, 'direction deve ser up ou down', { returnTo: '/app/config' });
 
   await reorderTaskProject(env, id, direction);
   return projectsRedirect();
@@ -1037,10 +1038,10 @@ export async function handleProjectArchivePost(req: Request, env: Env): Promise<
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do projeto obrigatório', 400);
+  if (!id) return formError(req, 'id do projeto obrigatório', { returnTo: '/app/config#projects' });
 
   const proj = await getProjectById(env, id);
-  if (!proj) return htmlResponse('Projeto não encontrado', 404);
+  if (!proj) return formError(req, 'Projeto não encontrado', { status: 404, returnTo: '/app/config#projects' });
 
   const archived = String(form.get('archived') ?? '1').trim() !== '0';
   await setProjectArchived(env, id, archived ? Date.now() : null);
@@ -1064,12 +1065,12 @@ export async function handleTagRenamePost(req: Request, env: Env): Promise<Respo
 
   const from = String(form.get('from') ?? '').trim();
   const to = String(form.get('to') ?? '').trim();
-  if (!from || !to) return htmlResponse('Tag de origem e novo nome são obrigatórios', 400);
-  if (to.length > 60) return htmlResponse('Nome da tag deve ter até 60 caracteres', 400);
-  if (to.toLowerCase().startsWith('dedupe:')) return htmlResponse('Prefixo dedupe: é reservado', 400);
+  if (!from || !to) return formError(req, 'Tag de origem e novo nome são obrigatórios', { field: 'to', returnTo: '/app/config#tags' });
+  if (to.length > 60) return formError(req, 'Nome da tag deve ter até 60 caracteres', { field: 'to', returnTo: '/app/config#tags' });
+  if (to.toLowerCase().startsWith('dedupe:')) return formError(req, 'Prefixo dedupe: é reservado', { field: 'to', returnTo: '/app/config#tags' });
 
   const n = await renameTag(env, from, to);
-  if (n === null) return htmlResponse('Tag não encontrada', 404);
+  if (n === null) return formError(req, 'Tag não encontrada', { status: 404, returnTo: '/app/config#tags' });
   return tagsRedirect();
 }
 
@@ -1080,7 +1081,7 @@ export async function handleTagDeletePost(req: Request, env: Env): Promise<Respo
   const form = await req.formData();
 
   const tag = String(form.get('tag') ?? '').trim();
-  if (!tag) return htmlResponse('tag obrigatória', 400);
+  if (!tag) return formError(req, 'tag obrigatória', { returnTo: '/app/config#tags' });
 
   await deleteTag(env, tag);
   return tagsRedirect();
@@ -1220,6 +1221,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
         <span class="task-new-plus" aria-hidden="true">+</span> Nova tarefa
       </button>
     </div>
+    ${formErrorBanner(url)}
 
     <div class="task-toolbar" role="toolbar" aria-label="Filtros de tarefas">
       <input type="search" class="task-search" id="task-search" placeholder="Buscar por título, descrição ou tag…"

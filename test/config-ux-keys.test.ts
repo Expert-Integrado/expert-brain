@@ -21,7 +21,7 @@ function postForm(path: string, fields: Record<string, string>, ck: string): Pro
   return SELF.fetch(`https://x${path}`, {
     method: 'POST',
     redirect: 'manual',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: ck },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', cookie: ck },
     body: new URLSearchParams(fields).toString(),
   });
 }

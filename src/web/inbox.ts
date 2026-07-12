@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
+import { formError, formErrorBanner } from './form-error.js';
 import { renderMarkdown } from './markdown.js';
 import { newId } from '../util/id.js';
 import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../vector/index.js';
@@ -329,6 +330,7 @@ export async function handleInboxPage(req: Request, env: Env): Promise<Response>
       <h1>Inbox</h1>
       <span class="count">${pending} ${pending === 1 ? 'pendente' : 'pendentes'}</span>
     </div>
+    ${formErrorBanner(new URL(req.url))}
     <p class="config-subtitle"><a href="/app">← Início</a></p>
 
     <form class="inbox-quickadd" method="post" action="/app/inbox/add">
@@ -391,10 +393,10 @@ export async function handleInboxResolvePost(req: Request, env: Env): Promise<Re
 
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/inbox' });
   const action = String(form.get('action') ?? 'discard').trim();
   if (action !== 'note' && action !== 'task' && action !== 'discard') {
-    return htmlResponse('ação inválida', 400);
+    return formError(req, 'ação inválida', { returnTo: '/app/inbox' });
   }
   const resultId = String(form.get('result_id') ?? '').trim() || null;
   await resolveInboxItem(env, id, action, resultId, Date.now());
@@ -427,7 +429,7 @@ export async function handleInboxToNotePost(req: Request, env: Env): Promise<Res
 
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/inbox' });
 
   const item = await getInboxItem(env, id);
   // Item inexistente OU já triado: não recria nada (evita processar 2x). Volta pro inbox.
@@ -506,7 +508,7 @@ export async function handleInboxToTaskPost(req: Request, env: Env): Promise<Res
 
   const form = await req.formData();
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id obrigatório', 400);
+  if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/inbox' });
 
   const item = await getInboxItem(env, id);
   if (!item || item.triaged_at !== null) return backToInbox();

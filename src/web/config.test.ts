@@ -85,6 +85,7 @@ describe('/app/config', () => {
       headers: {
         cookie: await authCookie(),
         'content-type': 'application/x-www-form-urlencoded',
+        accept: 'application/json',
       },
       body: form.toString(),
     });
@@ -98,6 +99,7 @@ describe('/app/config', () => {
       headers: {
         cookie: await authCookie(),
         'content-type': 'application/x-www-form-urlencoded',
+        accept: 'application/json',
       },
       body: form.toString(),
     });

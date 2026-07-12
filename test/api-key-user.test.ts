@@ -53,7 +53,7 @@ function postForm(path: string, fields: Record<string, string>, ck?: string): Pr
   return SELF.fetch(`https://x${path}`, {
     method: 'POST',
     redirect: 'manual',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', ...(ck ? { cookie: ck } : {}) },
+    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json', ...(ck ? { cookie: ck } : {}) },
     body: new URLSearchParams(fields).toString(),
   });
 }

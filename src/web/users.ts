@@ -9,7 +9,7 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { newId } from '../util/id.js';
 import { requireSession } from './session.js';
-import { htmlResponse } from './render.js';
+import { formError } from './form-error.js';
 import { listApiKeys, type ApiKeyRow } from '../auth/api-keys.js';
 import { logTaskActivity } from '../db/task-activity.js';
 import {
@@ -71,7 +71,7 @@ function userKeyChips(u: BrainUser, keys: ApiKeyRow[]): string {
     const lastRef = k.last_used_at ?? k.created_at;
     const dormant = Date.now() - lastRef > KEY_DORMANT_MS;
     const lastUsed = k.last_used_at ? `usada ${esc(relKeyUse(k.last_used_at))}` : 'nunca usada';
-    return `<span class="key-chip"><strong>${esc(k.name)}</strong> <code>${esc(k.prefix)}…</code> <span style="color:var(--text-subtle)">${lastUsed}</span>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}${!k.user_id ? ' <span style="color:var(--text-subtle)">vínculo legado</span>' : ''}<form method="post" action="/app/api-keys/revoke"><input type="hidden" name="id" value="${esc(k.id)}"><button type="submit" class="btn btn-danger btn-sm">Revogar</button></form></span>`;
+    return `<span class="key-chip"><strong>${esc(k.name)}</strong> <code>${esc(k.prefix)}…</code> <span style="color:var(--text-subtle)">${lastUsed}</span>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}${!k.user_id ? ' <span style="color:var(--text-subtle)">vínculo legado</span>' : ''}<form method="post" data-ajax-form action="/app/api-keys/revoke"><input type="hidden" name="id" value="${esc(k.id)}"><button type="submit" class="btn btn-danger btn-sm">Revogar</button></form></span>`;
   });
   return `<div class="key-chips">${chips.join('')}</div>`;
 }
@@ -105,12 +105,12 @@ function renderUserCard(u: BrainUser, keys: ApiKeyRow[], hasMedia: boolean): str
     ? `<span class="badge-pill">${esc(TYPE_LABELS[u.type])} · dono</span><input type="hidden" name="type" value="${esc(u.type)}">`
     : `<select name="type">${typeOptions(u.type)}</select>`;
   const avatarForms = hasMedia
-    ? `<form method="post" action="/app/config/users/avatar" enctype="multipart/form-data" class="row" style="gap:6px;align-items:center">
+    ? `<form method="post" data-ajax-form action="/app/config/users/avatar" enctype="multipart/form-data" class="row" style="gap:6px;align-items:center">
          <input type="hidden" name="id" value="${esc(u.id)}">
          <input type="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif" required style="max-width:180px">
          <button type="submit" class="btn btn-sm">Enviar foto</button>
        </form>
-       ${u.avatar_key ? `<form method="post" action="/app/config/users/avatar" style="display:inline">
+       ${u.avatar_key ? `<form method="post" data-ajax-form action="/app/config/users/avatar" style="display:inline">
          <input type="hidden" name="id" value="${esc(u.id)}">
          <input type="hidden" name="remove" value="1">
          <button type="submit" class="btn btn-ghost btn-sm">Remover foto</button>
@@ -119,7 +119,7 @@ function renderUserCard(u: BrainUser, keys: ApiKeyRow[], hasMedia: boolean): str
   const archiveSection = isOwner
     ? ''
     : `<div class="adv-section">
-         <form method="post" action="/app/config/users/archive" style="display:inline">
+         <form method="post" data-ajax-form action="/app/config/users/archive" style="display:inline">
            <input type="hidden" name="id" value="${esc(u.id)}">
            <input type="hidden" name="archived" value="${archived ? '0' : '1'}">
            <button type="submit" class="btn ${archived ? '' : 'btn-danger '}btn-sm">${archived ? 'Desarquivar' : 'Arquivar'}</button>
@@ -142,7 +142,7 @@ function renderUserCard(u: BrainUser, keys: ApiKeyRow[], hasMedia: boolean): str
       <div class="adv-body">
         <div class="adv-section">
           <h3>Perfil</h3>
-          <form method="post" action="/app/config/users/update" class="user-edit-form">
+          <form method="post" data-ajax-form action="/app/config/users/update" class="user-edit-form">
             <input type="hidden" name="id" value="${esc(u.id)}">
             <div class="row" style="gap:6px;align-items:center;flex-wrap:wrap">
               <input type="text" name="name" value="${esc(u.name)}" required maxlength="60" class="input-text" style="width:180px" aria-label="Nome">
@@ -188,7 +188,7 @@ export function renderUsersSection(
     : '';
   const createForm = atCap
     ? `<p style="color:var(--text-dim)">Limite de ${USER_CAP} usuários atingido. Arquive um perfil sem uso antes de criar outro.</p>`
-    : `<form method="post" action="/app/config/users/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+    : `<form method="post" data-ajax-form action="/app/config/users/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div style="display:flex;flex-direction:column;gap:4px">
           <label for="new-user-name" style="font-size:12px;color:var(--text-dim)">Nome</label>
           <input id="new-user-name" type="text" name="name" required maxlength="60" placeholder="Ex.: Claude VPS" class="input-text" style="width:170px">
@@ -243,14 +243,14 @@ export async function handleUserCreatePost(req: Request, env: Env): Promise<Resp
   const form = await req.formData();
 
   const name = String(form.get('name') ?? '').trim();
-  if (name.length < 1 || name.length > 60) return htmlResponse('Nome deve ter 1 a 60 caracteres', 400);
+  if (name.length < 1 || name.length > 60) return formError(req, 'Nome deve ter 1 a 60 caracteres', { field: 'name', returnTo: '/app/config#users' });
   const typeRaw = String(form.get('type') ?? '');
-  if (!USER_TYPES.includes(typeRaw as UserType)) return htmlResponse('Tipo inválido', 400);
+  if (!USER_TYPES.includes(typeRaw as UserType)) return formError(req, 'Tipo inválido', { field: 'type', returnTo: '/app/config#users' });
   const bio = String(form.get('bio') ?? '').trim().slice(0, 200) || null;
 
   const count = await countUsers(env);
   if (count >= USER_CAP) {
-    return htmlResponse(`Limite de ${USER_CAP} usuários atingido. Arquive um perfil sem uso antes de criar outro.`, 400);
+    return formError(req, `Limite de ${USER_CAP} usuários atingido. Arquive um perfil sem uso antes de criar outro.`, { returnTo: '/app/config#users' });
   }
 
   await createUser(env, { id: `user_${newId().slice(0, 8)}`, name, type: typeRaw as UserType, bio, api_key_id: null }, Date.now());
@@ -267,14 +267,14 @@ export async function handleUserUpdatePost(req: Request, env: Env): Promise<Resp
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do usuário obrigatório', 400);
+  if (!id) return formError(req, 'id do usuário obrigatório', { returnTo: '/app/config#users' });
   const user = await getUserById(env, id);
-  if (!user) return htmlResponse('Usuário não encontrado', 404);
+  if (!user) return formError(req, 'Usuário não encontrado', { status: 404, returnTo: '/app/config#users' });
 
   const name = String(form.get('name') ?? '').trim();
-  if (name.length < 1 || name.length > 60) return htmlResponse('Nome deve ter 1 a 60 caracteres', 400);
+  if (name.length < 1 || name.length > 60) return formError(req, 'Nome deve ter 1 a 60 caracteres', { field: 'name', returnTo: '/app/config#users' });
   const typeRaw = String(form.get('type') ?? '');
-  if (!USER_TYPES.includes(typeRaw as UserType)) return htmlResponse('Tipo inválido', 400);
+  if (!USER_TYPES.includes(typeRaw as UserType)) return formError(req, 'Tipo inválido', { field: 'type', returnTo: '/app/config#users' });
   // Tipo do dono é imutável (âncora do 'me' das sessões OAuth).
   const type = user.is_owner === 1 ? user.type : (typeRaw as UserType);
   const bio = String(form.get('bio') ?? '').trim().slice(0, 200) || null;
@@ -290,10 +290,10 @@ export async function handleUserArchivePost(req: Request, env: Env): Promise<Res
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do usuário obrigatório', 400);
+  if (!id) return formError(req, 'id do usuário obrigatório', { returnTo: '/app/config#users' });
   const wantArchived = String(form.get('archived') ?? '') === '1';
   const ok = await setUserArchived(env, id, wantArchived ? Date.now() : null);
-  if (!ok) return htmlResponse('Usuário não encontrado (o perfil do dono não é arquivável)', 404);
+  if (!ok) return formError(req, 'Usuário não encontrado (o perfil do dono não é arquivável)', { status: 404, returnTo: '/app/config#users' });
   return usersRedirect();
 }
 
@@ -302,13 +302,13 @@ export async function handleUserArchivePost(req: Request, env: Env): Promise<Res
 export async function handleUserAvatarPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
-  if (!env.MEDIA) return htmlResponse('Armazenamento de mídia (R2) não habilitado nesta instância', 400);
+  if (!env.MEDIA) return formError(req, 'Armazenamento de mídia (R2) não habilitado nesta instância', { returnTo: '/app/config#users' });
   const form = await req.formData();
 
   const id = String(form.get('id') ?? '').trim();
-  if (!id) return htmlResponse('id do usuário obrigatório', 400);
+  if (!id) return formError(req, 'id do usuário obrigatório', { returnTo: '/app/config#users' });
   const user = await getUserById(env, id);
-  if (!user) return htmlResponse('Usuário não encontrado', 404);
+  if (!user) return formError(req, 'Usuário não encontrado', { status: 404, returnTo: '/app/config#users' });
 
   if (String(form.get('remove') ?? '') === '1') {
     await env.MEDIA.delete(avatarR2Key(id));
@@ -318,12 +318,12 @@ export async function handleUserAvatarPost(req: Request, env: Env): Promise<Resp
 
   const entry = form.get('file');
   if (!entry || typeof entry === 'string' || typeof (entry as any).arrayBuffer !== 'function') {
-    return htmlResponse('Envie um arquivo de imagem no campo "file"', 400);
+    return formError(req, 'Envie um arquivo de imagem no campo "file"', { field: 'file', returnTo: '/app/config#users' });
   }
   const file = entry as unknown as File;
-  if (file.size > AVATAR_MAX_BYTES) return htmlResponse('Foto grande demais (máx 2MB)', 413);
+  if (file.size > AVATAR_MAX_BYTES) return formError(req, 'Foto grande demais (máx 2MB)', { field: 'file', status: 413, returnTo: '/app/config#users' });
   const mime = (file.type || '').toLowerCase();
-  if (!AVATAR_MIMES.has(mime)) return htmlResponse('Formato não suportado — use JPEG, PNG, WebP ou GIF', 415);
+  if (!AVATAR_MIMES.has(mime)) return formError(req, 'Formato não suportado — use JPEG, PNG, WebP ou GIF', { field: 'file', status: 415, returnTo: '/app/config#users' });
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   await env.MEDIA.put(avatarR2Key(id), bytes, { httpMetadata: { contentType: mime } });
@@ -359,12 +359,12 @@ export async function handleTaskAssigneesPost(req: Request, env: Env): Promise<R
   const form = await req.formData();
 
   const taskId = String(form.get('task_id') ?? '').trim();
-  if (!taskId) return htmlResponse('task_id obrigatório', 400);
+  if (!taskId) return formError(req, 'task_id obrigatório', { returnTo: '/app/tasks' });
   const task = await getTaskById(env, taskId, true);
-  if (!task) return htmlResponse('Task não encontrada', 404);
+  if (!task) return formError(req, 'Task não encontrada', { status: 404, returnTo: '/app/tasks' });
 
   const rawIds = form.getAll('user_ids').map((v) => String(v).trim()).filter(Boolean);
-  if (rawIds.length > 16) return htmlResponse('Máximo de 16 responsáveis por task', 400);
+  if (rawIds.length > 16) return formError(req, 'Máximo de 16 responsáveis por task', { returnTo: `/app/tasks/${taskId}` });
   // Atribuição NOVA exige usuário ATIVO; manter um arquivado que JÁ era assignee
   // desta task pode (o picker o mostra esmaecido — remover histórico é opt-in).
   const [active, current] = await Promise.all([
@@ -373,7 +373,7 @@ export async function handleTaskAssigneesPost(req: Request, env: Env): Promise<R
   ]);
   const allowed = new Set([...active.map((u) => u.id), ...current.map((a) => a.id)]);
   for (const uid of rawIds) {
-    if (!allowed.has(uid)) return htmlResponse(`Usuário '${uid}' não existe ou está arquivado`, 400);
+    if (!allowed.has(uid)) return formError(req, `Usuário '${uid}' não existe ou está arquivado`, { returnTo: `/app/tasks/${taskId}` });
   }
 
   const now = Date.now();

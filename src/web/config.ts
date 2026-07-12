@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
+import { formError, formErrorBanner } from './form-error.js';
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
 import { flashKvKey } from './api-keys.js';
@@ -72,12 +73,12 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
     .map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`)
     .join('');
   const archiveCell = archived
-    ? `<form method="post" action="/app/tasks/columns/archive" style="display:inline">
+    ? `<form method="post" data-ajax-form action="/app/tasks/columns/archive" style="display:inline">
          <input type="hidden" name="id" value="${esc(col.id)}">
          <input type="hidden" name="archived" value="0">
          <button type="submit">Desarquivar</button>
        </form>`
-    : `<form method="post" action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
+    : `<form method="post" data-ajax-form action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
          <input type="hidden" name="id" value="${esc(col.id)}">
          <input type="hidden" name="archived" value="1">
          ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
@@ -85,7 +86,7 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
-      <form method="post" action="/app/tasks/columns/update" class="row" style="gap:6px;align-items:center">
+      <form method="post" data-ajax-form action="/app/tasks/columns/update" class="row" style="gap:6px;align-items:center">
         <input type="hidden" name="id" value="${esc(col.id)}">
         <input type="text" name="label" value="${esc(col.label)}" maxlength="40" class="input-text" style="width:150px">
         <span style="display:inline-flex;align-items:center;gap:6px">
@@ -97,11 +98,11 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
     </td>
     <td><span class="badge-pill">${esc(CATEGORY_LABELS[col.category])}</span></td>
     <td>
-      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+      <form method="post" data-ajax-form action="/app/tasks/columns/reorder" style="display:inline">
         <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="up">
         <button type="submit" aria-label="Subir">↑</button>
       </form>
-      <form method="post" action="/app/tasks/columns/reorder" style="display:inline">
+      <form method="post" data-ajax-form action="/app/tasks/columns/reorder" style="display:inline">
         <input type="hidden" name="id" value="${esc(col.id)}"><input type="hidden" name="direction" value="down">
         <button type="submit" aria-label="Descer">↓</button>
       </form>
@@ -141,7 +142,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
         </div>
         <div class="adv-section">
           <h3>Nova coluna</h3>
-          <form method="post" action="/app/tasks/columns/create" class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
+          <form method="post" data-ajax-form action="/app/tasks/columns/create" class="row" style="gap:12px;flex-wrap:wrap;align-items:flex-end">
             <div style="display:flex;flex-direction:column;gap:4px">
               <label for="new-col-label" style="font-size:12px;color:var(--text-dim)">Nome da coluna</label>
               <input id="new-col-label" type="text" name="label" required maxlength="40" placeholder="Ex.: Backlog" class="input-text" style="width:170px">
@@ -168,19 +169,19 @@ function renderProjectRow(proj: TaskProject, count: number): string {
   const archived = proj.archived_at !== null;
   const colorVal = proj.color ?? '';
   const archiveCell = archived
-    ? `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+    ? `<form method="post" data-ajax-form action="/app/tasks/projects/archive" style="display:inline">
          <input type="hidden" name="id" value="${esc(proj.id)}">
          <input type="hidden" name="archived" value="0">
          <button type="submit">Desarquivar</button>
        </form>`
-    : `<form method="post" action="/app/tasks/projects/archive" style="display:inline">
+    : `<form method="post" data-ajax-form action="/app/tasks/projects/archive" style="display:inline">
          <input type="hidden" name="id" value="${esc(proj.id)}">
          <input type="hidden" name="archived" value="1">
          <button type="submit" class="btn btn-danger btn-sm">Arquivar</button>
        </form>`;
   return `<tr${archived ? ' style="opacity:0.55"' : ''}>
     <td>
-      <form method="post" action="/app/tasks/projects/update" class="row" style="gap:6px;align-items:center">
+      <form method="post" data-ajax-form action="/app/tasks/projects/update" class="row" style="gap:6px;align-items:center">
         <input type="hidden" name="id" value="${esc(proj.id)}">
         <input type="text" name="label" value="${esc(proj.label)}" maxlength="40" class="input-text" style="width:170px">
         <input type="text" name="color" value="${esc(colorVal)}" placeholder="#rrggbb" maxlength="7" class="input-text" style="width:92px">
@@ -188,11 +189,11 @@ function renderProjectRow(proj: TaskProject, count: number): string {
       </form>
     </td>
     <td>
-      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+      <form method="post" data-ajax-form action="/app/tasks/projects/reorder" style="display:inline">
         <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="up">
         <button type="submit" aria-label="Subir">↑</button>
       </form>
-      <form method="post" action="/app/tasks/projects/reorder" style="display:inline">
+      <form method="post" data-ajax-form action="/app/tasks/projects/reorder" style="display:inline">
         <input type="hidden" name="id" value="${esc(proj.id)}"><input type="hidden" name="direction" value="down">
         <button type="submit" aria-label="Descer">↓</button>
       </form>
@@ -229,7 +230,7 @@ function renderProjectsSection(
       <td>${s.mode === 'comment' ? 'leitura + comentários' : 'somente leitura'}</td>
       <td><code>${esc(s.prefix)}…</code></td>
       <td>${s.expires_at != null ? `${esc(formatBrtDateTime(s.expires_at))}${expired ? ' (expirado)' : ''}` : 'sem expiração'}</td>
-      <td><form method="post" action="/app/project-shares/revoke" style="display:inline">
+      <td><form method="post" data-ajax-form action="/app/project-shares/revoke" style="display:inline">
         <input type="hidden" name="id" value="${esc(s.id)}">
         <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
       </form></td>
@@ -257,7 +258,7 @@ function renderProjectsSection(
             <tbody>${shareRows}</tbody>
           </table>`}
           ${activeProjects.length === 0 ? '' : `
-          <form method="post" action="/app/project-shares/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
+          <form method="post" data-ajax-form action="/app/project-shares/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">
             <select name="project_id" required class="input-text" aria-label="Projeto">
               ${activeProjects.map((p) => `<option value="${esc(p.id)}">${esc(p.label)}</option>`).join('')}
             </select>
@@ -290,7 +291,7 @@ function renderProjectsSection(
           <h3>Novo projeto</h3>
           ${atCap
             ? `<p style="color:var(--text-dim)">Limite de ${TASK_PROJECT_CAP} projetos atingido. Arquive um projeto sem uso antes de criar outro.</p>`
-            : `<form method="post" action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
+            : `<form method="post" data-ajax-form action="/app/tasks/projects/create" class="row" style="gap:8px;flex-wrap:wrap;align-items:center">
             <input type="text" name="label" required maxlength="40" placeholder="Nome do projeto" class="input-text" style="width:200px">
             <input type="text" name="color" placeholder="#rrggbb (opcional)" maxlength="7" class="input-text" style="width:150px">
             <button type="submit" class="btn btn-primary">Criar projeto</button>
@@ -308,7 +309,7 @@ function renderProjectsSection(
 function renderTagRow(t: TagUsage): string {
   return `<tr data-tag-row="${esc(t.tag)}">
     <td>
-      <form method="post" action="/app/tasks/tags/rename" class="row" style="gap:6px;align-items:center">
+      <form method="post" data-ajax-form action="/app/tasks/tags/rename" class="row" style="gap:6px;align-items:center">
         <input type="hidden" name="from" value="${esc(t.tag)}">
         <input type="text" name="to" value="${esc(t.tag)}" maxlength="60" class="input-text" style="width:200px" aria-label="Novo nome pra tag ${esc(t.tag)}">
         <button type="submit">Renomear</button>
@@ -316,7 +317,7 @@ function renderTagRow(t: TagUsage): string {
     </td>
     <td>${t.count}</td>
     <td>
-      <form method="post" action="/app/tasks/tags/delete" class="tag-delete-form" style="display:inline" data-tag="${esc(t.tag)}">
+      <form method="post" data-ajax-form action="/app/tasks/tags/delete" class="tag-delete-form" style="display:inline" data-tag="${esc(t.tag)}">
         <input type="hidden" name="tag" value="${esc(t.tag)}">
         <button type="submit" class="btn btn-danger btn-sm">Apagar</button>
       </form>
@@ -432,7 +433,7 @@ function renderOwnerInstructionsSection(ownerInstructions: string, savedOwner: b
       <div class="adv-body">
         <div class="adv-section">
           <p>Este texto é anexado às instruções que o servidor MCP anuncia no <strong>handshake</strong> — ou seja, TODO agente que conecta (Claude Code, Desktop, sistemas web, automações) recebe estas orientações automaticamente, sem você configurar cliente por cliente. Use pra regras globais tipo <em>"sempre responda em pt-BR"</em>, <em>"priorize o domínio X"</em> ou <em>"nunca crie task sem prazo"</em>.</p>
-          <form method="post" action="/app/config/owner-instructions">
+          <form method="post" data-ajax-form action="/app/config/owner-instructions">
             <label for="owner-instructions-text">Instruções (texto puro/markdown leve, máx ${OWNER_INSTRUCTIONS_MAX_LEN} caracteres)</label>
             <textarea id="owner-instructions-text" name="owner_instructions" rows="8" maxlength="${OWNER_INSTRUCTIONS_MAX_LEN}" class="prefs-textarea" data-charcount="owner-instructions-count" placeholder="Ex: Sempre responda em pt-BR. Antes de salvar nota, varra analogias em outros domínios.">${esc(ownerInstructions)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px;align-items:center">
@@ -451,9 +452,9 @@ export async function handleConfigPrefsPost(req: Request, env: Env): Promise<Res
   if (!session.ok) return session.response;
   const form = await req.formData();
   const prompt = String(form.get('prompt') ?? '').trim();
-  if (!prompt) return htmlResponse('Prompt não pode ficar vazio', 400);
+  if (!prompt) return formError(req, 'Prompt não pode ficar vazio', { field: 'prompt', returnTo: '/app/config#prefs' });
   if (prompt.length > PREFS_MAX_LEN) {
-    return htmlResponse(`Prompt longo demais (máx ${PREFS_MAX_LEN} caracteres)`, 400);
+    return formError(req, `Prompt longo demais (máx ${PREFS_MAX_LEN} caracteres)`, { field: 'prompt', returnTo: '/app/config#prefs' });
   }
   await env.DB.prepare(
     `INSERT INTO meta (key, value) VALUES (?, ?)
@@ -636,7 +637,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ? `<span title="Dono — a chave assina como este perfil">${esc(ownerName)}</span>`
       : revoked
         ? `<span class="badge-pill badge-warn">sem dono</span>`
-        : `<form method="post" action="/app/api-keys/owner" style="display:inline-flex;gap:6px;align-items:center">
+        : `<form method="post" data-ajax-form action="/app/api-keys/owner" style="display:inline-flex;gap:6px;align-items:center">
              <input type="hidden" name="id" value="${esc(k.id)}">
              <select name="user_id" required><option value="">sem dono — vincular…</option>${ownerOptions}</select>
              <button type="submit" class="btn btn-sm">Vincular</button>
@@ -648,12 +649,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     const actions = revoked
       ? ''
       : `<div class="key-row-actions">
-           <form method="post" action="/app/api-keys/system" class="key-system-form" title="Sistema — agrupa a listagem; vazio volta pra 'Sem sistema'">
+           <form method="post" data-ajax-form action="/app/api-keys/system" class="key-system-form" title="Sistema — agrupa a listagem; vazio volta pra 'Sem sistema'">
              <input type="hidden" name="id" value="${esc(k.id)}">
              <input type="text" name="system" value="${esc(k.system ?? '')}" list="key-systems" maxlength="40" placeholder="sem sistema" class="input-text key-system-input" aria-label="Sistema de ${esc(k.name)}">
              <button type="submit" class="btn btn-sm">Salvar</button>
            </form>
-           <form method="post" action="/app/api-keys/revoke" style="display:inline">
+           <form method="post" data-ajax-form action="/app/api-keys/revoke" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
              <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
            </form>
@@ -741,7 +742,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     <div class="page-header">
       <h1>Configurações ${badge}</h1>
     </div>
-
+    ${formErrorBanner(url)}
     <nav class="config-tabs" role="tablist" aria-label="Seções das configurações">
       ${tabButton('agentes', 'Agentes')}
       ${tabButton('integracoes', 'Integrações')}
@@ -801,7 +802,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         <div class="adv-section">
           <h3>Prompt de personalização</h3>
           <p>Cole este texto nas <em>instruções</em> do cliente (Claude.ai → <strong>Configurações → Geral → Instruções para o Claude</strong>; ChatGPT → instruções do projeto) pra ele usar o vault sozinho em toda conversa, não só quando o tema é óbvio. Edite com seu nome e suas áreas e clique <strong>Salvar</strong>.</p>
-          <form method="post" action="/app/config/prefs">
+          <form method="post" data-ajax-form action="/app/config/prefs">
             <textarea id="prefs-block" name="prompt" rows="14" maxlength="${PREFS_MAX_LEN}" class="prefs-textarea">${esc(prefsPrompt)}</textarea>
             <div class="row" style="margin-top:10px;gap:8px">
               <button type="submit" class="btn btn-primary">Salvar</button>
@@ -824,7 +825,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         ${createdBanner}
         <div class="adv-section">
           <h3>Criar nova chave</h3>
-          <form method="post" action="/app/api-keys/create">
+          <form method="post" data-ajax-form action="/app/api-keys/create">
             <label>Nome (pra você lembrar onde usa)
               <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
             </label>
@@ -1005,7 +1006,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <h2>Backup</h2>
       ${backupStatus}
       <div class="row" style="gap:8px;margin-top:10px">
-        <form method="post" action="/app/config/backup-now">
+        <form method="post" data-ajax-form action="/app/config/backup-now">
           <button type="submit" class="btn btn-primary">Fazer backup agora</button>
         </form>
         <form method="get" action="/app/export">
