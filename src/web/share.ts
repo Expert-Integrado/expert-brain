@@ -30,6 +30,7 @@ import {
   type TaskCommentView,
 } from '../db/queries.js';
 import { listMediaByNote, type MediaRow } from '../db/media-queries.js';
+import { listTaskSubtasks, type TaskSubtask } from '../db/subtasks.js';
 import { fetchBlob, getMediaById } from '../media/store.js';
 import { formatBrtDateTime } from '../util/time.js';
 import { PRIORITIES } from '../util/priority.js';
@@ -310,7 +311,8 @@ export function renderSharePage(
   comments: TaskCommentView[],
   token: string,
   form: ShareCommentFormState = {},
-  status = 200
+  status = 200,
+  subtasks: TaskSubtask[] = []
 ): Response {
   const taskStatus = task.status ?? 'open';
   const statusLabel = STATUS_LABELS[taskStatus] ?? taskStatus;
@@ -347,6 +349,7 @@ ${FONT_LINKS}
     <h1 class="share-title">${esc(task.title)}</h1>
     <div class="share-meta">${metaRows}</div>
     <div class="share-body note-body">${bodyHtml}</div>
+    ${renderShareSubtasks(subtasks)}
   </article>
   ${renderShareComments(token, comments, form)}
   <footer class="share-footer">compartilhado via Expert Brain</footer>
@@ -354,6 +357,21 @@ ${FONT_LINKS}
 </body></html>`;
 
   return new Response(html, { status, headers: shareHeaders() });
+}
+
+// Checklist read-only da página pública (spec 38): ✓/○ + contagem, zero JS — a
+// página inteira roda sob CSP script-src 'none', então nada aqui é interativo.
+// Task sem checklist não ganha a seção.
+function renderShareSubtasks(subtasks: TaskSubtask[]): string {
+  if (subtasks.length === 0) return '';
+  const done = subtasks.filter((s) => s.done_at !== null).length;
+  const items = subtasks
+    .map((s) => `<li class="share-subtask${s.done_at !== null ? ' done' : ''}"><span class="share-subtask-mark" aria-hidden="true">${s.done_at !== null ? '✓' : '○'}</span><span class="share-subtask-title">${esc(s.title)}</span></li>`)
+    .join('');
+  return `<section class="share-subtasks">
+    <h2 class="share-subtasks-h">Subtarefas <span class="share-subtasks-n">${done}/${subtasks.length}</span></h2>
+    <ul class="share-subtasks-list">${items}</ul>
+  </section>`;
 }
 
 // Seção "Comentários" da página pública: thread + form do convidado. O form posta
@@ -423,6 +441,24 @@ const SHARE_CSS = `
 .share-badge-status { text-transform: none; }
 .share-status-done { color: var(--success); border-color: var(--success-border); }
 .share-status-canceled { color: var(--text-dim); }
+/* Checklist read-only (spec 38) */
+.share-subtasks { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--border); }
+.share-subtasks-h {
+  font-family: var(--font-display); font-size: 15px; font-weight: 600; color: var(--text);
+  margin-bottom: 10px; display: flex; align-items: center; gap: 10px;
+}
+.share-subtasks-n {
+  font-size: 12px; font-weight: 600; color: var(--text-dim); background: var(--bg-accent);
+  border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums;
+}
+.share-subtasks-list { list-style: none; margin: 0; padding: 0; }
+.share-subtask {
+  display: flex; align-items: baseline; gap: 10px; padding: 5px 0;
+  font-size: 14px; color: var(--text);
+}
+.share-subtask-mark { flex-shrink: 0; color: var(--text-subtle); }
+.share-subtask.done .share-subtask-mark { color: var(--success); }
+.share-subtask.done .share-subtask-title { text-decoration: line-through; color: var(--text-subtle); }
 .share-domains { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .share-badge-domain { font-size: 12px; }
 .share-body { color: var(--text); line-height: 1.65; font-size: 15px; }
@@ -507,8 +543,12 @@ export async function handleSharePage(req: Request, env: Env, token: string): Pr
   const note = await resolveShare(env, token, Date.now());
   if (!note) return shareNotFound();
   if (note.kind === 'task') {
-    const comments = await listTaskComments(env, note.id, 200, 0);
-    return renderSharePage(note, comments, token);
+    // Thread + checklist (spec 38) — a página pública mostra os dois, read-only.
+    const [comments, subtasks] = await Promise.all([
+      listTaskComments(env, note.id, 200, 0),
+      listTaskSubtasks(env, note.id),
+    ]);
+    return renderSharePage(note, comments, token, {}, 200, subtasks);
   }
   const media = note.share_include_media === 1 ? await listMediaByNote(env, note.id) : [];
   return renderNoteSharePage(note, media, token);
@@ -628,28 +668,28 @@ export async function handleShareCommentPost(req: Request, env: Env, token: stri
   // read-only puro — POST em token de nota cai no mesmo 404 genérico.
   if (!task || task.kind !== 'task') return shareNotFound();
 
+  // Re-render de qualquer desfecho do POST: thread + checklist (spec 38), como no GET.
+  const reRender = (state: ShareCommentFormState, httpStatus: number) =>
+    Promise.all([listTaskComments(env, task.id, 200, 0), listTaskSubtasks(env, task.id)])
+      .then(([cs, subs]) => renderSharePage(task, cs, token, state, httpStatus, subs));
+
   let form: FormData;
   try {
     form = await req.formData();
   } catch {
-    const comments = await listTaskComments(env, task.id, 200, 0);
-    return renderSharePage(task, comments, token, { error: 'Não consegui ler o formulário. Tente de novo.' }, 400);
+    return reRender({ error: 'Não consegui ler o formulário. Tente de novo.' }, 400);
   }
 
   // Honeypot: bot que preenche o campo invisível → descarta em silêncio (200, nada
   // gravado, sem erro visível). Um humano nunca preenche (display:none).
   const honeypot = String(form.get('website') ?? '').trim();
   if (honeypot) {
-    const comments = await listTaskComments(env, task.id, 200, 0);
-    return renderSharePage(task, comments, token, { notice: 'Comentário enviado.' }, 200);
+    return reRender({ notice: 'Comentário enviado.' }, 200);
   }
 
   const name = String(form.get('name') ?? '').trim().slice(0, GUEST_MAX_NAME);
   const rawBody = String(form.get('body') ?? '');
   const body = rawBody.trim().slice(0, GUEST_MAX_BODY);
-
-  const reRender = (state: ShareCommentFormState, httpStatus: number) =>
-    listTaskComments(env, task.id, 200, 0).then((cs) => renderSharePage(task, cs, token, state, httpStatus));
 
   // Validação: nome e corpo obrigatórios (guest DEVE assinar).
   if (!name) return reRender({ error: 'Informe seu nome.', name, body }, 400);

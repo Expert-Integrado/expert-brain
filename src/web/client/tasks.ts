@@ -14,7 +14,7 @@ import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type AwaitingItem, type SubtaskProgressRef } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -43,6 +43,7 @@ interface TaskView {
   assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
   mention_me: boolean; // menção NÃO-LIDA ao dono (spec 82) — filtro "menções a mim"
   claim: ClaimChip | null; // claim/lease ATIVO (spec 88/89): chip "quem trabalha agora"
+  subtask_progress: SubtaskProgressRef | null; // checklist (spec 38): badge "3/8"; null = sem itens
 }
 
 interface BoardColumn {
@@ -229,7 +230,7 @@ function cardHTML(t: TaskView): string {
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     ${projectCrumb(t)}
-    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}${claimChipHtml(t.claim)}${assigneeDotsHtml(t.assignees ?? [])}</div>
+    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${subtaskBadge(t.subtask_progress)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}${claimChipHtml(t.claim)}${assigneeDotsHtml(t.assignees ?? [])}</div>
     ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     <div class="task-card-edit" data-editpanel hidden>
       <label class="task-card-edit-ctl">Prioridade

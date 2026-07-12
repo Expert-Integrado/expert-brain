@@ -145,6 +145,23 @@ export function assigneeDotsHtml(assignees: AssigneeDot[]): string {
   return `<span class="task-assignees" aria-label="Responsáveis">${dots}${more}</span>`;
 }
 
+// ─────────── Badge de progresso do checklist no card (spec 38) ───────────
+// "3/8" ao lado do badge de comentários. Shape enxuto (não importa o tipo do
+// db/subtasks — módulo folha, compartilhado SSR + client). null/total 0 → vazio.
+export interface SubtaskProgressRef { done: number; total: number }
+
+const CHECKLIST_ICON =
+  '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="flex-shrink:0;vertical-align:-1px">' +
+  '<path d="M3 4.5 4.2 5.7 6.5 3.4M3 8.5 4.2 9.7 6.5 7.4M3 12.5l1.2 1.2 2.3-2.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
+  '<path d="M9 4.5h4.5M9 8.5h4.5M9 12.5h4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+
+export function subtaskBadge(p: SubtaskProgressRef | null | undefined): string {
+  if (!p || !Number.isFinite(p.total) || p.total <= 0) return '';
+  const label = `${p.done} de ${p.total} subtarefas concluídas`;
+  const doneCls = p.done >= p.total ? ' task-subs-complete' : '';
+  return `<span class="task-subs${doneCls}" title="${escBadge(label)}" aria-label="${escBadge(label)}">${CHECKLIST_ICON}<span class="task-subs-n">${p.done}/${p.total}</span></span>`;
+}
+
 const LINK_ICON =
   '<svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="flex-shrink:0;vertical-align:-1px">' +
   '<path d="M6.5 9.5 9.5 6.5M6.8 4.2 8 3a2.5 2.5 0 0 1 3.5 3.5L10 8M9.2 11.8 8 13a2.5 2.5 0 0 1-3.5-3.5L6 8" ' +

@@ -68,7 +68,7 @@ import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 
 const json = (data: unknown, status = 200): Response =>
@@ -112,6 +112,8 @@ interface TaskView {
   // Claim/lease ATIVO (spec 88/89): quem está trabalhando AGORA e até quando —
   // chip no card. null = livre (inclui lease vencido, filtrado no buildBoard).
   claim: ClaimChip | null;
+  // Checklist (spec 38): badge "3/8" no card; null = task sem subtarefas.
+  subtask_progress: SubtaskProgress | null;
 }
 
 // Texto de busca do card (Onda 8): título + corpo (quando não é eco do título) +
@@ -128,7 +130,7 @@ export function visibleTags(tags: string[]): string[] {
   return tags.filter((t) => !t.startsWith('dedupe:'));
 }
 
-function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = [], mentionMe = false, claim: ClaimChip | null = null): TaskView {
+function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], assignees: AssigneeDot[] = [], mentionMe = false, claim: ClaimChip | null = null, subtaskProgress: SubtaskProgress | null = null): TaskView {
   const due = t.due_at ?? null;
   const shared = t.share_token != null && t.share_expires_at != null && t.share_expires_at > now;
   return {
@@ -158,6 +160,7 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], 
     assignees,
     mention_me: mentionMe,
     claim,
+    subtask_progress: subtaskProgress,
   };
 }
 
@@ -225,11 +228,13 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
   // renderizadas. Tags reservadas dedupe:* são filtradas AQUI — nunca chegam ao
   // TaskView (defesa única, board e nenhum outro read path de card as vaza).
   const allIds = [...active, ...closed].map((t) => t.id);
-  const [commentCounts, tagsById, assigneesById, mailboxInfo] = await Promise.all([
+  const [commentCounts, tagsById, assigneesById, subtaskCounts, mailboxInfo] = await Promise.all([
     countTaskCommentsBatch(env, allIds),
     getTagsForNotes(env, allIds),
     // Responsáveis em lote (spec 37): bolinhas do card, 1 query chunked.
     listAssigneesForTasks(env, allIds),
+    // Progresso do checklist em lote (spec 38): badge "3/8", 1 query chunked.
+    countTaskSubtasksBatch(env, allIds),
     // Mailbox (spec 82): badge por usuário + tasks com menção não-lida ao dono.
     // Best-effort: o board nunca quebra por causa do mailbox.
     getBoardMailboxInfo(env).catch((err) => {
@@ -252,7 +257,7 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     const claim: ClaimChip | null = claimActive(t, now)
       ? { name: userNameById.get(t.claimed_by!) ?? t.claimed_by!, expires_brt: formatBrtShort(t.claim_expires_at!) }
       : null;
-    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? [], mailboxInfo.ownerMentionTaskIds.has(t.id), claim));
+    if (colId) buckets.get(colId)?.push(toView(t, now, commentCounts.get(t.id) ?? 0, tags, assigneesById.get(t.id) ?? [], mailboxInfo.ownerMentionTaskIds.has(t.id), claim, subtaskCounts.get(t.id) ?? null));
   };
   for (const t of active) place(t);
   for (const t of closed) place(t);
@@ -1285,7 +1290,7 @@ function renderCardSSR(v: TaskView, projectsById: Map<string, BoardProject>): st
   return `<div class="task-card" data-id="${esc(v.id)}" data-status="${esc(v.status)}"${v.project_id ? ` data-project="${esc(v.project_id)}"` : ''}>
     <div class="task-card-top"><a class="task-card-title" href="/app/tasks/${esc(v.id)}" draggable="false">${esc(v.title)}</a></div>
     ${cardProjectCrumb(v, projectsById)}
-    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}${claimChipHtml(v.claim)}${assigneeDotsHtml(v.assignees)}</div>
+    <div class="task-card-meta">${priorityPill(v.priority)}${dueBadge(v)}${commentBadge(v.comment_count)}${subtaskBadge(v.subtask_progress)}${v.private ? PRIVATE_TASK_BADGE : ''}${shareIconHtml(v.share_expires_brt)}${claimChipHtml(v.claim)}${assigneeDotsHtml(v.assignees)}</div>
     ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     ${canClose ? `<div class="task-card-actions"><button class="btn btn-sm btn-ghost task-complete" data-id="${esc(v.id)}" type="button">✓ concluir</button></div>` : ''}
   </div>`;
@@ -1677,6 +1682,11 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 /* Contagem de comentários (spec 53): ícone bolha + número, tom discreto */
 .task-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
 .task-comments-n { font-variant-numeric: tabular-nums; line-height: 1; }
+
+/* Progresso do checklist (spec 38): "3/8" no card, visual casado com .task-comments */
+.task-subs { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-dim); background: var(--surface-raised); border-radius: 6px; padding: 2px 8px; }
+.task-subs-n { font-variant-numeric: tabular-nums; line-height: 1; }
+.task-subs-complete { color: var(--success); }
 
 /* Responsáveis (spec 37): bolinhas empilhadas no fim da linha de meta, estilo
    ClickUp. Foto quando tem; senão iniciais sobre cor derivada do id. Agente

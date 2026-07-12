@@ -161,3 +161,87 @@ describe('SSR do detalhe — seção Subtarefas', () => {
     expect(det).not.toContain('<script>alert(3)</script>');
   });
 });
+
+describe('board — progresso de subtasks no card (spec 38)', () => {
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM task_subtasks');
+    await E.DB.exec('DELETE FROM notes');
+  });
+
+  it('payload /app/tasks/data traz subtask_progress {done,total} | null por task', async () => {
+    await seedTask('t1');
+    await seedTask('t2');
+    const subs = (await addTaskSubtasks(E, 't1', ['a', 'b', 'c'], null, 1000)) as any[];
+    await E.DB.prepare(`UPDATE task_subtasks SET done_at=2000 WHERE id IN (?,?)`).bind(subs[0].id, subs[1].id).run();
+
+    const data = await (await SELF.fetch('https://x/app/tasks/data', { headers: { cookie: await cookie() } })).json() as any;
+    const all: any[] = data.columns.flatMap((col: any) => col.tasks);
+    expect(all.find((t) => t.id === 't1').subtask_progress).toEqual({ done: 2, total: 3 });
+    expect(all.find((t) => t.id === 't2').subtask_progress).toBeNull();
+  });
+
+  it('card SSR do board mostra o badge "2/3" (e o espelho client usa o MESMO helper)', async () => {
+    await seedTask('t1');
+    const subs = (await addTaskSubtasks(E, 't1', ['a', 'b', 'c'], null, 1000)) as any[];
+    await E.DB.prepare(`UPDATE task_subtasks SET done_at=2000 WHERE id IN (?,?)`).bind(subs[0].id, subs[1].id).run();
+
+    const html = await (await SELF.fetch('https://x/app/tasks', { headers: { cookie: await cookie() } })).text();
+    // 'class="task-subs' = markup do badge; '.task-subs' solto bateria no CSS inline.
+    expect(html).toContain('class="task-subs');
+    expect(html).toContain('2/3');
+  });
+
+  it('task sem checklist não ganha badge no card SSR', async () => {
+    await seedTask('t1');
+    const html = await (await SELF.fetch('https://x/app/tasks', { headers: { cookie: await cookie() } })).text();
+    expect(html).not.toContain('class="task-subs');
+  });
+});
+
+describe('share público /s/<token> — checklist read-only (spec 38)', () => {
+  beforeEach(async () => {
+    await runMigrations(E);
+    await E.DB.exec('DELETE FROM task_subtasks');
+    await E.DB.exec('DELETE FROM notes');
+  });
+
+  async function sharedTask(): Promise<string> {
+    await seedTask('t1');
+    const { createShare } = await import('../src/web/share.js');
+    const r = await createShare(E, 't1', {}, Date.now());
+    if (!r.ok) throw new Error('setup share');
+    return r.token;
+  }
+
+  it('exibe o checklist com progresso, sem form e sem script', async () => {
+    const token = await sharedTask();
+    const subs = (await addTaskSubtasks(E, 't1', ['feita', 'aberta'], null, 1000)) as any[];
+    await E.DB.prepare(`UPDATE task_subtasks SET done_at=2000 WHERE id=?`).bind(subs[0].id).run();
+
+    const res = await SELF.fetch(`https://x/s/${token}`);
+    const html = await res.text();
+    expect(html).toContain('Subtarefas');
+    expect(html).toContain('1/2');
+    expect(html).toContain('feita');
+    expect(html).toContain('aberta');
+    // Read-only de verdade: nenhum input/checkbox de subtask na página pública.
+    expect(html).not.toContain('data-subtask-toggle');
+    expect(res.headers.get('content-security-policy')).toContain("script-src 'none'");
+  });
+
+  it('task sem checklist não ganha a seção', async () => {
+    const token = await sharedTask();
+    const html = await (await SELF.fetch(`https://x/s/${token}`)).text();
+    // markup da seção — 'share-subtasks' solto bateria no CSS inline
+    expect(html).not.toContain('class="share-subtasks"');
+  });
+
+  it('escape: título de item vira texto inerte na página pública', async () => {
+    const token = await sharedTask();
+    await addTaskSubtasks(E, 't1', ['<img src=x onerror=alert(4)>'], null, 1000);
+    const html = await (await SELF.fetch(`https://x/s/${token}`)).text();
+    expect(html).toContain('&lt;img src=x onerror=alert(4)&gt;');
+    expect(html).not.toContain('<img src=x onerror');
+  });
+});
