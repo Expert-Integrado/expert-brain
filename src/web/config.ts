@@ -21,6 +21,8 @@ import { renderUsersSection, USERS_SECTION_CSS, KEY_DORMANT_MS, relKeyUse, avata
 import { connCardSummary, ICON_GOOGLE, ICON_WHATSAPP, ICON_INSTAGRAM, ICON_FUNNEL } from './config-icons.js';
 import { renderTwoFactorCard, twoFactorFlashKey } from './twofactor-config.js';
 import { twoFactorEnabled, twoFactorEnabledAt, pendingTotpSecret, backupCodesRemaining } from '../auth/twofactor.js';
+import { renderPasswordCard, recoveryFlashKey } from './password-config.js';
+import { recoveryCodeInfo } from '../auth/owner-password.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
 // usuário substitui pelo próprio contexto. O texto fica editável inline em
@@ -622,6 +624,21 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const tferrRaw = url.searchParams.get('tferr');
   const tferr = tferrRaw === 'code' || tferrRaw === 'disable' ? tferrRaw : null;
 
+  // Código de recuperação (spec 103) — flash one-time + banners da troca de senha.
+  const rcflash = url.searchParams.get('rcflash');
+  let freshRecoveryCode: string | null = null;
+  if (rcflash && /^[a-f0-9]{32}$/.test(rcflash)) {
+    const key = recoveryFlashKey(rcflash);
+    const value = await env.OAUTH_KV.get(key);
+    if (value) {
+      freshRecoveryCode = value;
+      await env.OAUTH_KV.delete(key);
+    }
+  }
+  const pwerrRaw = url.searchParams.get('pwerr');
+  const pwerr = pwerrRaw === 'current' || pwerrRaw === 'weak' || pwerrRaw === 'match' ? pwerrRaw : null;
+  const pwChanged = url.searchParams.get('pwok') === '1';
+
   // Após salvar o prompt, o POST redireciona com ?saved=prefs pra reabrir a aba
   // "Sistemas web" (que contém o prompt) já expandida.
   const savedPrefs = url.searchParams.get('saved') === 'prefs';
@@ -662,6 +679,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     tfEnabledAt,
     tfPendingSecret,
     tfBackupRemaining,
+    recoveryInfo,
   ] = await Promise.all([
     listKanbanColumns(env, true),
     taskCountsByColumn(env),
@@ -681,6 +699,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     twoFactorEnabledAt(env),
     pendingTotpSecret(env),
     backupCodesRemaining(env),
+    recoveryCodeInfo(env),
   ]);
 
   // Card "Segurança" (spec 100-seguranca-conta/102) — estado + flash one-time.
@@ -692,6 +711,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ownerEmail: env.OWNER_EMAIL ?? session.email,
     freshBackupCodes,
     error: tferr,
+  });
+
+  // Card "Senha e recuperação" (spec 103) — troca de senha + código de recuperação.
+  const passwordCard = renderPasswordCard({
+    recovery: recoveryInfo,
+    freshRecoveryCode,
+    error: pwerr,
+    changed: pwChanged,
   });
 
   // Seção "Quadro de tarefas": colunas (ativas + arquivadas) + contagem de tasks.
@@ -865,12 +892,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // Redirects do card Segurança (2FA) reabrem a aba Sistema — inclusive o flash
   // de backup codes e os banners de erro (tferr), que renderizam dentro dela.
   const saved2fa = url.searchParams.get('saved') === '2fa';
+  // Idem pro card Senha e recuperação (spec 103).
+  const savedPw = url.searchParams.get('saved') === 'pw';
   // O cast largo evita o narrowing do TS: nenhum ?saved= cai em 'integracoes'
   // hoje (a aba é ativada só no client, via hash/?google=), mas o template dos
   // painéis compara contra ela como qualquer outra.
   const activeTab = (
     savedBoard || savedProjects || savedTaxonomy || savedTags || justCreatedShareUrl !== null
-      ? 'organizacao' : savedBackup || saved2fa ? 'sistema' : 'agentes'
+      ? 'organizacao' : savedBackup || saved2fa || savedPw ? 'sistema' : 'agentes'
   ) as 'agentes' | 'integracoes' | 'organizacao' | 'sistema';
   const tabButton = (slug: string, label: string): string =>
     `<button type="button" role="tab" id="config-tab-${slug}" data-tab="${slug}" aria-controls="panel-${slug}" aria-selected="${activeTab === slug ? 'true' : 'false'}"${activeTab === slug ? '' : ' tabindex="-1"'}>${label}</button>`;
@@ -1118,6 +1147,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     </div>
 
     ${securityCard}
+
+    ${passwordCard}
 
     <div class="card" id="backup">
       <h2>Backup</h2>

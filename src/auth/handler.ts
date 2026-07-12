@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { handleRoot, handleProvision, handleStatus, handleBackfillSimilar, isSetup } from './setup.js';
-import { verifyPassword } from './password.js';
+import { verifyOwnerPassword } from './owner-password.js';
 import { twoFactorEnabled, verifySecondFactor } from './twofactor.js';
 import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from './rate-limit.js';
 import { FONT_LINKS } from '../web/styles.js';
@@ -99,7 +99,8 @@ export const authHandler = {
           return renderLogin('Muitas tentativas. Aguarde alguns minutos.', url.search, 429, gate.retryAfterS);
         }
         const emailOk = email === env.OWNER_EMAIL;
-        const ok = emailOk && (await verifyPassword(password, env.OWNER_PASSWORD_HASH!));
+        // Senha efetiva = meta.owner_password_hash com fallback pro secret (spec 103).
+        const ok = emailOk && (await verifyOwnerPassword(env, password));
         if (!ok) {
           const fails = await registerLoginFailure(env, ip, email);
           console.warn('authorize: failed login', JSON.stringify({ ip, fails }));

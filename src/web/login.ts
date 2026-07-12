@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
-import { verifyPassword } from '../auth/password.js';
+import { verifyOwnerPassword } from '../auth/owner-password.js';
 import { checkLoginAllowed, registerLoginFailure, clearLoginFailures, clientIp } from '../auth/rate-limit.js';
 import { signSession, sessionCookie, readCookie } from './session.js';
 import {
@@ -15,7 +15,7 @@ import { FONT_LINKS } from './styles.js';
 import { htmlResponse, PWA_HEAD } from './render.js';
 import { assetVersion } from './asset-version.js';
 
-function renderLoginPage(error: string | null, next: string): string {
+function renderLoginPage(error: string | null, next: string, notice: string | null = null): string {
   return `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8">
 ${PWA_HEAD}
@@ -25,19 +25,26 @@ ${FONT_LINKS}
 <body><div class="login-wrap">
 <h1>Expert Brain</h1>
 <p class="subtitle">Seu cérebro de pensamento cross-domain.</p>
+${notice ? `<p class="login-notice">${esc(notice)}</p>` : ''}
 ${error ? `<p class="error">${esc(error)}</p>` : ''}
 <form method="post" action="/app/login">
 <input type="hidden" name="next" value="${esc(next)}">
 <label>E-mail<input type="email" name="email" required autofocus></label>
 <label>Senha<input type="password" name="password" required></label>
 <button type="submit">Entrar</button>
-</form></div></body></html>`;
+</form>
+<p class="subtitle"><a href="/app/login/recover">Esqueci a senha</a></p>
+</div></body></html>`;
 }
 
 export async function handleLoginGet(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const next = url.searchParams.get('next') ?? '/app';
-  return htmlResponse(renderLoginPage(null, next));
+  const notice =
+    url.searchParams.get('recovered') === '1'
+      ? 'Senha trocada com sucesso. Entre com a senha nova.'
+      : null;
+  return htmlResponse(renderLoginPage(null, next, notice));
 }
 
 // Sanitiza o `next` do login contra open redirect, sem derrubar querystring legítima.
@@ -87,7 +94,8 @@ export async function handleLoginPost(req: Request, env: Env): Promise<Response>
   }
 
   const emailMatch = email === env.OWNER_EMAIL;
-  const passwordOk = emailMatch && (await verifyPassword(password, env.OWNER_PASSWORD_HASH));
+  // Senha efetiva = meta.owner_password_hash com fallback pro secret (spec 103).
+  const passwordOk = emailMatch && (await verifyOwnerPassword(env, password));
   if (!emailMatch || !passwordOk) {
     const fails = await registerLoginFailure(env, ip, email);
     console.warn('app/login: failed login', JSON.stringify({ ip, fails }));

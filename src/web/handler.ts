@@ -19,6 +19,8 @@ import {
   handleTwoFactorCancelPost,
   handleTwoFactorDisablePost,
 } from './twofactor-config.js';
+import { handleRecoverGet, handleRecoverPost } from './recover.js';
+import { handlePasswordChangePost, handleRecoveryCodePost } from './password-config.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyOwner, handleApiKeyRevoke, handleApiKeySystem } from './api-keys.js';
 import { handleProjectShareCreate, handleProjectShareRevoke } from './project-share.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
@@ -50,6 +52,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // Segundo passo do login com 2FA ligado (spec 100-seguranca-conta/102).
   if (path === '/app/login/2fa' && req.method === 'GET') return handleTwoFactorGet(req, env);
   if (path === '/app/login/2fa' && req.method === 'POST') return handleTwoFactorPost(req, env);
+  // "Esqueci a senha" por código de recuperação (spec 103) — público, rate-limited.
+  if (path === '/app/login/recover' && req.method === 'GET') return handleRecoverGet(req, env);
+  if (path === '/app/login/recover' && req.method === 'POST') return handleRecoverPost(req, env);
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
   // Journal cronológico unificado (spec 65 §3): notas + tasks + interações de contato.
   if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
@@ -348,6 +353,9 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/2fa/confirm' && req.method === 'POST') return handleTwoFactorConfirmPost(req, env);
   if (path === '/app/config/2fa/cancel' && req.method === 'POST') return handleTwoFactorCancelPost(req, env);
   if (path === '/app/config/2fa/disable' && req.method === 'POST') return handleTwoFactorDisablePost(req, env);
+  // Senha e recuperação — card da aba Sistema (spec 103).
+  if (path === '/app/config/password' && req.method === 'POST') return handlePasswordChangePost(req, env);
+  if (path === '/app/config/recovery-code' && req.method === 'POST') return handleRecoveryCodePost(req, env);
   // Backup (spec 67): snapshot on-demand pro R2 + export ZIP do dono. Sessão
   // obrigatória nos dois — nenhum caminho público novo.
   if (path === '/app/config/backup-now' && req.method === 'POST') return handleBackupNowPost(req, env);

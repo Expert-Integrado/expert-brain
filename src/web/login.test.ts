@@ -1,6 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import { hashPassword } from '../auth/password.js';
+import { handleProvision } from '../auth/setup.js';
+
+// O login consulta a tabela meta desde a spec 103 (senha efetiva = meta > env),
+// então o schema precisa existir — mesmo provision idempotente dos testes web.
+beforeAll(async () => {
+  const res = await handleProvision(
+    new Request('https://example.com/setup/provision', {
+      method: 'POST',
+      headers: { authorization: 'Bearer setup-tok' },
+    }),
+    env as never
+  );
+  expect(res.status).toBe(200);
+});
 
 describe('/app/login', () => {
   it('GET renders the login form', async () => {

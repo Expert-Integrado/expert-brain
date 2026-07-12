@@ -911,6 +911,13 @@ export const SURFACES_CSS = `
 
 .error { color: var(--danger); font-size: 13px; margin-bottom: 14px; text-align: center; }
 
+/* Aviso positivo nas telas de login/config (senha trocada etc. — spec 103). */
+.login-notice {
+  color: var(--success); font-size: 13px; margin-bottom: 14px; text-align: center;
+  background: var(--success-bg); border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+}
+
 /* ---- Misc wizard/setup cards (used by /setup/credentials) ---- */
 .card {
   background: var(--surface);
