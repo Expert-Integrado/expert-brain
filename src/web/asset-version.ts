@@ -14,8 +14,8 @@ export const ASSET_HASHES: Record<string, string> = {
   "sim-worker.bundle.js": "2b1cd681554f",
   "home.bundle.js": "c468751218d3",
   "journal.bundle.js": "751bb6d7e745",
-  "styles.css": "726de1adf9ab",
-  "config.bundle.js": "10c121281807"
+  "styles.css": "0d25e1bba635",
+  "config.bundle.js": "12702943ad71"
 };
 
 export function assetVersion(name: string): string {

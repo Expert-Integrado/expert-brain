@@ -143,17 +143,105 @@ export function configPageScript(): string {
     });
   })();
 
-  // Papel da credencial (spec 91): os controles legados (escopo base + private) só
-  // aparecem quando o select está em "Personalizado…" — nos presets, o CSV vem
-  // inteiro do servidor e os campos escondidos são ignorados pelo handler.
+  // Wizard de criação de chave (spec 101): 3 passos client-side sobre o form
+  // nativo. Sem JS o form renderiza inteiro (fieldsets empilhados) e funciona;
+  // aqui adicionamos .wizard-js (o CSS esconde passos inativos), validamos por
+  // passo e revelamos Voltar/Avançar. O POST continua sendo o submit nativo
+  // (interceptado pelo data-ajax-form do shell).
   (function () {
-    var preset = document.getElementById('key-preset');
+    var form = document.getElementById('key-wizard');
+    if (!form) return;
+    var steps = Array.prototype.slice.call(form.querySelectorAll('.wizard-step'));
+    var back = document.getElementById('wizard-back');
+    var next = document.getElementById('wizard-next');
+    var submit = document.getElementById('wizard-submit');
+    var errEl = document.getElementById('wizard-error');
+    if (!steps.length || !back || !next || !submit) return;
+    var current = 1;
+    form.classList.add('wizard-js');
+    var STEP_MSGS = {
+      1: 'Escolha um perfil pra ser o dono da chave.',
+      2: 'Escolha um papel pra chave.',
+      3: 'Dê um nome pra chave — é como você a reconhece na lista.',
+    };
+    function setError(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg || '';
+      errEl.hidden = !msg;
+    }
+    function stepValid(n) {
+      if (n === 1) return !!form.querySelector('input[name="user_id"]:checked');
+      if (n === 2) return !!form.querySelector('input[name="preset"]:checked');
+      if (n === 3) {
+        var name = form.querySelector('input[name="name"]');
+        return !!(name && name.value.trim());
+      }
+      return true;
+    }
+    function show(n) {
+      current = n;
+      steps.forEach(function (s) {
+        s.classList.toggle('active', Number(s.getAttribute('data-step')) === n);
+      });
+      form.querySelectorAll('[data-step-dot]').forEach(function (d) {
+        var dn = Number(d.getAttribute('data-step-dot'));
+        d.classList.toggle('active', dn === n);
+        d.classList.toggle('done', dn < n);
+      });
+      back.hidden = n === 1;
+      next.hidden = n === steps.length;
+      submit.hidden = n !== steps.length;
+      setError('');
+    }
+    back.addEventListener('click', function () { if (current > 1) show(current - 1); });
+    next.addEventListener('click', function () {
+      if (!stepValid(current)) { setError(STEP_MSGS[current]); return; }
+      if (current < steps.length) show(current + 1);
+    });
+    // Marcar um card limpa o erro do passo; também mantém o bloco "Personalizado"
+    // sincronizado (controles legados escopo+private só com o radio custom).
     var custom = document.getElementById('key-custom-scopes');
-    if (!preset || !custom) return;
-    var sync = function () { custom.hidden = preset.value !== 'custom'; };
-    preset.addEventListener('change', sync);
-    sync();
+    function syncCustom() {
+      if (!custom) return;
+      var sel = form.querySelector('input[name="preset"]:checked');
+      custom.hidden = !sel || sel.value !== 'custom';
+    }
+    form.addEventListener('change', function () { setError(''); syncCustom(); });
+    syncCustom();
+    // Submit precoce (Enter no nome com passo anterior pendente): em vez de o
+    // browser brigar com um radio required invisível, voltamos pro primeiro
+    // passo inválido com a mensagem. O preventDefault também segura o ajax-form.
+    form.addEventListener('submit', function (e) {
+      for (var i = 1; i <= steps.length; i++) {
+        if (!stepValid(i)) {
+          e.preventDefault();
+          show(i);
+          setError(STEP_MSGS[i]);
+          return;
+        }
+      }
+    });
+    // O botão "Criar chave pra este perfil" do card de usuário usa isto pra
+    // cair direto no passo 2 com o dono já marcado.
+    window.__ebKeyWizardShow = show;
+    show(1);
   })();
+
+  // Revogar chave exige confirmação (spec 101) — mesmo padrão assíncrono do
+  // tag-delete-form: cancela, pergunta no modal com o NOME da chave e re-submete
+  // com a flag marcada (o segundo submit passa direto e cai no ajax-form).
+  document.querySelectorAll('form.key-revoke-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.getAttribute('data-confirmed') === '1') return;
+      e.preventDefault();
+      var name = f.getAttribute('data-key-name') || 'esta chave';
+      askConfirm({ title: 'Revogar a chave "' + name + '"?', body: 'Quem estiver usando ela perde o acesso na hora. Não dá pra desfazer — pra religar, crie outra chave.', verb: 'Revogar' }).then(function (go) {
+        if (!go) return;
+        f.setAttribute('data-confirmed', '1');
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
+    });
+  });
 
   // ── Áreas e tipos (taxonomia configurável — spec 54) ──
   // Slugifica um label pro mesmo formato exigido no servidor (DOMAIN_SLUG_REGEX:
@@ -738,19 +826,18 @@ export function configPageScript(): string {
   }
 
   // Botão "Criar chave" do card de agente: abre o accordion #api-keys (mesma
-  // aba), pré-seleciona o dono no form de criação e foca o campo de nome.
-  // Zero rota nova — só conduz o dono pro form certo já preenchido.
+  // aba), marca o dono no passo 1 do wizard e cai direto no passo 2 (papel).
+  // Zero rota nova — só conduz o dono pro fluxo já respondido pela metade.
   document.querySelectorAll('[data-create-key-for]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var uid = btn.getAttribute('data-create-key-for');
       var keysBox = document.getElementById('api-keys');
       if (!keysBox) return;
       keysBox.open = true;
-      var sel = keysBox.querySelector('form[action="/app/api-keys/create"] select[name="user_id"]');
-      if (sel) sel.value = uid;
+      var radio = keysBox.querySelector('#key-wizard input[name="user_id"][value="' + uid + '"]');
+      if (radio) radio.checked = true;
+      if (window.__ebKeyWizardShow && radio) window.__ebKeyWizardShow(2);
       keysBox.scrollIntoView();
-      var name = keysBox.querySelector('form[action="/app/api-keys/create"] input[name="name"]');
-      if (name) name.focus();
     });
   });
 

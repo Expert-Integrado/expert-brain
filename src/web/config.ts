@@ -15,9 +15,9 @@ import { formatBrtDateTime } from '../util/time.js';
 import { TASK_STATUSES, type TaskStatus, type KanbanColumn, listKanbanColumns, taskCountsByColumn, type TaskProject, TASK_PROJECT_CAP, listTaskProjects, taskCountsByProject, KNOWLEDGE_KINDS, listDomainCounts } from '../db/queries.js';
 import { resolveDomainMeta, resolveKindMeta, DOMAIN_FALLBACK } from './domain-colors.js';
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
-import { listUsers } from '../db/queries.js';
+import { listUsers, type BrainUser } from '../db/queries.js';
 import { listAllTags, type TagUsage } from '../db/tag-admin.js';
-import { renderUsersSection, USERS_SECTION_CSS, KEY_DORMANT_MS, relKeyUse } from './users.js';
+import { renderUsersSection, USERS_SECTION_CSS, KEY_DORMANT_MS, relKeyUse, avatarCell } from './users.js';
 import { connCardSummary, ICON_GOOGLE, ICON_WHATSAPP, ICON_INSTAGRAM, ICON_FUNNEL } from './config-icons.js';
 
 // Template padrão pra primeira visita — placeholders entre [colchetes] que o
@@ -111,6 +111,98 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
     <td>${count}</td>
     <td>${archiveCell}</td>
   </tr>`;
+}
+
+// ─────────────── Wizard de criação de credencial (spec 101) ───────────────
+// 3 passos client-side por cima de UM form nativo — o POST manda os MESMOS
+// campos de sempre (user_id, preset, scope, private_scope, name, system) e o
+// handler /app/api-keys/create não muda. Sem JS os fieldsets aparecem
+// empilhados e tudo funciona; o config-script adiciona .wizard-js no form e o
+// CSS passa a esconder os passos inativos.
+function renderKeyWizard(allUsers: BrainUser[], knownSystems: string[]): string {
+  const userCards = allUsers
+    .filter((u) => u.archived_at === null)
+    .map(
+      (u) => `<label class="role-card">
+        <input type="radio" name="user_id" value="${esc(u.id)}" required>
+        <span class="role-card-body">
+          ${avatarCell(u)}
+          <span class="role-card-text">
+            <strong>${esc(u.name)}</strong>
+            <span class="role-card-sub">${u.type === 'agent' ? 'Agente' : 'Pessoa'}${u.is_owner === 1 ? ' · dono' : ''}${u.bio ? ` — ${esc(u.bio)}` : ''}</span>
+          </span>
+        </span>
+      </label>`
+    )
+    .join('');
+  const presetCards = [
+    ...SCOPE_PRESETS.map(
+      (p) => `<label class="role-card">
+        <input type="radio" name="preset" value="${esc(p.id)}"${p.id === 'personal' ? ' checked' : ''}>
+        <span class="role-card-body">
+          <span class="role-card-text">
+            <strong>${esc(p.label)}</strong>
+            <span class="role-card-sub">${esc(p.hint)}</span>
+          </span>
+        </span>
+      </label>`
+    ),
+    `<label class="role-card">
+      <input type="radio" name="preset" value="custom">
+      <span class="role-card-body">
+        <span class="role-card-text">
+          <strong>Personalizado…</strong>
+          <span class="role-card-sub">Montar na mão: leitura/escrita e acesso a itens privados (avançado)</span>
+        </span>
+      </span>
+    </label>`,
+  ].join('');
+  return `<form method="post" data-ajax-form action="/app/api-keys/create" id="key-wizard">
+    <ol class="wizard-nav" aria-hidden="true">
+      <li data-step-dot="1" class="active">1 · Quem</li>
+      <li data-step-dot="2">2 · Papel</li>
+      <li data-step-dot="3">3 · Onde</li>
+    </ol>
+    <fieldset class="wizard-step active" data-step="1">
+      <legend>Pra quem é a chave?</legend>
+      <p class="wizard-hint">Tudo que a credencial fizer — tarefas, comentários, registros — aparece no nome do perfil escolhido.</p>
+      <div class="role-cards">${userCards}</div>
+      <p class="wizard-hint" style="margin:10px 0 0">Não achou? <a href="#users">Crie o perfil primeiro</a> na seção Usuários e volte aqui.</p>
+    </fieldset>
+    <fieldset class="wizard-step" data-step="2">
+      <legend>O que ela pode fazer?</legend>
+      <p class="wizard-hint">Papéis prontos, do mais amplo ao mais restrito. Na dúvida pra robô, prefira o mais restrito — dá pra criar outra chave depois.</p>
+      <div class="role-cards role-cards-1col">${presetCards}</div>
+      <div id="key-custom-scopes" hidden>
+        <label style="display:block;margin-top:12px">Escopo
+          <select name="scope" class="input-text" style="display:block;margin-top:4px">
+            <option value="full">Leitura e escrita — pode criar, editar e apagar</option>
+            <option value="read">Somente leitura — busca e consulta, sem mudar nada</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
+          <input type="checkbox" name="private_scope" value="1">
+          <span>Acesso a notas privadas <span style="color:var(--text-dim)">— capacidade sensível: prefira uma chave separada só pra isso, em vez de dar acesso privado à chave do dia a dia. Sem isto, a chave não vê itens privados.</span></span>
+        </label>
+      </div>
+    </fieldset>
+    <fieldset class="wizard-step" data-step="3">
+      <legend>Onde ela vai rodar?</legend>
+      <label>Nome (pra você lembrar onde usa)
+        <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
+      </label>
+      <label style="display:block;margin-top:12px">Sistema <span style="color:var(--text-dim)">— agrupa a listagem (opcional): frota, hermes, openclaw...</span>
+        <input type="text" name="system" maxlength="40" list="key-systems" placeholder="frota" class="input-text" style="display:block;margin-top:4px">
+      </label>
+      <datalist id="key-systems">${knownSystems.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
+    </fieldset>
+    <div class="wizard-controls">
+      <button type="button" class="btn" id="wizard-back" hidden>Voltar</button>
+      <button type="button" class="btn btn-primary" id="wizard-next" hidden>Avançar</button>
+      <button type="submit" class="btn btn-primary" id="wizard-submit">Criar chave</button>
+      <span id="wizard-error" class="wizard-error" role="alert" hidden></span>
+    </div>
+  </form>`;
 }
 
 function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>, savedBoard: boolean): string {
@@ -660,7 +752,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
              <input type="text" name="system" value="${esc(k.system ?? '')}" list="key-systems" maxlength="40" placeholder="sem sistema" class="input-text key-system-input" aria-label="Sistema de ${esc(k.name)}">
              <button type="submit" class="btn btn-sm">Salvar</button>
            </form>
-           <form method="post" data-ajax-form action="/app/api-keys/revoke" style="display:inline">
+           <form method="post" data-ajax-form action="/app/api-keys/revoke" class="key-revoke-form" data-key-name="${esc(k.name)}" style="display:inline">
              <input type="hidden" name="id" value="${esc(k.id)}">
              <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
            </form>
@@ -834,40 +926,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         ${createdBanner}
         <div class="adv-section">
           <h3>Criar nova chave</h3>
-          <form method="post" data-ajax-form action="/app/api-keys/create">
-            <label>Nome (pra você lembrar onde usa)
-              <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
-            </label>
-            <label style="display:block;margin-top:12px">Sistema <span style="color:var(--text-dim)">— agrupa a listagem (opcional): frota, hermes, openclaw...</span>
-              <input type="text" name="system" maxlength="40" list="key-systems" placeholder="frota" class="input-text" style="display:block;margin-top:4px">
-            </label>
-            <datalist id="key-systems">${knownSystems.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
-            <label style="display:block;margin-top:12px">Dono da chave (spec 86 — a credencial ASSINA como este usuário)
-              <select name="user_id" required class="input-text" style="display:block;margin-top:4px">
-                <option value="">— escolha o usuário —</option>
-                ${allUsers.filter((u) => u.archived_at === null).map((u) => `<option value="${esc(u.id)}">${esc(u.name)} (${u.type === 'agent' ? 'agente' : 'pessoa'})</option>`).join('')}
-              </select>
-            </label>
-            <label style="display:block;margin-top:12px">Papel da credencial <span style="color:var(--text-dim)">— define o que a chave enxerga e pode fazer (spec 91); os papéis de robô não veem notas nem contatos</span>
-              <select name="preset" id="key-preset" class="input-text" style="display:block;margin-top:4px">
-                ${SCOPE_PRESETS.map((p) => `<option value="${esc(p.id)}"${p.id === 'personal' ? ' selected' : ''}>${esc(p.label)} — ${esc(p.hint)}</option>`).join('')}
-                <option value="custom">Personalizado… — escolher escopo base e acesso privado manualmente</option>
-              </select>
-            </label>
-            <div id="key-custom-scopes" hidden>
-              <label style="display:block;margin-top:12px">Escopo
-                <select name="scope" class="input-text" style="display:block;margin-top:4px">
-                  <option value="full">Leitura e escrita — CRUD completo do vault</option>
-                  <option value="read">Somente leitura — recall, get, stats, list</option>
-                </select>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
-                <input type="checkbox" name="private_scope" value="1">
-                <span>Acesso a notas privadas <span style="color:var(--text-dim)">— capacidade sensível: prefira uma chave SEPARADA só pra isso, em vez de dar acesso privado à chave do dia a dia (spec 86 §4). Sem isto, a chave não vê notas privadas.</span></span>
-              </label>
-            </div>
-            <button type="submit" class="btn btn-primary" style="margin-top:12px">Criar chave</button>
-          </form>
+          ${renderKeyWizard(allUsers, knownSystems)}
         </div>
         <div class="adv-section">
           <h3>Suas chaves</h3>

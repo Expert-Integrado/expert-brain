@@ -15,35 +15,38 @@ export interface ScopePreset {
   scopes: string; // CSV canônico do preset
 }
 
+// Hints em voz de produto (spec 101): é o texto dos radio-cards da criação
+// guiada — leigo, mas preciso sobre o que a chave VÊ e FAZ. label/id/scopes
+// são contrato (whoami, badge da listagem) e não mudam.
 export const SCOPE_PRESETS: readonly ScopePreset[] = [
   {
     id: 'personal-full',
     label: 'Dispositivo pessoal total',
-    hint: 'CRUD completo incluindo notas/tasks privadas — só em máquina do dono',
+    hint: 'Faz tudo, inclusive ler e editar o que é privado — só pra máquina que é sua',
     scopes: 'full,private',
   },
   {
     id: 'personal',
     label: 'Dispositivo pessoal',
-    hint: 'CRUD completo, sem acesso a itens privados',
+    hint: 'Faz tudo no vault, menos ver o que você marcou como privado',
     scopes: 'full',
   },
   {
     id: 'reader',
     label: 'Leitor',
-    hint: 'Somente leitura, sem itens privados',
+    hint: 'Só consulta: lê e busca, não muda nada e não vê itens privados',
     scopes: 'read',
   },
   {
     id: 'fleet-worker',
     label: 'Robô de frota',
-    hint: 'Vê e trabalha TODAS as tasks não-privadas + mailbox; zero notas, zero contatos',
+    hint: 'Trabalha em todas as tarefas não-privadas e no mural de recados; não vê suas notas nem seus contatos',
     scopes: `full,${SCOPE_NOTES_NONE},${SCOPE_CONTACTS_NONE}`,
   },
   {
     id: 'task-worker',
     label: 'Robô colaborador',
-    hint: 'SÓ tasks atribuídas/mencionadas a ele + mailbox; cria e delega tasks; zero notas, zero contatos — pra infra compartilhada',
+    hint: 'Só vê tarefas atribuídas ou mencionadas a ele; não vê notas nem contatos — o mais seguro pra máquina compartilhada',
     scopes: `full,${SCOPE_NOTES_NONE},${SCOPE_CONTACTS_NONE},${SCOPE_TASKS_ASSIGNED}`,
   },
 ] as const;

@@ -72,13 +72,14 @@ function userKeyChips(u: BrainUser, keys: ApiKeyRow[]): string {
     const lastRef = k.last_used_at ?? k.created_at;
     const dormant = Date.now() - lastRef > KEY_DORMANT_MS;
     const lastUsed = k.last_used_at ? `usada ${esc(relKeyUse(k.last_used_at))}` : 'nunca usada';
-    return `<span class="key-chip"><strong>${esc(k.name)}</strong> <code>${esc(k.prefix)}…</code> <span style="color:var(--text-subtle)">${lastUsed}</span>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}${!k.user_id ? ' <span style="color:var(--text-subtle)">vínculo legado</span>' : ''}<form method="post" data-ajax-form action="/app/api-keys/revoke"><input type="hidden" name="id" value="${esc(k.id)}"><button type="submit" class="btn btn-danger btn-sm">Revogar</button></form></span>`;
+    return `<span class="key-chip"><strong>${esc(k.name)}</strong> <code>${esc(k.prefix)}…</code> <span style="color:var(--text-subtle)">${lastUsed}</span>${dormant ? ' <span class="badge-pill badge-warn" title="Sem uso há 30+ dias — se a máquina morreu, revogue">dormindo</span>' : ''}${!k.user_id ? ' <span style="color:var(--text-subtle)">vínculo legado</span>' : ''}<form method="post" data-ajax-form action="/app/api-keys/revoke" class="key-revoke-form" data-key-name="${esc(k.name)}"><input type="hidden" name="id" value="${esc(k.id)}"><button type="submit" class="btn btn-danger btn-sm">Revogar</button></form></span>`;
   });
   return `<div class="key-chips">${chips.join('')}</div>`;
 }
 
 // Bolinha da tabela: foto (com cache-bust por updated_at) ou iniciais coloridas.
-function avatarCell(u: BrainUser): string {
+// Exportada pro passo "Pra quem é a chave?" do wizard de criação (spec 101).
+export function avatarCell(u: BrainUser): string {
   if (u.avatar_key) {
     return `<img class="user-avatar-img" src="/app/users/${esc(u.id)}/avatar?v=${u.updated_at}" alt="Foto de ${esc(u.name)}" width="36" height="36">`;
   }

@@ -1421,6 +1421,42 @@ export const SURFACES_CSS = `
   .key-row-actions { margin-left: 0; }
 }
 
+/* ---- Wizard de criacao de credencial (spec 101) ---- */
+.wizard-nav { display: flex; gap: 8px; list-style: none; margin: 0 0 16px; padding: 0; flex-wrap: wrap; }
+.wizard-nav li {
+  font-size: 12px; color: var(--text-subtle);
+  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border);
+  transition: border-color 160ms var(--ease), color 160ms var(--ease);
+}
+.wizard-nav li.active { color: var(--text); border-color: var(--accent-lav); }
+.wizard-nav li.done { color: var(--accent-lav); }
+.wizard-step { border: 0; padding: 0; margin: 0 0 4px; min-width: 0; }
+.wizard-step legend {
+  font-family: var(--font-display); font-weight: 500; font-size: 15px;
+  padding: 0; margin-bottom: 2px; color: var(--text);
+}
+.wizard-js .wizard-step:not(.active) { display: none; }
+.wizard-hint { color: var(--text-dim); font-size: 13px; margin: 4px 0 12px; }
+.wizard-controls { display: flex; gap: 8px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+.wizard-error { color: var(--danger, #f87171); font-size: 13px; }
+.role-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.role-cards-1col { grid-template-columns: 1fr; max-width: 560px; }
+.role-card {
+  position: relative; display: block;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 10px 12px; cursor: pointer;
+  background: rgba(167, 139, 250, 0.04);
+  transition: border-color 160ms var(--ease), background 160ms var(--ease);
+}
+.role-card:hover { border-color: var(--border-strong); }
+.role-card input { position: absolute; opacity: 0; pointer-events: none; }
+.role-card:has(input:checked) { border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.12); }
+.role-card:has(input:focus-visible) { outline: 2px solid var(--accent-lav); outline-offset: 2px; }
+.role-card-body { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.role-card-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.role-card-text strong { font-size: 13px; color: var(--text); }
+.role-card-sub { color: var(--text-dim); font-size: 12px; line-height: 1.35; }
+
 /* ---- Rodape: status do vault (movido do topo) ---- */
 .vault-stats-foot { margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
 .vault-stats-foot h3 {

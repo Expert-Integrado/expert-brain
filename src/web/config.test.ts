@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { env, SELF } from 'cloudflare:test';
 import { runMigrations } from '../db/migrate.js';
 import { signSession } from './session.js';
+import { createUser } from '../db/queries.js';
+import { createApiKey } from '../auth/api-keys.js';
 
 const SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
 
@@ -137,6 +139,58 @@ describe('/app/config', () => {
     expect(res.status).toBe(401);
     expect(res.headers.get('content-type') ?? '').toContain('application/json');
     expect(await res.json()).toEqual({ error: 'session expired' });
+  });
+});
+
+// ─── Spec 101 (grupo 100): criação guiada, papéis leigos, revogar com confirmação ───
+describe('/app/config — credencial guiada (spec 101)', () => {
+  beforeAll(async () => {
+    const now = Date.now();
+    await createUser(env as any, { id: 'user_wiz01', name: 'Robo Wizard', type: 'agent', bio: null, api_key_id: null }, now);
+    await createApiKey(env as any, 'owner@example.com', 'chave-wizard-teste', 'full', 'user_wiz01', 'frota');
+  });
+
+  async function pageHtml(): Promise<string> {
+    const res = await SELF.fetch('https://x.test/app/config', { headers: { cookie: await authCookie() } });
+    expect(res.status).toBe(200);
+    return res.text();
+  }
+
+  it('form de criação é um wizard de 3 passos (fieldsets data-step) com perguntas leigas', async () => {
+    const h = await pageHtml();
+    expect(h).toContain('data-step="1"');
+    expect(h).toContain('data-step="2"');
+    expect(h).toContain('data-step="3"');
+    expect(h).toContain('Pra quem é a chave?');
+    expect(h).toContain('O que ela pode fazer?');
+    expect(h).toContain('Onde ela vai rodar?');
+    // Dono virou radio-card (o POST continua mandando user_id igual)
+    expect(h).toMatch(/name="user_id"[^>]*value="user_wiz01"/);
+  });
+
+  it('papéis viram radio-cards com os 5 presets + personalizado', async () => {
+    const h = await pageHtml();
+    for (const id of ['personal-full', 'personal', 'reader', 'fleet-worker', 'task-worker', 'custom']) {
+      expect(h).toMatch(new RegExp(`name="preset"[^>]*value="${id}"`));
+    }
+  });
+
+  it('nenhum jargão de spec vaza pro texto da página', async () => {
+    const h = await pageHtml();
+    expect(h).not.toMatch(/spec \d+/i);
+  });
+
+  it('forms de revogar carregam o guard de confirmação com o nome da chave', async () => {
+    const h = await pageHtml();
+    expect(h).toContain('key-revoke-form');
+    expect(h).toContain('data-key-name="chave-wizard-teste"');
+  });
+
+  it('bundle da config instala o wizard e a confirmação de revogar', async () => {
+    const res = await SELF.fetch('https://x.test/app/config/bundle.js');
+    const js = await res.text();
+    expect(js).toContain('key-revoke-form');
+    expect(js).toContain('wizard-step');
   });
 });
 

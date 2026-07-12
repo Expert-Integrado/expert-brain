@@ -100,14 +100,15 @@ describe('criação de chave por PRESET (spec 91)', () => {
     expect(keys[0].scopes).toBe('full,private');
   });
 
-  it('form do config mostra o select de papel com os 5 presets + Personalizado', async () => {
+  it('form do config mostra os papéis como radio-cards com os 5 presets + Personalizado (wizard, spec 101)', async () => {
+    // O select id="key-preset" da spec 91 virou radio-cards name="preset" dentro
+    // do wizard de 3 passos (spec 101) — o POST manda o MESMO campo `preset`.
     const res = await SELF.fetch('https://x/app/config', { headers: { cookie: await cookie() } });
     const html = await res.text();
-    expect(html).toContain('id="key-preset"');
-    for (const id of ['personal-full', 'personal', 'reader', 'fleet-worker', 'task-worker']) {
-      expect(html).toContain(`value="${id}"`);
+    expect(html).toContain('id="key-wizard"');
+    for (const id of ['personal-full', 'personal', 'reader', 'fleet-worker', 'task-worker', 'custom']) {
+      expect(html).toMatch(new RegExp(`name="preset"[^>]*value="${id}"`));
     }
-    expect(html).toContain('value="custom"');
     expect(html).toContain('id="key-custom-scopes"');
   });
 
