@@ -112,4 +112,31 @@ describe('save_task', () => {
     expect(p.possible_duplicates).toBeUndefined();
     spy.mockRestore();
   });
+
+  it('subtasks: cria o checklist junto da task, em ordem, com progresso e activity log (spec 38)', async () => {
+    const res = await reg().save_task({ title: 'Rodar 3 specs', subtasks: ['spec 92', 'spec 93', 'spec 94'] });
+    expect(res.isError).toBeUndefined();
+    const p = JSON.parse(res.content[0].text);
+    expect(p.subtasks.map((s: any) => s.title)).toEqual(['spec 92', 'spec 93', 'spec 94']);
+    expect(p.subtasks.every((s: any) => s.done === false)).toBe(true);
+    expect(p.subtask_progress).toEqual({ done: 0, total: 3 });
+    const rows = await E.DB.prepare(`SELECT title FROM task_subtasks WHERE task_id = ? ORDER BY position`).bind(p.id).all();
+    expect(rows.results.map((r: any) => r.title)).toEqual(['spec 92', 'spec 93', 'spec 94']);
+    const acts = await E.DB.prepare(`SELECT count(*) AS c FROM task_activity WHERE task_id = ? AND field = 'subtask' AND old_value = 'adicionada'`).bind(p.id).first();
+    expect(acts.c).toBe(3);
+  });
+
+  it('subtasks: item vazio pós-trim aborta SEM criar a task', async () => {
+    const res = await reg().save_task({ title: 'Não deve nascer', subtasks: ['ok', '   '] });
+    expect(res.isError).toBe(true);
+    const row = await E.DB.prepare(`SELECT count(*) AS c FROM notes WHERE title = 'Não deve nascer'`).first();
+    expect(row.c).toBe(0);
+  });
+
+  it('sem subtasks: output não ganha os campos de checklist', async () => {
+    const res = await reg().save_task({ title: 'Task simples' });
+    const p = JSON.parse(res.content[0].text);
+    expect(p.subtasks).toBeUndefined();
+    expect(p.subtask_progress).toBeUndefined();
+  });
 });

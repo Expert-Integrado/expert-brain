@@ -144,4 +144,17 @@ describe('list_tasks', () => {
     expect(idsArg.length).toBe(2);
     spy.mockRestore();
   });
+
+  it('subtask_progress: {done,total} pra task com checklist, null sem (spec 38)', async () => {
+    await seedTask('com-lista', 'open');
+    await seedTask('sem-lista', 'open');
+    const { addTaskSubtasks, setSubtaskDone } = await import('../../src/db/subtasks.js');
+    const subs = (await addTaskSubtasks(E, 'com-lista', ['a', 'b', 'c'], null, Date.now())) as any[];
+    await setSubtaskDone(E, 'com-lista', subs[0].id, true, null, Date.now());
+    const res = await reg().list_tasks({});
+    const p = JSON.parse(res.content[0].text);
+    const byId = Object.fromEntries(p.tasks.map((t: any) => [t.id, t.subtask_progress]));
+    expect(byId['com-lista']).toEqual({ done: 1, total: 3 });
+    expect(byId['sem-lista']).toBeNull();
+  });
 });

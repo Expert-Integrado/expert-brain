@@ -49,4 +49,17 @@ describe('get_task', () => {
     const res = await reg().get_task({ id: 'ghost' });
     expect(res.isError).toBe(true);
   });
+
+  it('returns the checklist with progress (spec 38)', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 't1', title: 'Com checklist', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    const { addTaskSubtasks, setSubtaskDone } = await import('../../src/db/subtasks.js');
+    const subs = (await addTaskSubtasks(E, 't1', ['feita', 'aberta'], 'oauth:o@x', now)) as any[];
+    await setSubtaskDone(E, 't1', subs[0].id, true, 'key_pat9', now);
+    const res = await reg().get_task({ id: 't1' });
+    const p = JSON.parse(res.content[0].text);
+    expect(p.subtasks.map((s: any) => [s.title, s.done])).toEqual([['feita', true], ['aberta', false]]);
+    expect(p.subtasks[0].done_by).toBe('key_pat9');
+    expect(p.subtask_progress).toEqual({ done: 1, total: 2 });
+  });
 });

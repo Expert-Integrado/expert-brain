@@ -6,6 +6,7 @@ import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 import { mentionsForOutput } from '../mentions.js';
 import { resolveTaskVis } from './user-ref.js';
 import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
+import { listTaskSubtasks, subtaskProgress } from '../../db/subtasks.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id (from save_task / list_tasks / list_tasks_due_today / the /app/tasks board).'),
@@ -15,7 +16,7 @@ const DESCRIPTION = `Reads a single TASK by id, with its full task state.
 
 get_note returns a NOTE shape (title/body/tldr/domains) WITHOUT status/due/priority — it does NOT serve tasks. Use get_task to read a task's status, due date, priority, completed_at, tags and body in one call.
 
-Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, assignees, created_by, claim, comments, comment_count, created_at, updated_at, url }. \`project\` is { id, label } | null (the folder the task belongs to). \`assignees\` is who is RESPONSIBLE for the task ([{id,name,type}], set via save_task/update_task). \`created_by\` is which credential CREATED it ({actor, user, key_name} | null — automatic audit trail, distinct from assignees). \`claim\` is the active work LEASE ({ user {id,name,type}, claimed_at, expires_at, expires_brt } | null — null means FREE; see claim_task, spec 88). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_user ({id,name,type} | null — the credential-linked user that SIGNED the comment, spec 81; null = legacy/unsigned), author_name (complementary label), kind (pedido|entrega|bloqueio|info|null — typed agent protocol, spec 88), body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
+Returns { id, title, body, status, priority, due_at, due_brt, when, completed_at, completed_brt, domains, tags, project, assignees, created_by, claim, subtasks, subtask_progress, comments, comment_count, created_at, updated_at, url }. \`subtasks\` is the CHECKLIST ([{id, title, done, position, done_by, done_at}], with subtask_progress {done,total}) — tick/edit items via update_subtask. \`project\` is { id, label } | null (the folder the task belongs to). \`assignees\` is who is RESPONSIBLE for the task ([{id,name,type}], set via save_task/update_task). \`created_by\` is which credential CREATED it ({actor, user, key_name} | null — automatic audit trail, distinct from assignees). \`claim\` is the active work LEASE ({ user {id,name,type}, claimed_at, expires_at, expires_brt } | null — null means FREE; see claim_task, spec 88). \`comments\` is the discussion thread (chronological, most recent 50) with { author (owner|guest|agent), author_user ({id,name,type} | null — the credential-linked user that SIGNED the comment, spec 81; null = legacy/unsigned), author_name (complementary label), kind (pedido|entrega|bloqueio|info|null — typed agent protocol, spec 88), body, created_at, created_brt }; add one with comment_task. Errors (without throwing) if the id is not a task or does not exist. Read-only.`;
 
 interface GetTaskInput { id: string; }
 
@@ -60,6 +61,8 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       const mentions = hasScope(auth?.scopes, SCOPE_CONTACTS_NONE)
         ? []
         : await mentionsForOutput(env, input.id, visR.vis.includePrivate);
+      // Checklist (spec 38): itens em ordem + progresso {done,total}.
+      const subtasks = await listTaskSubtasks(env, input.id);
       // Responsáveis + autoria (spec 37): quem É responsável (decisão de quem criou) vs
       // qual credencial CRIOU (automático). Campos distintos por design.
       const assignees = await listAssigneesForTask(env, input.id);
@@ -98,6 +101,9 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
         private: t.private === 1,
         origin_note_id: t.origin_note_id ?? null,
         mentions,
+        // Checklist (spec 38): tick/edite via update_subtask (ids sub_...).
+        subtasks: subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done_at !== null, position: s.position, done_by: s.done_by, done_at: s.done_at })),
+        subtask_progress: subtaskProgress(subtasks),
         comment_count: commentCount,
         comments: comments.map((c) => ({
           id: c.id,

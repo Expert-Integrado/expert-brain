@@ -11,6 +11,11 @@ import { resolveAssigneeRefs, toAssigneeRef, resolveMe, resolveTaskVis } from '.
 import { produceAssignmentMailbox } from '../../db/mailbox.js';
 import { setTaskAssignees, type BrainUser } from '../../db/queries.js';
 import { applyMentions } from '../mentions.js';
+import { addTaskSubtasks, subtaskProgress, type TaskSubtask } from '../../db/subtasks.js';
+import { logTaskActivity } from '../../db/task-activity.js';
+
+// Título truncado no log de atividade — mesmo teto do update_subtask (spec 38).
+const SUBTASK_LOG_MAX = 80;
 
 const inputSchema = {
   title: z.string().min(1).max(200).describe('What needs to be done — short, action-first. Becomes the task card title.'),
@@ -41,6 +46,9 @@ const inputSchema = {
   assignees: z.array(z.string().min(1)).max(16).optional().describe(
     'Optional RESPONSIBLE users (assignees): refs by user id (user_...), name (case-insensitive), or "me" (the profile linked to the credential making this call). Decide per task: a manual human errand → the person; agent work → the agent; both when they share it. Users are NEVER auto-created (the owner manages them at /app/config); an unknown ref errors listing the available users. Discover them via list_users.'
   ),
+  subtasks: z.array(z.string().min(1).max(200)).max(50).optional().describe(
+    'Optional CHECKLIST items (subtasks), in order (1-200 chars each). MULTI-PART WORK = ONE CARD: several deliverables (specs, steps, files) become ONE task with subtasks — NEVER N sibling tasks. The board card then shows "3/8" progress. Tick items later via update_subtask.'
+  ),
   allow_new_domain: z.boolean().optional(),
 };
 
@@ -55,6 +63,7 @@ Behavior:
 - Pass the due date in BRT via \`due\` (e.g. "2026-06-22 14:00"). Date-only means "by end of that day".
 - Tasks do NOT get embedded — they never show up in recall(), the graph, or the notes list. Manage them on the /app/tasks board or via list_tasks_due_today / complete_task.
 - Optional \`assignees\` (responsible users): refs by id/name/"me". Decide per task — human errand → the person; agent work → the agent; both when shared. The creator credential is always recorded separately (created_by audit trail), independent of assignees. Discover users via list_users.
+- Optional \`subtasks\` (checklist): when the work has several parts, create ONE task with subtasks instead of N sibling tasks — the card shows "3/8" progress. Tick/adjust later via update_subtask; completing the task does NOT auto-check the list.
 
 DEDUPE:
 - Pass a stable \`dedupe_key\` (derived from the source, e.g. an email/card id) when the same task could be created twice (across sessions or on retries). If an ACTIVE task with that key exists, save_task returns it with deduped:true instead of creating a duplicate. The key is stored as a reserved dedupe: tag and survives update_task retags.
@@ -77,6 +86,7 @@ interface SaveTaskInput {
   mentions?: string[];
   origin_note_id?: string;
   assignees?: string[];
+  subtasks?: string[];
   allow_new_domain?: boolean;
 }
 
@@ -238,6 +248,13 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         assignedUsers = ar.users;
       }
 
+      // Checklist (spec 38): valida ANTES do insert — item vazio aborta sem criar a task.
+      const subtaskTitles = (input.subtasks ?? []).map((t) => t.trim());
+      const emptySub = subtaskTitles.findIndex((t) => t.length === 0);
+      if (emptySub !== -1) {
+        return toolError(`subtasks[${emptySub}] is empty after trimming. Each item needs 1-200 chars.`);
+      }
+
       const id = newId();
       // Task nascendo fechada (done/canceled) stampa completed_at — preserva o
       // invariante "fechada ⇒ completed_at preenchido". Ver spec 14 item 4 (opção A).
@@ -265,6 +282,19 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       const allTags = [...(input.tags ?? [])];
       if (dedupeTag) allTags.push(dedupeTag);
       if (allTags.length > 0) await insertTags(env, id, allTags);
+
+      // Checklist (spec 38): itens nascem com a task, na ordem passada. O cap de 100
+      // é inatingível aqui (schema limita a 50 e a task é recém-criada).
+      let createdSubtasks: TaskSubtask[] = [];
+      if (subtaskTitles.length > 0) {
+        const created = await addTaskSubtasks(env, id, subtaskTitles, writeActor(auth), now);
+        if (created !== 'cap-exceeded') {
+          createdSubtasks = created;
+          await logTaskActivity(env, id, writeActor(auth), created.map((s) => ({
+            field: 'subtask' as const, old_value: 'adicionada', new_value: s.title.slice(0, SUBTASK_LOG_MAX),
+          })));
+        }
+      }
 
       // Responsáveis (spec 37): grava os vínculos resolvidos acima.
       if (assignedUsers.length > 0) {
@@ -310,6 +340,10 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
         mentions_created: mentionsCreated,
         updated_at: now,
       };
+      if (createdSubtasks.length > 0) {
+        out.subtasks = createdSubtasks.map((s) => ({ id: s.id, title: s.title, done: false, position: s.position }));
+        out.subtask_progress = subtaskProgress(createdSubtasks);
+      }
       if (possibleDuplicates.length > 0) {
         out.possible_duplicates = possibleDuplicates;
         out.possible_duplicates_note =

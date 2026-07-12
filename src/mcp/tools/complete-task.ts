@@ -19,6 +19,8 @@ Sets status='done' and completed_at=now. If you pass \`outcome\`, it is appended
 
 IDEMPOTENT: calling complete_task on a task that is ALREADY done is a safe no-op — it does NOT re-append the outcome or move completed_at; it returns { already_done: true } with the original completed_at. Safe under network retries.
 
+Completing a task does NOT auto-check its checklist (subtasks) — an unfinished checklist never blocks completion either. If items were in fact delivered, tick them FIRST via update_subtask, then complete.
+
 Optional \`expected_updated_at\` guards against concurrent writes (see update_task). Returns updated_at so you can chain it as the next expected_updated_at.`;
 
 interface CompleteInput { id: string; outcome?: string; expected_updated_at?: number; }

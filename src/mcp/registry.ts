@@ -19,6 +19,7 @@ import { registerCompleteTask } from './tools/complete-task.js';
 import { registerUpdateTask } from './tools/update-task.js';
 import { registerGetTask } from './tools/get-task.js';
 import { registerCommentTask } from './tools/comment-task.js';
+import { registerUpdateSubtask } from './tools/update-subtask.js';
 import { registerClaimTask } from './tools/claim-task.js';
 import { registerShareTask } from './tools/share-task.js';
 import { registerUnshareTask } from './tools/unshare-task.js';
@@ -122,6 +123,9 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   // Recebe `auth` (spec 81): a autoria é assinada pela credencial via resolveMe —
   // PAT sem perfil vinculado é rejeitado fail-closed no call.
   registerCommentTask(reg, env, auth);
+  // Checklist de task (spec 38): trabalho multi-parte = UM card com subtarefas
+  // tickáveis ("3/8" no board), nunca N cards irmãos. Escrita — suprimida no read.
+  registerUpdateSubtask(reg, env, auth);
   // Claim/lease de task (spec 88): posse temporária pra frota — atômico, expira
   // sozinho. Escrita (readOnlyHint:false) — suprimida no escopo read pelo guarda.
   registerClaimTask(reg, env, auth);

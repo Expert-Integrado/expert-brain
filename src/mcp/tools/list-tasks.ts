@@ -4,6 +4,7 @@ import { safeToolHandler, toolSuccess, toolError, noteUrl } from '../helpers.js'
 import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, getUserByIdOrName, taskIdsAssignedTo, listAssigneesForTasks, claimActive, listTasksAwaitingOwner, type TaskRow, type TaskProject } from '../../db/queries.js';
 import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
+import { countTaskSubtasksBatch } from '../../db/subtasks.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -23,7 +24,7 @@ const DESCRIPTION = `Lists tasks regardless of due date — including tasks WITH
 
 This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks (ordered by due date then priority). Pass \`query\` for full-text search over tasks (title+body, all statuses), \`status\` to filter (asking for ['done']/['canceled'] auto-includes closed tasks — no include_closed needed, capped to the most recent by \`limit\`), \`tag\` to scope by a transversal label (multi), \`project\` to scope by a folder (single-valued, resolves active+archived), \`limit\` to cap. \`project\` and \`tag\` compose with \`status\`/\`query\`.
 
-Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`, adding \`available: true\` to skip tasks another agent is already working (claim_task lease, spec 88), (e) pull the owner's APPROVAL QUEUE with \`awaiting_owner: true\` (tasks whose latest [bloqueio] comment has no owner reply). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], claim ({by,expires_at,expires_brt}|null — the ACTIVE work lease; null = free), comment_count, url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
+Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`, adding \`available: true\` to skip tasks another agent is already working (claim_task lease, spec 88), (e) pull the owner's APPROVAL QUEUE with \`awaiting_owner: true\` (tasks whose latest [bloqueio] comment has no owner reply). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], claim ({by,expires_at,expires_brt}|null — the ACTIVE work lease; null = free), comment_count, subtask_progress ({done,total}|null — checklist progress; items via get_task), url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; assignee?: string; available?: boolean; awaiting_owner?: boolean; limit?: number; }
 
@@ -173,6 +174,8 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
       );
       // Contagem de comentários em lote (spec 53): 1 query (chunked), nunca N+1.
       const commentCounts = await countTaskCommentsBatch(env, tasks.map((t) => t.id));
+      // Progresso do checklist em lote (spec 38): idem, 1 query chunked.
+      const subtaskCounts = await countTaskSubtasksBatch(env, tasks.map((t) => t.id));
       // Responsáveis em lote (spec 37): 1 query (chunked), nunca N+1.
       const assigneesById = await listAssigneesForTasks(env, tasks.map((t) => t.id));
       const items = tasks.map((t) => {
@@ -200,6 +203,8 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
             ? { by: t.claimed_by, expires_at: t.claim_expires_at, expires_brt: formatBrtDateTime(t.claim_expires_at!) }
             : null,
           comment_count: commentCounts.get(t.id) ?? 0,
+          // Checklist (spec 38): {done,total} | null (sem itens). Detalhe no get_task.
+          subtask_progress: subtaskCounts.get(t.id) ?? null,
           updated_at: t.updated_at,
           url: noteUrl(env, t.id),
         };
