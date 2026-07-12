@@ -117,9 +117,13 @@ const ORPHAN_GRAVITY_3D = DOMAIN_GRAVITY_3D * 4; // 0.12 — anel próximo, sem 
 //   distance 30..500 → forceLink().distance (identity)
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Só arestas explícitas entram na FÍSICA (igual 2D: as semânticas são overlay
-// visual, nunca estrutura — senão fundiriam ilhas). As semânticas viram links
-// 'similar' invisíveis à física mas desenháveis como linhas translúcidas.
+// Física dos links: explícitas puxam com a força do slider; semânticas puxam
+// FRACO, pesado pelo score de similaridade (revisão 12/07/2026, feedback do
+// dono: com semânticas fora da física o 3D virava amontoado uniforme — os
+// "gânglios de neurônios" da referência nascem exatamente da similaridade
+// atraindo). O fator baixo evita fundir tudo num blob: só pares MUITO
+// parecidos condensam. No 2D as semânticas seguem overlay puro (sem força).
+const SIM_LINK_FACTOR = 0.35;
 
 function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const { payload, state } = ctx;
@@ -140,9 +144,9 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     _n: n,
   }));
 
-  // Links explícitos (estrutura + física) e similares (só visual). O flag `_sim`
-  // separa os dois no linkVisibility/linkColor/linkWidth e na física (só explícitos
-  // recebem força — os similares entram como links mas com strength 0).
+  // Links explícitos e similares. O flag `_sim` separa os dois no
+  // linkVisibility/linkColor/linkWidth e na física (similares puxam fraco,
+  // pesado pelo score — ver SIM_LINK_FACTOR).
   const explicitLinks: Array<{ source: string; target: string; _sim: false }> = [];
   const similarLinks: Array<{ source: string; target: string; _sim: true; score: number }> = [];
   for (const e of payload.edges) {
@@ -197,7 +201,9 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
 
   const graph = new (ForceGraph3D as any)(container)
     .graphData({ nodes, links })
-    .backgroundColor(BG_COLOR)
+    // Tema escuro: preto de verdade (feedback do dono 12/07 — o --surface-canvas
+    // dark + véu do bloom deixava o fundo cinza). Claro segue o token do tema.
+    .backgroundColor(isDark ? '#04040a' : BG_COLOR)
     .width(clientWidth || window.innerWidth)
     .height(clientHeight || window.innerHeight)
     .showNavInfo(false)
@@ -246,13 +252,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
   // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
   // pipeline volta byte-idêntico ao original — toggle limpo.
-  // Knobs (calibrados na validação visual de 12/07/2026): strength 0.8 /
-  // radius 0.5 / threshold 0.30 — a 1ª rodada (1.0/0.6/0.15) estourava o miolo
-  // denso num branco só (bloom aditivo acumula onde há muitas esferas);
-  // threshold mais alto + strength menor mantém o halo por esfera sem a
-  // supernova. O fantasma de busca (rgba escuro 0.22) fica MUITO abaixo do
-  // threshold, então busca com glow segue legível (matches acesos, resto
-  // apagado).
+  // Knobs (recalibrados 12/07/2026 com o dono olhando): strength 0.55 /
+  // radius 0.28 / threshold 0.45. Histórico: 1.0/0.6/0.15 estourava o miolo em
+  // branco; 0.8/0.5/0.30 segurou a supernova mas o radius largo espalhava um
+  // VÉU cinza sobre a tela inteira ("fundo ficou cinza, bolinhas lavadas" —
+  // feedback do dono). Radius curto = halo colado na esfera, fundo preto e cor
+  // preservada. O fantasma de busca (rgba escuro 0.22) segue MUITO abaixo do
+  // threshold — busca com glow continua legível.
   let bloomPass: UnrealBloomPass | null = null;
   let outputPass: OutputPass | null = null;
   try {
@@ -260,7 +266,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        0.8, 0.5, 0.30,
+        0.55, 0.28, 0.45,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -293,7 +299,9 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     const scene = graph.scene?.();
     if (scene?.add) {
       const cageColor = isDark ? '#93a1c8' : '#3c4262';
-      cage = buildCage(cageColor, 0.15);
+      // Escuro: 0.07 — a 0.15 o arame claro sob bloom virava linha gritada
+      // (feedback do dono 12/07); claro não tem bloom, 0.15 segue legível.
+      cage = buildCage(cageColor, isDark ? 0.07 : 0.15);
       cage.visible = false;
       cage.renderOrder = -1; // atrás dos nós — arame é cenário, não conteúdo
       scene.add(cage);
@@ -367,8 +375,8 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     return 1.0 * (ctx.getVisual().lineSizeMult || 1);
   }
 
-  // ── Física: só explícitos puxam. Configura d3-force-3d com os 4 sliders. ──
-  // forceLink recebe SÓ os links explícitos (os semânticos não entram na física).
+  // ── Física: explícitos puxam com o slider; semânticos puxam fraco pelo
+  // score (SIM_LINK_FACTOR — é o que condensa os "gânglios"). ──
   //
   // `withReheat` separa CONFIGURAR as forças (seguro a qualquer momento) de
   // REAQUECER a simulação (perigoso antes da engine inicializar). Detalhe crítico:
@@ -398,10 +406,16 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // e um forceLink(explicitLinks) novo falha a resolução de id do d3 ("node not
     // found"). Em vez disso, pegamos a força de link já existente da lib (que ela
     // materializa a partir do graphData) e só ajustamos strength/distance nela.
-    // Semânticas (_sim:true) ficam com strength 0 (fora da física, overlay visual);
-    // explícitas usam o slider — mesmo comportamento de antes, sem recriar a força.
+    // Semânticas: força fraca pesada pelo score e distância mais curta — pares
+    // muito parecidos condensam em grupos ("neurônios"), o resto só se aproxima.
+    // Ambas escalam pelo slider "Força das ligações" (f.link), então o dono
+    // controla o quanto o grafo condensa com o knob que já existe.
     const link = graph.d3Force('link');
-    if (link) link.strength((l: any) => (l._sim ? 0 : f.link)).distance(f.distance);
+    if (link) {
+      link
+        .strength((l: any) => (l._sim ? f.link * SIM_LINK_FACTOR * (l.score ?? 0.5) : f.link))
+        .distance((l: any) => (l._sim ? f.distance * 0.5 : f.distance));
+    }
     applyCollide();
     if (withReheat) graph.d3ReheatSimulation(); // reheat (a lib expõe d3ReheatSimulation)
   }
