@@ -192,6 +192,17 @@ npm run setup        # idempotente — redescobre os recursos existentes por nom
 
 **Editar ou remover:** `update_note`/`update_task` mudam campos existentes; `delete_note` é soft-delete (recuperável a qualquer momento via `restore_note`, sem prazo).
 
+## Frota de agentes — o board como barramento
+
+Várias instâncias de Claude (PCs, containers 24/7, outros runtimes) podem colaborar pelo MESMO vault usando o Kanban de tasks como barramento de comunicação — sem chat entre agentes. Como funciona (specs no grupo [`specs/80-frota-agentes/`](specs/80-frota-agentes/)):
+
+- **Identidade = credencial, nunca a licença/conta que executa.** Cada dispositivo recebe 1 PAT (`eb_pat_...`) vinculado a um usuário do tipo `agent` em `/app/config`. TODA escrita assina como esse usuário — não importa qual app (CLI, desktop, VS Code) ou qual assinatura Claude rodou a sessão. Duas sessões na mesma máquina com o mesmo PAT são, para o Brain, o mesmo agente.
+- **Endereçamento**: atribuir uma task a um agente (`assignees`) ou @mencioná-lo num comentário gera item no **mailbox** dele (`check_mailbox`/`ack_mailbox` — ler nunca marca lido; ack é ato explícito depois de agir).
+- **Wake-up**: cada dispositivo descobre que tem mensagem por pull — polling `*/30` (cron/daemon/hook) como reconciliador e, desde a spec 90, o long-poll `GET /api/mailbox/wait` como fast-path (o Worker responde na hora que nasce item; latência de segundos). Runbook por dispositivo: [`docs/frota-heartbeat.md`](docs/frota-heartbeat.md).
+- **Concorrência**: antes de trabalhar uma task, o agente chama `claim_task` (lease atômico com expiração — agente que caiu nunca bloqueia a fila). Dois agentes disputando a mesma task: exatamente um ganha, o outro pula pra próxima.
+- **Protocolo**: comentários tipados `[pedido]` / `[entrega]` / `[bloqueio]` / `[info]`. Um `[bloqueio]` sem resposta do dono coloca a task na fila "Aguardando você" do board (e dispara push) até o dono responder no thread.
+- **Fila de trabalho**: `list_tasks` com `assignee: "me"` + `available: true` = "minhas tasks livres pra trabalhar agora".
+
 ## Documentação e novidades
 
 - [`CHANGELOG.md`](CHANGELOG.md) — release notes por versão (o que mudou em cada release).
