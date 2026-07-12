@@ -35,7 +35,7 @@ export function registerLink(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Create edge', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Create edge', resource: 'notes', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: LinkInput) => {
       if (input.from_id === input.to_id) {

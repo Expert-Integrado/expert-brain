@@ -42,6 +42,7 @@ export function registerStats(server: any, env: Env, auth?: AuthContext): void {
       inputSchema,
       annotations: {
         title: 'Vault overview',
+        resource: 'notes',
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: false,

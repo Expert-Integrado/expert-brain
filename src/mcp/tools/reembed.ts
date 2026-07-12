@@ -30,6 +30,7 @@ export function registerReembed(server: any, env: Env): void {
       inputSchema,
       annotations: {
         title: 'Re-embed note vector',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

@@ -93,6 +93,7 @@ export function registerUpdateTask(server: any, env: Env, auth: AuthContext): vo
       inputSchema,
       annotations: {
         title: 'Edit a task',
+        resource: 'tasks',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

@@ -17,7 +17,7 @@ export function registerDeleteNoteMedia(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Delete note media', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+      annotations: { title: 'Delete note media', resource: 'notes.media', readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
     safeToolHandler(async (input: Input) => {
       const r = await removeMedia(env, input.media_id);

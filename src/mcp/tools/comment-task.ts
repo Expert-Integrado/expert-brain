@@ -44,7 +44,7 @@ export function registerCommentTask(server: any, env: Env, auth?: AuthContext): 
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Comment on a task', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Comment on a task', resource: 'tasks', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: CommentTaskInput) => {
       // Valida que o id é uma task viva (getTaskById filtra kind='task' + deleted_at

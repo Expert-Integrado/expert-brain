@@ -23,7 +23,7 @@ export function registerAckMailbox(server: any, env: Env, auth?: AuthContext): v
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Ack mailbox items', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Ack mailbox items', resource: 'mailbox', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: AckMailboxInput) => {
       const hasIds = input.ids !== undefined;

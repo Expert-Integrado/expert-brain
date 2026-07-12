@@ -30,7 +30,7 @@ export function registerAttachMedia(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Attach media to note', readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      annotations: { title: 'Attach media to note', resource: 'notes.media', readOnlyHint: false, destructiveHint: false, openWorldHint: true },
     },
     safeToolHandler(async (input: AttachInput) => {
       const isUrl = /^https?:\/\//i.test(input.source.trim());

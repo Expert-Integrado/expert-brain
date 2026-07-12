@@ -33,6 +33,7 @@ export function registerShareTask(server: any, env: Env): void {
       inputSchema,
       annotations: {
         title: 'Share a task read-only',
+        resource: 'tasks.share',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

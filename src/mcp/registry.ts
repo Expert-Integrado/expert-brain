@@ -1,5 +1,5 @@
 import type { Env, AuthContext } from '../env.js';
-import { hasScope } from '../auth/api-keys.js';
+import { hasScope, SCOPE_NOTES_NONE, SCOPE_CONTACTS_NONE, SCOPE_TASKS_ASSIGNED } from '../auth/api-keys.js';
 import { registerSaveNote } from './tools/save-note.js';
 import { registerMarkPrivate } from './tools/mark-private.js';
 import { registerRecall } from './tools/recall.js';
@@ -34,20 +34,48 @@ import { registerListUsers } from './tools/list-users.js';
 import { registerCheckMailbox } from './tools/check-mailbox.js';
 import { registerAckMailbox } from './tools/ack-mailbox.js';
 
-// Gate de escopo (spec 17): num PAT com scopes='read', envolve o server num Proxy
-// que só deixa passar `registerTool` de tools com `annotations.readOnlyHint === true`.
-// As tools de escrita nem chegam a ser registradas — o cliente não as vê no
-// tools/list e não há como chamá-las. Robusto: a decisão vem da annotation da própria
-// tool (readOnlyHint), não de uma lista paralela que sairia do sincronismo.
-function readOnlyGuard(server: any): any {
+// Gate de escopo em tempo de REGISTRO (specs 17 + 91): envolve o server num Proxy
+// que decide por annotation da própria tool — nunca por lista paralela que sairia
+// do sincronismo. Tool não permitida NEM É REGISTRADA: o cliente não a vê no
+// tools/list e não há como chamá-la (não-permitido = invisível, não "erro 403").
+// Duas dimensões:
+//  - readOnlyHint (spec 17): escopo base 'read' suprime toda tool de escrita.
+//  - resource (spec 91): tokens subtrativos removem famílias inteiras —
+//    notes:none derruba 'notes' e 'notes.*' (mídia junto: mídia herda a
+//    visibilidade da nota dona); contacts:none derruba 'contacts';
+//    tasks:assigned derruba 'tasks.share' (link público /s/ = exfiltração,
+//    capacidade de dono/frota confiável, nunca de robô row-restrito).
+// FAIL-CLOSED: sob credencial restrita, tool SEM annotations.resource é
+// suprimida com warning — tool nova que esquecer de declarar o recurso não
+// vaza pra credencial restrita (o snapshot em test/registry-scope.test.ts
+// quebra e aponta o esquecimento).
+// Exportado só pro teste direto do fail-closed (test/registry-scope.test.ts) —
+// produção entra sempre por registerAllTools.
+export function scopeGuard(server: any, scopes: string | undefined): any {
+  const readOnly = hasScope(scopes, 'read');
+  const noNotes = hasScope(scopes, SCOPE_NOTES_NONE);
+  const noContacts = hasScope(scopes, SCOPE_CONTACTS_NONE);
+  const assignedOnly = hasScope(scopes, SCOPE_TASKS_ASSIGNED);
+  const restricted = noNotes || noContacts || assignedOnly;
+  if (!readOnly && !restricted) return server; // fast path: credencial sem restrição = server cru (comportamento histórico)
   return new Proxy(server, {
     get(target, prop, receiver) {
       if (prop === 'registerTool') {
         return (name: string, config: any, handler: any) => {
-          if (config?.annotations?.readOnlyHint === true) {
-            return server.registerTool(name, config, handler);
+          if (readOnly && config?.annotations?.readOnlyHint !== true) {
+            return undefined; // tool de escrita suprimida no escopo read (spec 17, intocado)
           }
-          return undefined; // tool de escrita suprimida no escopo read
+          if (restricted) {
+            const res: string | undefined = config?.annotations?.resource;
+            if (res === undefined) {
+              console.warn(`scopeGuard: tool '${name}' sem annotations.resource — suprimida (fail-closed) pra credencial restrita`);
+              return undefined;
+            }
+            if (noNotes && (res === 'notes' || res.startsWith('notes.'))) return undefined;
+            if (noContacts && (res === 'contacts' || res.startsWith('contacts.'))) return undefined;
+            if (assignedOnly && res === 'tasks.share') return undefined;
+          }
+          return server.registerTool(name, config, handler);
         };
       }
       const v = Reflect.get(target, prop, receiver);
@@ -57,14 +85,14 @@ function readOnlyGuard(server: any): any {
 }
 
 export function registerAllTools(server: any, env: Env, auth: AuthContext): void {
-  // Escopo é um CSV (spec 31): 'full' | 'read' | 'full,private' | 'read,private'.
-  // Ausente (sessões OAuth) = 'full'. A decisão read-only vem de hasScope(...,'read')
-  // — NÃO de igualdade `=== 'read'` (que quebraria com 'read,private'). `reg` é o alvo
-  // dos register*: no escopo read é o guarda que dropa as tools de escrita; no full é o
-  // próprio server. Tools de escrita recebem `auth` pra gravar autoria; tools de LEITURA
-  // recebem `auth` pra computar canSeePrivate (selo de privacidade).
-  const readOnly = hasScope(auth.scopes, 'read');
-  const reg = readOnly ? readOnlyGuard(server) : server;
+  // Escopo é um CSV (specs 31 + 91): base 'full'|'read' + aditivo 'private' +
+  // subtrativos 'notes:none'/'contacts:none'/'tasks:assigned'. Ausente (sessões
+  // OAuth) = 'full'. Decisões sempre via hasScope(...) — NUNCA igualdade de string
+  // (quebraria com CSV composto). `reg` é o alvo dos register*: o scopeGuard decide
+  // por annotation (readOnlyHint + resource) o que cada credencial enxerga. Tools de
+  // escrita recebem `auth` pra gravar autoria; tools de LEITURA recebem `auth` pra
+  // computar canSeePrivate (selo de privacidade) e a visibilidade row-level de task.
+  const reg = scopeGuard(server, auth.scopes);
 
   registerSaveNote(reg, env, auth);
   registerUpdateNote(reg, env, auth);

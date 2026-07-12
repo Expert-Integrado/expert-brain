@@ -29,7 +29,7 @@ export function registerListInbox(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'List inbox', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'List inbox', resource: 'notes', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: ListInboxInput) => {
       const items = await listInboxItems(env, { pendingOnly: !input.all, limit: input.limit });

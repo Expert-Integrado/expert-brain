@@ -24,6 +24,7 @@ export function registerUnshareTask(server: any, env: Env): void {
       inputSchema,
       annotations: {
         title: 'Revoke a task share link',
+        resource: 'tasks.share',
         readOnlyHint: false,
         destructiveHint: true,
         openWorldHint: false,

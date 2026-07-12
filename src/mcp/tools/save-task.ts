@@ -87,6 +87,7 @@ export function registerSaveTask(server: any, env: Env, auth: AuthContext): void
       inputSchema,
       annotations: {
         title: 'Create a task',
+        resource: 'tasks',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

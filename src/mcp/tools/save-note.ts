@@ -106,6 +106,7 @@ export function registerSaveNote(server: any, env: Env, auth: AuthContext): void
       inputSchema,
       annotations: {
         title: 'Save atomic note',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

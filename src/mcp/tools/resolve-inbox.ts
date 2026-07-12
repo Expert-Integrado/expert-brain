@@ -26,7 +26,7 @@ export function registerResolveInbox(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Resolve inbox item', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Resolve inbox item', resource: 'notes', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: ResolveInboxInput) => {
       const resultId = input.result_id?.trim() || null;

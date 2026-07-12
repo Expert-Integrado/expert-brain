@@ -53,6 +53,7 @@ export function registerRecall(server: any, env: Env, auth?: AuthContext): void 
       inputSchema,
       annotations: {
         title: 'Cross-domain recall',
+        resource: 'notes',
         readOnlyHint: true, destructiveHint: false, openWorldHint: false,
       },
     },

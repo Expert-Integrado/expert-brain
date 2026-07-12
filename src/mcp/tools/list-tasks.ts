@@ -37,6 +37,7 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
       inputSchema,
       annotations: {
         title: 'List tasks',
+        resource: 'tasks',
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: false,

@@ -26,7 +26,7 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Get a task', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Get a task', resource: 'tasks', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: GetTaskInput) => {
       const t = await getTaskById(env, input.id, seePrivate);

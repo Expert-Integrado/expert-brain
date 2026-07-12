@@ -30,6 +30,7 @@ export function registerCompleteTask(server: any, env: Env, auth: AuthContext): 
       inputSchema,
       annotations: {
         title: 'Complete a task',
+        resource: 'tasks',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

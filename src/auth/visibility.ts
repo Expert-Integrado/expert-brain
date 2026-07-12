@@ -5,13 +5,18 @@
 // até pro dono). Este módulo é a fonte; os outros são wrappers finos por superfície.
 // Depende só de auth/api-keys.js — importável de db/queries, mcp/helpers, web/* sem ciclo.
 
-import { hasScope } from './api-keys.js';
+import { hasScope, SCOPE_TASKS_ASSIGNED } from './api-keys.js';
 
 // "Vê itens privados?" — regra canônica (specs 17 + 31), fail-closed:
 // nível dono (sessão OAuth / sessão de browser / bearer owner) sempre vê;
 // PAT só com o token `private` no CSV. `full` dá CRUD, não confidência.
 export function scopesSeePrivate(scopes: string | undefined, ownerLevel: boolean): boolean {
   return ownerLevel || hasScope(scopes, 'private');
+}
+
+// A credencial carrega o token `tasks:assigned`? (row-level, spec 91)
+export function scopesAssignedOnly(scopes: string | undefined): boolean {
+  return hasScope(scopes, SCOPE_TASKS_ASSIGNED);
 }
 
 // Visibilidade row-level de TASK (spec 91). Substitui o boolean `includePrivate`

@@ -18,7 +18,7 @@ export function registerDigest(server: any, env: Env, auth: AuthContext): void {
     {
       description: DESCRIPTION,
       inputSchema: {},
-      annotations: { title: 'Resurfacing digest', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Resurfacing digest', resource: 'notes', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async () => {
       // canSeePrivate (spec 31): PAT `full` sem o escopo `private` nunca vê o

@@ -41,7 +41,7 @@ export function registerClaimTask(server: any, env: Env, auth?: AuthContext): vo
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Claim/release a task lease', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Claim/release a task lease', resource: 'tasks', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: ClaimInput) => {
       const task = await getTaskById(env, input.task_id, seePrivate);

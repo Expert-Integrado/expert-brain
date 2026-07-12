@@ -31,7 +31,7 @@ export function registerCapture(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Capture to inbox', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Capture to inbox', resource: 'notes', readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: CaptureInput) => {
       const body = input.text.trim();

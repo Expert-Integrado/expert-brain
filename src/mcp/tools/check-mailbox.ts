@@ -29,7 +29,7 @@ export function registerCheckMailbox(server: any, env: Env, auth?: AuthContext):
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Check my mailbox', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Check my mailbox', resource: 'mailbox', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: CheckMailboxInput) => {
       const me = await resolveMe(env, auth);

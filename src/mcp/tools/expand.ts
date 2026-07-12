@@ -36,7 +36,7 @@ export function registerExpand(server: any, env: Env, auth?: AuthContext): void 
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Expand neighbors', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Expand neighbors', resource: 'notes', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: ExpandInput) => {
       const base = await getNoteById(env, input.note_id, false, seePrivate);

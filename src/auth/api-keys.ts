@@ -42,6 +42,34 @@ export function hasScope(scopes: string | undefined, scope: string): boolean {
   return (scopes ?? 'full').split(',').map((s) => s.trim()).includes(scope);
 }
 
+// Tokens de RESTRIÇÃO por credencial (spec 80-frota-agentes/91). Polaridade
+// SUBTRATIVA de propósito: ausente = liberado (o default histórico de 'full' é
+// ver tudo), presente = restringe — é a única polaridade 100% retrocompatível
+// sem migração. `private` segue ADITIVO (ausente = restrito) pelo motivo
+// simétrico. Consequência documentada: CSV corrompido/vazio colapsa em full;
+// mutação de scopes só existe via sessão do dono (web/api-keys.ts), então o
+// vetor real disso é acesso ao DB — que derrota qualquer esquema de escopo.
+export const SCOPE_NOTES_NONE = 'notes:none';         // remove a superfície de conhecimento (notas, grafo, inbox, digest, stats, mídia)
+export const SCOPE_CONTACTS_NONE = 'contacts:none';   // remove as tools de contatos (proxy read-only)
+export const SCOPE_TASKS_ASSIGNED = 'tasks:assigned'; // row-level: só tasks atribuídas/mencionadas/criadas-por-mim
+
+export const KNOWN_SCOPE_TOKENS: readonly string[] = [
+  'full', 'read', 'private', SCOPE_NOTES_NONE, SCOPE_CONTACTS_NONE, SCOPE_TASKS_ASSIGNED,
+] as const;
+
+// Validação usada SÓ na criação de chave (web/api-keys.ts): token desconhecido no
+// CSV = erro legível ANTES de gravar. Nunca rodada na leitura (chave antiga com
+// qualquer valor segue autenticando — a restrição de leitura seria fail-open de
+// qualquer forma, ver polaridade acima).
+export function validateScopesCsv(csv: string): string | null {
+  const tokens = csv.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (tokens.length === 0) return 'scopes vazio';
+  const unknown = tokens.filter((t) => !KNOWN_SCOPE_TOKENS.includes(t));
+  if (unknown.length > 0) return `token(s) de escopo desconhecido(s): ${unknown.join(', ')}`;
+  if (!tokens.includes('full') && !tokens.includes('read')) return "scopes precisa do escopo base 'full' ou 'read'";
+  return null;
+}
+
 export interface ApiKeyRow {
   id: string;
   owner_email: string;

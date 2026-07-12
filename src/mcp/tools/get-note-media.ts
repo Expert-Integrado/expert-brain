@@ -17,7 +17,7 @@ export function registerGetNoteMedia(server: any, env: Env): void {
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'List note media', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'List note media', resource: 'notes.media', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: Input) => {
       const media = await listMediaViews(env, input.note_id, Date.now());

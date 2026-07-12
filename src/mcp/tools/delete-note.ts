@@ -37,6 +37,7 @@ export function registerDeleteNote(server: any, env: Env, auth: AuthContext): vo
       inputSchema,
       annotations: {
         title: 'Delete note permanently',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: true,
         openWorldHint: false,

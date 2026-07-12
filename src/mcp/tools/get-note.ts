@@ -23,7 +23,7 @@ export function registerGetNote(server: any, env: Env, auth?: AuthContext): void
     {
       description: DESCRIPTION,
       inputSchema,
-      annotations: { title: 'Get full note', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Get full note', resource: 'notes', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { id: string }) => {
       const n = await getNoteById(env, input.id, false, seePrivate);

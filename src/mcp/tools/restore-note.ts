@@ -27,6 +27,7 @@ export function registerRestoreNote(server: any, env: Env, auth: AuthContext): v
       inputSchema,
       annotations: {
         title: 'Restore a soft-deleted note',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

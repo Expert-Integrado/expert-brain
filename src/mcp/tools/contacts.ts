@@ -67,7 +67,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
         limit: z.number().int().min(1).max(1000).optional().describe('Default 100, max 1000.'),
         offset: z.number().int().min(0).optional().describe('Pagination offset (default 0). Page with limit+offset to export everything.'),
       },
-      annotations: { title: 'List contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'List contacts', resource: 'contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { kind?: string; category?: string; has_phone?: boolean; include_raw?: boolean; limit?: number; offset?: number }) => {
       const qs = new URLSearchParams();
@@ -95,7 +95,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
         include_raw: z.boolean().optional().describe('Include raw imports (name = phone number). Default false.'),
         limit: z.number().int().min(1).max(100).optional().describe('Default 20.'),
       },
-      annotations: { title: 'Search contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Search contacts', resource: 'contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { query: string; kind?: string; category?: string; include_raw?: boolean; limit?: number }) => {
       const qs = new URLSearchParams({ q: input.query, limit: String(input.limit ?? 20) });
@@ -114,7 +114,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
     {
       description: `Full detail of one contact (person or company) by id, including its connections. Get the id from list_contacts/search_contacts. Read-only.`,
       inputSchema: { id: z.string().min(1).describe('Contact entity id.') },
-      annotations: { title: 'Get contact', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Get contact', resource: 'contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { id: string }) => {
       const r = await callContacts(env, `/entities/${encodeURIComponent(input.id)}`, seePrivate);
@@ -129,7 +129,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
     {
       description: `Deterministic EXACT lookup of a contact by phone (handles the BR mobile 9th digit). Unlike search_contacts (semantic/approximate), this returns the EXACT phone match — use it to cross-reference or dedupe by phone. Accepts +, spaces and dashes. Returns { match, results, variants }.`,
       inputSchema: { phone: z.string().min(8).describe('Phone E.164 without + (e.g. 5511996647492).') },
-      annotations: { title: 'Get contact by phone', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      annotations: { title: 'Get contact by phone', resource: 'contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { phone: string }) => {
       const r = await callContacts(env, `/get_contact_by_phone?phone=${encodeURIComponent(input.phone)}`, seePrivate);

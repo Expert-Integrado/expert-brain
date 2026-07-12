@@ -39,6 +39,7 @@ export function registerDeleteLink(server: any, env: Env): void {
       inputSchema,
       annotations: {
         title: 'Delete edge',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: true,
         openWorldHint: false,

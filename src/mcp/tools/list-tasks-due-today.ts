@@ -26,6 +26,7 @@ export function registerListTasksDueToday(server: any, env: Env, auth?: AuthCont
       inputSchema,
       annotations: {
         title: 'List tasks due today',
+        resource: 'tasks',
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: false,

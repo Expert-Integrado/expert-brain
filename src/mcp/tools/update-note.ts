@@ -92,6 +92,7 @@ export function registerUpdateNote(server: any, env: Env, auth: AuthContext): vo
       inputSchema,
       annotations: {
         title: 'Update existing note',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

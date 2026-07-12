@@ -22,6 +22,7 @@ export function registerMarkPrivate(server: any, env: Env, auth: AuthContext): v
       inputSchema,
       annotations: {
         title: 'Mark note private',
+        resource: 'notes',
         readOnlyHint: false,
         destructiveHint: false,
         openWorldHint: false,

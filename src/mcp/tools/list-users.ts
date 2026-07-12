@@ -26,6 +26,7 @@ export function registerListUsers(server: any, env: Env, auth: AuthContext): voi
       inputSchema,
       annotations: {
         title: 'List assignable users',
+        resource: 'users',
         readOnlyHint: true,
         destructiveHint: false,
         openWorldHint: false,
