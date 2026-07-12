@@ -752,7 +752,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     <noscript><style>.config-panel{display:block !important}.config-tabs{display:none}</style></noscript>
 
     <section class="config-panel${activeTab === 'agentes' ? ' active' : ''}" id="panel-agentes" role="tabpanel" aria-labelledby="config-tab-agentes" data-panel="agentes">
-    <p class="config-subtitle">Quem conecta no Brain: perfis de pessoas e agentes, chaves de API e as orientações que todo agente recebe ao conectar.</p>
+    <div class="config-subtitle-row">
+      <p class="config-subtitle">Quem conecta no Brain: perfis de pessoas e agentes, chaves de API e as orientações que todo agente recebe ao conectar.</p>
+      <a class="btn btn-primary btn-sm config-quick-key" href="#api-keys">Nova chave</a>
+    </div>
 
     ${usersSection}
 

@@ -35,6 +35,22 @@ describe('/app/config', () => {
     expect(html).toContain('href="/app/notes"');
   });
 
+  it('aba Agentes tem o atalho "Nova chave" no topo, antes das seções (spec 98)', async () => {
+    const res = await SELF.fetch('https://x.test/app/config', {
+      headers: { cookie: await authCookie() },
+    });
+    const html = await res.text();
+    // O atalho é uma âncora #api-keys — o resolveHash do config-script abre o
+    // <details> e rola até ele (criar chave em 2 cliques, sem scroll de descoberta).
+    const panelStart = html.indexOf('id="panel-agentes"');
+    const shortcut = html.indexOf('href="#api-keys"');
+    const firstSection = html.indexOf('<details', panelStart);
+    expect(panelStart).toBeGreaterThan(-1);
+    expect(shortcut).toBeGreaterThan(panelStart);
+    expect(shortcut).toBeLessThan(firstSection);
+    expect(html).toContain('Nova chave');
+  });
+
   it('serves the config bundle script as JS', async () => {
     const res = await SELF.fetch('https://x.test/app/config/bundle.js');
     expect(res.status).toBe(200);

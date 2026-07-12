@@ -980,6 +980,11 @@ export const SURFACES_CSS = `
 
 /* ---- Config page: disclosure progressivo (2 passos + gaveta avancada + rodape) ---- */
 .config-subtitle { color: var(--text-dim); font-size: 14px; margin: 2px 0 12px; }
+/* Atalho "Nova chave" no topo da aba Agentes (spec 98): a tarefa mais comum da
+   config alcançável sem scroll — a âncora #api-keys abre e rola pro details. */
+.config-subtitle-row { display: flex; align-items: flex-start; gap: 12px; }
+.config-subtitle-row .config-subtitle { flex: 1; min-width: 0; }
+.config-quick-key { flex: none; white-space: nowrap; }
 
 /* Grupo "Conexoes": heading + abas-acordeao (reusa .disclosure-advanced) */
 .conn-heading { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 36px 0 2px; }
