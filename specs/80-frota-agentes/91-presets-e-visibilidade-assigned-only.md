@@ -1,7 +1,8 @@
 # Spec 91 — Presets de credencial + visibilidade assigned-only (modelo de permissão multi-robô)
 
 > Grupo 80-frota-agentes. Status: implementado 12/07/2026 (fases 0-3, commits
-> 2c6ab97 → c266294), aguardando deploy.
+> 2c6ab97 → c266294) + deltas 4-5 da verificação adversarial pós-implementação
+> (mailbox gated + leitura de menções), aguardando deploy.
 
 ## Problema
 
@@ -90,8 +91,16 @@ OR created_by IN (chaves do meu user)      -- api_keys.user_id UNION users.api_k
 - `created_by` ⇒ o robô não perde de vista a task `[pedido]` que criou pro dono.
   O vínculo PAT↔user existe nas DUAS direções do schema (`api_keys.user_id` e a
   legada `users.api_key_id` — espelho do `getUserByApiKeyId`), o IN cobre ambas.
-- Mailbox não precisa de gate novo: por construção, todo item endereçado a mim
-  referencia task visível.
+- **Mailbox PRECISA do mesmo gate** (a premissa original "todo item endereçado a
+  mim referencia task visível" era FALSA — achado da auditoria adversarial, ver
+  delta 4): desatribuir remove a linha de `task_assignees` mas NADA apaga
+  `mailbox_items`, então os itens `assignment`/`comment_on_assigned` órfãos
+  entregariam título AO VIVO + corpo de comentário de task revogada, e o unread
+  viraria oráculo de existência. `listMailboxItems`/`countMailboxUnread`/
+  `ackMailboxItems` recebem a `TaskVisibility` do caller e aplicam `taskVisFilter`
+  no JOIN com notes — cobre check_mailbox, ack_mailbox e as rotas bearer
+  `/api/mailbox/summary` e `/api/mailbox/wait`. Item `mention` continua visível
+  por construção (a própria linha satisfaz o ramo mention do predicado).
 
 Aplicado nas **8 funções base** de queries.ts: getTaskById, listActiveTasks,
 listRecentClosedTasks, listTasksDueBefore, ftsSearchTasks, listTasksAwaitingOwner,
@@ -155,6 +164,22 @@ qualquer task cujo id descobrisse (e removendo os outros).
    (credencial, task) — mata o spam no celular do dono; falha de KV não derruba o
    comentário (try/catch, o push é best-effort).
 3. **list_users omite bio** pra credencial `notes:none`.
+4. **Mailbox gated pela TaskVisibility do caller** (achado P1 da rodada de
+   verificação PÓS-implementação, workflow adversarial de 12/07): check_mailbox,
+   ack_mailbox e as rotas bearer `/api/mailbox/*` aplicavam só `private = 0` e
+   vazavam itens órfãos de desatribuição (título ao vivo + corpo de comentário +
+   unread como oráculo). Fix: `taskVisFilter` nas 3 funções de leitura/ack do
+   mailbox (ver seção do predicado). O ack também é gated — `acked` contando item
+   ilegível denunciaria existência.
+5. **Leitura de menções gated sob `contacts:none`** (mesma rodada): a escrita já
+   era rejeitada, mas o get_task ecoava `mentions` (entity ids + labels do vault
+   de Contacts) de task visível. Fix em 3 pontos: get_task devolve `mentions: []`
+   sempre (shape estável sem oráculo); o filtro `mentions_entity` do list_tasks é
+   REJEITADO (sondar "task X menciona o contato Y?" é oráculo de associação —
+   paridade com o write-side); get_note também devolve `[]` por defesa em
+   profundidade (os presets nunca registram get_note com `contacts:none` — o
+   `notes:none` acompanha —, mas um CSV custom pode desacoplar os tokens e o gate
+   não pode depender do registro).
 
 ## Riscos residuais ACEITOS (documentados, fora de escopo)
 
@@ -176,10 +201,16 @@ qualquer task cujo id descobrisse (e removendo os outros).
 - `test/db/task-visibility.test.ts` (13): os 3 ramos do predicado nas 8 funções,
   composição com private, mention concede / desatribuir revoga / assignment não
   re-concede, dual-link do created_by.
-- `test/tools/assigned-only.test.ts` (12): E2E do robô colaborador — anti-oráculo
+- `test/tools/assigned-only.test.ts` (17): E2E do robô colaborador — anti-oráculo
   byte-idêntico em leitura E escrita, nada persiste em tentativa bloqueada, ciclo
   completo na task atribuída, reatribuição proibida (remover-se permitido), dedupe
-  sem eco, rejeições por token, PAT sem vínculo = erro instrutivo.
+  sem eco, rejeições por token, PAT sem vínculo = erro instrutivo; deltas 4-5:
+  desatribuir revoga o mailbox (título renomeado não vaza), mention segue visível
+  e ackável, ack up_to ignora item invisível (acked=0, linha intocada no DB),
+  get_task sem eco de menções e mentions_entity rejeitado sob contacts:none.
+- `test/mailbox-summary.test.ts` (+1): rota bearer sob tasks:assigned — item órfão
+  fora do summary, mention concede. `test/tools/mentions.test.ts` (+1): get_note
+  com CSV custom `full,contacts:none` devolve mentions [].
 - `test/config-ux-keys.test.ts` (+7): preset grava CSV canônico, custom/desconhecido
   caem no legado, retrocompat do POST antigo, select no SSR, badge, whoami.preset.
 - Suite completa 1307+ verde ao fim de cada fase (fases 0-3).

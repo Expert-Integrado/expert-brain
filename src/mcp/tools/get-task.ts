@@ -5,6 +5,7 @@ import { getTaskById, getTagsByNote, listKanbanColumns, resolveTaskColumn, listT
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 import { mentionsForOutput } from '../mentions.js';
 import { resolveTaskVis } from './user-ref.js';
+import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 
 const inputSchema = {
   id: z.string().min(1).describe('The task id (from save_task / list_tasks / list_tasks_due_today / the /app/tasks board).'),
@@ -53,8 +54,12 @@ export function registerGetTask(server: any, env: Env, auth?: AuthContext): void
       // get_task não esconde a pasta; o chip é que esmaece na UI).
       const proj = t.project_id ? await getProjectById(env, t.project_id) : null;
       // Menções (spec 62): contatos que esta task cita. Label omitido pra contato privado
-      // quando o caller não tem escopo `private`.
-      const mentions = await mentionsForOutput(env, input.id, visR.vis.includePrivate);
+      // quando o caller não tem escopo `private`. Sob contacts:none a LEITURA também é
+      // gated (espelho da rejeição de escrita da spec 91): entity ids/labels são dados
+      // do vault de Contacts — sempre [] pra shape estável sem oráculo.
+      const mentions = hasScope(auth?.scopes, SCOPE_CONTACTS_NONE)
+        ? []
+        : await mentionsForOutput(env, input.id, visR.vis.includePrivate);
       // Responsáveis + autoria (spec 37): quem É responsável (decisão de quem criou) vs
       // qual credencial CRIOU (automático). Campos distintos por design.
       const assignees = await listAssigneesForTask(env, input.id);

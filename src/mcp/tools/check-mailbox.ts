@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
 import { listMailboxItems, countMailboxUnread } from '../../db/mailbox.js';
-import { resolveMe } from './user-ref.js';
+import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
 const inputSchema = {
@@ -15,7 +15,7 @@ const DESCRIPTION = `Checks YOUR mailbox — unread items addressed to the user 
 
 Items are produced when someone @mentions your profile name in a task comment ('mention'), assigns a task to you ('assignment'), or comments on a task you are assigned to ('comment_on_assigned'). Each item carries the task (id/title/url) and, when it came from a comment, the comment body and its signed author — no extra get_task round-trip needed to read the message.
 
-READING NEVER MARKS AS READ (idempotent — safe for heartbeat polling). After you ACT on an item, call ack_mailbox to clear it. Items are returned OLDEST FIRST (work queue). \`unread_count\` is the total unread for you regardless of limit.
+READING NEVER MARKS AS READ (idempotent — safe for heartbeat polling). After you ACT on an item, call ack_mailbox to clear it. Items are returned OLDEST FIRST (work queue). \`unread_count\` is the total unread for you regardless of limit. Items whose task is outside this credential's visibility (private task without the scope, or no longer assigned/mentioned under a tasks:assigned credential) are omitted and not counted.
 
 Identity comes from the credential (resolveMe): a PAT with no linked user profile is rejected — the owner links credentials to users at /app/config. This mailbox is per-agent messaging; it is NOT the owner's capture inbox (list_inbox), which is a different feature.
 
@@ -39,10 +39,13 @@ export function registerCheckMailbox(server: any, env: Env, auth?: AuthContext):
           'The owner links this PAT to an agent user at /app/config (Usuários). Do NOT retry until linked.'
         );
       }
-      const seePrivate = canSeePrivate(auth);
+      // Visibilidade da credencial (spec 91): item cuja task saiu da visão do caller
+      // (privada sem escopo, ou desatribuída sob tasks:assigned) não aparece nem conta.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
       const [rows, unread] = await Promise.all([
-        listMailboxItems(env, me.id, { all: input.all, since: input.since, limit: input.limit, seePrivate }),
-        countMailboxUnread(env, me.id, seePrivate),
+        listMailboxItems(env, me.id, visR.vis, { all: input.all, since: input.since, limit: input.limit }),
+        countMailboxUnread(env, me.id, visR.vis),
       ]);
       return toolSuccess({
         me: { id: me.id, name: me.name },

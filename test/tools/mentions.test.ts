@@ -304,6 +304,22 @@ describe('get_note / get_task — mentions[] e omissão de label', () => {
     expect(guestSecret).toEqual({ entity_id: 'secret' }); // label omitido
     expect(guestPub.label).toBe('Público');
   });
+
+  it('get_note sob contacts:none retorna mentions [] (defesa em profundidade, spec 91)', async () => {
+    // Um CSV custom pode carregar contacts:none SEM notes:none (os presets nunca
+    // fazem isso, mas o gate não pode depender do registro suprimir a tool).
+    const { fetcher } = mockContacts();
+    E.CONTACTS = fetcher;
+    await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at) VALUES ('n1','Nota','b','tl','["operations"]','concept',1,1)`).run();
+    await upsertMention(E, { id: newId(), noteId: 'n1', entityId: 'pub1', entityLabel: 'Pub', now: 1 });
+
+    const { tools } = collector();
+    const auth: AuthContext = { email: 'o@x', loggedInAt: 0, scopes: 'full,contacts:none', keyId: 'k9' };
+    registerGetNote({ registerTool: (n: string, _c: any, h: any) => { (tools as any)[n] = h; } }, E, auth);
+    const res = await tools.get_note({ id: 'n1' });
+    expect(JSON.parse(res.content[0].text).mentions).toEqual([]);
+    expect(res.content[0].text).not.toContain('pub1');
+  });
 });
 
 describe('update_note / update_task — mentions_remove', () => {

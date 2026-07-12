@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess, canSeePrivate } from '../helpers.js';
+import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
 import { ackMailboxItems, countMailboxUnread } from '../../db/mailbox.js';
-import { resolveMe } from './user-ref.js';
+import { resolveMe, resolveTaskVis } from './user-ref.js';
 
 const inputSchema = {
   ids: z.array(z.string().min(1)).max(200).optional().describe('Item ids (mbx_...) to mark as read. Only items addressed to YOUR profile are touched — acking someone else\'s id is a silent no-op.'),
@@ -38,8 +38,12 @@ export function registerAckMailbox(server: any, env: Env, auth?: AuthContext): v
           'The owner links this PAT to an agent user at /app/config (Usuários). Do NOT retry until linked.'
         );
       }
-      const acked = await ackMailboxItems(env, me.id, { ids: input.ids, upTo: input.up_to });
-      const unread = await countMailboxUnread(env, me.id, canSeePrivate(auth));
+      // Ack com a MESMA visibilidade da leitura (spec 91): item de task fora da visão
+      // não é tocado nem contado — `acked` não pode virar oráculo de existência.
+      const visR = await resolveTaskVis(env, auth);
+      if (!visR.ok) return toolError(visR.error);
+      const acked = await ackMailboxItems(env, me.id, visR.vis, { ids: input.ids, upTo: input.up_to });
+      const unread = await countMailboxUnread(env, me.id, visR.vis);
       return toolSuccess({ acked, unread_count: unread });
     }) as any
   );

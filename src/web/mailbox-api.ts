@@ -9,8 +9,8 @@
 import type { Env } from '../env.js';
 import { validateApiKey } from '../auth/api-keys.js';
 import { presetForScopes } from '../auth/presets.js';
-import { scopesSeePrivate } from '../auth/visibility.js';
-import { getUserByApiKeyId } from '../db/queries.js';
+import { scopesSeePrivate, scopesAssignedOnly, type TaskVisibility } from '../auth/visibility.js';
+import { getUserByApiKeyId, taskVisFilter } from '../db/queries.js';
 import { countMailboxUnread } from '../db/mailbox.js';
 import type { MailboxKind } from '../db/mailbox.js';
 import { formatBrtDateTime } from '../util/time.js';
@@ -19,6 +19,16 @@ const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
     status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   });
+
+// Visibilidade de task da CREDENCIAL (spec 91) nas superfícies bearer do mailbox:
+// mesmo predicado row-level das tools MCP (private + tasks:assigned). O user já foi
+// resolvido pelo caller — sem vínculo esses endpoints respondem 403 antes de chegar aqui.
+function keyTaskVis(scopes: string | undefined, userId: string): TaskVisibility {
+  return {
+    includePrivate: scopesSeePrivate(scopes, false),
+    assignedOnlyUserId: scopesAssignedOnly(scopes) ? userId : null,
+  };
+}
 
 // PAT do header Authorization validado → ValidatedApiKey, ou uma Response 401 pronta.
 async function bearerPat(req: Request, env: Env): Promise<{ v: Awaited<ReturnType<typeof validateApiKey>> } | { err: Response }> {
@@ -101,9 +111,9 @@ export async function handleMailboxWait(req: Request, env: Env): Promise<Respons
   // ?timeout=<s> clampado 0–25; ausente = 25. timeout=0 vira check único imediato.
   const raw = new URL(req.url).searchParams.get('timeout');
   const timeoutS = raw === null ? WAIT_MAX_TIMEOUT_S : Math.min(Math.max(Number(raw) || 0, 0), WAIT_MAX_TIMEOUT_S);
-  const seePrivate = scopesSeePrivate(v.scopes, false);
+  const vis = keyTaskVis(v.scopes, user.id);
   const { unread, waitedMs } = await waitForUnread(
-    () => countMailboxUnread(env, user.id, seePrivate),
+    () => countMailboxUnread(env, user.id, vis),
     timeoutS * 1000,
     WAIT_POLL_MS,
   );
@@ -125,15 +135,17 @@ export async function handleMailboxSummary(req: Request, env: Env): Promise<Resp
 
   // 1 query no índice idx_mailbox_unread: top 5 + total via window function (o
   // count(*) OVER () é computado ANTES do LIMIT — total de não-lidos, não 5).
-  const priv = scopesSeePrivate(v.scopes, false) ? '' : ' AND n.private = 0';
+  // taskVisFilter (spec 91): task privada sem escopo E task fora da visão assigned-only
+  // ficam fora do summary — item órfão de desatribuição vazaria o título ao vivo.
+  const f = taskVisFilter(keyTaskVis(v.scopes, user.id), 'n.');
   const r = await env.DB.prepare(
     `SELECT m.kind, m.task_id, m.created_at, n.title AS task_title, count(*) OVER () AS unread_total
      FROM mailbox_items m
      JOIN notes n ON n.id = m.task_id AND n.deleted_at IS NULL
-     WHERE m.user_id = ? AND m.read_at IS NULL${priv}
+     WHERE m.user_id = ? AND m.read_at IS NULL${f.sql}
      ORDER BY m.created_at ASC, m.id ASC
      LIMIT 5`
-  ).bind(user.id).all<{ kind: MailboxKind; task_id: string; created_at: number; task_title: string; unread_total: number }>();
+  ).bind(user.id, ...f.binds).all<{ kind: MailboxKind; task_id: string; created_at: number; task_title: string; unread_total: number }>();
   const rows = r.results ?? [];
   const base = (env.WORKER_URL ?? '').replace(/\/$/, '');
 

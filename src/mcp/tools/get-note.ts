@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl, canSeePrivate } from '../helpers.js';
 import { getEdgesFrom, getEdgesTo, getNoteById, getTagsByNote, listTasksFromOrigin } from '../../db/queries.js';
 import { mentionsForOutput } from '../mentions.js';
+import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 
 const inputSchema = { id: z.string().min(1) };
 
@@ -37,8 +38,13 @@ export function registerGetNote(server: any, env: Env, auth?: AuthContext): void
         getEdgesFrom(env, input.id, seePrivate),
         getEdgesTo(env, input.id, seePrivate),
         // Menções (spec 62): contatos que esta nota cita. Label omitido pra contato
-        // privado quando o caller não tem escopo `private` (não vaza o nome).
-        mentionsForOutput(env, input.id, seePrivate),
+        // privado quando o caller não tem escopo `private` (não vaza o nome). Sob
+        // contacts:none, [] sempre (defesa em profundidade, spec 91): os presets
+        // atuais nunca registram get_note com contacts:none (notes:none acompanha),
+        // mas um CSV custom pode desacoplar os tokens — o gate não pode depender disso.
+        hasScope(auth?.scopes, SCOPE_CONTACTS_NONE)
+          ? Promise.resolve([])
+          : mentionsForOutput(env, input.id, seePrivate),
         // Tasks originadas desta nota ("Criar task desta nota"): gate de privacidade de task.
         listTasksFromOrigin(env, input.id, seePrivate),
       ]);

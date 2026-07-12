@@ -14,6 +14,7 @@ import {
   parseMentionedUsers, addMailboxItem, produceCommentMailbox, produceAssignmentMailbox,
   listMailboxItems, countMailboxUnread,
 } from '../../src/db/mailbox.js';
+import { OWNER_TASK_VIS } from '../../src/auth/visibility.js';
 import { registerCheckMailbox } from '../../src/mcp/tools/check-mailbox.js';
 import { registerAckMailbox } from '../../src/mcp/tools/ack-mailbox.js';
 import { registerCommentTask } from '../../src/mcp/tools/comment-task.js';
@@ -152,13 +153,13 @@ describe('produção via comment_task (mention + comment_on_assigned)', () => {
     await seedTask('t1');
     const p = parse(await reg(pat('key_a')).r.comment_task({ task_id: 't1', body: '@Claude VPS roda o backfill' }));
 
-    const items = await listMailboxItems(E, 'user_b', {});
+    const items = await listMailboxItems(E, 'user_b', OWNER_TASK_VIS);
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe('mention');
     expect(items[0].task_id).toBe('t1');
     expect(items[0].comment_id).toBe(p.id);
     expect(items[0].actor_user_id).toBe('user_a');
-    expect(await listMailboxItems(E, 'user_a', {})).toHaveLength(0);
+    expect(await listMailboxItems(E, 'user_a', OWNER_TASK_VIS)).toHaveLength(0);
   });
 
   it('comentário em task atribuída gera comment_on_assigned pros assignees ≠ autor; menção tem precedência (sem duplicar)', async () => {
@@ -170,18 +171,18 @@ describe('produção via comment_task (mention + comment_on_assigned)', () => {
 
     // B foi mencionado → SÓ mention. C é assignee não-mencionado → comment_on_assigned.
     // A é o autor → nada.
-    const b = await listMailboxItems(E, 'user_b', {});
+    const b = await listMailboxItems(E, 'user_b', OWNER_TASK_VIS);
     expect(b.map((i: any) => i.kind)).toEqual(['mention']);
-    const c = await listMailboxItems(E, 'user_c', {});
+    const c = await listMailboxItems(E, 'user_c', OWNER_TASK_VIS);
     expect(c.map((i: any) => i.kind)).toEqual(['comment_on_assigned']);
-    expect(await listMailboxItems(E, 'user_a', {})).toHaveLength(0);
+    expect(await listMailboxItems(E, 'user_a', OWNER_TASK_VIS)).toHaveLength(0);
   });
 
   it('auto-menção do autor não gera item', async () => {
     await seedAgent('user_a', 'Agente A', 'key_a');
     await seedTask('t1');
     await reg(pat('key_a')).r.comment_task({ task_id: 't1', body: 'eu @Agente A assumo' });
-    expect(await listMailboxItems(E, 'user_a', {})).toHaveLength(0);
+    expect(await listMailboxItems(E, 'user_a', OWNER_TASK_VIS)).toHaveLength(0);
   });
 
   it('@NomeInexistente fica inerte: sem erro, sem item', async () => {
@@ -215,13 +216,13 @@ describe('produção via atribuição (assignment)', () => {
     await seedAgent('user_b', 'Claude VPS', 'key_b');
     const p = parse(await reg(pat('key_a')).r.save_task({ title: 'Rodar censo', assignees: ['Claude VPS', 'me'] }));
 
-    const b = await listMailboxItems(E, 'user_b', {});
+    const b = await listMailboxItems(E, 'user_b', OWNER_TASK_VIS);
     expect(b.map((i: any) => i.kind)).toEqual(['assignment']);
     expect(b[0].task_id).toBe(p.id);
     expect(b[0].comment_id).toBeNull();
     expect(b[0].actor_user_id).toBe('user_a');
     // 'me' (o próprio ator) não recebe item.
-    expect(await listMailboxItems(E, 'user_a', {})).toHaveLength(0);
+    expect(await listMailboxItems(E, 'user_a', OWNER_TASK_VIS)).toHaveLength(0);
   });
 
   it('update_task: só o assignee ADICIONADO recebe item; remoção não gera nada', async () => {
@@ -231,12 +232,12 @@ describe('produção via atribuição (assignment)', () => {
     await seedTask('t1', { assignees: ['user_b'] });
 
     await reg(pat('key_a')).r.update_task({ id: 't1', assignees: ['Claude VPS', 'Notebook'] });
-    expect(await listMailboxItems(E, 'user_b', {})).toHaveLength(0); // já era assignee
-    expect((await listMailboxItems(E, 'user_c', {})).map((i: any) => i.kind)).toEqual(['assignment']);
+    expect(await listMailboxItems(E, 'user_b', OWNER_TASK_VIS)).toHaveLength(0); // já era assignee
+    expect((await listMailboxItems(E, 'user_c', OWNER_TASK_VIS)).map((i: any) => i.kind)).toEqual(['assignment']);
 
     await reg(pat('key_a')).r.update_task({ id: 't1', assignees: [] });
     // Remoção: nenhum item novo.
-    expect(await listMailboxItems(E, 'user_c', {})).toHaveLength(1);
+    expect(await listMailboxItems(E, 'user_c', OWNER_TASK_VIS)).toHaveLength(1);
   });
 
   it('web POST /app/tasks/assignees: adicionado ganha item com ator = dono', async () => {
@@ -244,7 +245,7 @@ describe('produção via atribuição (assignment)', () => {
     await seedTask('t1');
     const res = await postForm('/app/tasks/assignees', { task_id: 't1', user_ids: ['user_b'] }, await cookie());
     expect(res.status).toBe(302);
-    const b = await listMailboxItems(E, 'user_b', {});
+    const b = await listMailboxItems(E, 'user_b', OWNER_TASK_VIS);
     expect(b.map((i: any) => i.kind)).toEqual(['assignment']);
     expect(b[0].actor_user_id).toBe((await getOwnerUser(E))!.id);
   });
@@ -256,7 +257,7 @@ describe('web POST /app/tasks/comment (dono) produz menção', () => {
     await seedTask('t1');
     const res = await postForm('/app/tasks/comment', { task_id: 't1', body: '@Claude VPS confere a fila' }, await cookie());
     expect(res.status).toBe(302);
-    const b = await listMailboxItems(E, 'user_b', {});
+    const b = await listMailboxItems(E, 'user_b', OWNER_TASK_VIS);
     expect(b.map((i: any) => i.kind)).toEqual(['mention']);
     expect(b[0].actor_user_id).toBe((await getOwnerUser(E))!.id);
   });
@@ -345,16 +346,16 @@ describe('ack_mailbox', () => {
     await seedAgent('user_b', 'Claude VPS', 'key_b');
     await seedTask('t1');
     await reg(pat('key_a')).r.comment_task({ task_id: 't1', body: '@Claude VPS item de B' });
-    const bItem = (await listMailboxItems(E, 'user_b', {}))[0];
+    const bItem = (await listMailboxItems(E, 'user_b', OWNER_TASK_VIS))[0];
 
     // A tenta ackar o item de B: 0 acked, item de B segue não-lido.
     const res = parse(await reg(pat('key_a')).r.ack_mailbox({ ids: [bItem.id] }));
     expect(res.acked).toBe(0);
-    expect(await countMailboxUnread(E, 'user_b', true)).toBe(1);
+    expect(await countMailboxUnread(E, 'user_b', OWNER_TASK_VIS)).toBe(1);
 
     const ok = parse(await reg(pat('key_b')).r.ack_mailbox({ ids: [bItem.id] }));
     expect(ok.acked).toBe(1);
-    expect(await countMailboxUnread(E, 'user_b', true)).toBe(0);
+    expect(await countMailboxUnread(E, 'user_b', OWNER_TASK_VIS)).toBe(0);
   });
 
   it('up_to marca tudo até o timestamp; exige exatamente um de ids/up_to', async () => {
@@ -369,7 +370,7 @@ describe('ack_mailbox', () => {
 
     const res = parse(await r.ack_mailbox({ up_to: 150 }));
     expect(res.acked).toBe(1);
-    expect(await countMailboxUnread(E, 'user_b', true)).toBe(1);
+    expect(await countMailboxUnread(E, 'user_b', OWNER_TASK_VIS)).toBe(1);
   });
 });
 
@@ -381,7 +382,7 @@ describe('produceAssignmentMailbox/produceCommentMailbox — dedup e best-effort
     await addTaskComment(E, { id: 'cmt_1', task_id: 't1', author: 'agent', author_name: null, body: '@Claude VPS oi', created_at: 1, author_user_id: 'user_a' });
     await produceCommentMailbox(E, { taskId: 't1', commentId: 'cmt_1', body: '@Claude VPS oi', actorUserId: 'user_a' });
     await produceCommentMailbox(E, { taskId: 't1', commentId: 'cmt_1', body: '@Claude VPS oi', actorUserId: 'user_a' });
-    expect(await listMailboxItems(E, 'user_b', {})).toHaveLength(1);
+    expect(await listMailboxItems(E, 'user_b', OWNER_TASK_VIS)).toHaveLength(1);
   });
 
   it('produceAssignmentMailbox não lança com tabela ausente (best-effort)', async () => {

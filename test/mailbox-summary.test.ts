@@ -102,4 +102,28 @@ describe('GET /api/mailbox/summary', () => {
     expect(body.unread).toBe(0);
     expect(body.top).toEqual([]);
   });
+
+  it('tasks:assigned (spec 91): item órfão de task desatribuída fica fora do summary; mention concede', async () => {
+    const key = await seedUserWithKey('user_vps', 'Claude VPS', 'full,notes:none,contacts:none,tasks:assigned');
+    await seedTask('t1');
+    await seedTask('t2');
+    // Item 'assignment' órfão: a task não está (mais) atribuída — nada apaga
+    // mailbox_items numa desatribuição, o gate é na leitura.
+    await addMailboxItem(E, {
+      user_id: 'user_vps', kind: 'assignment', task_id: 't1',
+      comment_id: null, actor_user_id: null, created_at: 1000,
+    });
+    let body: any = await (await summary(key)).json();
+    expect(body.unread).toBe(0);
+    expect(body.top).toEqual([]);
+
+    // Menção em OUTRA task concede visibilidade a ela (ramo mention do predicado).
+    await addMailboxItem(E, {
+      user_id: 'user_vps', kind: 'mention', task_id: 't2',
+      comment_id: 'c1', actor_user_id: null, created_at: 2000,
+    });
+    body = await (await summary(key)).json();
+    expect(body.unread).toBe(1);
+    expect(body.top.map((i: any) => i.task_title)).toEqual(['Task t2']);
+  });
 });

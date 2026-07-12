@@ -2,14 +2,15 @@
 // task-worker (`full,notes:none,contacts:none,tasks:assigned`) vinculada a um user
 // agent. Cobre: anti-oráculo (invisível = MESMO "not found" de inexistente em toda
 // tool de leitura E escrita), filtros de lista/FTS/due, dedupe sem eco, mention
-// concede / desatribuir revoga, PAT sem vínculo = erro instrutivo, proibição de
-// reatribuição (só remover a si) e as rejeições por token (origin_note_id/mentions).
+// concede / desatribuir revoga (inclusive no mailbox), PAT sem vínculo = erro
+// instrutivo, proibição de reatribuição (só remover a si), rejeições por token
+// (origin_note_id/mentions) e gate de LEITURA de menções sob contacts:none.
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { AuthContext } from '../../src/env.js';
 import {
-  insertTask, createUser, setTaskAssignees, getTaskById,
+  insertTask, createUser, setTaskAssignees, getTaskById, addTaskComment,
 } from '../../src/db/queries.js';
 import { addMailboxItem } from '../../src/db/mailbox.js';
 import { OWNER_TASK_VIS } from '../../src/auth/visibility.js';
@@ -21,6 +22,8 @@ import { registerUpdateTask } from '../../src/mcp/tools/update-task.js';
 import { registerCompleteTask } from '../../src/mcp/tools/complete-task.js';
 import { registerCommentTask } from '../../src/mcp/tools/comment-task.js';
 import { registerClaimTask } from '../../src/mcp/tools/claim-task.js';
+import { registerCheckMailbox } from '../../src/mcp/tools/check-mailbox.js';
+import { registerAckMailbox } from '../../src/mcp/tools/ack-mailbox.js';
 
 const E = env as any;
 
@@ -41,6 +44,8 @@ function reg(auth: AuthContext) {
   registerCompleteTask(server, E, auth as any);
   registerCommentTask(server, E, auth);
   registerClaimTask(server, E, auth);
+  registerCheckMailbox(server, E, auth);
+  registerAckMailbox(server, E, auth);
   return tools;
 }
 
@@ -128,6 +133,39 @@ describe('assigned-only — leitura (anti-oráculo)', () => {
     expect(parse(await t.get_task({ id: 't2' })).id).toBe('t2');
     await setTaskAssignees(E, 't2', [], T0 + 1);
     expect((await t.get_task({ id: 't2' })).isError).toBe(true);
+  });
+
+  it('list_tasks sob contacts:none rejeita o filtro mentions_entity (oráculo de associação task↔contato)', async () => {
+    await seedTask('mine');
+    await setTaskAssignees(E, 'mine', ['user_r'], T0);
+    await E.DB.prepare(
+      `INSERT INTO mentions (id, note_id, entity_id, entity_label, created_at) VALUES ('mnt_2', 'mine', 'ent_x', 'Contato X', ?)`
+    ).bind(T0).run();
+
+    const res = await reg(ROBOT).list_tasks({ mentions_entity: 'ent_x' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/contacts:none/);
+    // Sem o filtro, a task continua acessível normalmente.
+    expect(parse(await reg(ROBOT).list_tasks({})).tasks.map((t: any) => t.id)).toEqual(['mine']);
+  });
+
+  it('get_task sob contacts:none não ecoa menções da task (leitura gated, espelho da rejeição de escrita)', async () => {
+    await seedTask('mine');
+    await setTaskAssignees(E, 'mine', ['user_r'], T0);
+    // Menção semeada direto no DB (a escrita via tool é rejeitada pra este preset).
+    await E.DB.prepare(
+      `INSERT INTO mentions (id, note_id, entity_id, entity_label, created_at) VALUES ('mnt_1', 'mine', 'ent_secreto', 'Contato Sigiloso', ?)`
+    ).bind(T0).run();
+
+    const res = await reg(ROBOT).get_task({ id: 'mine' });
+    expect(parse(res).mentions).toEqual([]);
+    expect(res.content[0].text).not.toContain('ent_secreto');
+    expect(res.content[0].text).not.toContain('Contato Sigiloso');
+
+    // Contraste: o dono (sessão sem tokens subtrativos) segue vendo a menção.
+    const owner = reg({ email: 'o@x', loggedInAt: 0 });
+    expect(parse(await owner.get_task({ id: 'mine' })).mentions)
+      .toEqual([{ entity_id: 'ent_secreto', label: 'Contato Sigiloso' }]);
   });
 
   it('PAT tasks:assigned SEM user vinculado = erro instrutivo (nunca vê-tudo nem vazio silencioso)', async () => {
@@ -246,5 +284,61 @@ describe('assigned-only — save_task (dedupe sem eco + rejeições por token)',
     expect(out.assignees?.map((a: any) => a.id)).toContain('user_z');
     // Ramo created_by do predicado: o robô segue vendo a task que criou.
     expect(parse(await t.get_task({ id: out.id })).id).toBe(out.id);
+  });
+});
+
+// O mailbox era o furo do gate row-level (achado da auditoria adversarial pós-spec):
+// desatribuir remove a linha de task_assignees mas NADA apaga mailbox_items — sem o
+// taskVisFilter na leitura, os itens 'assignment'/'comment_on_assigned' órfãos
+// entregariam título AO VIVO + corpo de comentário de task revogada, e unread_count
+// viraria oráculo de existência.
+describe('assigned-only — mailbox (desatribuir revoga; ack sem oráculo)', () => {
+  it('itens assignment/comment_on_assigned somem do check_mailbox após desatribuição; título renomeado não vaza', async () => {
+    await seedTask('t1');
+    await setTaskAssignees(E, 't1', ['user_r'], T0);
+    await addMailboxItem(E, { user_id: 'user_r', kind: 'assignment', task_id: 't1', comment_id: null, actor_user_id: null, created_at: T0 });
+    await addTaskComment(E, { id: 'cmt_1', task_id: 't1', author: 'owner', author_name: null, body: 'briefing sigiloso', created_at: T0 + 1, author_user_id: null });
+    await addMailboxItem(E, { user_id: 'user_r', kind: 'comment_on_assigned', task_id: 't1', comment_id: 'cmt_1', actor_user_id: null, created_at: T0 + 1 });
+    const t = reg(ROBOT);
+
+    expect(parse(await t.check_mailbox({})).unread_count).toBe(2);
+
+    // Desatribuição não apaga mailbox_items — o gate é na leitura. Renomeia a task
+    // pra provar que nem o título AO VIVO vaza depois da revogação.
+    await setTaskAssignees(E, 't1', [], T0 + 2);
+    await E.DB.prepare(`UPDATE notes SET title = 'Reestruturação confidencial' WHERE id = 't1'`).run();
+
+    const after = await t.check_mailbox({});
+    expect(parse(after).unread_count).toBe(0);
+    expect(parse(after).items).toHaveLength(0);
+    expect(after.content[0].text).not.toContain('confidencial');
+    expect(after.content[0].text).not.toContain('briefing sigiloso');
+  });
+
+  it('item mention segue visível (mention concede) e é ackável', async () => {
+    await seedTask('t1');
+    await addMailboxItem(E, { user_id: 'user_r', kind: 'mention', task_id: 't1', comment_id: null, actor_user_id: null, created_at: T0 });
+    const t = reg(ROBOT);
+
+    const out = parse(await t.check_mailbox({}));
+    expect(out.unread_count).toBe(1);
+    expect(out.items[0].kind).toBe('mention');
+
+    const ack = parse(await t.ack_mailbox({ ids: [out.items[0].id] }));
+    expect(ack.acked).toBe(1);
+    expect(ack.unread_count).toBe(0);
+  });
+
+  it('ack up_to ignora item de task invisível: acked=0 (sem oráculo) e o item não é tocado no DB', async () => {
+    await seedTask('other');
+    await addMailboxItem(E, { user_id: 'user_r', kind: 'assignment', task_id: 'other', comment_id: null, actor_user_id: null, created_at: T0 });
+    const t = reg(ROBOT);
+
+    const res = parse(await t.ack_mailbox({ up_to: Date.now() }));
+    expect(res.acked).toBe(0);
+    expect(res.unread_count).toBe(0);
+
+    const row = await E.DB.prepare(`SELECT read_at FROM mailbox_items WHERE task_id = 'other'`).first();
+    expect(row?.read_at).toBeNull();
   });
 });

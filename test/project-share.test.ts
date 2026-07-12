@@ -10,6 +10,7 @@ import { runMigrations } from '../src/db/migrate.js';
 import { createUser, insertTask, setTaskAssignees, createTaskProject } from '../src/db/queries.js';
 import { createProjectShare, revokeProjectShare, listProjectShares } from '../src/web/project-share.js';
 import { listMailboxItems } from '../src/db/mailbox.js';
+import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 
 const E = env as any;
 const NOW = Date.now();
@@ -122,7 +123,7 @@ describe('POST /p/<token>/comment — modo comment', () => {
     expect(html).toContain('cmt-external');
 
     // Mailbox: assignee ativo recebe comment_on_assigned (spec 82/85).
-    const items = await listMailboxItems(E, 'user_vps', {});
+    const items = await listMailboxItems(E, 'user_vps', OWNER_TASK_VIS);
     expect(items).toHaveLength(1);
     expect(items[0].kind).toBe('comment_on_assigned');
     expect(items[0].task_id).toBe(s.taskId);

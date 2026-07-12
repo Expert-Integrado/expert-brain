@@ -3,6 +3,7 @@ import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolSuccess, toolError, noteUrl } from '../helpers.js';
 import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, getTagsForNotes, listKanbanColumns, resolveTaskColumn, countTaskCommentsBatch, listTaskProjects, getProjectByIdOrLabel, listNoteIdsMentioning, getUserByIdOrName, taskIdsAssignedTo, listAssigneesForTasks, claimActive, listTasksAwaitingOwner, type TaskRow, type TaskProject } from '../../db/queries.js';
 import { resolveMe, resolveTaskVis } from './user-ref.js';
+import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -90,7 +91,15 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
       // filtro de menção (spec 62): "tasks com essa pessoa". Cruza com o conjunto de
       // note_ids que mencionam a entidade. As tasks já vêm gateadas por privacidade
       // (listActiveTasks/ftsSearchTasks com a visão do caller), então filtrar aqui é seguro.
+      // Sob contacts:none o filtro é REJEITADO (paridade com o write-side, spec 91):
+      // sondar "task X menciona o contato Y?" é oráculo de associação do vault.
       if (input.mentions_entity !== undefined && input.mentions_entity.trim() !== '') {
+        if (hasScope(auth?.scopes, SCOPE_CONTACTS_NONE)) {
+          return toolError(
+            'This credential has no access to the Contacts vault (scope contacts:none), so the ' +
+            '`mentions_entity` filter is not available. Retry WITHOUT that filter.'
+          );
+        }
         const mentioned = await listNoteIdsMentioning(env, input.mentions_entity.trim());
         if (mentioned.size === 0) return toolSuccess({ count: 0, tasks: [] });
         tasks = tasks.filter((t) => mentioned.has(t.id));
