@@ -14,6 +14,7 @@ import { appFetch } from './http.js';
 import { loadMeta, type NoteMeta } from './meta-cache.js';
 import { toast } from './toast.js';
 import { wireAjaxForms } from './ajax-form.js';
+import { confirmModal } from './confirm-modal.js';
 
 interface Command {
   id: string;
@@ -580,6 +581,35 @@ function wireClickProxies() {
   });
 }
 
+// Undo pós-exclusão (spec 91/95): a rota de delete volta pra lista com
+// ?deleted=<id>&dtitle=<título>. Aqui a URL é limpa na hora (replaceState — F5
+// não re-dispara o toast) e sobe o toast de 8s com "Desfazer", que chama a rota
+// de restore e recarrega. É por isso que excluir nota não pede confirm.
+function wireUndoToast() {
+  const params = new URLSearchParams(location.search);
+  const deletedId = params.get('deleted');
+  if (!deletedId || !/^[A-Za-z0-9_-]+$/.test(deletedId)) return;
+  const title = params.get('dtitle') ?? '';
+  params.delete('deleted');
+  params.delete('dtitle');
+  const qs = params.toString();
+  history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : '') + location.hash);
+  toast(title ? `Nota "${title}" excluída.` : 'Nota excluída.', 'ok', {
+    action: {
+      label: 'Desfazer',
+      onClick: () => {
+        void fetch(`/app/notes/${deletedId}/restore`, {
+          method: 'POST',
+          headers: { accept: 'application/json' },
+        }).then((res) => {
+          if (res.ok) location.reload();
+          else toast('Não consegui restaurar a nota.', 'error');
+        }).catch(() => toast('Não consegui restaurar a nota.', 'error'));
+      },
+    },
+  });
+}
+
 function escText(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     switch (c) {
@@ -599,6 +629,10 @@ wireSidebarToggle();
 wireSearchTriggers();
 wireClickProxies();
 wireAjaxForms();
+wireUndoToast();
+// Ponte pro bundle-string do config (spec 95): configPageScript() não importa
+// módulo ES, então o confirmModal chega lá via window (com fallback nativo).
+(window as unknown as { __ebConfirm?: typeof confirmModal }).__ebConfirm = confirmModal;
 window.addEventListener('keydown', onKey);
 // loadNotes() removido do boot (spec 23): o meta agora carrega lazy na 1ª abertura
 // da palette (ensureNotesLoaded via openPalette). Páginas sem busca visível não

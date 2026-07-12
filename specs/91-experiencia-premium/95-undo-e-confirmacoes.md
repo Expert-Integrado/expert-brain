@@ -1,6 +1,6 @@
 # Undo com toast e confirmações dignas: aposentar o confirm() nativo
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** nenhuma dura (coordena com `94-erros-validacao-inline.md` no padrão de feedback)
 
 ## Contexto
@@ -64,11 +64,24 @@ toast; ação irreversível usa modal de confirmação do design system.
 
 ## Critérios de aceite
 
-- [ ] Deletar nota: sem diálogo; toast "Nota excluída — Desfazer" por 8s; clicar restaura a nota com edges (validado recarregando a página).
-- [ ] Deletar task pelo board: idem, e o card volta pra coluna original após desfazer.
-- [ ] Revogar link público: modal do design system com o texto atual, nada de `window.confirm`.
-- [ ] `grep -rn "confirm(" src/web` retorna zero ocorrências de `confirm(`/`window.confirm(` em código de produção.
-- [ ] Rota `/app/notes/:id/restore` exige sessão; 404 pra id inexistente ou não deletado.
+- [x] Deletar nota: sem diálogo; toast "Nota excluída — Desfazer" por 8s; clicar restaura a nota com edges (validado recarregando a página).
+- [x] ~~Deletar task pelo board~~ **N/A por reescopo**: descoberto na implementação que o console web NÃO tinha delete de nota nem de task (delete só existia via MCP), e o `delete_note` do MCP REJEITA `kind='task'` — task tem ciclo de vida próprio (cancela/completa via status), não se deleta. A rota web de delete criada nesta spec segue a mesma regra do produto: SÓ nota (404 pra task). Delete de task pelo board não existe de propósito.
+- [x] Revogar link público: modal do design system com o texto atual, nada de `window.confirm`.
+- [x] `grep -rn "confirm(" src/web` — zero call sites de produção. Única ocorrência restante: o fallback defensivo dentro do `askConfirm` do config-script (dispara apenas se o bundle do shell falhar em carregar; em uso normal nunca roda).
+- [x] Rota `/app/notes/:id/restore` exige sessão; 404 pra id inexistente ou não deletado.
+
+> Implementado em 12/07/2026: rotas `POST /app/notes/:id/delete` (espelha delete_note MCP:
+> Vectorize.deleteByIds PRIMEIRO, depois soft-delete; 303 → `/app/notes?deleted=<id>&dtitle=`)
+> e `POST /app/notes/:id/restore` (espelha restore_note: restore + re-embed +
+> refreshSimilarEdges best-effort). Botão "Excluir nota" no detalhe (form nativo, sem confirm —
+> o undo é o toast). `wireUndoToast` no shell lê ?deleted=, limpa a URL (replaceState) e mostra
+> toast de 8s com "Desfazer". `toast()` ganhou `{action, duration}`. `confirmModal()` novo em
+> client/confirm-modal.ts (Promise<boolean>, .modal do design system, Esc/backdrop cancelam,
+> foco no verbo); migrados os 9 call sites (note-media, visibility-ui x4, config-script x4 — o
+> config-script consome via `window.__ebConfirm`, bundle-string não importa módulo ES; o form
+> de apagar tag re-submete com flag `data-confirmed` após o modal). Testes:
+> test/web/note-delete-undo.test.ts (7), test/client/toast.test.ts (+3),
+> test/client/visibility-ui.test.ts migrado pro mock do confirmModal.
 
 ## Validação
 

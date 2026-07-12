@@ -1084,9 +1084,27 @@ export const SURFACES_CSS = `
   transition: opacity 180ms var(--ease), transform 180ms var(--ease);
   z-index: 300;
 }
-.app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
 .app-toast[data-kind='error'] { border-color: var(--danger-border); color: var(--danger); }
 .app-toast[data-kind='ok'] { border-color: var(--success-border); }
+/* Botão de ação do toast (spec 95): "Desfazer" pós-exclusão. */
+.app-toast-action {
+  margin-left: 12px; padding: 2px 10px;
+  background: none; border: 1px solid var(--border-strong); border-radius: 6px;
+  color: var(--accent-lav); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 180ms var(--ease), border-color 180ms var(--ease);
+}
+.app-toast-action:hover { background: var(--surface-1); border-color: var(--accent-lav); }
+
+/* Confirmação com marca (spec 95) — substitui o window.confirm nativo. */
+.confirm-dialog { max-width: 440px; }
+.confirm-body-text { margin: 0 0 var(--space-4); color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+
+/* Zona de exclusão no detalhe da nota (spec 95) — sem confirm: o undo é o toast. */
+.note-danger { margin-top: var(--space-5); }
+.note-danger form { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.note-danger-hint { color: var(--text-dim); font-size: 12.5px; }
 
 /* Taxonomia configuravel (spec 54) — swatch de cor nativo + mensagens inline */
 .tax-swatch {

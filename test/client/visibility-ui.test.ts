@@ -1,16 +1,22 @@
 // Testes do seletor único de visibilidade (src/web/client/visibility-ui.ts,
 // specs/60-ux-reforma/65) em jsdom. Cobre a state machine de transições:
 // Privado / Normal / Link público, com os POSTs certos (private/share/unshare),
-// confirm() nas destrutivas e fail-safe pro estado menos exposto.
+// confirmação nas destrutivas (confirmModal desde a spec 95, mockado aqui) e
+// fail-safe pro estado menos exposto.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { initVisibilityUi } from '../../src/web/client/visibility-ui.js';
 import { appFetch } from '../../src/web/client/http.js';
+import { confirmModal } from '../../src/web/client/confirm-modal.js';
 
 vi.mock('../../src/web/client/http.js', () => ({
   appFetch: vi.fn(),
 }));
+vi.mock('../../src/web/client/confirm-modal.js', () => ({
+  confirmModal: vi.fn(async () => true),
+}));
 
 const appFetchMock = vi.mocked(appFetch);
+const confirmModalMock = vi.mocked(confirmModal);
 
 function jsonRes(body: unknown, ok = true, status = 200) {
   return { ok, status, json: async () => body } as unknown as Response;
@@ -56,6 +62,8 @@ function checkedValue(): string | undefined {
 
 beforeEach(() => {
   appFetchMock.mockReset();
+  confirmModalMock.mockReset();
+  confirmModalMock.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -64,13 +72,12 @@ afterEach(() => {
 });
 
 describe('initVisibilityUi — transições', () => {
-  it('normal → privado: POST private=true, sem confirm', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm');
+  it('normal → privado: POST private=true, sem confirmação', async () => {
     appFetchMock.mockResolvedValueOnce(jsonRes({ ok: true }));
     const root = mount('normal');
     pick('private');
     await vi.waitFor(() => expect(root.dataset.state).toBe('private'));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(confirmModalMock).not.toHaveBeenCalled();
     expect(appFetchMock).toHaveBeenCalledExactlyOnceWith('/app/tasks/private', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -100,7 +107,7 @@ describe('initVisibilityUi — transições', () => {
 
   it('link → normal: confirma e revoga; recusar não faz POST nenhum', async () => {
     // recusa
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    confirmModalMock.mockResolvedValue(false);
     let root = mount('link', { shared: true });
     pick('normal');
     await vi.waitFor(() => expect(checkedValue()).toBe('link'));
@@ -108,7 +115,7 @@ describe('initVisibilityUi — transições', () => {
     expect(root.dataset.state).toBe('link');
 
     // aceita
-    confirmSpy.mockReturnValue(true);
+    confirmModalMock.mockResolvedValue(true);
     appFetchMock.mockResolvedValueOnce(jsonRes({ ok: true }));
     root = mount('link', { shared: true });
     pick('normal');
@@ -121,7 +128,6 @@ describe('initVisibilityUi — transições', () => {
   });
 
   it('link → privado: confirma; private=true no server já revoga o link junto', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     appFetchMock.mockResolvedValueOnce(jsonRes({ ok: true, share_revoked: true }));
     const root = mount('link', { shared: true });
     pick('private');
@@ -153,7 +159,6 @@ describe('initVisibilityUi — transições', () => {
   });
 
   it('privado → link: confirma, despriva e já gera o link (2 POSTs encadeados)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     appFetchMock
       .mockResolvedValueOnce(jsonRes({ ok: true })) // private=false
       .mockResolvedValueOnce(jsonRes({ url: 'https://x.dev/s/ebs_novo', expires_brt: '08/08/2026 12:00' })); // share
@@ -168,7 +173,6 @@ describe('initVisibilityUi — transições', () => {
   });
 
   it('privado → link com geração falhando: para em NORMAL (fail-safe menos exposto)', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     appFetchMock
       .mockResolvedValueOnce(jsonRes({ ok: true })) // private=false ok
       .mockResolvedValueOnce(jsonRes({ error: 'share quebrou' }, false, 500)); // share falha
@@ -180,7 +184,6 @@ describe('initVisibilityUi — transições', () => {
   });
 
   it('botão Revogar: confirma, POST unshare e cai pra normal', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     appFetchMock.mockResolvedValueOnce(jsonRes({ ok: true }));
     const root = mount('link', { shared: true });
     root.querySelector<HTMLButtonElement>('[data-share-revoke]')!.click();

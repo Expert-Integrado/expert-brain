@@ -45,4 +45,39 @@ describe('toast', () => {
     const el = document.querySelector('.app-toast') as HTMLDivElement;
     expect(el.dataset.kind).toBe('error');
   });
+
+  // Spec 91-experiencia-premium/95: toast com botão de ação ("Desfazer").
+  it('com action: renderiza o botão, estica o autodismiss pra 8s e clicar dispara o onClick', () => {
+    const onClick = vi.fn();
+    toast('Nota excluída.', 'ok', { action: { label: 'Desfazer', onClick } });
+    const el = document.querySelector('.app-toast') as HTMLDivElement;
+    const btn = el.querySelector('.app-toast-action') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.textContent).toBe('Desfazer');
+
+    // 4s (timeout padrão) NÃO esconde — com ação o prazo é 8s.
+    vi.advanceTimersByTime(4500);
+    expect(el.classList.contains('is-visible')).toBe(true);
+
+    btn.click();
+    expect(onClick).toHaveBeenCalledOnce();
+    expect(el.classList.contains('is-visible')).toBe(false);
+  });
+
+  it('com action: some sozinho após 8s sem clique; toast seguinte não herda o botão', () => {
+    toast('Nota excluída.', 'ok', { action: { label: 'Desfazer', onClick: vi.fn() } });
+    const el = document.querySelector('.app-toast') as HTMLDivElement;
+    vi.advanceTimersByTime(8100);
+    expect(el.classList.contains('is-visible')).toBe(false);
+
+    toast('outra coisa', 'ok');
+    expect(el.querySelector('.app-toast-action')).toBeNull();
+  });
+
+  it('duration explícito vence o default', () => {
+    toast('rápido', 'ok', { duration: 1000 });
+    const el = document.querySelector('.app-toast') as HTMLDivElement;
+    vi.advanceTimersByTime(1100);
+    expect(el.classList.contains('is-visible')).toBe(false);
+  });
 });

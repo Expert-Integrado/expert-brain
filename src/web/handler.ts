@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost } from './login.js';
-import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNoteCreatePost, handleNotePrivatePost, handleTaskFromNotePost } from './notes.js';
+import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNoteCreatePost, handleNotePrivatePost, handleTaskFromNotePost, handleNoteDeletePost, handleNoteRestorePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
 import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
 import { handleHomePage } from './home.js';
@@ -83,6 +83,13 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // com sufixo /private não colide com o regex de id de 1 segmento.
   const notePrivateMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/private$/);
   if (notePrivateMatch && req.method === 'POST') return handleNotePrivatePost(req, env, notePrivateMatch[1]);
+
+  // Soft-delete + undo pela web (spec 95). Sessão de browser só, mesmo racional
+  // do /private acima. Delete espelha o delete_note do MCP; restore, o restore_note.
+  const noteDeleteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/delete$/);
+  if (noteDeleteMatch && req.method === 'POST') return handleNoteDeletePost(req, env, noteDeleteMatch[1]);
+  const noteRestoreMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)\/restore$/);
+  if (noteRestoreMatch && req.method === 'POST') return handleNoteRestorePost(req, env, noteRestoreMatch[1]);
 
   const noteMatch = path.match(/^\/app\/notes\/([A-Za-z0-9_-]+)$/);
   if (noteMatch && req.method === 'GET') return handleNoteDetail(req, env, noteMatch[1]);

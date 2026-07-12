@@ -6,6 +6,7 @@
 // ver src/web/render.ts) bloqueia onclick inline, então o handler mora aqui.
 
 import { appFetch } from './http.js';
+import { confirmModal } from './confirm-modal.js';
 
 interface MediaView {
   id: string; kind: string; mime_type: string; size_bytes: number;
@@ -71,7 +72,7 @@ function openModal(id: string) {
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   modal.querySelector('.media-close')!.addEventListener('click', close);
   modal.querySelector('.media-del')!.addEventListener('click', async () => {
-    if (!confirm('Excluir esta mídia?')) return;
+    if (!(await confirmModal({ title: 'Excluir esta mídia?', body: 'O arquivo sai do armazenamento — não dá pra desfazer.', verb: 'Excluir' }))) return;
     try {
       const res = await appFetch(`/app/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('delete ' + res.status);

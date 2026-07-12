@@ -13,6 +13,7 @@
 // input read-only pra copiar. CSP: tudo via addEventListener (zero inline).
 
 import { appFetch } from './http.js';
+import { confirmModal } from './confirm-modal.js';
 
 type VisState = 'private' | 'normal' | 'link';
 
@@ -199,7 +200,7 @@ export function initVisibilityUi(): void {
     try {
       if (next === 'private') {
         if (state === 'link' && root.dataset.shared === '1') {
-          if (!confirm(`Tornar a ${kindLabel} privada revoga o link público. Quem tiver o link deixa de conseguir abrir. Continuar?`)) {
+          if (!(await confirmModal({ title: `Tornar a ${kindLabel} privada?`, body: 'Isso revoga o link público. Quem tiver o link deixa de conseguir abrir.', verb: 'Tornar privada' }))) {
             syncRadios(null);
             return;
           }
@@ -217,7 +218,7 @@ export function initVisibilityUi(): void {
       }
       if (next === 'normal') {
         if (state === 'link' && root.dataset.shared === '1') {
-          if (!confirm('Voltar pro normal revoga o link público. Quem tiver o link deixa de conseguir abrir. Continuar?')) {
+          if (!(await confirmModal({ title: 'Voltar pro normal?', body: 'Isso revoga o link público. Quem tiver o link deixa de conseguir abrir.', verb: 'Revogar link' }))) {
             syncRadios(null);
             return;
           }
@@ -242,7 +243,7 @@ export function initVisibilityUi(): void {
       }
       // next === 'link'
       if (state === 'private') {
-        if (!confirm(`Criar link público tira a ${kindLabel} do modo privado. Continuar?`)) {
+        if (!(await confirmModal({ title: 'Criar link público?', body: `Isso tira a ${kindLabel} do modo privado.`, verb: 'Criar link', danger: false }))) {
           syncRadios(null);
           return;
         }
@@ -279,16 +280,16 @@ export function initVisibilityUi(): void {
   });
   revokeBtn?.addEventListener('click', () => {
     if (busy) return;
-    if (!confirm('Revogar o link público? Quem tiver o link deixa de conseguir abrir.')) return;
     busy = true;
-    void doRevoke()
-      .then((ok) => {
-        if (ok) {
-          setState('normal');
-          setPanelVisible(false);
-          setStatus('Link revogado.', 'ok');
-        }
-      })
+    void (async () => {
+      const ok = await confirmModal({ title: 'Revogar o link público?', body: 'Quem tiver o link deixa de conseguir abrir.', verb: 'Revogar' });
+      if (!ok) return;
+      if (await doRevoke()) {
+        setState('normal');
+        setPanelVisible(false);
+        setStatus('Link revogado.', 'ok');
+      }
+    })()
       .finally(() => {
         busy = false;
       });

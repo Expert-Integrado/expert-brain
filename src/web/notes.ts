@@ -13,6 +13,8 @@ import {
   getEdgesTo,
   updateNote,
   setNotePrivate,
+  deleteNote,
+  restoreNote,
   insertNote,
   insertTask,
   getNotesByIds,
@@ -44,7 +46,8 @@ import { resolveDomainMeta, resolveKindMeta, type TaxonomyConfig } from './domai
 import { getTaxonomyConfig, mergedDomainSlugs } from './taxonomy-config.js';
 import { readCachedResurfaceDigest, isDigestEmpty, type ResurfaceDigest } from '../digest/resurface.js';
 import { embed, upsertNoteVector, queryVector, type VectorMatch } from '../vector/index.js';
-import { SIMILARITY_TOP_K, DEDUP_MIN_SCORE, persistSimilarEdgesFromMatches } from './similarity.js';
+import { SIMILARITY_TOP_K, DEDUP_MIN_SCORE, persistSimilarEdgesFromMatches, refreshSimilarEdges } from './similarity.js';
+import { formError, wantsJson } from './form-error.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -718,6 +721,13 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
 
     ${noteVisibilitySection}
 
+    <section class="note-danger">
+      <form method="post" action="/app/notes/${esc(note.id)}/delete">
+        <button type="submit" class="btn btn-danger">Excluir nota</button>
+        <span class="note-danger-hint">Reversível: a lista mostra "Desfazer" logo após excluir.</span>
+      </form>
+    </section>
+
     ${mentionsHtml}
     ${tasksFromNoteHtml}
 
@@ -1019,6 +1029,74 @@ export async function handleNotePrivatePost(req: Request, env: Env, id: string):
   return wantsJson
     ? json({ ok: true, id, private: makePrivate })
     : new Response(null, { status: 302, headers: { location: `/app/notes/${id}` } });
+}
+
+// POST /app/notes/{id}/delete — exclusão SOFT pela web (spec 95). Espelha o
+// delete_note do MCP: remove o vetor do Vectorize PRIMEIRO (falha = aborta sem
+// flagar — senão a nota some da UI mas segue respondendo no recall), depois
+// flaga deleted_at. Task NUNCA se deleta (mesma regra do MCP: task tem ciclo
+// próprio, cancela/completa) — 404 sem vazar que o id existe como task. O 303
+// volta pra lista com ?deleted=<id>&dtitle=<título>: o shell lê os params,
+// limpa a URL e mostra o toast com "Desfazer" (undo real via /restore) — por
+// isso a ação NÃO pede confirm antes.
+export async function handleNoteDeletePost(req: Request, env: Env, id: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const note = await getNoteById(env, id, false, /* includePrivate */ true);
+  if (!note || note.kind === 'task') {
+    return formError(req, 'Nota não encontrada.', { status: 404, returnTo: '/app/notes' });
+  }
+
+  try {
+    await env.VECTORIZE.deleteByIds([id]);
+  } catch (err) {
+    console.error('web note delete: Vectorize.deleteByIds failed (nothing flagged)', err);
+    return formError(req, 'Não consegui remover a nota do índice semântico. Tente de novo.', {
+      status: 502,
+      returnTo: `/app/notes/${id}`,
+    });
+  }
+  await deleteNote(env, id, `oauth:${session.email}`);
+
+  const dtitle = (note.title ?? '').slice(0, 80);
+  const target = `/app/notes?deleted=${encodeURIComponent(id)}&dtitle=${encodeURIComponent(dtitle)}`;
+  return wantsJson(req)
+    ? json({ ok: true, id, deleted: true })
+    : new Response(null, { status: 303, headers: { location: target } });
+}
+
+// POST /app/notes/{id}/restore — desfaz o soft-delete (o "Desfazer" do toast).
+// Espelha o restore_note do MCP: tira da lixeira, re-embeda o vetor (o delete
+// removeu do Vectorize) e recomputa a vizinhança semântica. 404 pra id
+// inexistente OU nota que não está deletada — nada a restaurar.
+export async function handleNoteRestorePost(req: Request, env: Env, id: string): Promise<Response> {
+  const session = await requireSession(req, env);
+  if (!session.ok) return session.response;
+
+  const note = await getNoteById(env, id, /* includeDeleted */ true, /* includePrivate */ true);
+  if (!note || note.deleted_at == null) {
+    return formError(req, 'Nada pra restaurar.', { status: 404, returnTo: '/app/notes' });
+  }
+
+  await restoreNote(env, id, `oauth:${session.email}`);
+  // Re-embed: sem isso a nota volta pra UI mas não pro recall dos agentes.
+  // Falha aqui não desfaz o restore (a nota já está viva) — loga e segue.
+  try {
+    const vec = await embed(env, note.tldr);
+    await upsertNoteVector(env, id, vec, {
+      domains: JSON.parse(note.domains) as string[],
+      kind: note.kind,
+      created_at: note.created_at,
+    });
+    await refreshSimilarEdges(env, id, vec);
+  } catch (err) {
+    console.error('web note restore: re-embed failed (note restored anyway)', err);
+  }
+
+  return wantsJson(req)
+    ? json({ ok: true, id, title: note.title })
+    : new Response(null, { status: 303, headers: { location: `/app/notes/${id}` } });
 }
 
 // ─────────────── Seletor único de visibilidade (spec 60-ux-reforma/65) ───────────────

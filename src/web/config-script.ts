@@ -18,6 +18,14 @@ export function configPageScript(): string {
   // Integrações dispara todos — o dot hidrata sem precisar abrir card por card.
   var integLoaders = [];
   function runIntegLoaders() { integLoaders.forEach(function (fn) { fn(); }); }
+  // Confirmação com marca (spec 95): bundle-string não importa módulo ES — o
+  // shell expõe o confirmModal em window.__ebConfirm. Fallback pro confirm
+  // nativo só se o shell ainda não carregou (defer race no primeiro paint).
+  function askConfirm(opts) {
+    if (window.__ebConfirm) return window.__ebConfirm(opts);
+    var msg = opts.body ? opts.title + ' ' + opts.body : opts.title;
+    return Promise.resolve(window.confirm(msg));
+  }
   function setDot(id, on, label) {
     var dot = document.getElementById(id);
     if (dot) dot.className = 'status-dot' + (on ? ' is-on' : '');
@@ -128,8 +136,10 @@ export function configPageScript(): string {
     if (value) value.addEventListener('copy', function () { copied = true; });
     var ack = document.getElementById('key-flash-ack');
     if (ack) ack.addEventListener('click', function () {
-      if (!copied && !window.confirm('Você ainda não copiou a chave — depois de fechar não dá pra ver de novo. Fechar mesmo assim?')) return;
-      flash.remove();
+      if (copied) { flash.remove(); return; }
+      askConfirm({ title: 'Fechar sem copiar a chave?', body: 'Depois de fechar não dá pra ver a chave de novo.', verb: 'Fechar mesmo assim' }).then(function (ok) {
+        if (ok) flash.remove();
+      });
     });
   })();
 
@@ -242,14 +252,16 @@ export function configPageScript(): string {
   var taxResetBtn = document.getElementById('taxonomy-reset');
   if (taxResetBtn) {
     taxResetBtn.addEventListener('click', function () {
-      if (!confirm('Restaurar a taxonomia padrão? Cores e nomes customizados (e áreas pré-criadas sem notas) somem.')) return;
-      fetch('/app/config/taxonomy/reset', { method: 'POST', headers: { accept: 'application/json' }, credentials: 'same-origin' })
-        .then(function () { location.href = '/app/config?saved=taxonomy#taxonomy'; })
-        .catch(function () {
-          var statusEl = document.getElementById('taxonomy-status');
-          statusEl.textContent = 'Falha de rede ao restaurar.';
-          statusEl.style.color = 'var(--danger)';
-        });
+      askConfirm({ title: 'Restaurar a taxonomia padrão?', body: 'Cores e nomes customizados (e áreas pré-criadas sem notas) somem.', verb: 'Restaurar' }).then(function (go) {
+        if (!go) return;
+        fetch('/app/config/taxonomy/reset', { method: 'POST', headers: { accept: 'application/json' }, credentials: 'same-origin' })
+          .then(function () { location.href = '/app/config?saved=taxonomy#taxonomy'; })
+          .catch(function () {
+            var statusEl = document.getElementById('taxonomy-status');
+            statusEl.textContent = 'Falha de rede ao restaurar.';
+            statusEl.style.color = 'var(--danger)';
+          });
+      });
     });
   }
 
@@ -391,10 +403,12 @@ export function configPageScript(): string {
     });
 
     gcDisconnect.addEventListener('click', function () {
-      if (!confirm('Desconectar do Google? Os contatos já sincronizados FICAM no vault; só a ponte com a agenda é desfeita.')) return;
-      gcJson('/app/config/google/disconnect', { method: 'POST' }).then(function () {
-        location.href = '/app/config#google-contatos';
-        location.reload();
+      askConfirm({ title: 'Desconectar do Google?', body: 'Os contatos já sincronizados FICAM no vault; só a ponte com a agenda é desfeita.', verb: 'Desconectar' }).then(function (go) {
+        if (!go) return;
+        gcJson('/app/config/google/disconnect', { method: 'POST' }).then(function () {
+          location.href = '/app/config#google-contatos';
+          location.reload();
+        });
       });
     });
 
@@ -751,8 +765,16 @@ export function configPageScript(): string {
   // ── Seção Tags (pedido 10/07): confirmação no apagar + filtro client-side ──
   document.querySelectorAll('form.tag-delete-form').forEach(function (f) {
     f.addEventListener('submit', function (e) {
+      // Confirmação assíncrona: cancela o submit, pergunta no modal e re-submete
+      // com a flag marcada — o segundo submit passa direto por este guard.
+      if (f.getAttribute('data-confirmed') === '1') return;
+      e.preventDefault();
       var tag = f.getAttribute('data-tag') || 'esta tag';
-      if (!confirm('Apagar a tag "' + tag + '" de todas as notas e tasks? As notas ficam, só o rótulo some.')) e.preventDefault();
+      askConfirm({ title: 'Apagar a tag "' + tag + '"?', body: 'Sai de todas as notas e tasks. As notas ficam, só o rótulo some.', verb: 'Apagar tag' }).then(function (go) {
+        if (!go) return;
+        f.setAttribute('data-confirmed', '1');
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
     });
   });
   var tagsFilter = document.getElementById('tags-filter');
