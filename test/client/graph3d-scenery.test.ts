@@ -1,15 +1,12 @@
 // Testes da cenografia do palco 3D (spec 104 "cosmos") — a matemática pura de
-// src/web/client/graph3d-scenery.ts: percentis do núcleo, vértices da gaiola,
-// texto do ano. Roda em jsdom (sem WebGL): buildYearSprite sem canvas 2d
-// devolve null por contrato, e é exatamente isso que se testa.
+// src/web/client/graph3d-scenery.ts: percentis do núcleo, vértices da gaiola.
+// Roda em jsdom (sem WebGL).
 import { describe, it, expect } from 'vitest';
 import {
   computeCore,
   cageRadius,
   cagePositions,
   buildCage,
-  yearText,
-  buildYearSprite,
 } from '../../src/web/client/graph3d-scenery.js';
 
 describe('computeCore', () => {
@@ -81,15 +78,5 @@ describe('buildCage', () => {
     expect(cage.material.transparent).toBe(true);
     expect(cage.material.opacity).toBeCloseTo(0.15, 6);
     expect(cage.material.depthWrite).toBe(false);
-  });
-});
-
-describe('ano', () => {
-  it('yearText espaça os dígitos', () => {
-    expect(yearText(2026)).toBe('2 0 2 6');
-  });
-
-  it('buildYearSprite sem canvas 2d (jsdom) devolve null sem lançar', () => {
-    expect(buildYearSprite(2026, 'system-ui', '#e8ecff')).toBeNull();
   });
 });

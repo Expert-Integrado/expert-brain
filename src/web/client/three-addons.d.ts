@@ -1,6 +1,6 @@
 // Declaração ambiente pro three@0.185 (não publica .d.ts) e pros addons jsm de
 // pós-processamento — mesmo padrão do d3-force-3d.d.ts: só o SUBCONJUNTO que o
-// palco 3D usa (spec 104: bloom + gaiola + ano). O runtime vem do MESMO three
+// palco 3D usa (spec 104: bloom + gaiola). O runtime vem do MESMO three
 // que o 3d-force-graph já embute no bundle (esbuild dedupe) — o shim é só tipo.
 declare module 'three' {
   export class Vector2 {
@@ -29,24 +29,6 @@ declare module 'three' {
     material: LineBasicMaterial;
     position: { set(x: number, y: number, z: number): void };
     scale: { setScalar(s: number): void };
-    visible: boolean;
-    renderOrder: number;
-    parent: { remove(obj: unknown): void } | null;
-  }
-  export class CanvasTexture {
-    constructor(canvas: unknown);
-    dispose(): void;
-  }
-  export class SpriteMaterial {
-    constructor(params?: Record<string, unknown>);
-    map: CanvasTexture | null;
-    dispose(): void;
-  }
-  export class Sprite {
-    constructor(material?: unknown);
-    material: SpriteMaterial;
-    position: { set(x: number, y: number, z: number): void };
-    scale: { set(x: number, y: number, z: number): void };
     visible: boolean;
     renderOrder: number;
     parent: { remove(obj: unknown): void } | null;

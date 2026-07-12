@@ -3,16 +3,15 @@ import {
   Float32BufferAttribute,
   LineBasicMaterial,
   LineSegments,
-  Sprite,
-  SpriteMaterial,
-  CanvasTexture,
 } from 'three';
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Cenografia do palco 3D (spec 104 "cosmos"): gaiola esférica aramada + sprite
-// do ano. Funções PURAS separadas do graph3d.ts pra serem testáveis em jsdom
+// Cenografia do palco 3D (spec 104 "cosmos"): gaiola esférica aramada.
+// Funções PURAS separadas do graph3d.ts pra serem testáveis em jsdom
 // (test/client) sem subir WebGL — a matemática (percentis do núcleo, vértices
 // da gaiola) é o que quebra silencioso; os builders three são wiring fino.
+// (O sprite do ano da referência foi removido em 12/07/2026 por decisão do
+// dono — era artefato do print de exemplo, não do produto.)
 // ──────────────────────────────────────────────────────────────────────────────
 
 export interface CorePoint { x: number; y: number; z: number; }
@@ -98,51 +97,12 @@ export function buildCage(color: string, opacity: number): LineSegments {
   return new LineSegments(geo, mat);
 }
 
-// Texto do ano com respiro entre dígitos (o letter-spacing do canvas 2d não é
-// universal; espaço literal é) — "2026" → "2 0 2 6".
-export function yearText(year: number): string {
-  return String(year).split('').join(' ');
-}
-
-// Dimensões do canvas do sprite — exportadas pro chamador escalar o sprite no
-// MESMO aspecto (senão o texto estica).
-export const YEAR_CANVAS_W = 512;
-export const YEAR_CANVAS_H = 160;
-
-// Sprite do ano (CanvasTexture — sempre de frente pra câmera). null quando o
-// contexto 2d não existe (jsdom/headless): o palco segue sem o ano, sem erro.
-export function buildYearSprite(year: number, fontFamily: string, color: string): Sprite | null {
-  const canvas = document.createElement('canvas');
-  canvas.width = YEAR_CANVAS_W;
-  canvas.height = YEAR_CANVAS_H;
-  let c2d: CanvasRenderingContext2D | null = null;
-  try { c2d = canvas.getContext('2d'); } catch { c2d = null; }
-  if (!c2d) return null;
-  c2d.clearRect(0, 0, YEAR_CANVAS_W, YEAR_CANVAS_H);
-  c2d.font = `600 104px ${fontFamily || 'system-ui'}`;
-  c2d.textAlign = 'center';
-  c2d.textBaseline = 'middle';
-  // SEM shadowBlur no canvas: com bloom ligado o blur duplo (canvas + bloom)
-  // derretia os dígitos num blob ilegível (validação 12/07) — o glow do ano é
-  // 100% do bloom; sem bloom o texto fica limpo e discreto, também ok.
-  c2d.fillStyle = color;
-  c2d.fillText(yearText(year), YEAR_CANVAS_W / 2, YEAR_CANVAS_H / 2 + 4);
-  const tex = new CanvasTexture(canvas);
-  const mat = new SpriteMaterial({ map: tex, transparent: true, opacity: 0.8, depthWrite: false });
-  return new Sprite(mat);
-}
-
 // Descarte explícito — o _destructor da lib não conhece objetos que NÓS
-// adicionamos à cena; sem isso geometria/material/textura vazam na troca 2D↔3D.
-export function disposeScenery(cage: LineSegments | null, year: Sprite | null): void {
+// adicionamos à cena; sem isso geometria/material vazam na troca 2D↔3D.
+export function disposeScenery(cage: LineSegments | null): void {
   if (cage) {
     cage.parent?.remove(cage);
     cage.geometry.dispose();
     cage.material.dispose();
-  }
-  if (year) {
-    year.parent?.remove(year);
-    year.material.map?.dispose();
-    year.material.dispose();
   }
 }

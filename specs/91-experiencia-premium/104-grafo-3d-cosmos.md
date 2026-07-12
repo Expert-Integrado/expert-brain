@@ -47,12 +47,11 @@ Fatos verificados que viabilizam barato:
   cor do tema. Raio = `min(r98*1.05, r88*1.4)` do `computeCore` (percentis da nuvem),
   reposicionada nos MESMOS momentos do frameCore (a cada 30 ticks no assentamento +
   todo onEngineStop).
-- **Ano**: sprite CanvasTexture com o ano corrente, fonte `--font-display`, no topo da
-  gaiola. Calibração da validação (12/07/2026): SEM `shadowBlur` no canvas — com bloom
-  ligado o blur duplo (canvas + bloom) derretia os dígitos num blob ilegível; o glow do
-  ano é 100% do bloom. Escala `w = raio·0.38` (0.55 dominava o quadro) e posição y
-  clampada em `cy + min(r, r88·1.15)` — preso ao polo da gaiola (1.4·r88) ficava fora
-  do enquadre da moldura (1.30·r88).
+- **Ano: REMOVIDO (12/07/2026, decisão do dono).** O "2026" da referência era artefato
+  do print de exemplo, não requisito do produto. Shipou na primeira leva (sprite
+  CanvasTexture calibrado) e foi retirado no mesmo dia ao validar com o dono — sprite,
+  shim de tipos (Sprite/SpriteMaterial/CanvasTexture) e testes do ano removidos; a
+  cenografia ficou só com a gaiola.
 - **`CORE_MARGIN` 1.15→1.30** pra moldura de câmera não colar na gaiola.
 - **Arestas explícitas: alfa 0.55→0.35 quando glow ativo** (com bloom elas saturam).
 - **Perf/higiene junto (dívidas do palco 3D que este trabalho encosta):**
@@ -93,8 +92,8 @@ Fatos verificados que viabilizam barato:
 ## Critérios de aceite
 
 - [x] `/app/graph?mode=3d` em tema escuro desktop: nós com halo/glow, gaiola esférica
-  envolvendo a nuvem, ano no topo — comparável à referência (validado 12/07/2026,
-  screenshot v3 após 2 rodadas de calibração).
+  envolvendo a nuvem — comparável à referência (validado 12/07/2026, screenshot v3
+  após 2 rodadas de calibração; o ano foi removido depois, por decisão do dono).
 - [x] Switch "Brilho" liga/desliga ao vivo (validado via Playwright).
 - [x] Busca no 3D com glow: matches acesos, resto apagado e legível.
 - [x] Tema claro: sem bloom (switch desabilitado), gaiola em cor escura legível.

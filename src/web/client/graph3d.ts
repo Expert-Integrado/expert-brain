@@ -4,7 +4,7 @@ import { Vector2 } from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { domainColor } from '../domain-colors.js';
-import { computeCore, cageRadius, buildCage, buildYearSprite, disposeScenery, YEAR_CANVAS_W, YEAR_CANVAS_H } from './graph3d-scenery.js';
+import { computeCore, cageRadius, buildCage, disposeScenery } from './graph3d-scenery.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Grafo 3D — o "globo que gira", agora como um MODO do /app/graph (não mais uma
@@ -283,29 +283,20 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     graph.linkColor((l: any) => linkColor(l));
   }
 
-  // ── Cenografia "cosmos" (spec 104): gaiola esférica + ano no topo, num grupo
-  // adicionado à cena da lib — a cena NUNCA é recriada (filtros/busca/reheat só
-  // mexem em graphData), então os objetos persistem. Posição/raio seguem o
-  // computeCore nos MESMOS momentos do frameCore (30 ticks + engineStop);
-  // nascem invisíveis até a primeira medida.
+  // ── Cenografia "cosmos" (spec 104): gaiola esférica adicionada à cena da
+  // lib — a cena NUNCA é recriada (filtros/busca/reheat só mexem em graphData),
+  // então o objeto persiste. Posição/raio seguem o computeCore nos MESMOS
+  // momentos do frameCore (30 ticks + engineStop); nasce invisível até a
+  // primeira medida.
   let cage: ReturnType<typeof buildCage> | null = null;
-  let yearSprite: ReturnType<typeof buildYearSprite> = null;
   try {
     const scene = graph.scene?.();
     if (scene?.add) {
       const cageColor = isDark ? '#93a1c8' : '#3c4262';
-      const yearColor = isDark ? '#e8ecff' : '#2c3050';
-      const fontDisplay = (getComputedStyle(document.documentElement)
-        .getPropertyValue('--font-display').trim()) || 'system-ui';
       cage = buildCage(cageColor, 0.15);
       cage.visible = false;
       cage.renderOrder = -1; // atrás dos nós — arame é cenário, não conteúdo
       scene.add(cage);
-      yearSprite = buildYearSprite(new Date().getFullYear(), fontDisplay, yearColor);
-      if (yearSprite) {
-        yearSprite.visible = false;
-        scene.add(yearSprite);
-      }
     }
   } catch { /* cena indisponível — palco segue sem cenografia */ }
 
@@ -318,25 +309,11 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     const core = computeCore(livePts());
     if (!core) {
       cage.visible = false;
-      if (yearSprite) yearSprite.visible = false;
       return;
     }
-    const r = cageRadius(core);
     cage.visible = true;
     cage.position.set(core.cx, core.cy, core.cz);
-    cage.scale.setScalar(r);
-    if (yearSprite) {
-      // Ano no alto da esfera, sempre de frente (sprite). A altura é CLAMPADA
-      // pela moldura da câmera (r88 · 1.22 < CORE_MARGIN 1.30): quando a gaiola
-      // é bem maior que o núcleo (rabo de órfãs → r 1.4x), o polo fica FORA do
-      // enquadre — o ano então flutua dentro da esfera, ainda no topo visível
-      // (validação 12/07: preso ao polo ele sumia da tela). Escala preserva o
-      // aspecto do canvas pra não esticar o texto.
-      const w = r * 0.38;
-      yearSprite.visible = true;
-      yearSprite.position.set(core.cx, core.cy + Math.min(r, core.r88 * 1.15), core.cz);
-      yearSprite.scale.set(w, w * (YEAR_CANVAS_H / YEAR_CANVAS_W), 1);
-    }
+    cage.scale.setScalar(cageRadius(core));
   }
 
   // Multiplicador de tamanho do painel (slider "Tamanho das bolinhas") aplicado
@@ -599,7 +576,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
       // targets por sessão 3D); cenografia idem (geometria/material/textura).
       try { bloomPass?.dispose?.(); outputPass?.dispose?.(); } catch { /* best-effort */ }
-      try { disposeScenery(cage, yearSprite); } catch { /* best-effort */ }
+      try { disposeScenery(cage); } catch { /* best-effort */ }
       try { graph._destructor?.(); } catch { /* best-effort */ }
     },
   };
