@@ -14,6 +14,8 @@ export function sidebarCollapsedFromReq(req: Request): boolean {
 
 // Ícones do menu lateral — mesmos traços do bottom-nav (mobile) pra consistência.
 const SIDEBAR_ICONS = {
+  search:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>',
   home:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>',
   graph:
@@ -75,6 +77,7 @@ ${opts.extraHead ?? ''}
 <div class="shell${collapsed ? ' sidebar-collapsed' : ''}">
   <aside class="sidebar">
     <div class="logo"><span class="logo-text">Expert Brain</span></div>
+    <button class="nav-item nav-search" type="button" data-cmd-open title="Buscar (Ctrl+K)">${SIDEBAR_ICONS.search}<span class="nav-label">Buscar</span><kbd class="nav-kbd" aria-hidden="true">Ctrl+K</kbd></button>
     <a class="nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" title="Início">${SIDEBAR_ICONS.home}<span class="nav-label">Início</span></a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" title="Grafo">${SIDEBAR_ICONS.graph}<span class="nav-label">Grafo</span></a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
@@ -93,6 +96,10 @@ ${opts.extraHead ?? ''}
   <main class="main">${releaseBanner}${opts.body}</main>
 </div>
 <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
+  <button class="bottom-nav-item" type="button" data-cmd-open aria-label="Buscar">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+    <span>Buscar</span>
+  </button>
   <a class="bottom-nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" aria-label="Início">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
     <span>Início</span>

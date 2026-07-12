@@ -1,6 +1,6 @@
 # Busca no celular: abrir a command palette sem teclado físico
 
-> **Status:** draft · **Prioridade:** P0 · **Esforço:** S · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P0 · **Esforço:** S · **Repo:** expert-brain
 > **Depende de:** nenhuma (a palette já existe — `50-console-v2/66`)
 
 ## Contexto
@@ -48,11 +48,15 @@ regressão do atalho Ctrl+K.
 
 ## Critérios de aceite
 
-- [ ] Em viewport mobile (visualização responsiva 390px), a lupa aparece no bottom-nav em todas as telas `/app/*` e abre a palette com 1 toque.
-- [ ] No desktop, o item "Buscar" na sidebar abre a palette; Ctrl+K continua funcionando idêntico.
-- [ ] Com teclado virtual aberto, o input e os 3 primeiros resultados permanecem visíveis (palette no topo).
-- [ ] Toque no backdrop fecha a palette.
-- [ ] Zero regressão nos testes existentes do shell.
+- [x] Em viewport mobile (visualização responsiva 390px), a lupa aparece no bottom-nav em todas as telas `/app/*` e abre a palette com 1 toque.
+- [x] No desktop, o item "Buscar" na sidebar abre a palette; Ctrl+K continua funcionando idêntico (onKey intacto; o botão usa a MESMA openPalette).
+- [x] Com teclado virtual aberto, o input e os 3 primeiros resultados permanecem visíveis (palette a 8px do topo, lista max-height 48dvh).
+- [x] Toque no backdrop fecha a palette (já existia — listener no cmd-backdrop).
+- [x] Zero regressão nos testes existentes do shell (suite completa 1159/1159 verde).
+
+> Implementado em 11/07/2026: botão Buscar na sidebar + lupa na bottom-nav (`data-cmd-open`,
+> delegação em `wireSearchTriggers`), input `type="search"` + `enterkeyhint="search"`,
+> palette top-anchored no mobile com alvos 44px. Testes em `test/web/search-nav.test.ts`.
 
 ## Validação
 

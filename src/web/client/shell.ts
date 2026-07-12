@@ -141,7 +141,7 @@ function ensurePalette(): { root: HTMLElement; input: HTMLInputElement; list: HT
         <span class="cmd-input-icon" aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
         </span>
-        <input class="cmd-input" type="text" placeholder="Buscar notas, tarefas e contatos — digite &gt; pra comandos" autocomplete="off" spellcheck="false" aria-label="Paleta de comandos" />
+        <input class="cmd-input" type="search" enterkeyhint="search" placeholder="Buscar notas, tarefas e contatos — digite &gt; pra comandos" autocomplete="off" spellcheck="false" aria-label="Paleta de comandos" />
         <kbd class="cmd-esc">Esc</kbd>
       </div>
       <ul class="cmd-list" role="listbox" aria-live="polite"></ul>
@@ -553,6 +553,18 @@ function wireSidebarToggle() {
   btn.addEventListener('click', () => toggleSidebar());
 }
 
+// Gatilhos sem teclado da palette (spec 91/93): botão "Buscar" da sidebar e lupa
+// da bottom-nav, ambos marcados com data-cmd-open no shell SSR. Delegação no
+// document — funciona em toda página sem depender da ordem de boot.
+function wireSearchTriggers() {
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.('[data-cmd-open]');
+    if (!btn) return;
+    e.preventDefault();
+    if (open) close(); else openPalette();
+  });
+}
+
 function escText(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     switch (c) {
@@ -569,6 +581,7 @@ function escText(s: string): string {
 ensurePalette();
 wire();
 wireSidebarToggle();
+wireSearchTriggers();
 wireAjaxForms();
 window.addEventListener('keydown', onKey);
 // loadNotes() removido do boot (spec 23): o meta agora carrega lazy na 1ª abertura

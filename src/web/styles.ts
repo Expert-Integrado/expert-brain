@@ -258,6 +258,28 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
+/* Botão "Buscar" da sidebar (spec 91/93): mesmo desenho dos nav-item, mas é
+   <button> que abre a palette em vez de navegar — reset de button + hint Ctrl+K. */
+.sidebar .nav-search {
+  width: 100%;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+}
+.nav-kbd {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-subtle);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+.sidebar-collapsed .nav-kbd { display: none; }
+
 /* Rodapé da sidebar (Onda 5, decisão do gate): grupo coeso Recolher → Configurações
    → bloco do usuário (avatar + e-mail + Sair), separado da navegação por borda. */
 .sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-subtle); display: flex; flex-direction: column; gap: 2px; }
@@ -2310,6 +2332,9 @@ select.panel-form-input { cursor: pointer; }
 }
 .cmd-input::placeholder { color: var(--text-subtle); }
 .cmd-input:focus { outline: none; }
+/* type="search" (spec 93, teclado mobile certo) sem o cromo nativo do browser. */
+.cmd-input { appearance: none; -webkit-appearance: none; }
+.cmd-input::-webkit-search-cancel-button, .cmd-input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
 .cmd-esc {
   font-size: 11px;
   padding: 3px 7px;
@@ -2409,7 +2434,12 @@ select.panel-form-input { cursor: pointer; }
 
 /* Mobile */
 @media (max-width: 767px) {
-  .cmd-dialog { margin: 4vh 16px 0; }
+  /* Busca mobile (spec 91/93): palette ancorada no TOPO (o teclado virtual cobre
+     o centro da tela) — input e primeiros resultados sempre visíveis; alvos 44px. */
+  .cmd-dialog { margin: 8px 10px 0; }
+  .cmd-list { max-height: 48vh; max-height: 48dvh; }
+  .cmd-row { min-height: 44px; }
+  .cmd-esc { display: none; }
   .notes-search-row { flex-direction: column; align-items: stretch; }
   .notes-toolbar-actions { width: 100%; }
   .notes-select { flex: 1; }
