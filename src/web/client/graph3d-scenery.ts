@@ -122,14 +122,13 @@ export function buildYearSprite(year: number, fontFamily: string, color: string)
   c2d.font = `600 104px ${fontFamily || 'system-ui'}`;
   c2d.textAlign = 'center';
   c2d.textBaseline = 'middle';
-  // Halo suave no próprio canvas — com bloom ligado ele reforça; sem bloom
-  // (tema claro/mobile) ainda dá presença ao ano.
-  c2d.shadowColor = color;
-  c2d.shadowBlur = 24;
+  // SEM shadowBlur no canvas: com bloom ligado o blur duplo (canvas + bloom)
+  // derretia os dígitos num blob ilegível (validação 12/07) — o glow do ano é
+  // 100% do bloom; sem bloom o texto fica limpo e discreto, também ok.
   c2d.fillStyle = color;
   c2d.fillText(yearText(year), YEAR_CANVAS_W / 2, YEAR_CANVAS_H / 2 + 4);
   const tex = new CanvasTexture(canvas);
-  const mat = new SpriteMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false });
+  const mat = new SpriteMaterial({ map: tex, transparent: true, opacity: 0.8, depthWrite: false });
   return new Sprite(mat);
 }
 

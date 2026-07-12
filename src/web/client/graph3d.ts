@@ -246,10 +246,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
   // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
   // pipeline volta byte-idêntico ao original — toggle limpo.
-  // Knobs (ajuste fino da validação visual): strength 1.0 / radius 0.6 /
-  // threshold 0.15 — threshold BAIXO acende as esferas coloridas, mas fica ACIMA
-  // do fantasma de busca (rgba 0.22), então busca com glow segue legível
-  // (matches acesos, resto apagado).
+  // Knobs (calibrados na validação visual de 12/07/2026): strength 0.8 /
+  // radius 0.5 / threshold 0.30 — a 1ª rodada (1.0/0.6/0.15) estourava o miolo
+  // denso num branco só (bloom aditivo acumula onde há muitas esferas);
+  // threshold mais alto + strength menor mantém o halo por esfera sem a
+  // supernova. O fantasma de busca (rgba escuro 0.22) fica MUITO abaixo do
+  // threshold, então busca com glow segue legível (matches acesos, resto
+  // apagado).
   let bloomPass: UnrealBloomPass | null = null;
   let outputPass: OutputPass | null = null;
   try {
@@ -257,7 +260,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        1.0, 0.6, 0.15,
+        0.8, 0.5, 0.30,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -323,11 +326,15 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     cage.position.set(core.cx, core.cy, core.cz);
     cage.scale.setScalar(r);
     if (yearSprite) {
-      // Ano flutuando logo acima do "polo norte" da gaiola, sempre de frente
-      // (sprite). Escala preserva o aspecto do canvas pra não esticar o texto.
-      const w = r * 0.55;
+      // Ano no alto da esfera, sempre de frente (sprite). A altura é CLAMPADA
+      // pela moldura da câmera (r88 · 1.22 < CORE_MARGIN 1.30): quando a gaiola
+      // é bem maior que o núcleo (rabo de órfãs → r 1.4x), o polo fica FORA do
+      // enquadre — o ano então flutua dentro da esfera, ainda no topo visível
+      // (validação 12/07: preso ao polo ele sumia da tela). Escala preserva o
+      // aspecto do canvas pra não esticar o texto.
+      const w = r * 0.38;
       yearSprite.visible = true;
-      yearSprite.position.set(core.cx, core.cy + r * 1.12, core.cz);
+      yearSprite.position.set(core.cx, core.cy + Math.min(r, core.r88 * 1.15), core.cz);
       yearSprite.scale.set(w, w * (YEAR_CANVAS_H / YEAR_CANVAS_W), 1);
     }
   }

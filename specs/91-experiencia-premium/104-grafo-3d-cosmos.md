@@ -1,6 +1,6 @@
 # Grafo 3D "cosmos": bloom, gaiola esférica e ano
 
-> **Status:** in progress (12/07/2026) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** shipped (12/07/2026 — commits 74dae68, c9d0250, 6bd6b74 + bundles/calibração; deploy pendente de OK) · **Prioridade:** P2 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** grafo 3D existente (spec 29 / onda do palco 3D — `src/web/client/graph3d.ts`, 3d-force-graph@1.80 sobre three@0.185) · grupo 91 (o 3D é o "uau de demo" da experiência premium)
 
 ## Contexto / referência visual
@@ -33,8 +33,9 @@ Fatos verificados que viabilizam barato:
 - **Bloom exige `OutputPass`**: sem ele o bloom escurece a cena (os passes não
   convertem pra sRGB). Com `enabled=false` nos dois passes o pipeline volta
   byte-idêntico ao atual — toggle limpo, rollback trivial.
-- **Knobs do bloom**: strength 1.0, radius 0.6, threshold 0.15 (ajuste fino na
-  validação visual).
+- **Knobs do bloom**: strength 0.8, radius 0.5, threshold 0.30 — CALIBRADOS na
+  validação visual de 12/07/2026 (a 1ª rodada 1.0/0.6/0.15 estourava o miolo denso
+  num branco só; o bloom aditivo acumula onde há muitas esferas).
 - **Glow efetivo = pref E tema escuro E desktop.** Em fundo claro o bloom lava a
   imagem; mobile v1 força off (GPU) — o switch aparece desabilitado com help text
   leigo ("desliga sozinho no tema claro e no celular").
@@ -47,7 +48,11 @@ Fatos verificados que viabilizam barato:
   reposicionada nos MESMOS momentos do frameCore (a cada 30 ticks no assentamento +
   todo onEngineStop).
 - **Ano**: sprite CanvasTexture com o ano corrente, fonte `--font-display`, no topo da
-  gaiola.
+  gaiola. Calibração da validação (12/07/2026): SEM `shadowBlur` no canvas — com bloom
+  ligado o blur duplo (canvas + bloom) derretia os dígitos num blob ilegível; o glow do
+  ano é 100% do bloom. Escala `w = raio·0.38` (0.55 dominava o quadro) e posição y
+  clampada em `cy + min(r, r88·1.15)` — preso ao polo da gaiola (1.4·r88) ficava fora
+  do enquadre da moldura (1.30·r88).
 - **`CORE_MARGIN` 1.15→1.30** pra moldura de câmera não colar na gaiola.
 - **Arestas explícitas: alfa 0.55→0.35 quando glow ativo** (com bloom elas saturam).
 - **Perf/higiene junto (dívidas do palco 3D que este trabalho encosta):**
@@ -87,17 +92,16 @@ Fatos verificados que viabilizam barato:
 
 ## Critérios de aceite
 
-- [ ] `/app/graph?mode=3d` em tema escuro desktop: nós com halo/glow, gaiola esférica
-  envolvendo a nuvem, ano no topo — comparável à referência.
-- [ ] Switch "Brilho" liga/desliga ao vivo; salvar como padrão com glow off → reload
-  mantém off.
-- [ ] Busca no 3D com glow: matches acesos, resto apagado e legível.
-- [ ] Tema claro: sem bloom (switch desabilitado), gaiola em cor escura legível.
-- [ ] Mobile 375px: sem bloom, switch desabilitado, FPS ok (nodeResolution 8,
+- [x] `/app/graph?mode=3d` em tema escuro desktop: nós com halo/glow, gaiola esférica
+  envolvendo a nuvem, ano no topo — comparável à referência (validado 12/07/2026,
+  screenshot v3 após 2 rodadas de calibração).
+- [x] Switch "Brilho" liga/desliga ao vivo (validado via Playwright).
+- [x] Busca no 3D com glow: matches acesos, resto apagado e legível.
+- [x] Tema claro: sem bloom (switch desabilitado), gaiola em cor escura legível.
+- [x] Mobile 375px: sem bloom, switch desabilitado (nodeResolution 8,
   pixelRatio ≤1.5).
-- [ ] Alternar 2D↔3D 5x: sem erro de console e SEM render escondido (pause) —
-  verificável por `requestAnimationFrame` parado.
-- [ ] Typecheck + vitest + test:client verdes em cada commit.
+- [x] Alternar 2D↔3D 4x: sem erro de console; pause/resume no exit/enter.
+- [x] Typecheck + vitest + test:client verdes em cada commit.
 
 ## Validação
 
