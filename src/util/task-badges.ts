@@ -60,6 +60,49 @@ function dotInitials(name: string): string {
   return (first + second).toUpperCase();
 }
 
+// Chip de claim do card (spec 80-frota-agentes/88/89): quem detém o LEASE de
+// trabalho AGORA e até quando. Só claim ATIVO chega aqui (o payload filtra lease
+// vencido — livre não renderiza nada). Compartilhado SSR + client, como os demais.
+export interface ClaimChip { name: string; expires_brt: string; }
+
+export function claimChipHtml(claim: ClaimChip | null | undefined): string {
+  if (!claim) return '';
+  return `<span class="task-claim-chip" title="Em trabalho por ${escBadge(claim.name)} — lease até ${escBadge(claim.expires_brt)} (claim_task, spec 88)">⛏ ${escBadge(claim.name)} · ${escBadge(claim.expires_brt)}</span>`;
+}
+
+// Banner "Aguardando você" (spec 89): fila de bloqueios da frota pendentes de
+// resposta do dono, acima do board. Compartilhado SSR + client (render idêntico).
+// Itens chegam ordenados (bloqueio mais antigo primeiro) e com a data já formatada
+// — este módulo é folha e não importa util/time. Vazio → string vazia; o CALLER
+// esconde/mostra o container.
+export interface AwaitingItem {
+  id: string;
+  title: string;
+  block_body: string;
+  block_author: string | null;
+  block_at_brt: string;
+}
+
+const MAX_AWAITING_BODY = 160;
+
+export function awaitingBannerHtml(items: AwaitingItem[]): string {
+  if (!items || items.length === 0) return '';
+  const rows = items
+    .map((it) => {
+      const body = it.block_body.length > MAX_AWAITING_BODY
+        ? `${it.block_body.slice(0, MAX_AWAITING_BODY)}…`
+        : it.block_body;
+      const who = it.block_author ? `${it.block_author} · ` : '';
+      return `<a class="task-awaiting-item" href="/app/tasks/${escBadge(it.id)}">` +
+        `<span class="task-awaiting-title">${escBadge(it.title)}</span>` +
+        `<span class="task-awaiting-body">${escBadge(body)}</span>` +
+        `<span class="task-awaiting-meta">${escBadge(who)}${escBadge(it.block_at_brt)}</span>` +
+        `</a>`;
+    })
+    .join('');
+  return `<div class="task-awaiting-head">⏳ Aguardando você <span class="task-awaiting-count">${items.length}</span></div><div class="task-awaiting-list">${rows}</div>`;
+}
+
 const MAX_VISIBLE_DOTS = 3;
 
 // Ícone de pessoa (outline) pro slot vazio — inline pra não depender de asset.

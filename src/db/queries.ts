@@ -1385,6 +1385,50 @@ export async function listTasksAwaitingOwner(env: Env, includePrivate = false): 
   return r.results ?? [];
 }
 
+// Banner "Aguardando você" do board (spec 89): a mesma fila do listTasksAwaitingOwner,
+// mas com o que o banner precisa — trecho do ÚLTIMO [bloqueio], quem travou e quando.
+// Board é superfície do dono (inclui privadas). Mais antigo primeiro (espera há mais
+// tempo no topo, espelhando a lista MCP).
+export interface AwaitingOwnerBannerItem {
+  id: string;
+  title: string;
+  block_body: string;
+  block_at: number;
+  block_author: string | null;
+}
+export async function listAwaitingOwnerBanner(env: Env): Promise<AwaitingOwnerBannerItem[]> {
+  const r = await env.DB.prepare(
+    `SELECT n.id, n.title, b.body AS block_body, b.created_at AS block_at, u.name AS block_author
+     FROM notes n
+     JOIN task_comments b ON b.id = (
+       SELECT b2.id FROM task_comments b2
+       WHERE b2.task_id = n.id AND b2.kind = 'bloqueio'
+       ORDER BY b2.created_at DESC, b2.id DESC LIMIT 1
+     )
+     LEFT JOIN users u ON u.id = b.author_user_id
+     WHERE n.kind = 'task' AND n.deleted_at IS NULL
+       AND n.status IN ('open','in_progress')
+       AND b.created_at > COALESCE(
+         (SELECT MAX(o.created_at) FROM task_comments o
+           WHERE o.task_id = n.id AND o.author = 'owner'), 0)
+     ORDER BY b.created_at ASC`
+  ).all<AwaitingOwnerBannerItem>();
+  return r.results ?? [];
+}
+
+// Último uso de credencial POR USUÁRIO (spec 89 — watchdog da frota): max(last_used_at)
+// entre as chaves NÃO-revogadas de cada usuário. `api_keys.last_used_at` já é tocado a
+// cada request autenticado — aqui só se agrega. Usuário sem chave viva não aparece.
+export async function lastSeenByUser(env: Env): Promise<Map<string, number>> {
+  const r = await env.DB.prepare(
+    `SELECT user_id, MAX(last_used_at) AS last_seen
+     FROM api_keys
+     WHERE revoked_at IS NULL AND user_id IS NOT NULL AND last_used_at IS NOT NULL
+     GROUP BY user_id`
+  ).all<{ user_id: string; last_seen: number }>();
+  return new Map((r.results ?? []).map((row) => [row.user_id, row.last_seen]));
+}
+
 // Contagem da fila acima — pro gate/texto do push sem materializar as linhas.
 export async function countTasksAwaitingOwner(env: Env): Promise<number> {
   const row = await env.DB.prepare(

@@ -5,6 +5,7 @@ import { runTaskAutocancel } from './task-lifecycle.js';
 import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
 import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js';
 import { runPushDigest } from './web/push.js';
+import { WATCHDOG_CRON, runFleetWatchdog } from './fleet-watchdog.js';
 
 // Dispatch do cron por expressão (specs/50-console-v2/67-backup-export.md): o
 // wrangler.toml agora tem DUAS entradas em [triggers].crons e o Worker decide
@@ -75,6 +76,26 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext): voi
         .catch(async (e) => {
           console.error('backup failed', e);
           await trackCronOutcome(env, 'backup', false, String((e as Error)?.message ?? e));
+        })
+    );
+    return;
+  }
+  // Watchdog da frota (spec 80-frota-agentes/89): braço EXATO obrigatório — se o
+  // */30 caísse no fail-safe diário, o digest de tasks dispararia 48x/dia. Alertas
+  // e retornos vão pro mesmo Telegram dos alertas de cron (no-op sem secrets).
+  if (cron === WATCHDOG_CRON) {
+    ctx.waitUntil(
+      runFleetWatchdog(env, Date.now())
+        .then(async (r) => {
+          if (r.alerts.length || r.recovered.length) {
+            console.log('fleet-watchdog', JSON.stringify({ checked: r.checked, alerts: r.alerts.length, recovered: r.recovered.length }));
+          }
+          for (const msg of [...r.alerts, ...r.recovered]) await sendTelegram(env, msg);
+          await trackCronOutcome(env, 'fleet-watchdog', true);
+        })
+        .catch(async (e) => {
+          console.error('fleet-watchdog failed', e);
+          await trackCronOutcome(env, 'fleet-watchdog', false, String((e as Error)?.message ?? e));
         })
     );
     return;

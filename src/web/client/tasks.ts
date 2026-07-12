@@ -14,7 +14,7 @@ import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, type AssigneeDot } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -42,6 +42,7 @@ interface TaskView {
   search_text: string; // título + descrição + tags, minúsculo/sem acento (Onda 8) — vem pronto do server
   assignees: AssigneeDot[]; // responsáveis (spec 37): bolinhas no card
   mention_me: boolean; // menção NÃO-LIDA ao dono (spec 82) — filtro "menções a mim"
+  claim: ClaimChip | null; // claim/lease ATIVO (spec 88/89): chip "quem trabalha agora"
 }
 
 interface BoardColumn {
@@ -66,6 +67,8 @@ interface BoardData {
   projects: BoardProject[];
   // Mailbox (spec 82): não-lidas por usuário — chips na toolbar.
   mailbox_unread?: Array<{ id: string; name: string; count: number }>;
+  // "Aguardando você" (spec 89): bloqueios da frota pendentes de resposta do dono.
+  awaiting?: AwaitingItem[];
 }
 
 type Filter = 'all' | 'today' | 'week' | 'overdue' | 'mentions';
@@ -226,7 +229,7 @@ function cardHTML(t: TaskView): string {
       <button class="task-btn task-quickedit-btn" data-quickedit="${esc(t.id)}" type="button" title="Editar prazo/prioridade" aria-label="Editar prazo e prioridade">✎</button>
     </div>
     ${projectCrumb(t)}
-    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}${assigneeDotsHtml(t.assignees ?? [])}</div>
+    <div class="task-card-meta">${prioPill(t.priority)}${dueBadge(t)}${commentBadge(t.comment_count)}${t.private ? PRIVATE_BADGE : ''}${shareIconHtml(t.share_expires_brt)}${claimChipHtml(t.claim)}${assigneeDotsHtml(t.assignees ?? [])}</div>
     ${tags ? `<div class="task-card-tags">${tags}</div>` : ''}
     <div class="task-card-edit" data-editpanel hidden>
       <label class="task-card-edit-ctl">Prioridade
@@ -337,6 +340,16 @@ function render() {
   if (!root || !board) return;
   const now = board.now;
   const collapsed = loadCollapsed();
+
+  // Banner "Aguardando você" (spec 89): re-renderiza a cada load junto com o board
+  // (bloqueio respondido no detalhe some daqui no próximo refresh). Container fixo
+  // no SSR; vazio → [hidden].
+  const awaitingEl = document.getElementById('task-awaiting');
+  if (awaitingEl) {
+    const items = board.awaiting ?? [];
+    awaitingEl.innerHTML = awaitingBannerHtml(items);
+    awaitingEl.toggleAttribute('hidden', items.length === 0);
+  }
 
   root.innerHTML = board.columns.map((col) => {
     const items = columnTasks(col, now);
