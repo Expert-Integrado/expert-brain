@@ -1,6 +1,6 @@
 # Protocolo de conversa entre agentes (skill compartilhada)
 
-> **Status:** draft (aprovada 11/07/2026) · **Prioridade:** P1 · **Esforço:** S · **Repo:** skills (Expert-Integrado/skills) — especificada aqui pra viver junto do grupo 80; a implementação é uma skill instalada em TODAS as instâncias
+> **Status:** shipped (11/07/2026 — skill `mailbox-agentes` no plugin operacoes 2.5.0, instalada em PC + 2 containers VPS; task pdciem52frae concluída) · **Prioridade:** P1 · **Esforço:** S · **Repo:** skills (Expert-Integrado/skills) — especificada aqui pra viver junto do grupo 80; a implementação é uma skill instalada em TODAS as instâncias
 > **Depende de:** `82` (tools de mailbox existirem). Plano-mãe: grupo 80.
 
 ## Problema

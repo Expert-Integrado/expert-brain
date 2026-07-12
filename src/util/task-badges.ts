@@ -45,14 +45,14 @@ export interface AssigneeDot { id: string; name: string; type: 'person' | 'agent
 
 // Cor determinística por id (hash simples → hue) — mesmo usuário, mesma cor em
 // qualquer superfície, sem persistir nada.
-function dotHue(id: string): number {
+export function dotHue(id: string): number {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 360;
   return h;
 }
 
 // Iniciais: 1ª letra dos dois primeiros nomes ("Ana Almeida" → "AA"; "openclaw" → "O").
-function dotInitials(name: string): string {
+export function dotInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return '?';
   const first = parts[0][0] ?? '';

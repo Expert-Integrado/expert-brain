@@ -12,6 +12,7 @@ import { JOURNAL_CSS } from './journal.js';
 import { getHomePrefs, HOME_BOX_DEFAULTS, HOME_BOX_KEYS, HOME_BOX_MIN, HOME_BOX_MAX, type HomeBoxKey, type HomePrefs, type HomePrefsState } from './home-prefs.js';
 import { renderInsightsCard } from './insights.js';
 import { brtYearMonth, getMonthInsightsCached } from '../db/insights-queries.js';
+import { fleetHomeStripHtml } from './fleet.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
 // um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
@@ -349,6 +350,15 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     }
   }
 
+  // Faixa da frota (spec 80/92): linha de navegação acima do grid, fora das
+  // caixas arrastáveis. Instância sem agentes não ganha faixa; falha só omite.
+  let fleetStripHtml = '';
+  try {
+    fleetStripHtml = await fleetHomeStripHtml(env, now);
+  } catch (e) {
+    console.error('home: falha ao montar a faixa da frota (omitida)', e);
+  }
+
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
   let todayCardHtml = '';
@@ -426,6 +436,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   const body = `
     <div class="page-header"><h1>Início</h1><span class="home-arrange-hint">arraste pelo título pra reorganizar · puxe a borda de baixo pra redimensionar</span></div>
     ${startHereHtml}
+    ${fleetStripHtml}
     <div class="home-grid">
       ${gridHtml}
     </div>

@@ -1,6 +1,7 @@
 # Fleet view: painel operacional da frota de agentes
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M-L · **Repo:** expert-brain
+> **Status:** shipped (12/07/2026) · **Prioridade:** P1 · **Esforço:** M-L · **Repo:** expert-brain
+> Renumerada de 89→92 no ship (colisão com `89-watchdog-board-aprovacoes-deploy.md`).
 > **Depende de:** `81-assinatura-por-credencial` (shipped), `86-chave-pertence-ao-usuario` (shipped), `82-mencao-mailbox-por-agente` (shipped) · suaves: `83-heartbeat-wakeup` (sinal de "visto por último"), `88-claim-comentarios-tipados-aprovacoes` (fila de aprovação), `91-experiencia-premium/98` (config redesign — o card de agente de lá linka pra cá)
 
 ## Contexto
@@ -103,3 +104,28 @@ do board. Risco de interpretação: `last_used_at` é da CHAVE, não do processo
 com múltiplas chaves ou chave compartilhada mostraria status enganoso; a spec 86 (1 PAT
 por dispositivo) é pré-condição e deve ser afirmada na tela (tooltip do badge).
 Reversão: remover rota + card da home.
+
+## Decisões do ship (12/07/2026)
+
+- **Badge sem gap**: o draft dizia "dormindo > 24h", deixando buraco entre o fim do dia
+  BRT e 24h. Régua final: ativo agora (< 15min) → ativo hoje (dia BRT corrente) →
+  dormindo (antes do dia corrente, com carimbo de quando) → sem uso (chave nunca usada)
+  → sem credencial (nenhuma chave ativa vinculada). Thresholds em `FLEET_ACTIVE_WINDOW_MS`.
+- **"Ver trabalho" → board** (`/app/tasks`): nem o journal nem o board têm filtro por
+  autor hoje; implementar filtro por autor no journal ficou FORA desta v1 (o board já
+  mostra as bolinhas de responsável). Candidato a spec futura se doer.
+- **Nav**: entrada "Agentes" só na sidebar desktop — o bottom-nav mobile já está saturado
+  (8 itens); acesso mobile pela faixa da home.
+- **Card da home = faixa acima do grid** (padrão do "Comece aqui"): linha de navegação
+  compacta, fora do sistema de caixas arrastáveis — não mexe em home-prefs.
+- **CSS via extraHead** (padrão do journal): nada no styles.css global, zero rebuild de
+  bundle client. Banner de bloqueios reusa `.task-awaiting-*` do board via
+  `awaitingBannerHtml` (mesma UI nas duas superfícies).
+- **Contagens de hoje**: "task tocada" = edição em `task_activity` OU task criada hoje
+  (criação não loga activity), deduplicada; "nota" = `kind != 'task'`; comentários por
+  `author_user_id`. Autoria via JOIN em `api_keys` (actor = id da chave).
+- **Mailbox no card** = total de não-lidas do agente (todas as kinds, mesma régua do
+  `/api/mailbox/summary`), não só menções.
+- Arquivos: `src/db/fleet-queries.ts` + `src/web/fleet.ts` (novos), rotas em
+  `src/web/handler.ts`, nav em `render.ts`, faixa em `home.ts`, `dotHue`/`dotInitials`
+  exportados de `util/task-badges.ts`. Testes: `test/fleet-web.test.ts` (11).
