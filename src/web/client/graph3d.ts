@@ -76,7 +76,10 @@ export interface Graph3DController {
   dispose: () => void;
 }
 
-const BG_COLOR = '#0c0c10'; // espelho JS do token --surface-canvas (styles.ts) — WebGL não lê CSS var
+// WebGL não lê CSS var — resolve --surface-canvas no runtime (tema claro, spec 96);
+// fallback = o valor dark histórico se o token não existir.
+const BG_COLOR = (typeof document !== 'undefined'
+  && getComputedStyle(document.documentElement).getPropertyValue('--surface-canvas').trim()) || '#0c0c10';
 
 // Baseline de colisão espelhado do sim-worker.ts do 2D (raio flat 60 desligado,
 // 66 ligado). No mundo 3D usamos nodeRelSize 6 e o `val` é n.size/3, então os

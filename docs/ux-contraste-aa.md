@@ -46,13 +46,37 @@ Notas de composição: as tintas de estado (`--*-bg`, α 0.12) foram compostas s
 
 Na Onda 6 (08/07/2026), 83 usos informativos de `--text-faint` foram migrados pra `--text-subtle`. Usos decorativos remanescentes (permitidos): `share.ts` borda pontilhada de wikilink quebrado; `styles.ts` background do dot de `.graph-chip`.
 
-## Espelhos JS (SVG/WebGL não leem custom property)
+## Tabela de contraste — cartela CLARA `[data-theme="light"]` (12/07/2026, spec 91/96)
+
+Mesma fórmula e mesmo gate. Superfícies claras: `--bg #f6f7fb`, `--surface-0 #ffffff`,
+`--surface-1 #f4f5fb`, `--surface-2 #e9ebf5`, `--surface-3 #dfe3f0`.
+
+| Par (fg sobre bg) | Razão | Veredito | Uso |
+| --- | --- | --- | --- |
+| `--text #171c2e` sobre `--bg` | 15.8:1 | AA | texto principal |
+| `--text-dim #454e66` sobre `--surface-1` | 7.6:1 | AA | texto secundário |
+| `--text-subtle #5a6480` sobre `--surface-1` | 5.4:1 | AA | terciário (4.6:1 até no topo `--surface-3`) |
+| `--accent-contrast #ffffff` sobre `--accent-lav #6d28d9` | 7.1:1 | AA | botão primário |
+| `--accent-lav #6d28d9` sobre `--surface-1` | 6.5:1 | AA | links, destaques |
+| `--accent-cyan #0f766e` sobre `--surface-1` | 5.0:1 | AA | chips |
+| `--danger #be123c` sobre `--surface-1` / tinta α0.10 | 5.8:1 / 4.9:1 | AA | erros, badges |
+| `--success #166534` sobre `--surface-1` / tinta | 6.6:1 / 5.7:1 | AA | confirmações |
+| `--warning #854d0e` sobre `--surface-1` / tinta | 6.3:1 / 5.4:1 | AA | avisos |
+| `--info #1d4ed8` sobre `--surface-1` / tinta α0.08 | 6.2:1 / 5.3:1 | AA | informativos |
+| `--prio-4 #475569` sobre `--surface-1` | 7.0:1 | AA | bandeirinha Baixa |
+| `--accent-pink #a21caf` sobre `--surface-1` | 5.8:1 | AA | acentos |
+
+**Resultado do gate claro: 0 reprovações em pares informativos.** Os acentos do dark
+(`#a78bfa`, `#5eead4`, `#ff8298`...) reprovam sobre superfícies claras — por isso a
+cartela clara escurece acentos e estados (violet-700, teal-700, rose-700 etc.).
+
+## Espelhos JS (canvas/WebGL não leem custom property)
 
 | Token | Espelho | Valor |
 | --- | --- | --- |
-| `--prio-1..4` | `src/util/priority.ts` (PRIORITIES) | `#ff8298` / `#fbbf24` / `#7db8ff` / `#9aa2b8` |
-| `--surface-canvas` | `src/web/graph3d.ts` (BG_COLOR) | `#0c0c10` |
-| `--bg` | `src/web/styles.ts` (THEME_COLOR) | `#070a13` |
+| `--prio-1..4` | `src/util/priority.ts` (PRIORITIES) | `var(--prio-N)` — desde a spec 96 a cor É a custom property (os consumers injetam em SVG inline no DOM, que resolve var e acompanha o tema) |
+| `--surface-canvas` | `src/web/client/graph3d.ts` (BG_COLOR) | resolvido via `getComputedStyle` no runtime (fallback `#0c0c10`) |
+| `--bg` | `src/web/styles.ts` (THEME_COLOR `#070a13` / THEME_COLOR_LIGHT `#f6f7fb`) | metas `theme-color`; o shell troca em runtime |
 
 Mudou token na tabela acima = atualizar o espelho no mesmo commit.
 

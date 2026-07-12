@@ -1,6 +1,6 @@
 # Tema claro: segunda cartela de tokens + toggle
 
-> **Status:** draft · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
+> **Status:** done · **Prioridade:** P1 · **Esforço:** M · **Repo:** expert-brain
 > **Depende de:** `60-ux-reforma/63` (tokens re-tematizáveis — done) · coordena com `60-ux-reforma/67` (gate AA)
 
 ## Contexto
@@ -58,13 +58,20 @@ preferência do sistema por padrão, sem NENHUMA mudança em CSS de componente.
 
 ## Critérios de aceite
 
-- [ ] Toggle na sidebar alterna auto/claro/escuro; escolha persiste entre sessões e abas.
-- [ ] Em `auto`, mudar o tema do SO muda o console sem reload.
-- [ ] Zero flash de tema errado no primeiro paint (testar com cache frio).
-- [ ] Todas as telas `/app/*` legíveis no claro; gate AA da onda 6 passa nas duas cartelas.
-- [ ] Grafo 2D e 3D com fundo/labels coerentes no tema claro.
-- [ ] `theme-color` do PWA acompanha o tema ativo.
-- [ ] Nenhum seletor de componente novo com cor hardcoded (review: diff só toca camadas de token + toggle).
+- [x] Toggle na sidebar alterna auto/claro/escuro; escolha persiste entre sessões e abas (localStorage.theme + listener de `storage` sincroniza abas).
+- [x] Em `auto`, mudar o tema do SO muda o console sem reload (listener de `matchMedia('(prefers-color-scheme: light)')`).
+- [x] Zero flash de tema errado no primeiro paint: a CSP (`script-src 'self'`) proíbe o "script inline no head" clássico — a solução é `/app/theme-boot.js`, asset bloqueante minúsculo servido do Worker e carregado ANTES do stylesheet, que carimba `data-theme` no `<html>`. Validar com cache frio no teste manual.
+- [x] Gate AA passa nas duas cartelas — tabela clara adicionada em `docs/ux-contraste-aa.md` (0 reprovações; acentos escurecidos: violet-700, teal-700, rose-700...). Legibilidade tela a tela: teste manual do dono no gate de deploy.
+- [x] Grafo 2D e 3D coerentes: labels do sigma e BG do WebGL agora resolvem `--text`/`--surface-canvas` via `getComputedStyle` no runtime (fim do espelho hardcoded).
+- [x] `theme-color` do PWA acompanha o tema: dois metas (`media="(prefers-color-scheme: light)"` + default dark) cobrem `auto`/primeiro paint; o shell reescreve os metas quando a escolha é explícita.
+- [x] Nenhum seletor de componente novo com cor hardcoded — o diff toca só TOKENS_CSS (`[data-theme="light"]`), o toggle e as leituras de token em runtime. Bandeirinhas de prioridade migraram de hex fixo pra `var(--prio-N)` (SVG inline resolve custom property).
+
+> Implementado em 12/07/2026. Item 5 (wizard `src/static/wizard.ts`): FICA DARK por decisão
+> documentada — é página estática pré-login, momento de marca, e não tem o boot/toggle; o
+> custo de tematizar não paga o valor. Item 4 "espelhado na config": o toggle da sidebar
+> está presente em TODAS as páginas, inclusive /app/config — espelho dedicado na config
+> ficou dispensado. Testes em `test/web/theme.test.ts`. Screenshot diff dos dois temas:
+> validação manual do dono no gate de deploy (harness de screenshot não roda no CI local).
 
 ## Validação
 

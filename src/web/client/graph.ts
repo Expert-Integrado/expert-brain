@@ -222,8 +222,11 @@ async function main() {
   // setting the threshold to 10 plus a dynamic bump in the reducer below
   // means only zoomed-in nodes get labels by default.
   // ────────────────────────────────────────────────────────────────────────
+  // Tema claro (spec 96): sigma não lê CSS var — resolve --text no runtime
+  // (o palco pega --surface-canvas via CSS; o label precisa acompanhar).
+  const themedLabel = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#e5e5ea';
   const renderer = new Sigma(graph, container, {
-    labelColor: { color: '#e5e5ea' },
+    labelColor: { color: themedLabel },
     labelSize: 12,
     labelWeight: '500',
     labelFont: 'Manrope, system-ui, sans-serif',

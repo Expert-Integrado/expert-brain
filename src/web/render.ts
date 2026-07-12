@@ -1,6 +1,6 @@
 import type { Env } from '../env.js';
 import { esc } from '../util/html.js';
-import { FONT_LINKS, THEME_COLOR } from './styles.js';
+import { FONT_LINKS, THEME_COLOR, THEME_COLOR_LIGHT } from './styles.js';
 import { readCookie } from './session.js';
 import { assetVersion } from './asset-version.js';
 import { releaseBannerHtml } from './releases-data.js';
@@ -32,6 +32,8 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
   chevron:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>',
+  theme:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
 };
 
 // O Inbox saiu da navegação (Onda 8, spec 70): ele mora na home como card de
@@ -43,7 +45,9 @@ const SIDEBAR_ICONS = {
 // sem theme-color e sem ícone iOS. apple-touch-icon dedicado 180x180 (o iOS ignora
 // o manifest e busca este link; antes apontava pro 192 genérico sem `sizes`).
 export const PWA_HEAD = `<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="${THEME_COLOR_LIGHT}">
 <meta name="theme-color" content="${THEME_COLOR}">
+<script src="/app/theme-boot.js?v=1"></script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -84,6 +88,7 @@ ${opts.extraHead ?? ''}
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
     <a class="nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" title="Contatos">${SIDEBAR_ICONS.contacts}<span class="nav-label">Contatos</span></a>
     <div class="bottom">
+      <button class="nav-item nav-theme" type="button" data-theme-toggle title="Tema (auto/claro/escuro)">${SIDEBAR_ICONS.theme}<span class="nav-label" data-theme-label>Tema</span></button>
       <button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="${collapsed ? 'false' : 'true'}" title="Recolher menu (Ctrl+B)">${SIDEBAR_ICONS.chevron}<span class="nav-label">Recolher</span></button>
       <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" title="Configurações">${SIDEBAR_ICONS.config}<span class="nav-label">Configurações</span></a>
       <div class="sidebar-user" title="${esc(opts.email)}">

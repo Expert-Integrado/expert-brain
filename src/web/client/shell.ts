@@ -581,6 +581,51 @@ function wireClickProxies() {
   });
 }
 
+// ─────────────── Tema claro/escuro (spec 91/96) ───────────────
+// O theme-boot.js (head, bloqueante) já carimbou data-theme no primeiro paint;
+// aqui vive o resto: toggle na sidebar ciclando auto → claro → escuro,
+// persistência em localStorage.theme, meta theme-color dinâmico, e os listeners
+// que mantêm 'auto' colado no SO (matchMedia) e as abas em sincronia (storage).
+type ThemePref = 'auto' | 'light' | 'dark';
+const THEME_COLORS = { dark: '#070a13', light: '#f6f7fb' }; // espelhos de THEME_COLOR/_LIGHT (styles.ts)
+
+function themePref(): ThemePref {
+  try {
+    const p = localStorage.getItem('theme');
+    return p === 'light' || p === 'dark' ? p : 'auto';
+  } catch { return 'auto'; }
+}
+
+function applyTheme(pref: ThemePref) {
+  const sys = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  const mode: 'light' | 'dark' = pref === 'auto' ? sys : pref;
+  document.documentElement.setAttribute('data-theme', mode);
+  // Com escolha explícita os dois metas apontam pra mesma cor (o media do meta
+  // claro deixaria o SO mandar); em auto o par media/default volta a decidir.
+  document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
+    m.content = pref === 'auto'
+      ? (m.media ? THEME_COLORS.light : THEME_COLORS.dark)
+      : THEME_COLORS[mode];
+  });
+  const label = document.querySelector('[data-theme-label]');
+  if (label) label.textContent = pref === 'auto' ? 'Tema: auto' : pref === 'light' ? 'Tema: claro' : 'Tema: escuro';
+}
+
+function wireThemeToggle() {
+  applyTheme(themePref()); // sincroniza label/metas com o que o boot carimbou
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.('[data-theme-toggle]');
+    if (!btn) return;
+    const next: ThemePref = ({ auto: 'light', light: 'dark', dark: 'auto' } as const)[themePref()];
+    try { localStorage.setItem('theme', next); } catch { /* modo privado etc. */ }
+    applyTheme(next);
+  });
+  // auto acompanha o SO sem reload; storage sincroniza a escolha entre abas.
+  window.matchMedia?.('(prefers-color-scheme: light)')
+    .addEventListener?.('change', () => { if (themePref() === 'auto') applyTheme('auto'); });
+  window.addEventListener('storage', (e) => { if (e.key === 'theme') applyTheme(themePref()); });
+}
+
 // Undo pós-exclusão (spec 91/95): a rota de delete volta pra lista com
 // ?deleted=<id>&dtitle=<título>. Aqui a URL é limpa na hora (replaceState — F5
 // não re-dispara o toast) e sobe o toast de 8s com "Desfazer", que chama a rota
@@ -630,6 +675,7 @@ wireSearchTriggers();
 wireClickProxies();
 wireAjaxForms();
 wireUndoToast();
+wireThemeToggle();
 // Ponte pro bundle-string do config (spec 95): configPageScript() não importa
 // módulo ES, então o confirmModal chega lá via window (com fallback nativo).
 (window as unknown as { __ebConfirm?: typeof confirmModal }).__ebConfirm = confirmModal;

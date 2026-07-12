@@ -11,6 +11,16 @@ export const FONT_LINKS = `
 // Cor do <meta name="theme-color"> — DEVE espelhar o token --bg abaixo (fonte única
 // em TS porque meta tag não resolve custom property CSS). Consumida por render.ts e share.ts.
 export const THEME_COLOR = '#070a13';
+// Espelho claro (spec 91-experiencia-premium/96) — DEVE espelhar o --bg do bloco
+// [data-theme="light"] em TOKENS_CSS. O client (shell.ts) troca o meta em runtime.
+export const THEME_COLOR_LIGHT = '#f6f7fb';
+
+// Boot anti-flash do tema (spec 96): carimba data-theme no <html> ANTES do CSS
+// pintar. A CSP (script-src 'self') proíbe inline no head, então isto é servido
+// como asset bloqueante minúsculo em /app/theme-boot.js, carregado antes do
+// stylesheet. localStorage.theme: 'light' | 'dark' | 'auto' (default auto segue
+// prefers-color-scheme). O toggle fica no shell (client/shell.ts).
+export const THEME_BOOT_JS = `(function(){try{var p=localStorage.theme;var m=(p==='light'||p==='dark')?p:(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',m);}catch(e){}})();`;
 
 // Midnight Nebula — distinctive aesthetic: Poppins display + Manrope body, deep nebula
 // gradient, soft grain, lavender-accented cards with hover-lift, focus-visible rings.
@@ -125,6 +135,64 @@ export const TOKENS_CSS = `
   --text-2xl: 28px;
   --leading-2xl: 1.15;
   --density: 1;
+}
+
+/* ============ Cartela CLARA (spec 91-experiencia-premium/96) ============
+   Sobrescreve SÓ as camadas primitiva/semântica — nenhuma regra de componente
+   muda (é a prova da arquitetura de tokens da Onda 2). data-theme é carimbado
+   no <html> pelo theme-boot.js antes do primeiro paint; 'auto' segue o SO.
+   Gate AA: tabela clara em docs/ux-contraste-aa.md — pares informativos >= 4.5:1
+   (verificados com a mesma fórmula WCAG 2.1 do gate dark).
+   Espelhos JS: THEME_COLOR_LIGHT (acima) = --bg; grafo 2D/3D lê --surface-canvas
+   via getComputedStyle em runtime (nada hardcoded a atualizar). */
+[data-theme="light"] {
+  /* -- primitiva -- */
+  --bg: #f6f7fb;
+  --bg-mid: #eef0f8;
+  --text: #171c2e;
+  --text-dim: #454e66;    /* AA 7.6:1 sobre --surface-1 */
+  --text-faint: rgba(23, 28, 46, 0.34); /* decorativo, mesma regra do dark */
+  --border: rgba(109, 40, 217, 0.16);
+  --border-strong: rgba(109, 40, 217, 0.4);
+  --surface: #ffffff;
+  --surface-raised: #f4f5fb;
+  --accent-lav: #6d28d9;  /* violet-700 — o #a78bfa do dark reprova sobre claro */
+  --accent-cyan: #0f766e;
+  --accent-pink: #a21caf;
+  --accent-violet: #7c3aed;
+  --accent-lav-rgb: 109, 40, 217;
+  --accent-violet-rgb: 124, 58, 237;
+  --accent-contrast: #ffffff; /* texto SOBRE o acento sólido — AA 7.1:1 */
+  --danger: #be123c;
+
+  /* -- semântica -- */
+  --surface-2: #e9ebf5;
+  --surface-3: #dfe3f0;
+  --backdrop: rgba(23, 28, 46, 0.4);
+  --shadow-1: 0 1px 2px rgba(23, 28, 46, 0.08);
+  --shadow-2: 0 6px 18px rgba(23, 28, 46, 0.1), 0 0 0 1px rgba(109, 40, 217, 0.06);
+  --shadow-3: 0 18px 50px rgba(23, 28, 46, 0.16);
+  --text-subtle: #5a6480; /* AA 5.4:1 sobre --surface-1 */
+  --success: #166534;
+  --success-bg: rgba(22, 101, 52, 0.1);
+  --success-border: rgba(22, 101, 52, 0.45);
+  --warning: #854d0e;
+  --warning-bg: rgba(133, 77, 14, 0.1);
+  --warning-border: rgba(133, 77, 14, 0.45);
+  --danger-bg: rgba(190, 18, 60, 0.1);
+  --danger-border: rgba(190, 18, 60, 0.5);
+  --info: #1d4ed8;
+  --info-bg: rgba(29, 78, 216, 0.08);
+  --info-border: rgba(29, 78, 216, 0.4);
+  --prio-4: #475569;
+  --surface-canvas: #eef0f6;
+
+  /* -- tema: gradiente calmo claro + grain quase imperceptível -- */
+  --bg-gradient:
+    radial-gradient(ellipse 90% 55% at 30% 0%, rgba(124, 58, 237, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 75% 65% at 88% 100%, rgba(15, 118, 110, 0.05) 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, var(--bg-mid) 0%, var(--bg) 75%);
+  --grain-opacity: 0.05;
 }
 `;
 
@@ -258,9 +326,10 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-/* Botão "Buscar" da sidebar (spec 91/93): mesmo desenho dos nav-item, mas é
-   <button> que abre a palette em vez de navegar — reset de button + hint Ctrl+K. */
-.sidebar .nav-search {
+/* Botões da sidebar que não navegam (Buscar, spec 91/93; Tema, spec 91/96):
+   mesmo desenho dos nav-item, com reset de button. */
+.sidebar .nav-search,
+.sidebar .nav-theme {
   width: 100%;
   background: none;
   border: none;

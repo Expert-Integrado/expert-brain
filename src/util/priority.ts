@@ -7,17 +7,20 @@
 export interface PriorityMeta {
   value: number;
   label: string;
-  color: string; // cor da bandeirinha (hex)
+  color: string; // cor da bandeirinha (referência CSS var — resolve no DOM)
 }
 
 // Cores mapeadas na semântica do tema (vermelho→amarelo→azul→cinza), no espírito
-// do ClickUp mas dentro da paleta Nebula. Espelho JS dos tokens --prio-1..4 de
-// styles.ts (SVG inline não resolve custom property) — mudar lá = mudar aqui.
+// do ClickUp mas dentro da paleta Nebula. Desde o tema claro (spec 96) a cor é a
+// PRÓPRIA custom property --prio-N: todos os consumers injetam em SVG INLINE no
+// DOM (tasks.ts, share.ts, client/tasks.ts), onde var() resolve normalmente e
+// acompanha o tema ativo — o espelho hex fixo pintava dark em cima do claro.
+// (Se algum dia a flag for pra canvas/imagem, aí sim resolver via getComputedStyle.)
 export const PRIORITIES: PriorityMeta[] = [
-  { value: 1, label: 'Crítica', color: '#ff8298' },
-  { value: 2, label: 'Alta', color: '#fbbf24' },
-  { value: 3, label: 'Normal', color: '#7db8ff' },
-  { value: 4, label: 'Baixa', color: '#9aa2b8' },
+  { value: 1, label: 'Crítica', color: 'var(--prio-1)' },
+  { value: 2, label: 'Alta', color: 'var(--prio-2)' },
+  { value: 3, label: 'Normal', color: 'var(--prio-3)' },
+  { value: 4, label: 'Baixa', color: 'var(--prio-4)' },
 ];
 
 export function priorityMeta(p: number | null): PriorityMeta | null {
