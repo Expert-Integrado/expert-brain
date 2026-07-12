@@ -79,8 +79,8 @@ describe('GET /app/export', () => {
 
     expect(files.has('manifest.json')).toBe(true);
     const manifest = JSON.parse(dec.decode(files.get('manifest.json')!));
-    // Bump pra 0027 (spec 88 — claim/lease + kind de comentário).
-    expect(manifest.schema_version).toBe('0027_fleet_claim_comment_kind');
+    // Bump pra 0028 (spec 99 — índices de janela temporal do insights).
+    expect(manifest.schema_version).toBe('0028_insights_indexes');
     expect(Object.keys(manifest.tables)).toContain('notes');
 
     for (const [table, count] of Object.entries(manifest.tables as Record<string, number>)) {

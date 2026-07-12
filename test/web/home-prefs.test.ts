@@ -44,15 +44,17 @@ describe('sanitizeHomePrefs (spec 72)', () => {
 
   it('order: só chaves conhecidas, sem duplicata, faltantes completadas no fim', () => {
     const p = sanitizeHomePrefs({ order: ['inbox', 'hacker', 'inbox', 'activity'] })!;
-    // 'hacker' e a duplicata caem; today/digest (ausentes) entram na ordem default
-    expect(p.order).toEqual(['inbox', 'activity', 'today', 'digest']);
+    // 'hacker' e a duplicata caem; today/digest/insights (ausentes) entram na
+    // ordem default — pref antiga nunca esconde caixa nova (a 'insights' entrou
+    // na spec 99 e é o caso real desse mecanismo).
+    expect(p.order).toEqual(['inbox', 'activity', 'today', 'digest', 'insights']);
     expect(p.heights).toEqual({});
   });
 
   it('heights e order juntos no mesmo body', () => {
     const p = sanitizeHomePrefs({ heights: { today: 500 }, order: ['digest', 'today', 'inbox', 'activity'] })!;
     expect(p.heights).toEqual({ today: 500 });
-    expect(p.order).toEqual(['digest', 'today', 'inbox', 'activity']);
+    expect(p.order).toEqual(['digest', 'today', 'inbox', 'activity', 'insights']);
   });
 });
 

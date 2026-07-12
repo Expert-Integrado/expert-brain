@@ -1184,6 +1184,42 @@ export const SURFACES_CSS = `
 .error-card .error-hint { margin: var(--space-5) 0 0; font-size: var(--text-xs); color: var(--text-subtle); }
 .error-card code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
 
+/* Dashboard mensal "Seu cérebro" (spec 99) — tiles, barras SVG e split dono/agente. */
+.insights-nav { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-5); }
+.insights-month { font-family: var(--font-display); font-size: var(--text-lg); text-transform: capitalize; }
+.insights-nav-spacer { min-width: 90px; }
+.insights-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: var(--space-5); }
+.insights-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.insights-stat-value { font-family: var(--font-display); font-size: 26px; line-height: 1.1; display: flex; align-items: baseline; gap: 8px; }
+.insights-stat-label { font-size: 12px; color: var(--text-dim); }
+.insights-delta { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 8px; }
+.insights-delta.up { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.insights-delta.down { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.insights-delta.flat { color: var(--text-subtle); background: var(--surface-2); }
+/* Na home o card é compacto: tiles sem borda própria, só os números. */
+.insights-stats-card { grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 0; }
+.insights-stats-card .insights-stat { padding: 10px 12px; }
+.insights-stats-card .insights-stat-value { font-size: 22px; }
+.insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; align-items: start; }
+.insights-grid > * { min-width: 0; }
+.insights-bars { display: block; margin-bottom: var(--space-3); }
+.insights-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-3); }
+.insights-domains { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: var(--text-sm); }
+.insights-domains li { display: flex; align-items: center; gap: 8px; }
+.insights-domains strong { margin-left: auto; color: var(--text-dim); font-weight: 500; }
+.insights-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+.insights-dot.owner { background: var(--accent-lav); }
+.insights-dot.agent { background: var(--accent-cyan); }
+.insights-big { font-family: var(--font-display); font-size: 30px; margin: 0 0 var(--space-3); }
+.insights-big span { font-size: var(--text-sm); font-family: var(--font-body); color: var(--text-dim); }
+.insights-note { font-size: var(--text-sm); color: var(--text-dim); line-height: var(--leading-sm); margin: 0; }
+.insights-degree { color: var(--text-subtle); font-size: 12px; margin-left: 6px; }
+.insights-split-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--surface-2); margin-bottom: 8px; }
+.insights-split-bar .owner { background: var(--accent-lav); }
+.insights-split-bar .agent { background: var(--accent-cyan); }
+.insights-split-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--text-dim); }
+.insights-split-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
 /* Modal de atalhos "?" (spec 97) — corpo gerado de SHORTCUT_DEFS. */
 .shortcuts-dialog { max-width: 420px; }
 .shortcuts-group h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-subtle); margin: var(--space-4) 0 var(--space-2); }

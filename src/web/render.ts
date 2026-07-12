@@ -26,6 +26,8 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
   contacts:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  insights:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="6"/><line x1="16" y1="20" x2="16" y2="10"/><line x1="22" y1="20" x2="22" y2="16"/></svg>',
   config:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   logout:
@@ -58,7 +60,7 @@ export const PWA_HEAD = `<meta name="viewport" content="width=device-width,initi
 
 export async function renderShell(opts: {
   title: string;
-  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'config' | 'api-keys';
+  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'insights' | 'config' | 'api-keys';
   email: string;
   body: string;
   env: Env;
@@ -87,6 +89,7 @@ ${opts.extraHead ?? ''}
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
     <a class="nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" title="Contatos">${SIDEBAR_ICONS.contacts}<span class="nav-label">Contatos</span></a>
+    <a class="nav-item${opts.active === 'insights' ? ' active' : ''}" href="/app/insights" title="Seu cérebro">${SIDEBAR_ICONS.insights}<span class="nav-label">Seu cérebro</span></a>
     <div class="bottom">
       <button class="nav-item nav-theme" type="button" data-theme-toggle title="Tema (auto/claro/escuro)">${SIDEBAR_ICONS.theme}<span class="nav-label" data-theme-label>Tema</span></button>
       <button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="${collapsed ? 'false' : 'true'}" title="Recolher menu (Ctrl+B)">${SIDEBAR_ICONS.chevron}<span class="nav-label">Recolher</span></button>

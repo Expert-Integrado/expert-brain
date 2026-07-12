@@ -10,7 +10,7 @@ export const HOME_PREFS_META_KEY = 'home_prefs';
 
 // Chaves canônicas das caixas ajustáveis. Se a home ganhar caixa nova, entra aqui
 // e no SSR dos handles no MESMO commit.
-export const HOME_BOX_KEYS = ['today', 'inbox', 'digest', 'activity'] as const;
+export const HOME_BOX_KEYS = ['today', 'inbox', 'digest', 'insights', 'activity'] as const;
 export type HomeBoxKey = (typeof HOME_BOX_KEYS)[number];
 
 // Limites do resize (px). O mínimo mantém título+captura visíveis; o máximo evita
@@ -25,6 +25,7 @@ export const HOME_BOX_DEFAULTS: Record<HomeBoxKey, number> = {
   today: 420,
   inbox: 420,
   digest: 420,
+  insights: 420,
   activity: 560,
 };
 

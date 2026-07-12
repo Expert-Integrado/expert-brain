@@ -9,6 +9,8 @@ import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 import { JOURNAL_CSS } from './journal.js';
 import { getHomePrefs, HOME_BOX_DEFAULTS, HOME_BOX_KEYS, HOME_BOX_MIN, HOME_BOX_MAX, type HomeBoxKey, type HomePrefs, type HomePrefsState } from './home-prefs.js';
+import { renderInsightsCard } from './insights.js';
+import { brtYearMonth, getMonthInsightsCached } from '../db/insights-queries.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
 // um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
@@ -392,6 +394,22 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     hasDigestBox = true;
   }
 
+  // Card "Seu cérebro" (spec 99): resumo do mês corrente com delta vs anterior.
+  // Payload vem do cache KV (1h) — a home não paga as agregações a cada visita.
+  let insightsCardHtml = '';
+  try {
+    const cur = brtYearMonth(now);
+    const prev = cur.month === 1 ? { year: cur.year - 1, month: 12 } : { year: cur.year, month: cur.month - 1 };
+    const [curData, prevData] = await Promise.all([
+      getMonthInsightsCached(env, cur.year, cur.month, now),
+      getMonthInsightsCached(env, prev.year, prev.month, now),
+    ]);
+    insightsCardHtml = renderInsightsCard(curData, prevData, prefs);
+  } catch (e) {
+    console.error('home: falha ao carregar o resumo mensal (spec 99)', e);
+    insightsCardHtml = renderCardError('Seu cérebro <a href="/app/insights">ver detalhes →</a>', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs);
+  }
+
   // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,
   // renderizadas na ordem salva — arrastar pelo título reordena, puxar a borda
   // redimensiona (padrão ClickUp, feedback do dono). Digest ausente é pulado.
@@ -399,6 +417,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     today: todayCardHtml,
     inbox: inboxCardHtml,
     digest: hasDigestBox ? digestCardHtml : '',
+    insights: insightsCardHtml,
     activity: renderActivityFeedSection(prefs),
   };
   const gridHtml = (prefsState.order ?? [...HOME_BOX_KEYS]).map((box) => boxHtml[box]).join('\n      ');

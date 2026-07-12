@@ -569,6 +569,17 @@ const MIGRATION_0027_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_task_comments_kind ON task_comments(task_id, kind, created_at)`,
 ];
 
+// 0028 — índices de janela temporal pro dashboard mensal (spec 91/99). As
+// agregações do /app/insights filtram por faixa de created_at/completed_at —
+// sem índice viram full scan por statement (8 por load, atrás de cache KV de
+// 1h; tolerável hoje, ruim em vault grande). Aditivo e barato.
+const MIGRATION_0028_STMTS: string[] = [
+  `CREATE INDEX IF NOT EXISTS idx_notes_created ON notes(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_edges_created ON edges(created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_notes_completed ON notes(completed_at) WHERE kind = 'task' AND status = 'done'`,
+  `CREATE INDEX IF NOT EXISTS idx_task_activity_at ON task_activity(at)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -597,6 +608,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0025_inbox_media', stmts: MIGRATION_0025_STMTS },
   { id: '0026_push_subscriptions', stmts: MIGRATION_0026_STMTS },
   { id: '0027_fleet_claim_comment_kind', stmts: MIGRATION_0027_STMTS },
+  { id: '0028_insights_indexes', stmts: MIGRATION_0028_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor
