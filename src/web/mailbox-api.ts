@@ -8,6 +8,7 @@
 
 import type { Env } from '../env.js';
 import { validateApiKey } from '../auth/api-keys.js';
+import { presetForScopes } from '../auth/presets.js';
 import { scopesSeePrivate } from '../auth/visibility.js';
 import { getUserByApiKeyId } from '../db/queries.js';
 import { countMailboxUnread } from '../db/mailbox.js';
@@ -41,10 +42,14 @@ export async function handleWhoami(req: Request, env: Env): Promise<Response> {
   const key = await env.DB.prepare(`SELECT name, system FROM api_keys WHERE id = ?`)
     .bind(v.keyId).first<{ name: string; system: string | null }>();
   const user = await getUserByApiKeyId(env, v.keyId);
+  // Papel da credencial (spec 91): reverse-map do CSV → preset. null = CSV fora dos
+  // presets ("Personalizado" na UI) — o campo `scopes` cru continua sendo a verdade.
+  const preset = presetForScopes(v.scopes);
   return json({
     key_name: key?.name ?? null,
     system: key?.system ?? null,
     scopes: v.scopes,
+    preset: preset ? preset.id : null,
     user: user ? { id: user.id, name: user.name, type: user.type } : null,
     hint: user ? undefined : 'Chave sem usuário vinculado — o dono vincula em /app/config (Usuários). Sem vínculo, escritas não assinam e não há mailbox.',
   });

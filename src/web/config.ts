@@ -5,6 +5,7 @@ import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js'
 import { formError, formErrorBanner } from './form-error.js';
 import { getVaultStatus } from '../auth/setup.js';
 import { listApiKeys } from '../auth/api-keys.js';
+import { SCOPE_PRESETS, presetForScopes } from '../auth/presets.js';
 import { flashKvKey } from './api-keys.js';
 import { pshareFlashKey, listProjectShares, type ProjectShareRow } from './project-share.js';
 import { readPersonalizationPrompt, readOwnerInstructions, writeOwnerInstructions, OWNER_INSTRUCTIONS_MAX_LEN } from '../db/meta.js';
@@ -645,7 +646,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     const lastRef = k.last_used_at ?? k.created_at;
     const dormant = !revoked && Date.now() - lastRef > KEY_DORMANT_MS;
     const lastUsed = k.last_used_at ? esc(relKeyUse(k.last_used_at)) : 'nunca';
-    const scopeLabel = k.scopes && k.scopes.trim() ? k.scopes : 'full';
+    // Badge do papel (spec 91): preset reconhecido mostra o nome; CSV fora dos
+    // presets mostra "Personalizado" — o CSV cru fica no title (hover) dos dois.
+    const csv = k.scopes && k.scopes.trim() ? k.scopes : 'full';
+    const preset = presetForScopes(csv);
+    const scopeLabel = preset ? preset.label : `Personalizado`;
+    const scopeTitle = preset ? `${preset.label} (${csv})` : `Escopo: ${csv}`;
     const actions = revoked
       ? ''
       : `<div class="key-row-actions">
@@ -666,7 +672,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
       <div class="key-row-meta">
         ${ownerCell}
-        <span class="badge-pill" title="Escopo">${esc(scopeLabel)}</span>
+        <span class="badge-pill" title="${esc(scopeTitle)}">${esc(scopeLabel)}</span>
         <span title="Último uso">${k.last_used_at ? `usada ${lastUsed}` : 'nunca usada'}</span>
       </div>
       ${actions}
@@ -842,16 +848,24 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
                 ${allUsers.filter((u) => u.archived_at === null).map((u) => `<option value="${esc(u.id)}">${esc(u.name)} (${u.type === 'agent' ? 'agente' : 'pessoa'})</option>`).join('')}
               </select>
             </label>
-            <label style="display:block;margin-top:12px">Escopo
-              <select name="scope" class="input-text" style="display:block;margin-top:4px">
-                <option value="full">Leitura e escrita — CRUD completo do vault</option>
-                <option value="read">Somente leitura — recall, get, stats, list</option>
+            <label style="display:block;margin-top:12px">Papel da credencial <span style="color:var(--text-dim)">— define o que a chave enxerga e pode fazer (spec 91); os papéis de robô não veem notas nem contatos</span>
+              <select name="preset" id="key-preset" class="input-text" style="display:block;margin-top:4px">
+                ${SCOPE_PRESETS.map((p) => `<option value="${esc(p.id)}"${p.id === 'personal' ? ' selected' : ''}>${esc(p.label)} — ${esc(p.hint)}</option>`).join('')}
+                <option value="custom">Personalizado… — escolher escopo base e acesso privado manualmente</option>
               </select>
             </label>
-            <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
-              <input type="checkbox" name="private_scope" value="1">
-              <span>Acesso a notas privadas <span style="color:var(--text-dim)">— capacidade sensível: prefira uma chave SEPARADA só pra isso, em vez de dar acesso privado à chave do dia a dia (spec 86 §4). Sem isto, a chave não vê notas privadas.</span></span>
-            </label>
+            <div id="key-custom-scopes" hidden>
+              <label style="display:block;margin-top:12px">Escopo
+                <select name="scope" class="input-text" style="display:block;margin-top:4px">
+                  <option value="full">Leitura e escrita — CRUD completo do vault</option>
+                  <option value="read">Somente leitura — recall, get, stats, list</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;margin-top:12px">
+                <input type="checkbox" name="private_scope" value="1">
+                <span>Acesso a notas privadas <span style="color:var(--text-dim)">— capacidade sensível: prefira uma chave SEPARADA só pra isso, em vez de dar acesso privado à chave do dia a dia (spec 86 §4). Sem isto, a chave não vê notas privadas.</span></span>
+              </label>
+            </div>
             <button type="submit" class="btn btn-primary" style="margin-top:12px">Criar chave</button>
           </form>
         </div>

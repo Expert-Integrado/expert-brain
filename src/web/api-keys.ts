@@ -2,6 +2,7 @@ import type { Env } from '../env.js';
 import { requireSession } from './session.js';
 import { formError } from './form-error.js';
 import { ApiKeyLimitError, assignApiKeyUser, createApiKey, revokeApiKey, setApiKeySystem, isApiKeyScope, type ApiKeyScope } from '../auth/api-keys.js';
+import { presetById } from '../auth/presets.js';
 import { getUserById } from '../db/queries.js';
 
 // /app/api-keys virou redirect — a UI agora vive dentro de /app/config.
@@ -35,12 +36,23 @@ export async function handleApiKeyCreate(req: Request, env: Env): Promise<Respon
   const form = await req.formData();
   const name = String(form.get('name') ?? '').trim().slice(0, 80);
   if (!name) return formError(req, 'Nome obrigatório', { field: 'name', returnTo: '/app/config#api-keys' });
-  // Escopo BASE (spec 17): valor inválido/ausente cai em 'full' (histórico).
-  const scopeRaw = String(form.get('scope') ?? '');
-  const base: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
-  // Escopo aditivo 'private' (spec 31): checkbox → CSV 'full,private' | 'read,private'.
-  const wantsPrivate = String(form.get('private_scope') ?? '') === '1';
-  const scopes = wantsPrivate ? `${base},private` : base;
+  // Papel da credencial (spec 91): o select de preset é o ÚNICO escritor dos tokens
+  // de restrição (notes:none/contacts:none/tasks:assigned) — a UI nunca digita CSV.
+  // preset ausente ou 'custom' cai no form legado (escopo base + checkbox private),
+  // então o POST antigo (scripts, testes, bookmarks de form) segue funcionando.
+  const presetRaw = String(form.get('preset') ?? '').trim();
+  const preset = presetRaw && presetRaw !== 'custom' ? presetById(presetRaw) : null;
+  let scopes: string;
+  if (preset) {
+    scopes = preset.scopes;
+  } else {
+    // Escopo BASE (spec 17): valor inválido/ausente cai em 'full' (histórico).
+    const scopeRaw = String(form.get('scope') ?? '');
+    const base: ApiKeyScope = isApiKeyScope(scopeRaw) ? scopeRaw : 'full';
+    // Escopo aditivo 'private' (spec 31): checkbox → CSV 'full,private' | 'read,private'.
+    const wantsPrivate = String(form.get('private_scope') ?? '') === '1';
+    scopes = wantsPrivate ? `${base},private` : base;
+  }
   // Dono da chave (spec 86): OBRIGATÓRIO pra chave nova — chave sem dono não nasce
   // mais pela UI (o vínculo esquecível em dois passos foi a origem do bug do PC
   // assinando como Claude VPS). Precisa ser um usuário ATIVO.

@@ -63,6 +63,64 @@ describe('criação de chave com sistema', () => {
   });
 });
 
+describe('criação de chave por PRESET (spec 91)', () => {
+  it('preset task-worker grava o CSV canônico do papel', async () => {
+    await createUser(E, { id: 'user_r', name: 'Robô', type: 'agent', bio: null, api_key_id: null }, 1);
+    const res = await postForm('/app/api-keys/create', {
+      name: 'robo-central', preset: 'task-worker', user_id: 'user_r',
+    }, await cookie());
+    expect(res.status).toBe(302);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    expect(keys[0].scopes).toBe('full,notes:none,contacts:none,tasks:assigned');
+  });
+
+  it('preset=custom (ou desconhecido) cai no form legado scope+private_scope', async () => {
+    await createUser(E, { id: 'user_x', name: 'X', type: 'agent', bio: null, api_key_id: null }, 1);
+    const ck = await cookie();
+    const custom = await postForm('/app/api-keys/create', {
+      name: 'custom', preset: 'custom', scope: 'read', private_scope: '1', user_id: 'user_x',
+    }, ck);
+    expect(custom.status).toBe(302);
+    // Preset inexistente NUNCA vira CSV — cai no legado (fail-safe, não fail-open).
+    const unknown = await postForm('/app/api-keys/create', {
+      name: 'unknown', preset: 'super-admin', scope: 'read', user_id: 'user_x',
+    }, ck);
+    expect(unknown.status).toBe(302);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    const byName = new Map(keys.map((k) => [k.name, k.scopes]));
+    expect(byName.get('custom')).toBe('read,private');
+    expect(byName.get('unknown')).toBe('read');
+  });
+
+  it('POST antigo SEM campo preset segue funcionando byte a byte (retrocompat)', async () => {
+    await createUser(E, { id: 'user_x', name: 'X', type: 'agent', bio: null, api_key_id: null }, 1);
+    const res = await postForm('/app/api-keys/create', { name: 'legada', scope: 'full', private_scope: '1', user_id: 'user_x' }, await cookie());
+    expect(res.status).toBe(302);
+    const keys = await listApiKeys(E, E.OWNER_EMAIL);
+    expect(keys[0].scopes).toBe('full,private');
+  });
+
+  it('form do config mostra o select de papel com os 5 presets + Personalizado', async () => {
+    const res = await SELF.fetch('https://x/app/config', { headers: { cookie: await cookie() } });
+    const html = await res.text();
+    expect(html).toContain('id="key-preset"');
+    for (const id of ['personal-full', 'personal', 'reader', 'fleet-worker', 'task-worker']) {
+      expect(html).toContain(`value="${id}"`);
+    }
+    expect(html).toContain('value="custom"');
+    expect(html).toContain('id="key-custom-scopes"');
+  });
+
+  it('listagem mostra o NOME do papel como badge (CSV cru só no title)', async () => {
+    await createUser(E, { id: 'user_r', name: 'Robô', type: 'agent', bio: null, api_key_id: null }, 1);
+    await createApiKey(E, E.OWNER_EMAIL, 'robo-central', 'full,notes:none,contacts:none,tasks:assigned', 'user_r');
+    await createApiKey(E, E.OWNER_EMAIL, 'esquisita', 'full,notes:none', 'user_r');
+    const html = await (await SELF.fetch('https://x/app/config', { headers: { cookie: await cookie() } })).text();
+    expect(html).toContain('Robô colaborador');
+    expect(html).toContain('Personalizado');
+  });
+});
+
 describe('GET /api/whoami', () => {
   it('chave vinculada devolve key_name + user + scopes; no-store', async () => {
     await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: null }, 1);
@@ -74,6 +132,19 @@ describe('GET /api/whoami', () => {
     expect(body.key_name).toBe('pat-vps-backup');
     expect(body.user).toEqual({ id: 'user_vps', name: 'Claude VPS', type: 'agent' });
     expect(body.scopes).toBe('full,private');
+    // Papel (spec 91): reverse-map do CSV. 'full,private' = preset personal-full.
+    expect(body.preset).toBe('personal-full');
+  });
+
+  it('whoami.preset: CSV de robô colaborador mapeia; CSV fora dos presets → null', async () => {
+    const worker = await createApiKey(E, E.OWNER_EMAIL, 'robo', 'full,notes:none,contacts:none,tasks:assigned', null);
+    const bodyW: any = await (await whoami(worker.plainKey)).json();
+    expect(bodyW.preset).toBe('task-worker');
+
+    const odd = await createApiKey(E, E.OWNER_EMAIL, 'esquisita', 'full,notes:none', null);
+    const bodyO: any = await (await whoami(odd.plainKey)).json();
+    expect(bodyO.preset).toBeNull();
+    expect(bodyO.scopes).toBe('full,notes:none');
   });
 
   it('chave SEM dono → 200 com user null (diagnóstico, não erro)', async () => {

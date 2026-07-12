@@ -143,6 +143,18 @@ export function configPageScript(): string {
     });
   })();
 
+  // Papel da credencial (spec 91): os controles legados (escopo base + private) só
+  // aparecem quando o select está em "Personalizado…" — nos presets, o CSV vem
+  // inteiro do servidor e os campos escondidos são ignorados pelo handler.
+  (function () {
+    var preset = document.getElementById('key-preset');
+    var custom = document.getElementById('key-custom-scopes');
+    if (!preset || !custom) return;
+    var sync = function () { custom.hidden = preset.value !== 'custom'; };
+    preset.addEventListener('change', sync);
+    sync();
+  })();
+
   // ── Áreas e tipos (taxonomia configurável — spec 54) ──
   // Slugifica um label pro mesmo formato exigido no servidor (DOMAIN_SLUG_REGEX:
   // minúsculo, kebab-case ASCII, começa com letra, 2-40 chars).
