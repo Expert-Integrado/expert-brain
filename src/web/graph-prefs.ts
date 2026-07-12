@@ -39,7 +39,9 @@ export interface GraphPrefs {
   // forces3d acima (mexer no slider "Tamanho das bolinhas" no 3D não pode mudar
   // o 2D e vice-versa). textFadeMult não existe aqui (sem equivalente no 3D).
   // Prefs antigas sem o campo caem nos defaults 3D (ver VISUAL3D_DEFAULTS abaixo).
-  visual3d: { nodeSizeMult: number; lineSizeMult: number };
+  // `glow` (spec 104): bloom/pós-processamento do palco 3D — a pref é o DESEJO do
+  // dono; o efetivo ainda depende de tema escuro + desktop (guards no client).
+  visual3d: { nodeSizeMult: number; lineSizeMult: number; glow: boolean };
   hideOrphans: boolean;
   noOverlap: boolean;
   // `mode` foi REMOVIDO do shape persistido (spec 29): salvar padrão estando no
@@ -65,7 +67,7 @@ const FORCE3D_DEFAULTS = { center: 0.2, repel: 8, link: 1, distance: 150 };
 // "neutros" do 2D; NÃO alteram a calibração/baseline de render do three.js, só o
 // multiplicador aplicado por cima). MANTER EM SINCRONIA com VISUAL3D_DEFAULTS do
 // client (src/web/client/graph.ts).
-const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1 };
+const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true };
 
 // Sanitiza um objeto arbitrário (POST do cliente OU valor legado no meta) pro shape
 // canônico, clampando cada campo nos MESMOS ranges dos sliders do graph.ts. Nunca
@@ -105,6 +107,7 @@ export function sanitizeGraphPrefs(raw: unknown): GraphPrefs | null {
     visual3d: {
       nodeSizeMult: clampNum(v3.nodeSizeMult, 0.3, 3, VISUAL3D_DEFAULTS.nodeSizeMult),
       lineSizeMult: clampNum(v3.lineSizeMult, 0, 3, VISUAL3D_DEFAULTS.lineSizeMult),
+      glow: asBool(v3.glow, VISUAL3D_DEFAULTS.glow),
     },
     hideOrphans: asBool(r.hideOrphans),
     noOverlap: asBool(r.noOverlap),

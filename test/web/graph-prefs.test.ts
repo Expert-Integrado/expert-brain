@@ -55,6 +55,23 @@ describe('POST /app/graph/prefs por superfície (spec 29)', () => {
     expect(await metaValue('graph_prefs:contacts')).toBeNull();
   });
 
+  // Spec 104: glow é parte do visual3d — isolado por superfície como o resto.
+  it('glow false salvo em notas NÃO contamina contatos (isolamento por superfície)', async () => {
+    await E.DB.prepare(`DELETE FROM meta WHERE key LIKE 'graph_prefs%'`).run();
+    await SELF.fetch('https://x.test/app/graph/prefs', {
+      method: 'POST',
+      headers: { cookie: await authCookie(), 'content-type': 'application/json' },
+      body: JSON.stringify({ ...basePrefs, visual3d: { nodeSizeMult: 1, lineSizeMult: 1, glow: false } }),
+    });
+    await SELF.fetch('https://x.test/app/graph/prefs', {
+      method: 'POST',
+      headers: { cookie: await authCookie(), 'content-type': 'application/json' },
+      body: JSON.stringify({ ...basePrefs, surface: 'contacts' }),
+    });
+    expect(await metaValue('graph_prefs')).toContain('"glow":false');
+    expect(await metaValue('graph_prefs:contacts')).toContain('"glow":true');
+  });
+
   it('mode NÃO é mais persistido (sanitize dropa)', async () => {
     await E.DB.prepare(`DELETE FROM meta WHERE key LIKE 'graph_prefs%'`).run();
     await SELF.fetch('https://x.test/app/graph/prefs', {

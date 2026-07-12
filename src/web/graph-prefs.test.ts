@@ -75,7 +75,7 @@ describe('sanitizeGraphPrefs', () => {
     expect(p.nodeSizeMult).toBe(1.5);   // perfil 2D intacto
     expect(p.lineSizeMult).toBe(2);     // perfil 2D intacto
     expect(p.textFadeMult).toBe(1);     // perfil 2D intacto
-    expect(p.visual3d).toEqual({ nodeSizeMult: 1, lineSizeMult: 1 }); // defaults visuais 3D
+    expect(p.visual3d).toEqual({ nodeSizeMult: 1, lineSizeMult: 1, glow: true }); // defaults visuais 3D
   });
 
   it('clampa visual3d nos mesmos ranges dos sliders', () => {
@@ -86,6 +86,15 @@ describe('sanitizeGraphPrefs', () => {
     expect(p.visual3d.lineSizeMult).toBe(0);   // clamp lo (0..3)
     expect(p.nodeSizeMult).toBe(1);            // 2D não contamina: segue default próprio
     expect(p.lineSizeMult).toBe(1);            // 2D não contamina: segue default próprio
+  });
+
+  // Spec 104 (grafo 3D cosmos): pref `glow` do bloom. Default LIGADO — prefs
+  // antigas (sem o campo) e tipo errado caem em true; false explícito respeitado.
+  it('glow: default true quando ausente ou tipo errado; false explícito sobrevive', () => {
+    expect(sanitizeGraphPrefs({})!.visual3d.glow).toBe(true);
+    expect(sanitizeGraphPrefs({ visual3d: { nodeSizeMult: 2 } })!.visual3d.glow).toBe(true);
+    expect(sanitizeGraphPrefs({ visual3d: { glow: 'sim' } })!.visual3d.glow).toBe(true);
+    expect(sanitizeGraphPrefs({ visual3d: { glow: false } })!.visual3d.glow).toBe(false);
   });
 
   it('salva e lê de volta visual3d sanitizado via POST /app/graph/prefs', async () => {
@@ -104,7 +113,18 @@ describe('sanitizeGraphPrefs', () => {
     expect(saved!.nodeSizeMult).toBe(1.2);
     expect(saved!.lineSizeMult).toBe(0.8);
     expect(saved!.textFadeMult).toBe(-1);
-    expect(saved!.visual3d).toEqual({ nodeSizeMult: 2, lineSizeMult: 1.5 });
+    expect(saved!.visual3d).toEqual({ nodeSizeMult: 2, lineSizeMult: 1.5, glow: true });
+  });
+
+  it('glow false salvo como padrão sobrevive ao roundtrip (POST → getGraphPrefs)', async () => {
+    const res = await SELF.fetch('https://x.test/app/graph/prefs', {
+      method: 'POST',
+      headers: { cookie: await authCookie(), 'content-type': 'application/json' },
+      body: JSON.stringify({ visual3d: { nodeSizeMult: 1, lineSizeMult: 1, glow: false } }),
+    });
+    expect(res.status).toBe(200);
+    const saved = await getGraphPrefs(env as any);
+    expect(saved!.visual3d.glow).toBe(false);
   });
 });
 
