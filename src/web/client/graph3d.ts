@@ -473,10 +473,12 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
 
   // ── Sampler do modo AUTO (spec 105): mede o frame time REAL com um rAF
   // próprio (não compete com o loop da lib — múltiplos callbacks rodam no
-  // mesmo frame; aqui só se lê timestamp). Começa no 1º tick da engine (palco
-  // comprovadamente vivo, medindo o PIOR caso: física assentando) e coleta 60
-  // deltas válidos — descarta aba oculta, palco pausado e gaps >500ms (troca
-  // de aba). Decide UMA vez por sessão pela MEDIANA (robusta a hitch de GC).
+  // mesmo frame; aqui só se lê timestamp). Começa no PRIMEIRO onEngineStop
+  // (nuvem assentada, só render + auto-rotate): medir durante o assentamento
+  // punia demais — a física transitória derrubava a mediana pra 'low' até em
+  // máquina forte (validado 13/07), e o regime permanente é o que o dono vive
+  // 95% do tempo. Coleta 60 deltas válidos — descarta aba oculta, palco
+  // pausado e gaps >500ms (troca de aba). Decide UMA vez pela MEDIANA.
   let fpsRaf = 0;
   function startAutoSampler() {
     if ((ctx.getVisual().quality ?? 'auto') !== 'auto') return;
@@ -833,6 +835,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (engineStoppedOnce) return;
     engineStoppedOnce = true;
     if (!autoFitDone) frameCore(600);
+    startAutoSampler(); // spec 105: mede FPS no regime permanente (modo auto)
   });
 
   // Reaquecimento inicial ADIADO pro 1º tick da engine: nesse ponto o digest
@@ -848,7 +851,6 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (!firstTickReheated) {
       firstTickReheated = true;
       graph.d3ReheatSimulation();
-      startAutoSampler(); // spec 105: mede FPS a partir do palco vivo (modo auto)
       return;
     }
     settleTicks++;

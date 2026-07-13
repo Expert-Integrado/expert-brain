@@ -64,6 +64,14 @@ gráfico e uma menor". Diagnóstico MEDIDO (13/07/2026, vault real com 6.576 not
   trocando a geometria (Meshes preservados), `setPixelRatio` no renderer E no
   composer refaz os render targets, `cooldownTime` é linked prop lida por tick,
   `linkVisibility` re-digesta por diff.
+- **Gotchas pegos na validação (13/07):** (1) `data-quality-3d` NÃO vira
+  `dataset.quality3d` — traço seguido de dígito não converte pra camelCase;
+  atributo renomeado pra `data-quality3d`. (2) O sampler do auto media DURANTE
+  o assentamento da física e a mediana caía pra 'low' até em máquina forte —
+  movido pro primeiro `onEngineStop` (regime permanente, que é o que o dono
+  vive 95% do tempo). (3) Os seletores dos chips de coloração eram globais
+  (`.graph-color-chip`) e roubariam o `active` dos chips novos — escopados por
+  container (`#color-mode-chips` / `#quality-3d-chips`).
 
 ## Estimativa de ganho
 

@@ -165,7 +165,7 @@ describe('/app/graph?mode=3d (modo 3D dentro da mesma tela)', () => {
     const html = await notes.text();
     expect(html).toContain('id="quality-3d-chips"');
     for (const q of ['auto', 'extra', 'balanced', 'low']) {
-      expect(html).toContain(`data-quality-3d="${q}"`);
+      expect(html).toContain(`data-quality3d="${q}"`);
     }
     const contacts = await SELF.fetch('https://x.test/app/contacts', { headers: { cookie: await authCookie() } });
     expect(await contacts.text()).not.toContain('id="quality-3d-chips"');

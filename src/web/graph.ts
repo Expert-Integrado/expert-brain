@@ -735,10 +735,10 @@ async function renderGraphLikePage(
           <div class="graph-slider-label graph-3d-only">
             <span>Qualidade (3D)</span>
             <div id="quality-3d-chips" class="graph-color-chips" role="radiogroup" aria-label="Qualidade do 3D">
-              <button type="button" class="graph-color-chip active" data-quality-3d="auto">Auto</button>
-              <button type="button" class="graph-color-chip" data-quality-3d="extra">Extra</button>
-              <button type="button" class="graph-color-chip" data-quality-3d="balanced">Equilibrado</button>
-              <button type="button" class="graph-color-chip" data-quality-3d="low">Leve</button>
+              <button type="button" class="graph-color-chip active" data-quality3d="auto">Auto</button>
+              <button type="button" class="graph-color-chip" data-quality3d="extra">Extra</button>
+              <button type="button" class="graph-color-chip" data-quality3d="balanced">Equilibrado</button>
+              <button type="button" class="graph-color-chip" data-quality3d="low">Leve</button>
             </div>
             <small class="graph-slider-help">Auto mede a velocidade da sua máquina e escolhe sozinho. Equilibrado e Leve escondem as linhas semânticas no 3D (o 2D não muda); Leve também desliga o Brilho</small>
           </div>` : ''}
