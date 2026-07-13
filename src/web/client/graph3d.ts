@@ -142,7 +142,7 @@ function fibDir(i: number, k: number): [number, number, number] {
 // "fogo de artifício" da referência precisa das folhas AFASTADAS do hub com
 // os raios visíveis. Sim mais fraco + distâncias cheias = dandelion aberto.
 const SIM_LINK_FACTOR = 0.25;
-const CROSS_DOMAIN_LINK_FACTOR = 0.15;
+const CROSS_DOMAIN_LINK_FACTOR = 0.22;
 
 function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const { payload, state } = ctx;
@@ -185,6 +185,19 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   for (const l of explicitLinks) {
     degreeById.set(l.source, (degreeById.get(l.source) ?? 0) + 1);
     degreeById.set(l.target, (degreeById.get(l.target) ?? 0) + 1);
+  }
+
+  // Sinapses (pedido do dono 13/07): as partículas da lib viajam source →
+  // target. Orienta o link visual com o HUB como fonte, pro pulso sair do
+  // centro do "fogo de artifício" rumo às pontas — e o raio herda a cor do
+  // hub de quebra (linkColor usa a fonte). Só visual: a física não tem
+  // direção, e a seta semântica do edge não é exibida no 3D.
+  for (const l of explicitLinks) {
+    if ((degreeById.get(l.target) ?? 0) > (degreeById.get(l.source) ?? 0)) {
+      const s = l.source;
+      (l as any).source = l.target;
+      (l as any).target = s;
+    }
   }
 
   // Nó por id — pro linkColor achar o nó fonte enquanto source ainda é string.
@@ -260,6 +273,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // GRANDES (≥5 notas) espalham pela esfera inteira (fib sobre só elas) e a
     // poeira ganha direção determinística por hash — fica espalhada por toda
     // parte, como o fundo estrelado da referência.
+    // Raios COMPACTOS (feedback do dono 13/07: "grupos longe demais, tem que
+    // virar quase um globo"): grandes assentam em 0.30..0.72 do raio médio
+    // (encostando umas nas outras), poeira em 0.55..0.90 (casca de estrelas
+    // em volta) — menos vazio no miolo, um globo cheio.
     const BIG_COM_MIN = 5;
     const bigComs = coms.filter((c) => (comCount.get(c) ?? 0) >= BIG_COM_MIN);
     const hashDir = (s: string): { dir: [number, number, number]; rf: number } => {
@@ -268,12 +285,12 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       const y = 1 - 2 * ((h % 1024) / 1023);
       const r = Math.sqrt(Math.max(0, 1 - y * y));
       const th = 2 * Math.PI * (((h >>> 10) % 1024) / 1024);
-      return { dir: [Math.cos(th) * r, y, Math.sin(th) * r], rf: 0.7 + 0.5 * (((h >>> 20) % 1024) / 1024) };
+      return { dir: [Math.cos(th) * r, y, Math.sin(th) * r], rf: 0.55 + 0.35 * (((h >>> 20) % 1024) / 1024) };
     };
     const anchorByCom = new Map<string, { dir: [number, number, number]; rf: number }>();
     bigComs.forEach((c, i) => anchorByCom.set(c, {
       dir: fibDir(i, bigComs.length),
-      rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1),
+      rf: 0.30 + 0.42 * ((i * 0.6180339887) % 1),
     }));
     for (const c of coms) if (!anchorByCom.has(c)) anchorByCom.set(c, hashDir(c));
     const force = (alpha: number) => {
@@ -335,6 +352,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     .linkVisibility((l: any) => linkVisible(l))
     .linkColor((l: any) => linkColor(l))
     .linkWidth((l: any) => linkWidth(l))
+    // Sinapses: pulsos viajando hub → pontas nas explícitas (a orientação foi
+    // normalizada acima). Ligadas junto com o "Brilho" (applyGlow re-avalia):
+    // com bloom os pulsos viram faíscas — o cérebro "pisca". Semânticas ficam
+    // de fora (viraria chuvisco); mobile idem (glowOn já é false lá).
+    .linkDirectionalParticles((l: any) => (!l._sim && glowOn ? 2 : 0))
+    .linkDirectionalParticleSpeed(0.006)
+    .linkDirectionalParticleWidth(1.9)
     // Clique abre o MESMO painel de nota do 2D (não navega pra fora).
     .onNodeClick((n: any) => { const id = String(n.id ?? ''); if (id) ctx.onNodeOpen(id); });
 
@@ -355,12 +379,11 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
   // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
   // pipeline volta byte-idêntico ao original — toggle limpo.
-  // Knobs (rodada 4, 13/07/2026): strength 0.5 / radius 0.22 / threshold 0.25.
-  // Histórico: 1.0/0.6/0.15 estourava o miolo; radius largo (0.5) espalhava
-  // véu na tela inteira; threshold alto (0.55) apagava o glow de TODAS as
-  // bolinhas de cor média — e a referência tem todo nó brilhando. A regra que
-  // ficou: RADIUS curto controla o véu (halo local), THRESHOLD baixo acende
-  // todo mundo, strength moderado segura a supernova no miolo denso. Fantasma
+  // Knobs (rodada 5, 13/07/2026): strength 0.35 / radius 0.18 / threshold 0.30.
+  // Regra destilada das 5 rodadas com o dono: RADIUS curto controla o véu
+  // (halo local, fundo preto), THRESHOLD baixo acende todo nó, STRENGTH é o
+  // que lava a cena pra cinza quando passa de ~0.4 com milhares de nós claros
+  // (modo neutro) — 0.5 ainda acinzentava, 0.35 dá brasa sem véu. Fantasma
   // de busca (rgba escuro 0.22) continua abaixo do threshold — busca legível.
   let bloomPass: UnrealBloomPass | null = null;
   let outputPass: OutputPass | null = null;
@@ -369,7 +392,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        0.5, 0.22, 0.25,
+        0.35, 0.18, 0.30,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -387,9 +410,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     glowOn = glowEffective();
     if (bloomPass) bloomPass.enabled = glowOn;
     if (outputPass) outputPass.enabled = glowOn;
-    // Arestas explícitas saturam sob bloom — alfa cai 0.55→0.35 com glow ativo
-    // (o accessor lê glowOn; rechamar linkColor faz a lib reavaliar tudo).
+    // Rechamar os accessors faz a lib reavaliar tudo: alfa das linhas muda com
+    // o bloom, e as SINAPSES (partículas) ligam/desligam junto com o Brilho.
     graph.linkColor((l: any) => linkColor(l));
+    graph.linkDirectionalParticles((l: any) => (!l._sim && glowOn ? 2 : 0));
   }
 
   // ── Cenografia "cosmos" (spec 104): gaiola esférica adicionada à cena da
@@ -550,8 +574,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
           return comOfEnd(l.source) === comOfEnd(l.target) ? f.link : f.link * CROSS_DOMAIN_LINK_FACTOR;
         })
         .distance((l: any) => {
-          if (l._sim) return f.distance * 0.9;
-          return comOfEnd(l.source) === comOfEnd(l.target) ? f.distance : f.distance * 1.8;
+          if (l._sim) return f.distance * 0.8;
+          // Ponte cross-comunidade curta (1.8 → 1.2, feedback 13/07): grupos
+          // ligados ficam VIZINHOS — o globo fecha, sem ilhas distantes.
+          return comOfEnd(l.source) === comOfEnd(l.target) ? f.distance : f.distance * 1.2;
         });
     }
     applyCollide();
