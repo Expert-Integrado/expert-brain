@@ -97,12 +97,36 @@ export function buildCage(color: string, opacity: number): LineSegments {
   return new LineSegments(geo, mat);
 }
 
+// Anel equatorial (o "disco de Saturno" da referência): círculo no plano XZ em
+// raio UNITÁRIO — o chamador escala (na referência o anel transborda a gaiola,
+// ~1.12x o raio dela). Mesmo formato LineSegments da gaiola: pares de pontas.
+export function ringPositions(segments = 128): Float32Array {
+  const out = new Float32Array(segments * 6);
+  const TAU = 2 * Math.PI;
+  let o = 0;
+  for (let s = 0; s < segments; s++) {
+    const t0 = (s / segments) * TAU;
+    const t1 = ((s + 1) / segments) * TAU;
+    out[o++] = Math.cos(t0); out[o++] = 0; out[o++] = Math.sin(t0);
+    out[o++] = Math.cos(t1); out[o++] = 0; out[o++] = Math.sin(t1);
+  }
+  return out;
+}
+
+export function buildRing(color: string, opacity: number): LineSegments {
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(ringPositions(), 3));
+  const mat = new LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false });
+  return new LineSegments(geo, mat);
+}
+
 // Descarte explícito — o _destructor da lib não conhece objetos que NÓS
 // adicionamos à cena; sem isso geometria/material vazam na troca 2D↔3D.
-export function disposeScenery(cage: LineSegments | null): void {
-  if (cage) {
-    cage.parent?.remove(cage);
-    cage.geometry.dispose();
-    cage.material.dispose();
+export function disposeScenery(...objs: Array<LineSegments | null>): void {
+  for (const obj of objs) {
+    if (!obj) continue;
+    obj.parent?.remove(obj);
+    obj.geometry.dispose();
+    obj.material.dispose();
   }
 }

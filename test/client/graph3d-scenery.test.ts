@@ -7,6 +7,7 @@ import {
   cageRadius,
   cagePositions,
   buildCage,
+  ringPositions,
 } from '../../src/web/client/graph3d-scenery.js';
 
 describe('computeCore', () => {
@@ -68,6 +69,17 @@ describe('cagePositions', () => {
     for (let i = 1; i < pos.length; i += 3) ys.add(pos[i].toFixed(9));
     expect(ys.size).toBe(parallels);
     for (const y of ys) expect(Math.abs(Number(y))).toBeLessThan(1);
+  });
+});
+
+describe('ringPositions', () => {
+  it('círculo unitário no plano XZ: contagem exata, y=0, norma 1', () => {
+    const pos = ringPositions(16);
+    expect(pos.length).toBe(16 * 2 * 3);
+    for (let i = 0; i < pos.length; i += 3) {
+      expect(pos[i + 1]).toBe(0);
+      expect(Math.hypot(pos[i], pos[i + 2])).toBeCloseTo(1, 6);
+    }
   });
 });
 

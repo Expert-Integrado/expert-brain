@@ -2,7 +2,7 @@
 // Hash de conteúdo de cada bundle pra cache-busting estável (?v=).
 export const ASSET_HASHES: Record<string, string> = {
   "graph.bundle.js": "a035036a162d",
-  "graph3d.bundle.js": "39690c1cb530",
+  "graph3d.bundle.js": "ceef9762fc15",
   "notes.bundle.js": "e85db490d332",
   "local-graph.bundle.js": "a488c9001287",
   "note-media.bundle.js": "ebedbf78f620",

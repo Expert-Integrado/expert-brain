@@ -4,7 +4,7 @@ import { Vector2 } from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { domainColor } from '../domain-colors.js';
-import { computeCore, cageRadius, buildCage, disposeScenery } from './graph3d-scenery.js';
+import { computeCore, cageRadius, buildCage, buildRing, disposeScenery } from './graph3d-scenery.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Grafo 3D — o "globo que gira", agora como um MODO do /app/graph (não mais uma
@@ -106,8 +106,8 @@ const COLLIDE_STRONG = 66 / 6; // 11
 // da nuvem: os domínios condensam em gânglios separados por vazios, como na
 // referência. Órfã recebe gravidade reforçada (não tem forceLink segurando —
 // sem isso o charge a empurrava pro "infinito").
-const DOMAIN_GRAVITY_3D = 0.05;
-const ORPHAN_GRAVITY_3D = 0.12; // órfã assenta no gânglio do seu domínio
+const DOMAIN_GRAVITY_3D = 0.03;
+const ORPHAN_GRAVITY_3D = 0.10; // órfã assenta no gânglio do seu domínio
 
 // Direção i de k na esfera de fibonacci — distribui os domínios uniformemente
 // em volta da origem (determinístico: mesma ordem de domínios = mesmo layout).
@@ -137,8 +137,12 @@ function fibDir(i: number, k: number): [number, number, number] {
 // - Explícitas CROSS-domínio: força bem menor + distância maior — viram as
 //   PONTES longas entre gânglios da referência, em vez de molas que fundem
 //   tudo numa bola só.
-const SIM_LINK_FACTOR = 0.5;
-const CROSS_DOMAIN_LINK_FACTOR = 0.22;
+// Fatores recalibrados na rodada da referência (13/07/2026): 0.5/dist 0.5x
+// colapsava cada grupo numa bola densa onde NENHUMA linha aparecia — o
+// "fogo de artifício" da referência precisa das folhas AFASTADAS do hub com
+// os raios visíveis. Sim mais fraco + distâncias cheias = dandelion aberto.
+const SIM_LINK_FACTOR = 0.25;
+const CROSS_DOMAIN_LINK_FACTOR = 0.15;
 
 function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const { payload, state } = ctx;
@@ -188,6 +192,8 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const domById = new Map<string, string>(nodes.map((n) => [n.id, (n as any)._n?.domain || '_']));
   const domOfEnd = (v: any): string =>
     (typeof v === 'object' && v ? (v._n?.domain || '_') : (domById.get(String(v)) || '_'));
+  // Nó por id — pro linkColor achar o nó fonte enquanto source ainda é string.
+  const nodeById = new Map<string, any>(nodes.map((n) => [n.id, n]));
 
   // Força CUSTOM d3-force-3d v2: puxa cada nó pra ÂNCORA FIXA do seu domínio —
   // direção de fibonacci × raio-casca proporcional ao espalhamento atual da
@@ -205,26 +211,27 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       domCount.set(d, (domCount.get(d) ?? 0) + 1);
     }
     const doms = [...domCount.keys()].sort((a, b) => (domCount.get(b)! - domCount.get(a)!) || a.localeCompare(b));
-    const dirByDomain = new Map<string, [number, number, number]>(
-      doms.map((d, i) => [d, fibDir(i, doms.length)]),
+    // Cada domínio ganha direção (fibonacci) E profundidade própria (razão
+    // áurea sobre o índice, 0.55..1.1 do raio médio): na referência os grupos
+    // ocupam a esfera INTEIRA em profundidades variadas, não uma casca única.
+    const anchorByDomain = new Map<string, { dir: [number, number, number]; rf: number }>(
+      doms.map((d, i) => [d, { dir: fibDir(i, doms.length), rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1) }]),
     );
     const force = (alpha: number) => {
       if (!simNodes.length) return;
-      // Raio da casca = distância média atual ao centro × 1.05: gânglios
-      // assentam pouco além da média — separados por vazios mas ENCOSTANDO
-      // nos vizinhos ("mesclando e juntando", como na referência). Com 1.25
-      // eles viravam ilhas estanques longe demais umas das outras.
+      // Escala base = distância média atual ao centro (auto-acompanha o charge).
       let sum = 0;
       for (const nd of simNodes) sum += Math.hypot(nd.x, nd.y, nd.z) || 0;
-      const R = Math.max(150, (sum / simNodes.length) * 1.05);
+      const R = Math.max(150, sum / simNodes.length);
       for (const nd of simNodes) {
-        const dir = dirByDomain.get(nd._n?.domain || '_');
-        if (!dir) continue;
+        const a = anchorByDomain.get(nd._n?.domain || '_');
+        if (!a) continue;
         const orphan = (degreeById.get(nd.id) ?? 0) === 0;
         const k = (orphan ? ORPHAN_GRAVITY_3D : DOMAIN_GRAVITY_3D) * alpha;
-        nd.vx += (dir[0] * R - nd.x) * k;
-        nd.vy += (dir[1] * R - nd.y) * k;
-        nd.vz += (dir[2] * R - nd.z) * k;
+        const r = R * a.rf;
+        nd.vx += (a.dir[0] * r - nd.x) * k;
+        nd.vy += (a.dir[1] * r - nd.y) * k;
+        nd.vz += (a.dir[2] * r - nd.z) * k;
       }
     };
     // Assinatura d3-force: a simulação injeta os nós materializados aqui.
@@ -301,7 +308,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        0.45, 0.22, 0.55,
+        0.55, 0.22, 0.55,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -330,16 +337,23 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // momentos do frameCore (30 ticks + engineStop); nasce invisível até a
   // primeira medida.
   let cage: ReturnType<typeof buildCage> | null = null;
+  let ring: ReturnType<typeof buildRing> | null = null;
   try {
     const scene = graph.scene?.();
     if (scene?.add) {
       const cageColor = isDark ? '#93a1c8' : '#3c4262';
-      // Escuro: 0.07 — a 0.15 o arame claro sob bloom virava linha gritada
-      // (feedback do dono 12/07); claro não tem bloom, 0.15 segue legível.
-      cage = buildCage(cageColor, isDark ? 0.07 : 0.15);
+      // 0.12 no escuro: na referência a malha é bem presente (a 0.07 sumia; a
+      // 0.15 sob o bloom antigo gritava — com o bloom seco atual 0.12 assenta).
+      cage = buildCage(cageColor, isDark ? 0.12 : 0.15);
       cage.visible = false;
       cage.renderOrder = -1; // atrás dos nós — arame é cenário, não conteúdo
       scene.add(cage);
+      // Anel equatorial (o "disco de Saturno" da referência) — mais aceso que
+      // a malha, transborda a gaiola (escala 1.12x no updateScenery).
+      ring = buildRing(cageColor, isDark ? 0.30 : 0.25);
+      ring.visible = false;
+      ring.renderOrder = -1;
+      scene.add(ring);
     }
   } catch { /* cena indisponível — palco segue sem cenografia */ }
 
@@ -352,11 +366,18 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     const core = computeCore(livePts());
     if (!core) {
       cage.visible = false;
+      if (ring) ring.visible = false;
       return;
     }
+    const r = cageRadius(core);
     cage.visible = true;
     cage.position.set(core.cx, core.cy, core.cz);
-    cage.scale.setScalar(cageRadius(core));
+    cage.scale.setScalar(r);
+    if (ring) {
+      ring.visible = true;
+      ring.position.set(core.cx, core.cy, core.cz);
+      ring.scale.setScalar(r * 1.12);
+    }
   }
 
   // Multiplicador de tamanho do painel (slider "Tamanho das bolinhas") aplicado
@@ -389,6 +410,16 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (l._sim) return !state.hideSimilar && state.similarOpacity > 0;
     return true;
   }
+  // Cor do nó (#rrggbb do pickNodeColor) → rgba de linha com o alfa dado.
+  function hexAlpha(c: string, a: number): string {
+    if (/^#[0-9a-fA-F]{6}$/.test(c)) {
+      const r = parseInt(c.slice(1, 3), 16);
+      const g = parseInt(c.slice(3, 5), 16);
+      const b = parseInt(c.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    return `rgba(150, 150, 172, ${a})`; // cor não-hex (modo neutro etc): cinza histórico
+  }
   function linkColor(l: any): string {
     if (l._sim) {
       // Linhas semânticas translúcidas — mesma cor-base azulada do overlay 2D,
@@ -396,11 +427,16 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       const a = Math.max(0, Math.min(1, state.similarOpacity));
       return `rgba(140, 200, 255, ${a})`;
     }
-    // Explícita um degrau acima do discreto ("a linha nem aparece" — feedback do
-    // dono): alfa 0.55 + tom um pouco mais claro. Com linkOpacity(1), esse alfa
-    // vale literalmente (antes era multiplicado pelo 0.2 default da lib).
-    // Com glow ativo (spec 104) as linhas saturam sob o bloom — alfa cai pra 0.35.
-    return `rgba(150, 150, 172, ${glowOn ? 0.35 : 0.55})`;
+    // Raios coloridos (rodada da referência, 13/07/2026): a explícita HERDA a
+    // cor do nó FONTE (área/tipo/grau — o modo de coloração vigente). É o que
+    // faz cada hub virar um "fogo de artifício" com raios da cor do grupo,
+    // como no vídeo de referência — linha cinza uniforme lia como teia morta.
+    // Busca ativa: fonte fantasma (nodeColorFn devolve rgba escuro) → a linha
+    // apaga junto (alfa 0.08), matches seguem acesos.
+    const src = typeof l.source === 'object' && l.source ? l.source : nodeById.get(String(l.source));
+    const base = src ? nodeColorFn(src) : '';
+    if (base.startsWith('rgba')) return 'rgba(70, 70, 90, 0.08)';
+    return hexAlpha(base, glowOn ? 0.4 : 0.55);
   }
   function linkWidth(l: any): number {
     if (l._sim) return 0.4; // fio fino pras semânticas
@@ -452,8 +488,8 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
           return domOfEnd(l.source) === domOfEnd(l.target) ? f.link : f.link * CROSS_DOMAIN_LINK_FACTOR;
         })
         .distance((l: any) => {
-          if (l._sim) return f.distance * 0.5;
-          return domOfEnd(l.source) === domOfEnd(l.target) ? f.distance * 0.7 : f.distance * 1.8;
+          if (l._sim) return f.distance * 0.9;
+          return domOfEnd(l.source) === domOfEnd(l.target) ? f.distance : f.distance * 1.8;
         });
     }
     applyCollide();
@@ -609,14 +645,15 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Filtros mudam visibilidade de nós E links (link de/pra nó filtrado some).
     applyFilters: () => { graph.nodeVisibility((n: any) => ctx.isNodeActive(n.id)); graph.linkVisibility((l: any) => linkVisible(l)); },
     // Cor sempre via nodeColorFn — inclui o dim de busca por cima do colorMode.
-    applyColors: () => graph.nodeColor((n: any) => nodeColorFn(n)),
+    // linkColor junto: as linhas herdam a cor do nó fonte (seguem o modo).
+    applyColors: () => { graph.nodeColor((n: any) => nodeColorFn(n)); graph.linkColor((l: any) => linkColor(l)); },
     applySimilar: () => { graph.linkVisibility((l: any) => linkVisible(l)); graph.linkColor((l: any) => linkColor(l)); },
     applyNodeSize: () => { graph.nodeVal((n: any) => nodeVal(n)); graph.linkWidth((l: any) => linkWidth(l)); applyCollide(); graph.d3ReheatSimulation(); },
     applyForces,
     applyNoOverlap: () => { applyCollide(); graph.d3ReheatSimulation(); },
     // Busca (spec 29): rechama os accessors de cor e tamanho — a lib reavalia
     // todos os nós (mesmo mecanismo dos outros applyX; sem refresh manual).
-    applySearch: () => { graph.nodeColor((n: any) => nodeColorFn(n)); graph.nodeVal((n: any) => nodeVal(n)); },
+    applySearch: () => { graph.nodeColor((n: any) => nodeColorFn(n)); graph.nodeVal((n: any) => nodeVal(n)); graph.linkColor((l: any) => linkColor(l)); },
     applyGlow,
     flyTo,
     resize,
@@ -630,7 +667,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
       // targets por sessão 3D); cenografia idem (geometria/material/textura).
       try { bloomPass?.dispose?.(); outputPass?.dispose?.(); } catch { /* best-effort */ }
-      try { disposeScenery(cage); } catch { /* best-effort */ }
+      try { disposeScenery(cage, ring); } catch { /* best-effort */ }
       try { graph._destructor?.(); } catch { /* best-effort */ }
     },
   };
