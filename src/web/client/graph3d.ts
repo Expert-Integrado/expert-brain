@@ -98,19 +98,20 @@ const BG_COLOR = (typeof document !== 'undefined'
 const COLLIDE_BASE = 60 / 6;   // 10
 const COLLIDE_STRONG = 66 / 6; // 11
 
-// ── Gravidade por domínio no 3D — v2 com ÂNCORA FIXA (12/07/2026, feedback do
-// dono: "não formam gânglios"). A v1 puxava pro CENTRÓIDE DINÂMICO do domínio:
-// partindo de uma bola misturada, todos os centróides ficam no meio da bola —
-// a força nunca SEPARA nada, só comprime. A v2 dá a cada domínio uma direção
-// FIXA (esfera de fibonacci) e puxa pra uma casca proporcional ao raio atual
-// da nuvem: os domínios condensam em gânglios separados por vazios, como na
-// referência. Órfã recebe gravidade reforçada (não tem forceLink segurando —
-// sem isso o charge a empurrava pro "infinito").
+// ── Gravidade de agrupamento no 3D — v3 por COMUNIDADE (13/07/2026). História:
+// v1 puxava pro centróide dinâmico do domínio (não separava nada — numa bola
+// misturada todos os centróides ficam no meio); v2 deu âncora FIXA por
+// DOMÍNIO (separou, mas virou "agrupamento por categoria" — o dono rejeitou:
+// os grupos devem nascer da CONEXÃO real, não da etiqueta). v3 ancora por
+// comunidade detectada do próprio grafo (label propagation) — um fio de
+// assunto que cruza áreas vira UM grupo, órfãs viram poeira espalhada. Órfã
+// recebe gravidade reforçada (sem forceLink segurando, o charge a empurrava
+// pro "infinito").
 const DOMAIN_GRAVITY_3D = 0.03;
-const ORPHAN_GRAVITY_3D = 0.10; // órfã assenta no gânglio do seu domínio
+const ORPHAN_GRAVITY_3D = 0.10; // órfã assenta perto da própria âncora, sem fuga
 
-// Direção i de k na esfera de fibonacci — distribui os domínios uniformemente
-// em volta da origem (determinístico: mesma ordem de domínios = mesmo layout).
+// Direção i de k na esfera de fibonacci — distribui as âncoras uniformemente
+// em volta da origem (determinístico: mesma ordem = mesmo layout).
 function fibDir(i: number, k: number): [number, number, number] {
   const golden = Math.PI * (3 - Math.sqrt(5));
   const y = k <= 1 ? 0 : 1 - (2 * (i + 0.5)) / k;
@@ -129,12 +130,11 @@ function fibDir(i: number, k: number): [number, number, number] {
 //   distance 30..500 → forceLink().distance (identity)
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Física dos links (revisão 12/07/2026, feedback do dono — "amontoado sem
-// gânglios"): três regimes de força.
+// Física dos links (revisões 12-13/07/2026, feedback do dono): três regimes.
 // - Semânticas: puxam pesado pelo score (similaridade é o que condensa os
 //   gânglios — antes tinham strength 0 e o 3D virava bola uniforme).
-// - Explícitas INTRA-domínio: força cheia do slider (estrutura do gânglio).
-// - Explícitas CROSS-domínio: força bem menor + distância maior — viram as
+// - Explícitas INTRA-comunidade: força cheia do slider (estrutura do gânglio).
+// - Explícitas CROSS-comunidade: força bem menor + distância maior — viram as
 //   PONTES longas entre gânglios da referência, em vez de molas que fundem
 //   tudo numa bola só.
 // Fatores recalibrados na rodada da referência (13/07/2026): 0.5/dist 0.5x
@@ -187,35 +187,75 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     degreeById.set(l.target, (degreeById.get(l.target) ?? 0) + 1);
   }
 
-  // Domínio por id (pros regimes de força dos links). Depois que a engine
-  // materializa, l.source/l.target viram OBJETOS de nó — o helper aceita os dois.
-  const domById = new Map<string, string>(nodes.map((n) => [n.id, (n as any)._n?.domain || '_']));
-  const domOfEnd = (v: any): string =>
-    (typeof v === 'object' && v ? (v._n?.domain || '_') : (domById.get(String(v)) || '_'));
   // Nó por id — pro linkColor achar o nó fonte enquanto source ainda é string.
   const nodeById = new Map<string, any>(nodes.map((n) => [n.id, n]));
 
-  // Força CUSTOM d3-force-3d v2: puxa cada nó pra ÂNCORA FIXA do seu domínio —
-  // direção de fibonacci × raio-casca proporcional ao espalhamento atual da
-  // nuvem (auto-escala: conforme o charge abre a nuvem, a casca acompanha).
-  // Âncora fixa SEPARA (cada domínio tem um alvo próprio longe do centro);
-  // o centróide dinâmico da v1 não separava nada partindo da bola misturada.
-  // Peso do domínio (nº de notas) modula o raio: domínio grande fica um pouco
-  // mais perto do centro (gânglio maior tem mais "massa" visual).
-  function domainGravityForce() {
-    let simNodes: any[] = [];
-    // Domínios ordenados por tamanho desc — determinístico entre sessões.
-    const domCount = new Map<string, number>();
-    for (const n of nodes) {
-      const d = (n as any)._n?.domain || '_';
-      domCount.set(d, (domCount.get(d) ?? 0) + 1);
+  // ── Comunidades por propagação de rótulos (13/07/2026, feedback do dono:
+  // "não quero agrupamento por tema/categoria — quero outro tipo"). Os grupos
+  // nascem de QUEM SE CONECTA COM QUEM (explícitas peso 1, semânticas peso
+  // 0.5·score), não da etiqueta de área. Determinístico (ordem estável +
+  // desempate lexicográfico), ~10 varreduras bastam pra alguns milhares de
+  // nós. Nota órfã fica como comunidade própria — vira poeira espalhada, como
+  // na referência.
+  function computeCommunities(): Map<string, string> {
+    const label = new Map<string, string>();
+    const adj = new Map<string, Array<{ id: string; w: number }>>();
+    const push = (a: string, b: string, w: number) => {
+      let arr = adj.get(a);
+      if (!arr) { arr = []; adj.set(a, arr); }
+      arr.push({ id: b, w });
+    };
+    for (const n of nodes) label.set(String(n.id), String(n.id));
+    for (const l of explicitLinks) { push(l.source, l.target, 1); push(l.target, l.source, 1); }
+    for (const l of similarLinks) {
+      const w = 0.5 * (l.score ?? 0.5);
+      push(l.source, l.target, w); push(l.target, l.source, w);
     }
-    const doms = [...domCount.keys()].sort((a, b) => (domCount.get(b)! - domCount.get(a)!) || a.localeCompare(b));
-    // Cada domínio ganha direção (fibonacci) E profundidade própria (razão
-    // áurea sobre o índice, 0.55..1.1 do raio médio): na referência os grupos
-    // ocupam a esfera INTEIRA em profundidades variadas, não uma casca única.
-    const anchorByDomain = new Map<string, { dir: [number, number, number]; rf: number }>(
-      doms.map((d, i) => [d, { dir: fibDir(i, doms.length), rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1) }]),
+    const ids = nodes.map((n) => String(n.id)).sort();
+    for (let it = 0; it < 10; it++) {
+      let changed = 0;
+      for (const id of ids) {
+        const neigh = adj.get(id);
+        if (!neigh || !neigh.length) continue;
+        const votes = new Map<string, number>();
+        for (const nb of neigh) {
+          const lb = label.get(nb.id) ?? nb.id;
+          votes.set(lb, (votes.get(lb) ?? 0) + nb.w);
+        }
+        let best = label.get(id) ?? id;
+        let bw = -1;
+        for (const [lb, w] of votes) {
+          if (w > bw || (w === bw && lb < best)) { bw = w; best = lb; }
+        }
+        if (best !== label.get(id)) { label.set(id, best); changed++; }
+      }
+      if (!changed) break;
+    }
+    return label;
+  }
+  const communityById = computeCommunities();
+  const comOfEnd = (v: any): string => {
+    const id = typeof v === 'object' && v ? String(v.id ?? '') : String(v ?? '');
+    return communityById.get(id) ?? id;
+  };
+
+  // Força CUSTOM d3-force-3d v3: puxa cada nó pra ÂNCORA FIXA da sua
+  // COMUNIDADE (detectada da conexão real — não da categoria; feedback do dono
+  // 13/07). Direção de fibonacci × profundidade própria (razão áurea,
+  // 0.55..1.1 do raio médio atual): comunidades grandes ganham os primeiros
+  // endereços, as pequenas/poeira se espalham pela esfera inteira. Âncora
+  // fixa SEPARA; centróide dinâmico (v1) não separava a bola misturada.
+  function communityGravityForce() {
+    let simNodes: any[] = [];
+    // Comunidades ordenadas por tamanho desc — determinístico entre sessões.
+    const comCount = new Map<string, number>();
+    for (const n of nodes) {
+      const c = communityById.get(String(n.id)) ?? String(n.id);
+      comCount.set(c, (comCount.get(c) ?? 0) + 1);
+    }
+    const coms = [...comCount.keys()].sort((a, b) => (comCount.get(b)! - comCount.get(a)!) || a.localeCompare(b));
+    const anchorByCom = new Map<string, { dir: [number, number, number]; rf: number }>(
+      coms.map((c, i) => [c, { dir: fibDir(i, coms.length), rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1) }]),
     );
     const force = (alpha: number) => {
       if (!simNodes.length) return;
@@ -224,7 +264,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       for (const nd of simNodes) sum += Math.hypot(nd.x, nd.y, nd.z) || 0;
       const R = Math.max(150, sum / simNodes.length);
       for (const nd of simNodes) {
-        const a = anchorByDomain.get(nd._n?.domain || '_');
+        const a = anchorByCom.get(communityById.get(String(nd.id)) ?? String(nd.id));
         if (!a) continue;
         const orphan = (degreeById.get(nd.id) ?? 0) === 0;
         const k = (orphan ? ORPHAN_GRAVITY_3D : DOMAIN_GRAVITY_3D) * alpha;
@@ -485,11 +525,11 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       link
         .strength((l: any) => {
           if (l._sim) return f.link * SIM_LINK_FACTOR * (l.score ?? 0.5);
-          return domOfEnd(l.source) === domOfEnd(l.target) ? f.link : f.link * CROSS_DOMAIN_LINK_FACTOR;
+          return comOfEnd(l.source) === comOfEnd(l.target) ? f.link : f.link * CROSS_DOMAIN_LINK_FACTOR;
         })
         .distance((l: any) => {
           if (l._sim) return f.distance * 0.9;
-          return domOfEnd(l.source) === domOfEnd(l.target) ? f.distance : f.distance * 1.8;
+          return comOfEnd(l.source) === comOfEnd(l.target) ? f.distance : f.distance * 1.8;
         });
     }
     applyCollide();
@@ -499,7 +539,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // Gravidade por domínio + reforço de órfãs (constante, fora dos sliders):
   // registrada UMA vez — o setter só grava no d3ForceLayout; a engine chama
   // initialize() quando materializa os nós no digest.
-  graph.d3Force('domainGravity', domainGravityForce());
+  graph.d3Force('communityGravity', communityGravityForce());
 
   // Colisão: baseline sempre ligado (evita encavalamento visual); "não sobrepor"
   // sobe raio + strength, espelhando o 60↔66 do sim-worker do 2D.
