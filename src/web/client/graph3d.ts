@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { domainColor } from '../domain-colors.js';
 import { computeCore, cageRadius, buildCage, buildRing, disposeScenery } from './graph3d-scenery.js';
+import { TIER_SETTINGS, medianOf, resolveTier, type QualityPref, type QualityTier } from './graph3d-quality.js';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Grafo 3D — o "globo que gira", agora como um MODO do /app/graph (não mais uma
@@ -52,7 +53,8 @@ interface Forces { center: number; repel: number; link: number; distance: number
 // Perfil visual do palco 3D — sem textFadeMult (sem equivalente no 3D: rótulo
 // só aparece no hover). `glow` (spec 104) é o DESEJO do dono; o efetivo ainda
 // passa pelos guards tema escuro + desktop (ver glowEffective no init).
-interface Visual3D { nodeSizeMult: number; lineSizeMult: number; glow: boolean; }
+// `quality` (spec 105): tier de desempenho — 'auto' resolve por medição de FPS.
+interface Visual3D { nodeSizeMult: number; lineSizeMult: number; glow: boolean; quality?: QualityPref; }
 
 // Contexto injetado pelo client 2D. Reusa as MESMAS funções de filtro/cor do 2D
 // (isNodeActive / pickNodeColor) pra o comportamento bater exatamente entre palcos.
@@ -64,6 +66,10 @@ interface Ctx {
   isNodeActive: (id: string) => boolean;    // mesma lógica de chips + esconder isoladas do 2D
   pickNodeColor: (id: string, node: GraphNode) => string; // mesma coloração (neutra/área/tipo/grau) do 2D
   onNodeOpen: (id: string) => void;         // abre o painel de nota (mesmo do clique 2D)
+  // Spec 105: o modo 'auto' resolve o tier por medição DENTRO do palco (async);
+  // este callback avisa o client 2D pra re-sincronizar os controles (ex.:
+  // switch Brilho desabilitado quando o tier efetivo é 'low').
+  onQualityResolved?: (tier: QualityTier) => void;
 }
 
 // Controlador devolvido ao 2D pra ele empurrar mudanças de estado por evento
@@ -77,6 +83,7 @@ export interface Graph3DController {
   applyNoOverlap: () => void; // colisão forte
   applySearch: () => void;    // busca: acende matches, apaga o resto (spec 29)
   applyGlow: () => void;      // switch Brilho (spec 104): liga/desliga bloom + alfa das arestas
+  applyQuality: () => void;   // chips Qualidade (spec 105): re-aplica o tier de desempenho
   flyTo: (id: string) => void;// busca/focar nota → câmera voa até o nó
   resize: () => void;
   // Pausa/retoma o loop de render (spec 104): SEM isso o 3D continua queimando
@@ -156,6 +163,17 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // cores antigas até recarregar; registrado na spec, commit opcional separado).
   const isMobile = window.matchMedia('(max-width: 767px)').matches;
   const isDark = (document.documentElement.getAttribute('data-theme') || 'dark') !== 'light';
+
+  // ── Tier de qualidade (spec 105): pref manual aplica direto; 'auto' boota em
+  // 'balanced' (medir em 'extra' imporia o jank que o dono já reclama) e o
+  // sampler de FPS (lá embaixo) promove/rebaixa UMA vez por sessão.
+  let autoResolved: QualityTier | null = null;
+  const tierOf = (pref: QualityPref | undefined): QualityTier => {
+    const p = pref ?? 'auto';
+    return p === 'auto' ? (autoResolved ?? 'balanced') : p;
+  };
+  let effectiveTier: QualityTier = tierOf(ctx.getVisual().quality);
+  const tier = () => TIER_SETTINGS[effectiveTier];
 
   // Nós no formato do 3d-force-graph. Guardamos o GraphNode original em `_n` pra
   // os accessors de cor reusarem pickNodeColor do 2D (mesma coloração exata).
@@ -355,9 +373,12 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     .nodeRelSize(6)
     // Esferas REDONDAS: 16 segmentos (default 8 deixava facetas visíveis de
     // perto). Tradeoff APROVADO pelo dono: ~4x mais triângulos por esfera (os
-    // segmentos dobram em latitude E longitude) — ~1.8k nós seguem leves na GPU.
-    // Mobile (spec 104): 8 segmentos — GPU de celular não paga as facetas.
-    .nodeResolution(isMobile ? 8 : 16)
+    // segmentos dobram em latitude E longitude). Guards COMPÕEM por min():
+    // mobile (spec 104) e tier de qualidade (spec 105) — o mais apertado vence.
+    .nodeResolution(Math.min(TIER_SETTINGS[effectiveTier].nodeResolution, isMobile ? 8 : 16))
+    // Física após reheat: tier 'low' encurta o cooldown (spec 105) — o
+    // assentamento é o pior momento de CPU (collide+charge+communityGravity).
+    .cooldownTime(TIER_SETTINGS[effectiveTier].cooldownTime)
     // Opacidade de linha na lib = linkOpacity · alpha(rgba do linkColor). O
     // default 0.2 esmagava TUDO (explícita 0.4 → 0.08 efetivo: "a linha nem
     // aparece"; semântica 0.18 → 0.036). Com 1, o alfa do rgba dos accessors
@@ -379,17 +400,19 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Clique abre o MESMO painel de nota do 2D (não navega pra fora).
     .onNodeClick((n: any) => { const id = String(n.id ?? ''); if (id) ctx.onNodeOpen(id); });
 
-  // ── Perf mobile (spec 104): pixelRatio ≤1.5 no renderer E no composer — o
-  // clamp default da lib (2) ainda é caro em tela retina de celular; e o bloom
-  // renderiza em N render targets do MESMO tamanho, então o composer precisa do
-  // mesmo teto ou a economia some.
-  if (isMobile) {
-    const pr = Math.min(window.devicePixelRatio || 1, 1.5);
+  // ── pixelRatio: renderer E composer juntos — o bloom renderiza em N render
+  // targets do MESMO tamanho, então o composer precisa do mesmo teto ou a
+  // economia some. Tetos COMPÕEM por min(): mobile 1.5 (spec 104), tier de
+  // qualidade (spec 105; extra=2 = default da lib), dpr real da tela.
+  function applyPixelRatio() {
+    const cap = Math.min(tier().pixelRatioCap, isMobile ? 1.5 : 2);
+    const pr = Math.min(window.devicePixelRatio || 1, cap);
     try {
       graph.renderer()?.setPixelRatio?.(pr);
       graph.postProcessingComposer()?.setPixelRatio?.(pr);
     } catch { /* renderer ainda não pronto — segue com o default da lib */ }
   }
+  applyPixelRatio();
 
   // ── Bloom (spec 104): UnrealBloomPass + OutputPass no composer QUE A LIB JÁ
   // USA (three-render-objects renderiza via EffectComposer+RenderPass — plugar é
@@ -419,9 +442,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     }
   } catch { /* sem composer (lib mudou?) — palco segue sem glow */ }
 
-  // Efetivo = desejo do dono (pref) E tema escuro E desktop. Em fundo claro o
-  // bloom lava a imagem; mobile v1 força off (GPU).
-  const glowEffective = () => !!ctx.getVisual().glow && isDark && !isMobile && !!bloomPass;
+  // Efetivo = desejo do dono (pref) E tema escuro E desktop E tier que permite
+  // (spec 105: 'low' força off — o bloom é o maior custo de GPU). Em fundo
+  // claro o bloom lava a imagem; mobile v1 força off (GPU).
+  const glowEffective = () => !!ctx.getVisual().glow && isDark && !isMobile && !!bloomPass && tier().glowAllowed;
   let glowOn = false;
   function applyGlow() {
     glowOn = glowEffective();
@@ -430,6 +454,49 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // Rechamar o accessor faz a lib reavaliar o alfa das linhas (muda com o
     // bloom). As sinapses seguem o glowOn direto no scheduler (fireSynapse).
     graph.linkColor((l: any) => linkColor(l));
+  }
+
+  // ── applyQuality (spec 105): recomputa o tier efetivo da pref e re-aplica
+  // TODOS os knobs ao vivo. Custos verificados na lib: nodeResolution troca a
+  // geometria das esferas num digest (Meshes preservados); setPixelRatio refaz
+  // os render targets; linkVisibility re-digesta por diff; cooldownTime é lido
+  // por tick. Chamado pelos chips do painel e pelo sampler do auto.
+  function applyQuality() {
+    effectiveTier = tierOf(ctx.getVisual().quality);
+    graph.nodeResolution(Math.min(tier().nodeResolution, isMobile ? 8 : 16));
+    graph.cooldownTime(tier().cooldownTime);
+    applyPixelRatio();
+    applyCollide();
+    graph.linkVisibility((l: any) => linkVisible(l));
+    applyGlow();
+  }
+
+  // ── Sampler do modo AUTO (spec 105): mede o frame time REAL com um rAF
+  // próprio (não compete com o loop da lib — múltiplos callbacks rodam no
+  // mesmo frame; aqui só se lê timestamp). Começa no 1º tick da engine (palco
+  // comprovadamente vivo, medindo o PIOR caso: física assentando) e coleta 60
+  // deltas válidos — descarta aba oculta, palco pausado e gaps >500ms (troca
+  // de aba). Decide UMA vez por sessão pela MEDIANA (robusta a hitch de GC).
+  let fpsRaf = 0;
+  function startAutoSampler() {
+    if ((ctx.getVisual().quality ?? 'auto') !== 'auto') return;
+    const samples: number[] = [];
+    let last = 0;
+    const step = (t: number) => {
+      if (last) {
+        const dt = t - last;
+        if (!document.hidden && !paused && dt > 0 && dt < 500) samples.push(dt);
+      }
+      last = t;
+      if (samples.length < 60) { fpsRaf = requestAnimationFrame(step); return; }
+      fpsRaf = 0;
+      autoResolved = resolveTier(medianOf(samples));
+      // Re-checa a pref: o dono pode ter cravado um tier manual no meio da
+      // medição — aí a resolução do auto fica guardada mas não aplica.
+      if ((ctx.getVisual().quality ?? 'auto') === 'auto' && autoResolved !== effectiveTier) applyQuality();
+      ctx.onQualityResolved?.(effectiveTier);
+    };
+    fpsRaf = requestAnimationFrame(step);
   }
 
   // ── Sinapses com FREQUÊNCIA (pedido do dono, 13/07/2026): nada de fluxo
@@ -556,7 +623,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   function linkVisible(l: any): boolean {
     const s = idOf(l.source), t = idOf(l.target);
     if (!ctx.isNodeActive(s) || !ctx.isNodeActive(t)) return false;
-    if (l._sim) return !state.hideSimilar && state.similarOpacity > 0;
+    // Gate do tier (spec 105) é LOCAL do palco: balanced/low escondem as ~15k
+    // sims no 3D (58% dos draw calls) SEM tocar em state.hideSimilar — o
+    // objeto de estado é compartilhado por referência com o 2D.
+    if (l._sim) return tier().simsVisible && !state.hideSimilar && state.similarOpacity > 0;
     return true;
   }
   // Cor do nó (#rrggbb do pickNodeColor) → rgba de linha com o alfa dado.
@@ -668,7 +738,9 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       forceCollide()
         .radius((n: any) => nodeVal(n) * graph.nodeRelSize() + (on ? COLLIDE_STRONG : COLLIDE_BASE))
         .strength(on ? 1 : 0.5)
-        .iterations(on ? 4 : 1),
+        // Iterações do "não sobrepor" vêm do tier (spec 105): low usa 2 — é
+        // onde a física dói com milhares de nós; desligado é sempre 1.
+        .iterations(on ? tier().collideStrongIterations : 1),
     );
   }
 
@@ -776,6 +848,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (!firstTickReheated) {
       firstTickReheated = true;
       graph.d3ReheatSimulation();
+      startAutoSampler(); // spec 105: mede FPS a partir do palco vivo (modo auto)
       return;
     }
     settleTicks++;
@@ -813,6 +886,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // todos os nós (mesmo mecanismo dos outros applyX; sem refresh manual).
     applySearch: () => { graph.nodeColor((n: any) => nodeColorFn(n)); graph.nodeVal((n: any) => nodeVal(n)); graph.linkColor((l: any) => linkColor(l)); },
     applyGlow,
+    applyQuality,
     flyTo,
     resize,
     // pauseAnimation congela o loop rAF da lib (render + tick); resumeAnimation
@@ -824,6 +898,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       document.removeEventListener('visibilitychange', onVisibility);
       if (resumeTimer) clearTimeout(resumeTimer);
       if (synapseTimer) clearTimeout(synapseTimer);
+      if (fpsRaf) cancelAnimationFrame(fpsRaf);
       // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
       // targets por sessão 3D); cenografia idem (geometria/material/textura).
       try { bloomPass?.dispose?.(); outputPass?.dispose?.(); } catch { /* best-effort */ }

@@ -341,9 +341,12 @@ async function main() {
   // posições-semente cruas). Manter esta declaração ACIMA dos reducers.
   const VISUAL_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, textFadeMult: 0 };
   // `glow` (spec 104): bloom do palco 3D — default LIGADO; o efetivo ainda passa
-  // pelos guards do graph3d (tema escuro + desktop). MANTER EM SINCRONIA com
-  // VISUAL3D_DEFAULTS do server (src/web/graph-prefs.ts).
-  const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true };
+  // pelos guards do graph3d (tema escuro + desktop). `quality` (spec 105): tier
+  // de desempenho do 3D — 'auto' resolve por medição de FPS dentro do palco.
+  // MANTER EM SINCRONIA com VISUAL3D_DEFAULTS do server (src/web/graph-prefs.ts).
+  const QUALITY3D_VALUES = ['auto', 'extra', 'balanced', 'low'] as const;
+  type Quality3D = (typeof QUALITY3D_VALUES)[number];
+  const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true, quality: 'auto' as Quality3D };
   let visual2d = { ...VISUAL_DEFAULTS };
   let visual3d = { ...VISUAL3D_DEFAULTS };
 
@@ -791,6 +794,8 @@ async function main() {
         nodeSizeMult: clamp(p.visual3d.nodeSizeMult, 0.3, 3, visual3d.nodeSizeMult),
         lineSizeMult: clamp(p.visual3d.lineSizeMult, 0, 3, visual3d.lineSizeMult),
         glow: typeof p.visual3d.glow === 'boolean' ? p.visual3d.glow : visual3d.glow,
+        // Enum-guard (spec 105): valor fora do enum mantém o vigente (default 'auto').
+        quality: QUALITY3D_VALUES.includes(p.visual3d.quality) ? p.visual3d.quality : visual3d.quality,
       };
     }
     if (typeof p.hideOrphans === 'boolean') state.hideOrphans = p.hideOrphans;
@@ -1598,6 +1603,7 @@ async function main() {
     applyNodeSize: () => void; applyForces: () => void; applyNoOverlap: () => void;
     applySearch: () => void; // busca acende/apaga nós no 3D (paridade com o 2D)
     applyGlow: () => void;   // switch Brilho (spec 104) — bloom + alfa das arestas
+    applyQuality: () => void; // chips Qualidade (spec 105) — tier de desempenho
     flyTo: (id: string) => void; resize: () => void;
     // pause/resume (spec 104): 3D escondido não pode continuar renderizando.
     pause: () => void; resume: () => void;
