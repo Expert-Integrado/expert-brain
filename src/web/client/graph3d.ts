@@ -459,11 +459,26 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   }
   function scheduleSynapse() {
     synapseTimer = window.setTimeout(() => {
-      if (glowOn && !paused) fireSynapse();
+      // !document.hidden: setTimeout segue rodando em aba oculta (só o rAF
+      // para) e cada emitParticle acumularia photons pra "explodir" todos de
+      // uma vez na volta — sinapse só dispara com a aba visível (spec 105).
+      if (glowOn && !paused && !document.hidden) fireSynapse();
       scheduleSynapse();
     }, 3000 + Math.random() * 4000);
   }
   scheduleSynapse();
+
+  // Aba em background: pausa o loop da lib por inteiro (o browser já pausa o
+  // rAF sozinho; isto só torna o estado explícito e barato). Na volta, só
+  // retoma se o palco 3D está ATIVO (`paused` é do exit3D — o dono pode ter
+  // escondido o 3D antes de trocar de aba; resume aqui não pode ressuscitá-lo).
+  const onVisibility = () => {
+    try {
+      if (document.hidden) graph.pauseAnimation?.();
+      else if (!paused) graph.resumeAnimation?.();
+    } catch { /* best-effort */ }
+  };
+  document.addEventListener('visibilitychange', onVisibility);
 
   // ── Cenografia "cosmos" (spec 104): gaiola esférica adicionada à cena da
   // lib — a cena NUNCA é recriada (filtros/busca/reheat só mexem em graphData),
@@ -573,7 +588,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     return hexAlpha(base, glowOn ? 0.5 : 0.55);
   }
   function linkWidth(l: any): number {
-    if (l._sim) return 0.4; // fio fino pras semânticas
+    // Semânticas: width 0 → a lib usa THREE.Line (1px, LineBasicMaterial SEM
+    // iluminação) em vez de cilindro Lambert — corta a geometria de ~15k
+    // cilindros no vault real (spec 105). Em opacity ≤0.2 o visual é quase
+    // idêntico. NÃO trocar este accessor em runtime: mudança de linkWidth faz
+    // linkDataMapper.clear() na lib e recria TODOS os ~19k objetos de link —
+    // os tiers de qualidade mexem só em linkVisibility (diff barato).
+    if (l._sim) return 0;
     // Explícita mais grossa por default no 3D (0.6 sumia entre as esferas
     // maiores; 1.0 ainda sumia com a câmera enquadrando a esfera inteira —
     // os raios do "fogo de artifício" precisam aparecer de longe). O slider
@@ -800,6 +821,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     resume: () => { paused = false; try { graph.resumeAnimation?.(); } catch { /* best-effort */ } },
     dispose: () => {
       window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (resumeTimer) clearTimeout(resumeTimer);
       if (synapseTimer) clearTimeout(synapseTimer);
       // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
