@@ -109,6 +109,10 @@ const COLLIDE_STRONG = 66 / 6; // 11
 // pro "infinito").
 const DOMAIN_GRAVITY_3D = 0.03;
 const ORPHAN_GRAVITY_3D = 0.10; // órfã assenta perto da própria âncora, sem fuga
+// Membro de gânglio ANCORADO puxa mais forte que poeira conectada: com a
+// colisão forte ligada (pref comum) 0.03 não vencia o inchaço — o grupo
+// existia na matemática mas não no olho (vault real do dono, 13/07/2026).
+const GANGLIO_GRAVITY_3D = 0.05;
 
 // Direção i de k na esfera de fibonacci — distribui as âncoras uniformemente
 // em volta da origem (determinístico: mesma ordem = mesmo layout).
@@ -277,8 +281,18 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // virar quase um globo"): grandes assentam em 0.30..0.72 do raio médio
     // (encostando umas nas outras), poeira em 0.55..0.90 (casca de estrelas
     // em volta) — menos vazio no miolo, um globo cheio.
+    // CAP de âncoras (13/07/2026, vault real do dono): o grafo real produz
+    // CENTENAS de comunidades ≥5 (447 medidas offline, cobrindo 80% das notas)
+    // — uma âncora pra cada punha os centros a ~9° um do outro e os blobs se
+    // encostavam: a nuvem voltava a ler como bola uniforme ("as minhas não
+    // criam os gânglios"). A referência tem POUCOS dandelions + starfield:
+    // só as GANGLIA_MAX maiores comunidades ganham âncora de gânglio; todas
+    // as outras caem no regime de poeira (hashDir) — comunidades pequenas
+    // ainda se aglutinam no seu ponto próprio da casca (textura de "galáxias
+    // distantes"), órfãs viram estrelas soltas.
     const BIG_COM_MIN = 5;
-    const bigComs = coms.filter((c) => (comCount.get(c) ?? 0) >= BIG_COM_MIN);
+    const GANGLIA_MAX = 14;
+    const bigComs = coms.filter((c) => (comCount.get(c) ?? 0) >= BIG_COM_MIN).slice(0, GANGLIA_MAX);
     const hashDir = (s: string): { dir: [number, number, number]; rf: number } => {
       let h = 2166136261;
       for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
@@ -293,6 +307,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       rf: 0.30 + 0.42 * ((i * 0.6180339887) % 1),
     }));
     for (const c of coms) if (!anchorByCom.has(c)) anchorByCom.set(c, hashDir(c));
+    const gangliaSet = new Set(bigComs);
     const force = (alpha: number) => {
       if (!simNodes.length) return;
       // Escala base = distância média atual ao centro (auto-acompanha o charge).
@@ -300,10 +315,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       for (const nd of simNodes) sum += Math.hypot(nd.x, nd.y, nd.z) || 0;
       const R = Math.max(150, sum / simNodes.length);
       for (const nd of simNodes) {
-        const a = anchorByCom.get(communityById.get(String(nd.id)) ?? String(nd.id));
+        const com = communityById.get(String(nd.id)) ?? String(nd.id);
+        const a = anchorByCom.get(com);
         if (!a) continue;
         const orphan = (degreeById.get(nd.id) ?? 0) === 0;
-        const k = (orphan ? ORPHAN_GRAVITY_3D : DOMAIN_GRAVITY_3D) * alpha;
+        const k = (orphan ? ORPHAN_GRAVITY_3D
+          : gangliaSet.has(com) ? GANGLIO_GRAVITY_3D
+          : DOMAIN_GRAVITY_3D) * alpha;
         const r = R * a.rf;
         nd.vx += (a.dir[0] * r - nd.x) * k;
         nd.vy += (a.dir[1] * r - nd.y) * k;
@@ -352,11 +370,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     .linkVisibility((l: any) => linkVisible(l))
     .linkColor((l: any) => linkColor(l))
     .linkWidth((l: any) => linkWidth(l))
-    // Sinapses: pulsos viajando hub → pontas nas explícitas (a orientação foi
-    // normalizada acima). Ligadas junto com o "Brilho" (applyGlow re-avalia):
-    // com bloom os pulsos viram faíscas — o cérebro "pisca". Semânticas ficam
-    // de fora (viraria chuvisco); mobile idem (glowOn já é false lá).
-    .linkDirectionalParticles((l: any) => (!l._sim && glowOn ? 2 : 0))
+    // Sinapses: SEM partículas cíclicas (pedido do dono 13/07: "não é pra
+    // ficar piscando sem parar") — os pulsos são emitidos avulsos pelo
+    // scheduler de sinapses lá embaixo (emitParticle, um disparo a cada 3-7s).
+    // Speed/width valem pros pulsos emitidos.
     .linkDirectionalParticleSpeed(0.006)
     .linkDirectionalParticleWidth(1.9)
     // Clique abre o MESMO painel de nota do 2D (não navega pra fora).
@@ -410,11 +427,43 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     glowOn = glowEffective();
     if (bloomPass) bloomPass.enabled = glowOn;
     if (outputPass) outputPass.enabled = glowOn;
-    // Rechamar os accessors faz a lib reavaliar tudo: alfa das linhas muda com
-    // o bloom, e as SINAPSES (partículas) ligam/desligam junto com o Brilho.
+    // Rechamar o accessor faz a lib reavaliar o alfa das linhas (muda com o
+    // bloom). As sinapses seguem o glowOn direto no scheduler (fireSynapse).
     graph.linkColor((l: any) => linkColor(l));
-    graph.linkDirectionalParticles((l: any) => (!l._sim && glowOn ? 2 : 0));
   }
+
+  // ── Sinapses com FREQUÊNCIA (pedido do dono, 13/07/2026): nada de fluxo
+  // contínuo piscando sem parar — UM disparo por vez, com pausa ALEATÓRIA de
+  // 3 a 7 segundos entre um raio e o próximo. Cada disparo sorteia um hub
+  // (sorteio por link ⇒ ponderado pelo nº de raios do hub: dandelions grandes
+  // disparam mais) e emite um pulso avulso em cada raio visível dele — a
+  // sinapse sai do centro e corre até as pontas. emitParticle é não-cíclico:
+  // a lib anima e descarta sozinha. Amarrado ao "Brilho" (glowOn) e pausado
+  // junto com o palco (paused) — 3D escondido não acumula pulso congelado. ──
+  const spokesByHub = new Map<string, any[]>();
+  for (const l of explicitLinks) {
+    let arr = spokesByHub.get(l.source as string);
+    if (!arr) { arr = []; spokesByHub.set(l.source as string, arr); }
+    arr.push(l);
+  }
+  let paused = false;
+  let synapseTimer = 0;
+  function fireSynapse() {
+    if (!explicitLinks.length) return;
+    const pick = explicitLinks[Math.floor(Math.random() * explicitLinks.length)] as any;
+    const spokes = spokesByHub.get(idOf(pick.source)) ?? [pick];
+    for (const l of spokes) {
+      if (!linkVisible(l)) continue; // nó filtrado não "pisca" invisível
+      try { graph.emitParticle(l); } catch { /* engine ainda assentando */ }
+    }
+  }
+  function scheduleSynapse() {
+    synapseTimer = window.setTimeout(() => {
+      if (glowOn && !paused) fireSynapse();
+      scheduleSynapse();
+    }, 3000 + Math.random() * 4000);
+  }
+  scheduleSynapse();
 
   // ── Cenografia "cosmos" (spec 104): gaiola esférica adicionada à cena da
   // lib — a cena NUNCA é recriada (filtros/busca/reheat só mexem em graphData),
@@ -747,11 +796,12 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     resize,
     // pauseAnimation congela o loop rAF da lib (render + tick); resumeAnimation
     // retoma. O 2D chama no exit3D/enter3D — 3D escondido não queima GPU.
-    pause: () => { try { graph.pauseAnimation?.(); } catch { /* best-effort */ } },
-    resume: () => { try { graph.resumeAnimation?.(); } catch { /* best-effort */ } },
+    pause: () => { paused = true; try { graph.pauseAnimation?.(); } catch { /* best-effort */ } },
+    resume: () => { paused = false; try { graph.resumeAnimation?.(); } catch { /* best-effort */ } },
     dispose: () => {
       window.removeEventListener('resize', resize);
       if (resumeTimer) clearTimeout(resumeTimer);
+      if (synapseTimer) clearTimeout(synapseTimer);
       // O EffectComposer NÃO descarta passes adicionados (vazariam ~8 render
       // targets por sessão 3D); cenografia idem (geometria/material/textura).
       try { bloomPass?.dispose?.(); outputPass?.dispose?.(); } catch { /* best-effort */ }

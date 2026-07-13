@@ -96,6 +96,37 @@ noite de 12/07):
   DOMAIN_GRAVITY 0.03 fraco vs center 0.1, semânticas sem força) — portar a receita
   das âncoras fixas pro sim-worker é spec futura.
 
+## Adendo — rodada do vault REAL (13/07/2026, pós-deploy)
+
+O dono abriu o 3D no vault real em produção: nuvem uniforme, sem gânglios ("as
+minhas não criam os gânglios. Pq?"). Diagnóstico MEDIDO (replicação offline do
+computeCommunities exato com export read-only do D1 de produção — 6.576 notas,
+4.234 explícitas vivas, 15.150 sims no payload top-3, 3.404 órfãs):
+
+- As comunidades EXISTIAM: 447 grupos ≥5 notas cobrindo 79,7% do vault (top:
+  209, 205, 128, 111...). O defeito era o ANCORAMENTO: âncora fib pra cada uma
+  das 447 punha os centros a ~9° um do outro — blobs encostados = bola uniforme.
+  No sandbox eram ~20 grupos, por isso lá funcionava. Variantes com gate de
+  score nas sims (≥0.75/≥0.80) NÃO ajudavam (95% das sims do payload têm score
+  0.55-0.70; o gate só multiplicava singletons).
+- **Fix: `GANGLIA_MAX = 14`** — só as 14 maiores comunidades ganham âncora de
+  gânglio (fib + rf 0.30..0.72); todas as demais caem no regime de poeira
+  (hashDir na casca 0.55..0.90). Comunidade pequena ainda se aglutina no seu
+  ponto próprio (textura de "galáxias distantes"); órfã segue estrela solta.
+  Anatomia da referência: POUCOS dandelions + starfield.
+- **`GANGLIO_GRAVITY_3D = 0.05`** pra membro de gânglio ancorado (poeira
+  conectada segue 0.03, órfã 0.10): com a colisão forte ligada (pref comum do
+  dono) 0.03 não vencia o inchaço da colisão.
+- **Sinapses com FREQUÊNCIA** (pedido do dono na mesma rodada: "não é pra ficar
+  piscando sem parar... um raio, depois 3-7s, outro"): removidas as partículas
+  cíclicas (`linkDirectionalParticles`); um scheduler emite disparos avulsos via
+  `emitParticle` — a cada 3-7s aleatórios, sorteia um hub (ponderado pelo nº de
+  raios) e emite um pulso em cada raio visível dele (a sinapse sai do centro e
+  corre até as pontas). Gated por glowOn + paused; timer limpo no dispose.
+- Fatores do print do dono que também escondiam o efeito (orientação, não
+  código): switch "Brilho (3D)" estava DESLIGADO (sem bloom nem sinapses) e
+  "Não sobrepor as bolinhas" LIGADO (colisão forte infla a nuvem).
+
 ## Plano de commits
 
 1. **Pref `glow`** no perfil visual 3D (`graph-prefs.ts`: interface + default `true` +
