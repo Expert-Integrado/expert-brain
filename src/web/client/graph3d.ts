@@ -254,9 +254,28 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
       comCount.set(c, (comCount.get(c) ?? 0) + 1);
     }
     const coms = [...comCount.keys()].sort((a, b) => (comCount.get(b)! - comCount.get(a)!) || a.localeCompare(b));
-    const anchorByCom = new Map<string, { dir: [number, number, number]; rf: number }>(
-      coms.map((c, i) => [c, { dir: fibDir(i, coms.length), rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1) }]),
-    );
+    // BUG corrigido (13/07, print do dono): fibDir(i, TOTAL) com centenas de
+    // comunidades-poeira jogava TODAS as grandes no polo norte (i pequenos de
+    // um k gigante → y≈1) — o conteúdo espremia num quadrante. Agora as
+    // GRANDES (≥5 notas) espalham pela esfera inteira (fib sobre só elas) e a
+    // poeira ganha direção determinística por hash — fica espalhada por toda
+    // parte, como o fundo estrelado da referência.
+    const BIG_COM_MIN = 5;
+    const bigComs = coms.filter((c) => (comCount.get(c) ?? 0) >= BIG_COM_MIN);
+    const hashDir = (s: string): { dir: [number, number, number]; rf: number } => {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+      const y = 1 - 2 * ((h % 1024) / 1023);
+      const r = Math.sqrt(Math.max(0, 1 - y * y));
+      const th = 2 * Math.PI * (((h >>> 10) % 1024) / 1024);
+      return { dir: [Math.cos(th) * r, y, Math.sin(th) * r], rf: 0.7 + 0.5 * (((h >>> 20) % 1024) / 1024) };
+    };
+    const anchorByCom = new Map<string, { dir: [number, number, number]; rf: number }>();
+    bigComs.forEach((c, i) => anchorByCom.set(c, {
+      dir: fibDir(i, bigComs.length),
+      rf: 0.55 + 0.55 * ((i * 0.6180339887) % 1),
+    }));
+    for (const c of coms) if (!anchorByCom.has(c)) anchorByCom.set(c, hashDir(c));
     const force = (alpha: number) => {
       if (!simNodes.length) return;
       // Escala base = distância média atual ao centro (auto-acompanha o charge).
@@ -283,9 +302,11 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
 
   const graph = new (ForceGraph3D as any)(container)
     .graphData({ nodes, links })
-    // Tema escuro: preto de verdade (feedback do dono 12/07 — o --surface-canvas
-    // dark + véu do bloom deixava o fundo cinza). Claro segue o token do tema.
-    .backgroundColor(isDark ? '#000004' : BG_COLOR)
+    // Tema escuro: preto PURO obrigatório. O OutputPass do pipeline de glow
+    // converte linear→sRGB no final e AMPLIFICA canal baixo: '#000004' rendia
+    // RGB(0,0,34) na tela — fundo azul-marinho (medido em 13/07/2026, pixel do
+    // screenshot). Só 0 sobrevive a gamma. Claro segue o token do tema.
+    .backgroundColor(isDark ? '#000000' : BG_COLOR)
     .width(clientWidth || window.innerWidth)
     .height(clientHeight || window.innerHeight)
     .showNavInfo(false)
@@ -334,13 +355,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
   // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
   // pipeline volta byte-idêntico ao original — toggle limpo.
-  // Knobs (rodada 3 de calibração com o dono, 12/07/2026): strength 0.45 /
-  // radius 0.22 / threshold 0.55. Histórico: 1.0/0.6/0.15 estourava o miolo em
-  // branco; 0.8/0.5/0.30 espalhava véu cinza na tela inteira; 0.55/0.28/0.45
-  // ainda lavava o fundo em nuvem densa (milhares de halos somam). Threshold
-  // alto = só as esferas realmente claras brilham (hubs), o resto fica limpo —
-  // fundo preto de verdade. O fantasma de busca segue MUITO abaixo do
-  // threshold — busca com glow continua legível.
+  // Knobs (rodada 4, 13/07/2026): strength 0.5 / radius 0.22 / threshold 0.25.
+  // Histórico: 1.0/0.6/0.15 estourava o miolo; radius largo (0.5) espalhava
+  // véu na tela inteira; threshold alto (0.55) apagava o glow de TODAS as
+  // bolinhas de cor média — e a referência tem todo nó brilhando. A regra que
+  // ficou: RADIUS curto controla o véu (halo local), THRESHOLD baixo acende
+  // todo mundo, strength moderado segura a supernova no miolo denso. Fantasma
+  // de busca (rgba escuro 0.22) continua abaixo do threshold — busca legível.
   let bloomPass: UnrealBloomPass | null = null;
   let outputPass: OutputPass | null = null;
   try {
@@ -348,7 +369,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        0.55, 0.22, 0.55,
+        0.5, 0.22, 0.25,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -476,14 +497,15 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     const src = typeof l.source === 'object' && l.source ? l.source : nodeById.get(String(l.source));
     const base = src ? nodeColorFn(src) : '';
     if (base.startsWith('rgba')) return 'rgba(70, 70, 90, 0.08)';
-    return hexAlpha(base, glowOn ? 0.4 : 0.55);
+    return hexAlpha(base, glowOn ? 0.5 : 0.55);
   }
   function linkWidth(l: any): number {
     if (l._sim) return 0.4; // fio fino pras semânticas
     // Explícita mais grossa por default no 3D (0.6 sumia entre as esferas
-    // maiores); o slider "Espessura das linhas" segue multiplicando por cima.
-    // Lê SEMPRE o perfil visual 3D (ctx.getVisual) — nunca o 2D.
-    return 1.0 * (ctx.getVisual().lineSizeMult || 1);
+    // maiores; 1.0 ainda sumia com a câmera enquadrando a esfera inteira —
+    // os raios do "fogo de artifício" precisam aparecer de longe). O slider
+    // "Espessura das linhas" multiplica por cima; lê SEMPRE o perfil 3D.
+    return 1.3 * (ctx.getVisual().lineSizeMult || 1);
   }
 
   // ── Física: explícitos puxam com o slider; semânticos puxam fraco pelo
