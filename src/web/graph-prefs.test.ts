@@ -75,7 +75,7 @@ describe('sanitizeGraphPrefs', () => {
     expect(p.nodeSizeMult).toBe(1.5);   // perfil 2D intacto
     expect(p.lineSizeMult).toBe(2);     // perfil 2D intacto
     expect(p.textFadeMult).toBe(1);     // perfil 2D intacto
-    expect(p.visual3d).toEqual({ nodeSizeMult: 1, lineSizeMult: 1, glow: true }); // defaults visuais 3D
+    expect(p.visual3d).toEqual({ nodeSizeMult: 1, lineSizeMult: 1, glow: true, quality: 'auto' }); // defaults visuais 3D
   });
 
   it('clampa visual3d nos mesmos ranges dos sliders', () => {
@@ -113,7 +113,7 @@ describe('sanitizeGraphPrefs', () => {
     expect(saved!.nodeSizeMult).toBe(1.2);
     expect(saved!.lineSizeMult).toBe(0.8);
     expect(saved!.textFadeMult).toBe(-1);
-    expect(saved!.visual3d).toEqual({ nodeSizeMult: 2, lineSizeMult: 1.5, glow: true });
+    expect(saved!.visual3d).toEqual({ nodeSizeMult: 2, lineSizeMult: 1.5, glow: true, quality: 'auto' });
   });
 
   it('glow false salvo como padrão sobrevive ao roundtrip (POST → getGraphPrefs)', async () => {
@@ -125,6 +125,28 @@ describe('sanitizeGraphPrefs', () => {
     expect(res.status).toBe(200);
     const saved = await getGraphPrefs(env as any);
     expect(saved!.visual3d.glow).toBe(false);
+  });
+
+  // Spec 105 (tiers de qualidade do 3D): pref `quality` com enum-guard — lixo,
+  // tipo errado e valor fora do enum caem no default 'auto'; valor válido fica.
+  it('quality: default auto quando ausente, tipo errado ou fora do enum; valor válido sobrevive', () => {
+    expect(sanitizeGraphPrefs({})!.visual3d.quality).toBe('auto');
+    expect(sanitizeGraphPrefs({ visual3d: { glow: false } })!.visual3d.quality).toBe('auto');
+    expect(sanitizeGraphPrefs({ visual3d: { quality: 42 } })!.visual3d.quality).toBe('auto');
+    expect(sanitizeGraphPrefs({ visual3d: { quality: 'ultra' } })!.visual3d.quality).toBe('auto');
+    expect(sanitizeGraphPrefs({ visual3d: { quality: 'low' } })!.visual3d.quality).toBe('low');
+    expect(sanitizeGraphPrefs({ visual3d: { quality: 'balanced' } })!.visual3d.quality).toBe('balanced');
+  });
+
+  it('quality salva como padrão sobrevive ao roundtrip (POST → getGraphPrefs)', async () => {
+    const res = await SELF.fetch('https://x.test/app/graph/prefs', {
+      method: 'POST',
+      headers: { cookie: await authCookie(), 'content-type': 'application/json' },
+      body: JSON.stringify({ visual3d: { nodeSizeMult: 1, lineSizeMult: 1, glow: true, quality: 'extra' } }),
+    });
+    expect(res.status).toBe(200);
+    const saved = await getGraphPrefs(env as any);
+    expect(saved!.visual3d.quality).toBe('extra');
   });
 });
 

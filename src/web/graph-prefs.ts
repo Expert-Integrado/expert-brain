@@ -41,7 +41,9 @@ export interface GraphPrefs {
   // Prefs antigas sem o campo caem nos defaults 3D (ver VISUAL3D_DEFAULTS abaixo).
   // `glow` (spec 104): bloom/pós-processamento do palco 3D — a pref é o DESEJO do
   // dono; o efetivo ainda depende de tema escuro + desktop (guards no client).
-  visual3d: { nodeSizeMult: number; lineSizeMult: number; glow: boolean };
+  // `quality` (spec 105): tier de desempenho do palco 3D. 'auto' mede o FPS real
+  // no client e resolve pra um dos tiers por sessão (a resolução NÃO persiste).
+  visual3d: { nodeSizeMult: number; lineSizeMult: number; glow: boolean; quality: Quality3D };
   hideOrphans: boolean;
   noOverlap: boolean;
   // `mode` foi REMOVIDO do shape persistido (spec 29): salvar padrão estando no
@@ -49,6 +51,11 @@ export interface GraphPrefs {
   // ?mode=3d ou toggle na sessão. Blobs antigos com `mode` são ignorados pelo
   // sanitize (campo dropado na releitura).
 }
+
+// Tiers de qualidade do 3D (spec 105). MANTER EM SINCRONIA com o client
+// (graph3d-quality.ts) — o server só valida o enum, quem aplica é o palco.
+export type Quality3D = 'auto' | 'extra' | 'balanced' | 'low';
+const QUALITY3D_VALUES: readonly Quality3D[] = ['auto', 'extra', 'balanced', 'low'];
 
 const clampNum = (v: unknown, lo: number, hi: number, def: number): number => {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : def;
@@ -67,7 +74,7 @@ const FORCE3D_DEFAULTS = { center: 0.2, repel: 8, link: 1, distance: 150 };
 // "neutros" do 2D; NÃO alteram a calibração/baseline de render do three.js, só o
 // multiplicador aplicado por cima). MANTER EM SINCRONIA com VISUAL3D_DEFAULTS do
 // client (src/web/client/graph.ts).
-const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true };
+const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true, quality: 'auto' as Quality3D };
 
 // Sanitiza um objeto arbitrário (POST do cliente OU valor legado no meta) pro shape
 // canônico, clampando cada campo nos MESMOS ranges dos sliders do graph.ts. Nunca
@@ -108,6 +115,8 @@ export function sanitizeGraphPrefs(raw: unknown): GraphPrefs | null {
       nodeSizeMult: clampNum(v3.nodeSizeMult, 0.3, 3, VISUAL3D_DEFAULTS.nodeSizeMult),
       lineSizeMult: clampNum(v3.lineSizeMult, 0, 3, VISUAL3D_DEFAULTS.lineSizeMult),
       glow: asBool(v3.glow, VISUAL3D_DEFAULTS.glow),
+      // Enum-guard (padrão do colorMode acima): lixo/valor desconhecido → 'auto'.
+      quality: QUALITY3D_VALUES.includes(v3.quality) ? v3.quality : VISUAL3D_DEFAULTS.quality,
     },
     hideOrphans: asBool(r.hideOrphans),
     noOverlap: asBool(r.noOverlap),
