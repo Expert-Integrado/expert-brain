@@ -485,12 +485,14 @@ async function renderGraphLikePage(
       }
       .graph-wrap.mode-3d.mode-3d-loading #graph3d-loading { display: flex; }
 
-      /* Switch "Brilho" (spec 104): controle exclusivo do palco 3D — fora dele
-         some (element+classe ganha da .graph-check-label de styles.css sem
-         !important). Desabilitado (tema claro/mobile) fica visível mas inerte. */
-      label.graph-3d-only, small.graph-3d-only { display: none; }
+      /* Switch "Brilho" (spec 104) e chips "Qualidade" (spec 105): controles
+         exclusivos do palco 3D — fora dele somem (element+classe ganha da
+         .graph-check-label de styles.css sem !important). Desabilitado (tema
+         claro/mobile/tier Leve) fica visível mas inerte. */
+      label.graph-3d-only, small.graph-3d-only, div.graph-3d-only { display: none; }
       .graph-wrap.mode-3d label.graph-3d-only { display: inline-flex; }
       .graph-wrap.mode-3d small.graph-3d-only { display: block; }
+      .graph-wrap.mode-3d div.graph-3d-only { display: block; }
       label.graph-3d-only.is-disabled { opacity: 0.45; cursor: not-allowed; }
       label.graph-3d-only.is-disabled input { cursor: not-allowed; }
 
@@ -728,7 +730,18 @@ async function renderGraphLikePage(
             <input type="checkbox" id="glow-3d" checked aria-label="Brilho no 3D" />
             <span>Brilho (3D)</span>
           </label>
-          <small class="graph-slider-help graph-3d-only">Halo incandescente das bolinhas no 3D — desliga sozinho no tema claro e no celular</small>` : ''}
+          <small class="graph-slider-help graph-3d-only">Halo incandescente das bolinhas no 3D — desliga sozinho no tema claro, no celular e no modo Leve</small>
+          <!-- Spec 105 — chips de qualidade do 3D (chips, não select: ver A.35). -->
+          <div class="graph-slider-label graph-3d-only">
+            <span>Qualidade (3D)</span>
+            <div id="quality-3d-chips" class="graph-color-chips" role="radiogroup" aria-label="Qualidade do 3D">
+              <button type="button" class="graph-color-chip active" data-quality-3d="auto">Auto</button>
+              <button type="button" class="graph-color-chip" data-quality-3d="extra">Extra</button>
+              <button type="button" class="graph-color-chip" data-quality-3d="balanced">Equilibrado</button>
+              <button type="button" class="graph-color-chip" data-quality-3d="low">Leve</button>
+            </div>
+            <small class="graph-slider-help">Auto mede a velocidade da sua máquina e escolhe sozinho. Equilibrado e Leve escondem as linhas semânticas no 3D (o 2D não muda); Leve também desliga o Brilho</small>
+          </div>` : ''}
         </details>
 
         <button id="graph-save-prefs" class="graph-reset-btn graph-reset-all" data-graph-action="save-prefs" title="Salva forças, cores, visual e não-sobrepor como seu padrão — abre sempre assim e o Restaurar padrão volta pra cá (sincroniza entre seus dispositivos)">Salvar como padrão</button>

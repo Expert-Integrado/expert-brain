@@ -349,6 +349,10 @@ async function main() {
   const VISUAL3D_DEFAULTS = { nodeSizeMult: 1, lineSizeMult: 1, glow: true, quality: 'auto' as Quality3D };
   let visual2d = { ...VISUAL_DEFAULTS };
   let visual3d = { ...VISUAL3D_DEFAULTS };
+  // Tier EFETIVO resolvido pelo modo auto dentro do palco 3D (spec 105) —
+  // chega async via onQualityResolved; usado só pra refletir guards na UI
+  // (ex.: Brilho desabilitado quando o auto caiu em 'low'). Nunca persiste.
+  let resolved3DQuality: Quality3D | null = null;
 
   // Leitor DEFENSIVO do multiplicador visual 2D: se o campo faltar ou vier NaN
   // (prefs antigas, refactor futuro, objeto parcial), cai no default em vez de
@@ -811,7 +815,7 @@ async function main() {
     setCheck('similar-hide', state.hideSimilar);
     setCheck('hide-orphans', state.hideOrphans);
     setCheck('no-overlap', state.noOverlap);
-    document.querySelectorAll('.graph-color-chip').forEach((el) => {
+    document.querySelectorAll('#color-mode-chips .graph-color-chip').forEach((el) => {
       el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === state.colorMode);
     });
     return p;
@@ -835,7 +839,7 @@ async function main() {
   // outra coloração nas prefs, ela vence na próxima carga igual pra notas.
   if (isContacts && state.colorMode === 'neutral') {
     state.colorMode = 'domain';
-    document.querySelectorAll('.graph-color-chip').forEach((el) => {
+    document.querySelectorAll('#color-mode-chips .graph-color-chip').forEach((el) => {
       el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === 'domain');
     });
   }
@@ -1647,6 +1651,9 @@ async function main() {
         pickNodeColor(id, { color: '#b8b8c8', domainColor: resolveDomainMeta(node.domain, taxonomy).color, kind: node.kind ?? '' }),
       // Abre o mesmo painel de nota do clique 2D (visual, sem navegar pra fora).
       onNodeOpen: (id: string) => openPanel(id),
+      // Spec 105: o modo auto resolve o tier DENTRO do palco (medição async) —
+      // aqui só refletimos nos controles (ex.: Brilho desabilitado em low).
+      onQualityResolved: (t: Quality3D) => { resolved3DQuality = t; syncVisualSliders(); },
     };
   }
 
@@ -1708,16 +1715,23 @@ async function main() {
     setVal('line-size-mult', v.lineSizeMult);
     setVal('text-fade-mult', visual2d.textFadeMult);
     // Switch Brilho (spec 104): reflete a PREF (visual3d.glow); quando os guards
-    // do palco (tema claro/mobile) forçam off, o checkbox fica desabilitado —
-    // o help text do SSR já explica o porquê pro leigo.
+    // do palco (tema claro/mobile/tier Leve — spec 105) forçam off, o checkbox
+    // fica desabilitado — o help text do SSR já explica o porquê pro leigo.
     const glowEl = document.getElementById('glow-3d') as HTMLInputElement | null;
     if (glowEl) {
       const dark = (document.documentElement.getAttribute('data-theme') || 'dark') !== 'light';
       const mobile = window.matchMedia('(max-width: 767px)').matches;
+      const tierLow = (visual3d.quality === 'low')
+        || (visual3d.quality === 'auto' && resolved3DQuality === 'low');
       glowEl.checked = visual3d.glow;
-      glowEl.disabled = !dark || mobile;
+      glowEl.disabled = !dark || mobile || tierLow;
       glowEl.closest('label')?.classList.toggle('is-disabled', glowEl.disabled);
     }
+    // Chips Qualidade (spec 105): marca o chip da PREF (não o tier resolvido —
+    // 'auto' continua 'Auto' mesmo depois de resolver pra extra/balanced/low).
+    document.querySelectorAll('#quality-3d-chips .graph-color-chip').forEach((el) => {
+      el.classList.toggle('active', (el as HTMLElement).dataset.quality3d === visual3d.quality);
+    });
   }
 
   // Sincroniza rótulo/estado do botão + o botão de "conexões sugeridas" (que só
@@ -1927,6 +1941,14 @@ async function main() {
       visual3d = { ...visual3d, glow: on };
       push3D((c) => c.applyGlow());
     },
+    // Chips Qualidade do 3D (spec 105): pref do perfil visual 3D — o palco
+    // resolve 'auto' por medição e aplica os knobs no applyQuality.
+    onQuality3D: (q) => {
+      if (!QUALITY3D_VALUES.includes(q as Quality3D)) return;
+      visual3d = { ...visual3d, quality: q as Quality3D };
+      push3D((c) => c.applyQuality());
+      syncVisualSliders(); // guards do Brilho podem ter mudado (low ↔ resto)
+    },
     // Salva a configuração atual como padrão do dono (persiste no meta, sincroniza
     // entre máquinas). Filtros/busca NÃO entram — são exploração, não preferência.
     onSavePrefs: () => {
@@ -2031,14 +2053,14 @@ async function main() {
       syncForceSliders();
       syncVisualSliders();
       // A.35 — chips de coloração seguem o modo final (salvo ou default do vault)
-      document.querySelectorAll('.graph-color-chip').forEach((el) => {
+      document.querySelectorAll('#color-mode-chips .graph-color-chip').forEach((el) => {
         el.classList.toggle('active', (el as HTMLElement).dataset.colorMode === state.colorMode);
       });
       document.querySelectorAll('.graph-chip.active').forEach((el) => el.classList.remove('active'));
       (window as any).__updateActiveFilters?.();
       renderer.refresh();
       // Espelha a restauração completa no palco 3D quando ativo.
-      push3D((c) => { c.applyFilters(); c.applyColors(); c.applySearch(); c.applySimilar(); c.applyNodeSize(); c.applyForces(); c.applyNoOverlap(); c.applyGlow(); });
+      push3D((c) => { c.applyFilters(); c.applyColors(); c.applySearch(); c.applySimilar(); c.applyNodeSize(); c.applyForces(); c.applyNoOverlap(); c.applyGlow(); c.applyQuality(); });
     },
     // "Limpar" (indicador de filtros ativos) — SÓ exploração: busca + chips de
     // categoria/tipo. Visual, forças, cores, toggles e posições são CONFIGURAÇÃO
@@ -2707,6 +2729,8 @@ interface ControlCallbacks {
   onNoOverlap: (on: boolean) => void;
   // Switch Brilho do palco 3D (spec 104).
   onGlowToggle: (on: boolean) => void;
+  // Chips Qualidade do palco 3D (spec 105).
+  onQuality3D: (q: string) => void;
   onSavePrefs: () => void;
   // Alterna o palco 2D/3D na mesma tela (lazy-load do bundle 3D na 1ª vez).
   onToggle3D: () => void;
@@ -2786,7 +2810,7 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: Taxono
     hide.addEventListener('change', () => cb.onSimilarHide(hide.checked));
   }
   // A.35 — chips de Coloração das bolinhas (substituiu select)
-  const colorChips = document.querySelectorAll('.graph-color-chip');
+  const colorChips = document.querySelectorAll('#color-mode-chips .graph-color-chip');
   colorChips.forEach((chip) => {
     chip.addEventListener('click', () => {
       const mode = (chip as HTMLElement).dataset.colorMode;
@@ -2821,6 +2845,17 @@ function wireControls(cb: ControlCallbacks, nodes: GraphNode[], taxonomy: Taxono
   if (glow3d) {
     glow3d.addEventListener('change', () => cb.onGlowToggle(glow3d.checked));
   }
+  // Spec 105 — chips de Qualidade do 3D (mesmo padrão dos chips de coloração;
+  // seletores ESCOPADOS por container pra um grupo não roubar o active do outro).
+  const qualityChips = document.querySelectorAll('#quality-3d-chips .graph-color-chip');
+  qualityChips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const q = (chip as HTMLElement).dataset.quality3d;
+      if (!q) return;
+      qualityChips.forEach((c) => c.classList.toggle('active', c === chip));
+      cb.onQuality3D(q);
+    });
+  });
   // Populate kind chips from nodes that carry `kind`
   const kindsEl = document.getElementById('graph-kinds');
   if (kindsEl) {

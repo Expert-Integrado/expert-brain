@@ -158,6 +158,18 @@ describe('/app/graph?mode=3d (modo 3D dentro da mesma tela)', () => {
     const contacts = await SELF.fetch('https://x.test/app/contacts', { headers: { cookie: await authCookie() } });
     expect(await contacts.text()).not.toContain('id="glow-3d"');
   });
+
+  // Spec 105: chips de qualidade do 3D — mesmos gates do switch Brilho.
+  it('chips Qualidade (#quality-3d-chips) presentes em notas com os 4 tiers, ausentes em contatos', async () => {
+    const notes = await SELF.fetch('https://x.test/app/graph', { headers: { cookie: await authCookie() } });
+    const html = await notes.text();
+    expect(html).toContain('id="quality-3d-chips"');
+    for (const q of ['auto', 'extra', 'balanced', 'low']) {
+      expect(html).toContain(`data-quality-3d="${q}"`);
+    }
+    const contacts = await SELF.fetch('https://x.test/app/contacts', { headers: { cookie: await authCookie() } });
+    expect(await contacts.text()).not.toContain('id="quality-3d-chips"');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
