@@ -66,6 +66,36 @@ Fatos verificados que viabilizam barato:
 - **Shim de tipos `three-addons.d.ts`**: three@0.185 não publica `.d.ts` — declarar só
   o subconjunto usado (mesmo padrão do `d3-force-3d.d.ts`).
 
+## Adendo — rodada de gânglios (12/07/2026, feedback do dono ao vivo)
+
+O dono validou o primeiro ship e apontou: fundo ainda acinzentado (véu do bloom),
+bolinhas cinza (default de coloração "Neutra") e, principalmente, SEM os "gânglios
+de neurônios" da referência — a nuvem era uma bola uniforme. Mudanças (commits da
+noite de 12/07):
+
+- **Gravidade por domínio v2 — âncora FIXA (fibonacci)**: a v1 puxava pro centróide
+  dinâmico do domínio, que numa bola misturada fica no meio — nunca separa. A v2 dá
+  a cada domínio uma direção fixa na esfera e puxa pra uma casca proporcional ao
+  espalhamento atual (média × 1.05). Constantes: 0.05 conectado / 0.12 órfã.
+- **Três regimes de força nos links**: semântica = `f.link · 0.5 · score` e distância
+  0.5× (similaridade condensa o gânglio); explícita intra-domínio = força cheia,
+  0.7× distância; explícita cross-domínio = 0.22× força, 1.8× distância (vira ponte
+  longa entre gânglios em vez de mola que funde tudo).
+- **Repulsão /8 → /4** (abre os vazios; o frameCore reenquadra a câmera).
+- **Tamanho com expoente 1.5** sobre `size/3` — hierarquia hub vs folha ~2.4× de raio.
+- **Bloom 0.45/0.22/0.55** (halo seco, só nas esferas claras) e **fundo #000004** no
+  escuro (o véu + --surface-canvas liam como cinza).
+- Gaiola no escuro: opacity 0.07.
+- Slider "Tamanho das bolinhas": auditado, SEM bug — o achatamento visual era grau
+  uniforme do dado; o grau que alimenta o tamanho JÁ inclui similar_edges (top-3).
+- **Sandbox local**: o seed sintético não tinha similar_edges e os 3001 links
+  aleatórios não têm comunidade (grafo aleatório = bola). Reseed local com estrutura
+  de comunidade (buckets de 14 + superhub por domínio + pontes) + 7.4k similar_edges
+  sintéticas — produção usa os dados reais e dispensa isso.
+- **Pendência anotada**: o 2D sofre da mesma doença (centróide congelado no init,
+  DOMAIN_GRAVITY 0.03 fraco vs center 0.1, semânticas sem força) — portar a receita
+  das âncoras fixas pro sim-worker é spec futura.
+
 ## Plano de commits
 
 1. **Pref `glow`** no perfil visual 3D (`graph-prefs.ts`: interface + default `true` +

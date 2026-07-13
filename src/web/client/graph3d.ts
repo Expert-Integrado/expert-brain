@@ -98,14 +98,26 @@ const BG_COLOR = (typeof document !== 'undefined'
 const COLLIDE_BASE = 60 / 6;   // 10
 const COLLIDE_STRONG = 66 / 6; // 11
 
-// ── Gravidade por domínio no 3D — espelha o DOMAIN_GRAVITY=0.03 do sim-worker
-// 2D (A.37), com REFORÇO pra órfãs: nó de grau 0 não tem forceLink segurando,
-// então o charge o empurrava pro "infinito" (halo de poeira que dominava o
-// enquadramento). Órfã recebe 4x a gravidade → assenta num anel próximo ao
-// cluster do seu domínio, não some. Conectados ficam no 0.03 (mesma sensação
-// de agrupamento temático do 2D).
-const DOMAIN_GRAVITY_3D = 0.03;
-const ORPHAN_GRAVITY_3D = DOMAIN_GRAVITY_3D * 4; // 0.12 — anel próximo, sem fuga
+// ── Gravidade por domínio no 3D — v2 com ÂNCORA FIXA (12/07/2026, feedback do
+// dono: "não formam gânglios"). A v1 puxava pro CENTRÓIDE DINÂMICO do domínio:
+// partindo de uma bola misturada, todos os centróides ficam no meio da bola —
+// a força nunca SEPARA nada, só comprime. A v2 dá a cada domínio uma direção
+// FIXA (esfera de fibonacci) e puxa pra uma casca proporcional ao raio atual
+// da nuvem: os domínios condensam em gânglios separados por vazios, como na
+// referência. Órfã recebe gravidade reforçada (não tem forceLink segurando —
+// sem isso o charge a empurrava pro "infinito").
+const DOMAIN_GRAVITY_3D = 0.05;
+const ORPHAN_GRAVITY_3D = 0.12; // órfã assenta no gânglio do seu domínio
+
+// Direção i de k na esfera de fibonacci — distribui os domínios uniformemente
+// em volta da origem (determinístico: mesma ordem de domínios = mesmo layout).
+function fibDir(i: number, k: number): [number, number, number] {
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const y = k <= 1 ? 0 : 1 - (2 * (i + 0.5)) / k;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const th = golden * i;
+  return [Math.cos(th) * r, y, Math.sin(th) * r];
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Mapeamento dos 4 sliders (mesmos ranges do painel 2D) → forças d3-force-3d.
@@ -117,13 +129,16 @@ const ORPHAN_GRAVITY_3D = DOMAIN_GRAVITY_3D * 4; // 0.12 — anel próximo, sem 
 //   distance 30..500 → forceLink().distance (identity)
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Física dos links: explícitas puxam com a força do slider; semânticas puxam
-// FRACO, pesado pelo score de similaridade (revisão 12/07/2026, feedback do
-// dono: com semânticas fora da física o 3D virava amontoado uniforme — os
-// "gânglios de neurônios" da referência nascem exatamente da similaridade
-// atraindo). O fator baixo evita fundir tudo num blob: só pares MUITO
-// parecidos condensam. No 2D as semânticas seguem overlay puro (sem força).
-const SIM_LINK_FACTOR = 0.35;
+// Física dos links (revisão 12/07/2026, feedback do dono — "amontoado sem
+// gânglios"): três regimes de força.
+// - Semânticas: puxam pesado pelo score (similaridade é o que condensa os
+//   gânglios — antes tinham strength 0 e o 3D virava bola uniforme).
+// - Explícitas INTRA-domínio: força cheia do slider (estrutura do gânglio).
+// - Explícitas CROSS-domínio: força bem menor + distância maior — viram as
+//   PONTES longas entre gânglios da referência, em vez de molas que fundem
+//   tudo numa bola só.
+const SIM_LINK_FACTOR = 0.5;
+const CROSS_DOMAIN_LINK_FACTOR = 0.22;
 
 function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const { payload, state } = ctx;
@@ -140,7 +155,10 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   const nodes = payload.nodes.map((n) => ({
     id: n.id,
     label: n.label,
-    val: n.size / 3, // volume relativo (raio = cbrt(val)·nodeRelSize) — proporcional ao 2D
+    // Volume relativo (raio = cbrt(val)·nodeRelSize). Expoente 1.5 sobre a
+    // base do 2D: amplia a hierarquia hub vs folha (raio ~2.4x em vez de
+    // ~1.7x) — os hubs dominam a cena como na referência de "neurônios".
+    val: Math.pow(n.size / 3, 1.5),
     _n: n,
   }));
 
@@ -158,38 +176,55 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
 
   // Grau EXPLÍCITO por nó (semânticas não contam — são overlay). Calculado aqui,
   // enquanto source/target ainda são strings (a engine depois os troca por
-  // referências de nó). Grau 0 = órfã → gravidade de domínio reforçada (4x).
+  // referências de nó). Grau 0 = órfã → gravidade de domínio reforçada.
   const degreeById = new Map<string, number>();
   for (const l of explicitLinks) {
     degreeById.set(l.source, (degreeById.get(l.source) ?? 0) + 1);
     degreeById.set(l.target, (degreeById.get(l.target) ?? 0) + 1);
   }
 
-  // Força CUSTOM d3-force-3d: puxa cada nó pro centróide do SEU domínio,
-  // recalculado a cada tick das posições ATUAIS (não dá pra pré-computar: o
-  // layout 3D nasce da phyllotaxis da engine, não do layout 2D do servidor).
-  // Centróide considera SÓ nós conectados (grau>0) — senão o halo de órfãs
-  // puxaria o próprio alvo pra fora. Domínio sem nó conectado: sem alvo (a
-  // força 'center' global segura essas órfãs perto da origem).
+  // Domínio por id (pros regimes de força dos links). Depois que a engine
+  // materializa, l.source/l.target viram OBJETOS de nó — o helper aceita os dois.
+  const domById = new Map<string, string>(nodes.map((n) => [n.id, (n as any)._n?.domain || '_']));
+  const domOfEnd = (v: any): string =>
+    (typeof v === 'object' && v ? (v._n?.domain || '_') : (domById.get(String(v)) || '_'));
+
+  // Força CUSTOM d3-force-3d v2: puxa cada nó pra ÂNCORA FIXA do seu domínio —
+  // direção de fibonacci × raio-casca proporcional ao espalhamento atual da
+  // nuvem (auto-escala: conforme o charge abre a nuvem, a casca acompanha).
+  // Âncora fixa SEPARA (cada domínio tem um alvo próprio longe do centro);
+  // o centróide dinâmico da v1 não separava nada partindo da bola misturada.
+  // Peso do domínio (nº de notas) modula o raio: domínio grande fica um pouco
+  // mais perto do centro (gânglio maior tem mais "massa" visual).
   function domainGravityForce() {
     let simNodes: any[] = [];
+    // Domínios ordenados por tamanho desc — determinístico entre sessões.
+    const domCount = new Map<string, number>();
+    for (const n of nodes) {
+      const d = (n as any)._n?.domain || '_';
+      domCount.set(d, (domCount.get(d) ?? 0) + 1);
+    }
+    const doms = [...domCount.keys()].sort((a, b) => (domCount.get(b)! - domCount.get(a)!) || a.localeCompare(b));
+    const dirByDomain = new Map<string, [number, number, number]>(
+      doms.map((d, i) => [d, fibDir(i, doms.length)]),
+    );
     const force = (alpha: number) => {
-      const acc = new Map<string, { x: number; y: number; z: number; n: number }>();
+      if (!simNodes.length) return;
+      // Raio da casca = distância média atual ao centro × 1.05: gânglios
+      // assentam pouco além da média — separados por vazios mas ENCOSTANDO
+      // nos vizinhos ("mesclando e juntando", como na referência). Com 1.25
+      // eles viravam ilhas estanques longe demais umas das outras.
+      let sum = 0;
+      for (const nd of simNodes) sum += Math.hypot(nd.x, nd.y, nd.z) || 0;
+      const R = Math.max(150, (sum / simNodes.length) * 1.05);
       for (const nd of simNodes) {
-        if ((degreeById.get(nd.id) ?? 0) === 0) continue; // órfã não define centróide
-        const dom = nd._n?.domain || '_';
-        const a = acc.get(dom) ?? { x: 0, y: 0, z: 0, n: 0 };
-        a.x += nd.x; a.y += nd.y; a.z += nd.z; a.n += 1;
-        acc.set(dom, a);
-      }
-      for (const nd of simNodes) {
-        const c = acc.get(nd._n?.domain || '_');
-        if (!c || !c.n) continue;
+        const dir = dirByDomain.get(nd._n?.domain || '_');
+        if (!dir) continue;
         const orphan = (degreeById.get(nd.id) ?? 0) === 0;
         const k = (orphan ? ORPHAN_GRAVITY_3D : DOMAIN_GRAVITY_3D) * alpha;
-        nd.vx += (c.x / c.n - nd.x) * k;
-        nd.vy += (c.y / c.n - nd.y) * k;
-        nd.vz += (c.z / c.n - nd.z) * k;
+        nd.vx += (dir[0] * R - nd.x) * k;
+        nd.vy += (dir[1] * R - nd.y) * k;
+        nd.vz += (dir[2] * R - nd.z) * k;
       }
     };
     // Assinatura d3-force: a simulação injeta os nós materializados aqui.
@@ -203,7 +238,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     .graphData({ nodes, links })
     // Tema escuro: preto de verdade (feedback do dono 12/07 — o --surface-canvas
     // dark + véu do bloom deixava o fundo cinza). Claro segue o token do tema.
-    .backgroundColor(isDark ? '#04040a' : BG_COLOR)
+    .backgroundColor(isDark ? '#000004' : BG_COLOR)
     .width(clientWidth || window.innerWidth)
     .height(clientHeight || window.innerHeight)
     .showNavInfo(false)
@@ -252,12 +287,12 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // 1 addPass). OutputPass é OBRIGATÓRIO junto: os passes de bloom não convertem
   // pra sRGB, sem ele a cena inteira escurece. Com ambos enabled=false o
   // pipeline volta byte-idêntico ao original — toggle limpo.
-  // Knobs (recalibrados 12/07/2026 com o dono olhando): strength 0.55 /
-  // radius 0.28 / threshold 0.45. Histórico: 1.0/0.6/0.15 estourava o miolo em
-  // branco; 0.8/0.5/0.30 segurou a supernova mas o radius largo espalhava um
-  // VÉU cinza sobre a tela inteira ("fundo ficou cinza, bolinhas lavadas" —
-  // feedback do dono). Radius curto = halo colado na esfera, fundo preto e cor
-  // preservada. O fantasma de busca (rgba escuro 0.22) segue MUITO abaixo do
+  // Knobs (rodada 3 de calibração com o dono, 12/07/2026): strength 0.45 /
+  // radius 0.22 / threshold 0.55. Histórico: 1.0/0.6/0.15 estourava o miolo em
+  // branco; 0.8/0.5/0.30 espalhava véu cinza na tela inteira; 0.55/0.28/0.45
+  // ainda lavava o fundo em nuvem densa (milhares de halos somam). Threshold
+  // alto = só as esferas realmente claras brilham (hubs), o resto fica limpo —
+  // fundo preto de verdade. O fantasma de busca segue MUITO abaixo do
   // threshold — busca com glow continua legível.
   let bloomPass: UnrealBloomPass | null = null;
   let outputPass: OutputPass | null = null;
@@ -266,7 +301,7 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     if (composer?.addPass) {
       bloomPass = new UnrealBloomPass(
         new Vector2(container.clientWidth || window.innerWidth, container.clientHeight || window.innerHeight),
-        0.55, 0.28, 0.45,
+        0.45, 0.22, 0.55,
       );
       outputPass = new OutputPass();
       bloomPass.enabled = false;
@@ -392,13 +427,13 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
   // reaquecer normalmente.
   function applyForces(withReheat = true) {
     const f = ctx.getForces();
-    // e*e*e/8, NÃO o e*e*e cru do 2D: o mundo 3D do 3d-force-graph tem escala
-    // própria (charge default da lib é ~-120; o cru do 2D em repel=10 dava -1000,
-    // 8x mais forte que o default) — isso empurrava a nuvem de nós pra fora do
-    // frustum da câmera (que nunca reenquadra sozinha) e a tela ficava PRETA.
-    // /8 recalibra pro default=10 → -125 (mesma ordem de grandeza do default da
-    // lib), preservando a curva cúbica do slider (sensação de "força" idêntica).
-    const repel = (f.repel * f.repel * f.repel) / 8;
+    // e*e*e/4, NÃO o e*e*e cru do 2D: o mundo 3D do 3d-force-graph tem escala
+    // própria (o cru do 2D em repel=10 dava -1000 e empurrava a nuvem pra fora
+    // do frustum — tela preta). Era /8 (default 8 → -64, metade do default da
+    // lib); subiu pra /4 na rodada dos gânglios (12/07/2026): repulsão mais
+    // forte abre os VAZIOS entre os grupos — e o frameCore reenquadra a câmera
+    // durante o assentamento, então nuvem maior não some da tela.
+    const repel = (f.repel * f.repel * f.repel) / 4;
     graph
       .d3Force('charge', forceManyBody().strength(-repel).theta(0.9).distanceMin(30))
       .d3Force('center', forceCenter().strength(f.center));
@@ -406,15 +441,20 @@ function initGraph3D(container: HTMLElement, ctx: Ctx): Graph3DController {
     // e um forceLink(explicitLinks) novo falha a resolução de id do d3 ("node not
     // found"). Em vez disso, pegamos a força de link já existente da lib (que ela
     // materializa a partir do graphData) e só ajustamos strength/distance nela.
-    // Semânticas: força fraca pesada pelo score e distância mais curta — pares
-    // muito parecidos condensam em grupos ("neurônios"), o resto só se aproxima.
-    // Ambas escalam pelo slider "Força das ligações" (f.link), então o dono
-    // controla o quanto o grafo condensa com o knob que já existe.
+    // Três regimes (ver SIM_LINK_FACTOR/CROSS_DOMAIN_LINK_FACTOR): semântica
+    // condensa o gânglio, intra-domínio estrutura, cross-domínio vira ponte
+    // longa e frouxa. Tudo escala pelo slider "Força das ligações" (f.link).
     const link = graph.d3Force('link');
     if (link) {
       link
-        .strength((l: any) => (l._sim ? f.link * SIM_LINK_FACTOR * (l.score ?? 0.5) : f.link))
-        .distance((l: any) => (l._sim ? f.distance * 0.5 : f.distance));
+        .strength((l: any) => {
+          if (l._sim) return f.link * SIM_LINK_FACTOR * (l.score ?? 0.5);
+          return domOfEnd(l.source) === domOfEnd(l.target) ? f.link : f.link * CROSS_DOMAIN_LINK_FACTOR;
+        })
+        .distance((l: any) => {
+          if (l._sim) return f.distance * 0.5;
+          return domOfEnd(l.source) === domOfEnd(l.target) ? f.distance * 0.7 : f.distance * 1.8;
+        });
     }
     applyCollide();
     if (withReheat) graph.d3ReheatSimulation(); // reheat (a lib expõe d3ReheatSimulation)
