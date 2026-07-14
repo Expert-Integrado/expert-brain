@@ -755,7 +755,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // (gravado tanto pelo cron semanal quanto pelo "Fazer backup agora").
   let backupStatus: string;
   if (!lastBackup) {
-    backupStatus = `<p style="color:var(--text-dim)">Nenhum snapshot ainda. O backup automático roda toda segunda às 02:00 (BRT) — ou dispare um agora.</p>`;
+    backupStatus = `<p style="margin:6px 0 0"><span class="cfg-status">Nenhum snapshot ainda</span></p>`;
   } else if (lastBackup.ok) {
     const nTables = Object.keys(lastBackup.tables).length;
     backupStatus = `<p><span class="badge-pill badge-ok">● OK</span> &nbsp;<strong>${esc(formatBrtDateTime(lastBackup.at))}</strong> &nbsp;·&nbsp; ${lastBackup.total_rows} linhas em ${nTables} tabelas &nbsp;·&nbsp; ${esc(formatBytes(lastBackup.bytes))} &nbsp;·&nbsp; <code>${esc(lastBackup.prefix)}</code></p>`;

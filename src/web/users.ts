@@ -208,7 +208,10 @@ export function renderUsersSection(
       <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, use o botão "Criar chave" no próprio card do perfil — o formulário já vem com o dono certo.</p>`;
   return `
     <div id="users">
-      <p class="config-hint" style="margin-top:0">Perfis de quem usa o Brain — pessoas e agentes de IA. ${total}/${USER_CAP} usuários.</p>
+      <div class="cfg-head cfg-subsection">
+        <h2>Pessoas e agentes</h2>
+        <span class="cfg-status">${total}/${USER_CAP} usuários</span>
+      </div>
       <details class="cfg-help cfg-help-bare">
         <summary>Como funciona</summary>
         <div class="cfg-help-body">

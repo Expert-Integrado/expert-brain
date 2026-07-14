@@ -1052,6 +1052,10 @@ export const SURFACES_CSS = `
 .cfg-help-body p { margin: 6px 0; color: var(--text-dim); font-size: 13px; }
 /* Variante solta (fora de card): sem a régua de separação. */
 .cfg-help.cfg-help-bare { border-top: none; margin: 0 0 12px; padding-top: 0; }
+/* Cabeçalho de subseção (fora de card, ex.: lista de usuários): título menor
+   que o h2 de card, com o resumo/contagem à direita no mesmo baseline. */
+.cfg-head.cfg-subsection { margin: 2px 0 6px; }
+.cfg-head.cfg-subsection h2 { font-family: var(--font-display); font-weight: 500; font-size: 15px; }
 /* Status padrão: dot + label — verde conectado/ok, âmbar aguardando, cinza
    indisponível (com title explicando o porquê). Reusa os badge-pill onde já
    existem; o .cfg-status é a versão SEM pílula, pro canto de card. */
@@ -1334,6 +1338,11 @@ export const SURFACES_CSS = `
    vez de estourar o card (display block transforma a table em scroll container). */
 @media (max-width: 640px) {
   .keys-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* Selo de estado dentro do título de gaveta ("Agente no seu computador
+     ○ Aguardando…"): em tela estreita ele desce pra linha própria em vez de
+     espremer o título em 3 linhas. */
+  .disclosure-advanced > summary .adv-title { flex-wrap: wrap; row-gap: 6px; }
+  .disclosure-advanced > summary .adv-title .badge-pill { flex: 1 0 100%; margin-left: 22px; width: fit-content; }
 }
 
 /* Banner de chave recem-criada — tokens nebula (verde = sucesso) */
@@ -1387,6 +1396,9 @@ export const SURFACES_CSS = `
   grid-area: title; font-size: 15px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+/* Filhos do título (badge do tipo, dot) NUNCA encolhem — o aperto clipa o
+   texto do nome, não o chip ("Pessoa · dono" aparecia cortado). */
+.conn-card > summary .adv-title > * { flex: none; }
 .conn-card > summary .adv-sub {
   grid-area: sub; padding-left: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
