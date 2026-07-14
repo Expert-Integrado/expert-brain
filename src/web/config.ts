@@ -925,7 +925,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     ${usersSection}
 
-    <details class="disclosure-advanced conn-section" open>
+    ${'' /* Gaveta FECHADA por padrão (redesign 13/07): o guia de conexão é
+          onboarding — quem já conectou (selo verde na face) não precisa do
+          manual aberto ocupando a tela toda visita. */}
+    <details class="disclosure-advanced conn-section"${stats.connected ? '' : ' open'}>
       <summary>
         ${'' /* Selo de conexão: morava no H1 e aparecia em todas as abas —
               é status DESTE bloco, vive junto das opções a que se refere

@@ -208,7 +208,13 @@ export function renderUsersSection(
       <p style="color:var(--text-dim);font-size:13px;margin-top:8px">Depois de criar, use o botão "Criar chave" no próprio card do perfil — o formulário já vem com o dono certo.</p>`;
   return `
     <div id="users">
-      <p class="config-hint" style="margin-top:0">Cada card é um perfil de atribuição (<strong>não é login</strong>): <strong>pessoa</strong> é alguém de carne e osso, <strong>agente</strong> é uma instância de IA. A credencial mora na <em>chave</em> — o <code>assignee: 'me'</code> das tools MCP resolve pro perfil dono da chave. Arquivar não apaga histórico. ${total}/${USER_CAP} usuários.</p>
+      <p class="config-hint" style="margin-top:0">Perfis de quem usa o Brain — pessoas e agentes de IA. ${total}/${USER_CAP} usuários.</p>
+      <details class="cfg-help cfg-help-bare">
+        <summary>Como funciona</summary>
+        <div class="cfg-help-body">
+          <p>Cada card é um perfil de atribuição (<strong>não é login</strong>): <strong>pessoa</strong> é alguém de carne e osso, <strong>agente</strong> é uma instância de IA. A credencial mora na <em>chave</em> — o <code>assignee: 'me'</code> das tools MCP resolve pro perfil dono da chave. Arquivar não apaga histórico.</p>
+        </div>
+      </details>
       ${orphanNote}
       <div class="config-cards">${activeUsers.map((u) => renderUserCard(u, keys, hasMedia)).join('')}</div>
       ${archivedUsers.length > 0

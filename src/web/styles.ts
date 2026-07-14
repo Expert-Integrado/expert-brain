@@ -1050,6 +1050,8 @@ export const SURFACES_CSS = `
 .cfg-help > summary:hover, .cfg-help[open] > summary { color: var(--text); }
 .cfg-help-body { margin-top: 8px; }
 .cfg-help-body p { margin: 6px 0; color: var(--text-dim); font-size: 13px; }
+/* Variante solta (fora de card): sem a régua de separação. */
+.cfg-help.cfg-help-bare { border-top: none; margin: 0 0 12px; padding-top: 0; }
 /* Status padrão: dot + label — verde conectado/ok, âmbar aguardando, cinza
    indisponível (com title explicando o porquê). Reusa os badge-pill onde já
    existem; o .cfg-status é a versão SEM pílula, pro canto de card. */
