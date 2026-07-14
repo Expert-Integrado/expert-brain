@@ -129,3 +129,29 @@ Reversão: remover rota + card da home.
 - Arquivos: `src/db/fleet-queries.ts` + `src/web/fleet.ts` (novos), rotas em
   `src/web/handler.ts`, nav em `render.ts`, faixa em `home.ts`, `dotHue`/`dotInitials`
   exportados de `util/task-badges.ts`. Testes: `test/fleet-web.test.ts` (11).
+
+## Redesign 14/07/2026 (pedido do dono: "UX e UI péssima")
+
+Alinhado ao design system da config (spec 91/106) e a padrões de dashboard
+operacional (alertas primeiro, números com peso, estado escaneável por cor):
+
+- **Subtítulo-resumo** sob o h1 — "X de N ativos hoje · M entregas esperando sua
+  validação" — responde a pergunta da tela sem ler os cards; link "Abrir board"
+  único no topo (o botão "Ver no board" repetido em TODO card foi removido —
+  ação idêntica N vezes é ruído).
+- **Badge → dot**: o pill de status virou `status-dot` + rótulo curto (verde
+  pulsando = ativo agora, verde = hoje, âmbar = sem credencial, cinza =
+  dormindo/sem uso), mesmo vocabulário do restante do console. O carimbo
+  "visto há Xh" saiu do badge e virou linha sob o nome (`seenLine`); o
+  timestamp completo continua no title. Pulse respeita prefers-reduced-motion.
+- **Grid ordenado por estado** (`agentRank`): sem credencial (quebrado, pede
+  ação — borda âmbar) → ativo agora → ativo hoje → dormindo (visto recente
+  primeiro) → sem uso. Ordem de criação não diz nada num painel.
+- **Stats com número forte** (`<strong>N</strong> tasks`); stat ZERADA some
+  ("0 comentários" é ruído) — tudo zero mantém "Sem atividade hoje." (string
+  dos testes). Mailbox: "N não lidos no mailbox" com title explicando.
+- **Faixa Esperando você** na anatomia cfg-head (contagem `cfg-status warn` à
+  direita), desc de 1 linha; entrega parada >24h ganha meta âmbar (`stale`).
+  Devolver virou btn-ghost (hierarquia: Aprovar é a ação primária).
+- Labels de status e strings asseridas nos testes preservadas; `agentStatus`
+  agora retorna rótulo curto ("dormindo" sem o carimbo).
