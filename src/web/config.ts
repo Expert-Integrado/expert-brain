@@ -224,7 +224,7 @@ function renderBoardSection(columns: KanbanColumn[], counts: Map<string, number>
   return `
     <details class="disclosure-advanced conn-section" id="board"${savedBoard ? ' open' : ''}>
       <summary>
-        <span class="adv-title">Quadro de tarefas</span>
+        <span class="adv-title">Quadro de tarefas <span class="adv-stat">${columns.length} coluna${columns.length === 1 ? '' : 's'}</span></span>
         <span class="adv-sub">Colunas/estágios do Kanban — crie, renomeie, recolora, reordene e arquive</span>
       </summary>
       <div class="adv-body">
@@ -371,7 +371,7 @@ function renderProjectsSection(
   return `
     <details class="disclosure-advanced conn-section" id="projects"${savedProjects ? ' open' : ''}>
       <summary>
-        <span class="adv-title">Projetos</span>
+        <span class="adv-title">Projetos <span class="adv-stat">${total} projeto${total === 1 ? '' : 's'}</span></span>
         <span class="adv-sub">Pastas de tarefas — agrupe tasks por projeto, com cor e ciclo de vida (arquivar)</span>
       </summary>
       <div class="adv-body">
@@ -429,8 +429,8 @@ function renderTagsSection(tags: TagUsage[], savedTags: boolean): string {
   return `
     <details class="disclosure-advanced conn-section" id="tags"${savedTags ? ' open' : ''}>
       <summary>
-        <span class="adv-title">Tags</span>
-        <span class="adv-sub">Vocabulário de rótulos — renomeie em massa ou apague (${tags.length} tag${tags.length === 1 ? '' : 's'})</span>
+        <span class="adv-title">Tags <span class="adv-stat">${tags.length} tag${tags.length === 1 ? '' : 's'}</span></span>
+        <span class="adv-sub">Vocabulário de rótulos — renomeie em massa ou apague</span>
       </summary>
       <div class="adv-body">
         <div class="adv-section">
@@ -484,7 +484,7 @@ function renderTaxonomySection(
   return `
     <details class="disclosure-advanced conn-section" id="taxonomy"${savedTaxonomy ? ' open' : ''}>
       <summary>
-        <span class="adv-title">Áreas e tipos</span>
+        <span class="adv-title">Áreas e tipos <span class="adv-stat">${domainSlugs.length} área${domainSlugs.length === 1 ? '' : 's'}</span></span>
         <span class="adv-sub">Cor e nome de exibição das áreas (domains) e tipos (kinds) — crie áreas novas aqui</span>
       </summary>
       <div class="adv-body">

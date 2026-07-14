@@ -1139,6 +1139,13 @@ export const SURFACES_CSS = `
   font-family: var(--font-display); font-weight: 500; font-size: 16px;
   display: flex; align-items: center; gap: 10px; color: var(--text);
 }
+/* Resumo à direita do título (redesign 13/07): a contagem ("5 tags",
+   "4 colunas") dá o info-scent sem abrir a gaveta — padrão das 4 seções
+   de Organização. */
+.adv-stat {
+  margin-left: auto; font-family: var(--font-body); font-weight: 400;
+  font-size: 12px; color: var(--text-subtle); white-space: nowrap;
+}
 .disclosure-advanced > summary .adv-title::before {
   content: "▸";
   font-size: 12px; color: var(--accent-lav);
