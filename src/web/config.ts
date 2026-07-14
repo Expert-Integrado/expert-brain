@@ -201,7 +201,7 @@ function renderKeyWizard(allUsers: BrainUser[], knownSystems: string[]): string 
       <datalist id="key-systems">${knownSystems.map((s) => `<option value="${esc(s)}"></option>`).join('')}</datalist>
     </fieldset>
     <div class="wizard-controls">
-      <button type="button" class="btn" id="wizard-back" hidden>Voltar</button>
+      <button type="button" class="btn btn-ghost" id="wizard-back" hidden>Voltar</button>
       <button type="button" class="btn btn-primary" id="wizard-next" hidden>Avançar</button>
       <button type="submit" class="btn btn-primary" id="wizard-submit">Criar chave</button>
       <span id="wizard-error" class="wizard-error" role="alert" hidden></span>
@@ -906,7 +906,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
   const body = `
     <div class="page-header">
-      <h1>Configurações ${badge}</h1>
+      <h1>Configurações</h1>
     </div>
     ${formErrorBanner(url)}
     <nav class="config-tabs" role="tablist" aria-label="Seções das configurações">
@@ -927,7 +927,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
 
     <details class="disclosure-advanced conn-section" open>
       <summary>
-        <span class="adv-title">Agente no seu computador</span>
+        ${'' /* Selo de conexão: morava no H1 e aparecia em todas as abas —
+              é status DESTE bloco, vive junto das opções a que se refere
+              (redesign da config, 13/07/2026). */}
+        <span class="adv-title">Agente no seu computador ${badge}</span>
         <span class="adv-sub">Claude Code, Codex ou qualquer agente instalado na sua máquina — conecta por login, sem chave</span>
       </summary>
       <div class="adv-body">
@@ -1025,8 +1028,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <p id="gc-status" style="color:var(--text-dim)">Carregando estado da conexão…</p>
           <div class="row" style="gap:8px;flex-wrap:wrap">
             <button type="button" class="btn btn-primary" id="gc-connect" hidden>Conectar ao Google</button>
-            <button type="button" class="btn" id="gc-sync" hidden>Sincronizar agora</button>
-            <button type="button" class="btn" id="gc-disconnect" hidden>Desconectar</button>
+            <button type="button" class="btn btn-ghost" id="gc-sync" hidden>Sincronizar agora</button>
+            <button type="button" class="btn btn-ghost" id="gc-disconnect" hidden>Desconectar</button>
           </div>
         </div>
         <div class="adv-section" id="gc-labels-section" hidden>
@@ -1064,8 +1067,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         <div class="adv-section" id="wa-groups-section" hidden>
           <h3>Grupos sincronizados</h3>
           <div class="row" style="gap:8px;margin-bottom:8px">
-            <button type="button" class="btn" id="wa-select-all">Marcar todos</button>
-            <button type="button" class="btn" id="wa-clear-all">Desmarcar todos</button>
+            <button type="button" class="btn btn-ghost" id="wa-select-all">Marcar todos</button>
+            <button type="button" class="btn btn-ghost" id="wa-clear-all">Desmarcar todos</button>
           </div>
           <div id="wa-groups" style="display:flex;flex-direction:column;gap:6px"></div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
@@ -1091,8 +1094,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         <div class="adv-section" id="ig-contacts-section" hidden>
           <h3>Conversas sincronizadas</h3>
           <div class="row" style="gap:8px;margin-bottom:8px">
-            <button type="button" class="btn" id="ig-select-all">Marcar todas</button>
-            <button type="button" class="btn" id="ig-clear-all">Desmarcar todas</button>
+            <button type="button" class="btn btn-ghost" id="ig-select-all">Marcar todas</button>
+            <button type="button" class="btn btn-ghost" id="ig-clear-all">Desmarcar todas</button>
           </div>
           <div id="ig-contacts" style="display:flex;flex-direction:column;gap:6px"></div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
@@ -1115,7 +1118,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
           <p>Integração <strong>opcional</strong>: só funciona se você conectar explicitamente o seu Pipedrive (chave de API no servidor de contatos). Quando ligada, roda 1x por dia e <strong>só preenche campos vazios</strong> (e-mail, empresa) de contatos que <strong>já existem</strong> no vault — nunca cria contato, nunca sobrescreve o que você editou, nunca escreve de volta no Pipedrive. Desligada, nada acontece.</p>
           <p id="pd-status" style="color:var(--text-dim)">Carregando estado da integração…</p>
           <div class="row" style="gap:8px;flex-wrap:wrap">
-            <button type="button" class="btn" id="pd-sync" hidden>Sincronizar agora</button>
+            <button type="button" class="btn btn-ghost" id="pd-sync" hidden>Sincronizar agora</button>
             <span id="pd-sync-status" style="color:var(--text-dim)"></span>
           </div>
         </div>
@@ -1169,8 +1172,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       <p id="push-status" style="color:var(--text-dim);font-size:13px">Receba um aviso neste dispositivo quando houver tarefas vencendo ou capturas paradas no inbox (junto com o lembrete diário).</p>
       <div class="row" style="gap:8px;margin-top:6px">
         <button type="button" id="push-enable-btn" class="btn btn-primary" hidden>Ativar neste dispositivo</button>
-        <button type="button" id="push-disable-btn" class="btn" hidden>Desativar</button>
-        <button type="button" id="push-test-btn" class="btn" hidden>Enviar teste</button>
+        <button type="button" id="push-disable-btn" class="btn btn-ghost" hidden>Desativar</button>
+        <button type="button" id="push-test-btn" class="btn btn-ghost" hidden>Enviar teste</button>
       </div>
       <noscript><p style="color:var(--text-dim);font-size:13px">Notificações exigem JavaScript.</p></noscript>
     </div>

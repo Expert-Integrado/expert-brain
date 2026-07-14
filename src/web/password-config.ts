@@ -110,16 +110,16 @@ export function renderPasswordCard(s: PasswordCardState): string {
     ${flash}
     <h3 style="font-size:14px;margin:8px 0 4px">Trocar senha</h3>
     <form method="post" action="/app/config/password" class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-      <label style="font-size:13px">Senha atual<br><input type="password" name="current" autocomplete="current-password" required></label>
-      <label style="font-size:13px">Senha nova<br><input type="password" name="password" autocomplete="new-password" minlength="${PASSWORD_MIN_LEN}" required></label>
-      <label style="font-size:13px">Confirmar<br><input type="password" name="confirm" autocomplete="new-password" minlength="${PASSWORD_MIN_LEN}" required></label>
+      <label style="font-size:13px">Senha atual<br><input type="password" class="input" name="current" autocomplete="current-password" required></label>
+      <label style="font-size:13px">Senha nova<br><input type="password" class="input" name="password" autocomplete="new-password" minlength="${PASSWORD_MIN_LEN}" required></label>
+      <label style="font-size:13px">Confirmar<br><input type="password" class="input" name="confirm" autocomplete="new-password" minlength="${PASSWORD_MIN_LEN}" required></label>
       <button type="submit" class="btn btn-primary">Trocar</button>
     </form>
     <h3 style="font-size:14px;margin:16px 0 4px">Esqueci a senha — código de recuperação</h3>
     ${recoveryState}
     <p style="color:var(--text-dim);font-size:13px">O código destrava a tela <a href="/app/login/recover">Esqueci a senha</a> pra definir uma senha nova sem estar logado. Gere enquanto você TEM acesso e guarde no 1Password.</p>
     <form method="post" action="/app/config/recovery-code">
-      <button type="submit" class="btn">${s.recovery || s.freshRecoveryCode ? 'Gerar novo código (invalida o anterior)' : 'Gerar código de recuperação'}</button>
+      <button type="submit" class="btn btn-ghost">${s.recovery || s.freshRecoveryCode ? 'Gerar novo código (invalida o anterior)' : 'Gerar código de recuperação'}</button>
     </form>
   </div>`;
 }
