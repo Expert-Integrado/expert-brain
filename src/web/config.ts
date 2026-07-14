@@ -1144,9 +1144,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     <p class="config-subtitle">Saúde da instância: números do vault, snapshot semanal e export completo.</p>
 
     <div class="card">
-      <h2>Status do vault</h2>
-      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges} &nbsp;·&nbsp; <strong>Última escrita:</strong> ${esc(lastWriteStr)}</p>
-      <p style="color:var(--text-dim);font-size:13px"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
+      <div class="cfg-head">
+        <h2>Status do vault</h2>
+        <span class="cfg-status ok">última escrita ${esc(lastWriteStr)}</span>
+      </div>
+      <p><strong>Notas:</strong> ${stats.notes} &nbsp;·&nbsp; <strong>Conexões:</strong> ${stats.edges}</p>
+      <p class="cfg-desc"><strong>Clientes OAuth registrados:</strong> ${stats.clients} &nbsp;·&nbsp; <strong>Tokens ativos:</strong> ${stats.tokens}</p>
     </div>
 
     ${securityCard}
@@ -1154,35 +1157,49 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
     ${passwordCard}
 
     <div class="card" id="backup">
-      <h2>Backup</h2>
+      <div class="cfg-head"><h2>Backup</h2></div>
       ${backupStatus}
-      <div class="row" style="gap:8px;margin-top:10px">
+      <p class="cfg-desc">Snapshot automático toda segunda às 02:00 — ou dispare um agora.</p>
+      <div class="cfg-actions">
         <form method="post" data-ajax-form action="/app/config/backup-now">
           <button type="submit" class="btn btn-primary">Fazer backup agora</button>
         </form>
         <form method="get" action="/app/export">
-          <button type="submit">Baixar export (.zip)</button>
+          <button type="submit" class="btn btn-ghost">Baixar export (.zip)</button>
         </form>
       </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos). O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
+      <details class="cfg-help">
+        <summary>Como funciona</summary>
+        <div class="cfg-help-body">
+          <p>O snapshot semanal (segunda, 02:00 BRT) grava um JSONL por tabela no R2 da instância (prefixo <code>backups/</code>, últimos 8 mantidos).</p>
+          <p>O export baixa o MESMO conteúdo em ZIP — <strong>contém TUDO, inclusive notas privadas</strong>: guarde num lugar seguro. Restore é operação manual: <code>docs/restore.md</code>.</p>
+        </div>
+      </details>
     </div>
 
     <div class="card" id="push-notifs">
-      <h2>Notificações</h2>
-      <p id="push-status" style="color:var(--text-dim);font-size:13px">Receba um aviso neste dispositivo quando houver tarefas vencendo ou capturas paradas no inbox (junto com o lembrete diário).</p>
-      <div class="row" style="gap:8px;margin-top:6px">
+      <div class="cfg-head"><h2>Notificações</h2></div>
+      <p id="push-status" class="cfg-desc">Receba um aviso neste dispositivo quando houver tarefas vencendo ou capturas paradas no inbox (junto com o lembrete diário).</p>
+      <div class="cfg-actions">
         <button type="button" id="push-enable-btn" class="btn btn-primary" hidden>Ativar neste dispositivo</button>
         <button type="button" id="push-disable-btn" class="btn btn-ghost" hidden>Desativar</button>
         <button type="button" id="push-test-btn" class="btn btn-ghost" hidden>Enviar teste</button>
       </div>
-      <noscript><p style="color:var(--text-dim);font-size:13px">Notificações exigem JavaScript.</p></noscript>
+      <noscript><p class="cfg-desc">Notificações exigem JavaScript.</p></noscript>
     </div>
 
     <div class="card" id="pwa-install">
-      <h2>Instalar como app</h2>
-      <p id="pwa-install-status" style="color:var(--text-dim);font-size:13px">O console funciona como app instalado (PWA): ícone na tela inicial, janela própria e compartilhamento direto pro inbox.</p>
-      <button type="button" id="pwa-install-btn" class="btn btn-primary" hidden>Instalar app</button>
-      <p style="color:var(--text-dim);font-size:13px;margin-top:10px">No iPhone/iPad: abrir no Safari → botão Compartilhar → <strong>Adicionar à Tela de Início</strong>. No Android/desktop, se o botão acima não aparecer, use o menu do navegador (Instalar app).</p>
+      <div class="cfg-head"><h2>Instalar como app</h2></div>
+      <p id="pwa-install-status" class="cfg-desc">O console funciona como app instalado (PWA): ícone na tela inicial, janela própria e compartilhamento direto pro inbox.</p>
+      <div class="cfg-actions">
+        <button type="button" id="pwa-install-btn" class="btn btn-primary" hidden>Instalar app</button>
+      </div>
+      <details class="cfg-help">
+        <summary>Como instalar manualmente</summary>
+        <div class="cfg-help-body">
+          <p>No iPhone/iPad: abrir no Safari → botão Compartilhar → <strong>Adicionar à Tela de Início</strong>. No Android/desktop, se o botão acima não aparecer, use o menu do navegador (Instalar app).</p>
+        </div>
+      </details>
     </div>
     </section>
 

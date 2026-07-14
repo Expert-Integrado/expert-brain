@@ -114,7 +114,7 @@ export function renderTwoFactorCard(s: TwoFactorCardState): string {
       <p><span class="badge-pill badge-ok">● Ativa${since ? ` desde ${esc(since)}` : ''}</span> &nbsp;·&nbsp; ${remaining} código${remaining === 1 ? '' : 's'} reserva restante${remaining === 1 ? '' : 's'}</p>
       <p style="color:var(--text-dim);font-size:13px">Todo login (site e autorização de agentes) pede a senha E um código de 6 dígitos do seu app. Pra desligar, confirme com um código válido (do app ou um reserva).</p>
       <form method="post" action="/app/config/2fa/disable" class="row" style="gap:8px;flex-wrap:wrap">
-        <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required aria-label="Código de verificação" style="max-width:140px">
+        <input type="text" class="input" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required aria-label="Código de verificação" style="max-width:140px">
         <button type="submit" class="btn btn-danger">Desativar</button>
       </form>`;
   } else if (s.pendingSecret) {
@@ -125,23 +125,31 @@ export function renderTwoFactorCard(s: TwoFactorCardState): string {
       <p><strong>Passo 2.</strong> Digite o código de 6 dígitos que o app está mostrando agora — isso prova que deu certo antes de ligar (você não fica trancado fora).</p>
       <div class="row" style="gap:8px;flex-wrap:wrap">
         <form method="post" action="/app/config/2fa/confirm" class="row" style="gap:8px">
-          <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required aria-label="Código do app" style="max-width:140px">
+          <input type="text" class="input" name="code" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" required aria-label="Código do app" style="max-width:140px">
           <button type="submit" class="btn btn-primary">Confirmar e ligar</button>
         </form>
         <form method="post" action="/app/config/2fa/cancel">
-          <button type="submit" class="btn">Cancelar configuração</button>
+          <button type="submit" class="btn btn-ghost">Cancelar configuração</button>
         </form>
       </div>`;
   } else {
     body = `
-      <p style="color:var(--text-dim)">Além da senha, o login passa a pedir um código de 6 dígitos gerado no seu app (1Password, Google Authenticator). Se alguém descobrir sua senha, ainda não entra — nem no site, nem autorizando um agente novo.</p>
-      <form method="post" action="/app/config/2fa/start">
-        <button type="submit" class="btn btn-primary">Ativar verificação em duas etapas</button>
-      </form>`;
+      <p class="cfg-desc">Além da senha, o login pede um código de 6 dígitos do seu app autenticador.</p>
+      <div class="cfg-actions">
+        <form method="post" action="/app/config/2fa/start">
+          <button type="submit" class="btn btn-primary">Ativar verificação em duas etapas</button>
+        </form>
+      </div>
+      <details class="cfg-help">
+        <summary>Como funciona</summary>
+        <div class="cfg-help-body">
+          <p>O código é gerado no seu app (1Password, Google Authenticator). Se alguém descobrir sua senha, ainda não entra — nem no site, nem autorizando um agente novo.</p>
+        </div>
+      </details>`;
   }
 
   return `<div class="card" id="twofactor">
-    <h2>Segurança</h2>
+    <div class="cfg-head"><h2>Segurança</h2></div>
     ${errorBanner}
     ${flash}
     ${body}

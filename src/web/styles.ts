@@ -1020,6 +1020,44 @@ export const SURFACES_CSS = `
 /* Dentro de um painel o respiro entre gavetas e menor que o default de 32px */
 .config-panel .disclosure-advanced { margin-top: 12px; }
 
+/* ── Redesign da config (13/07/2026): UM padrão de card pras 4 abas.
+   Anatomia: .cfg-head (título + status/resumo à direita) → .cfg-desc (UMA
+   linha de contexto) → .cfg-actions (botões) → .cfg-help (o manual INTEIRO
+   vive recolhido aqui — progressive disclosure; card mostra estado + ação,
+   não um manual). Craft: highlight interno no topo, borda que acende no
+   hover, easing custom — nada de ease-in-out genérico. */
+.config-panel .card {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition: border-color 240ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.config-panel .card:hover { border-color: var(--border-strong); }
+.cfg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cfg-head h2 { margin: 0 !important; }
+.cfg-desc { margin: 6px 0 0; color: var(--text-dim); font-size: 13px; max-width: 68ch; }
+.cfg-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+.cfg-help { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.cfg-help > summary {
+  cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-dim); user-select: none;
+  transition: color 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.cfg-help > summary::-webkit-details-marker { display: none; }
+.cfg-help > summary::before {
+  content: "▸"; font-size: 10px;
+  transition: transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.cfg-help[open] > summary::before { transform: rotate(90deg); }
+.cfg-help > summary:hover, .cfg-help[open] > summary { color: var(--text); }
+.cfg-help-body { margin-top: 8px; }
+.cfg-help-body p { margin: 6px 0; color: var(--text-dim); font-size: 13px; }
+/* Status padrão: dot + label — verde conectado/ok, âmbar aguardando, cinza
+   indisponível (com title explicando o porquê). Reusa os badge-pill onde já
+   existem; o .cfg-status é a versão SEM pílula, pro canto de card. */
+.cfg-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.cfg-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--text-subtle); flex: none; }
+.cfg-status.ok::before { background: var(--ok, #34d399); }
+.cfg-status.warn::before { background: var(--warn, #fbbf24); }
+
 /* Cards de passo numerado (trilha essencial) */
 .card-step { border-left: 3px solid var(--accent-lav); }
 .card-step h2.step-head { display: flex; align-items: center; gap: 12px; margin: 0; }

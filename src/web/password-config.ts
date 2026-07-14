@@ -104,7 +104,7 @@ export function renderPasswordCard(s: PasswordCardState): string {
       : `<p><span class="badge-pill badge-warn">○ Nenhum código de recuperação</span> — se esquecer a senha, não há como recuperar pelo site.</p>`;
 
   return `<div class="card" id="password">
-    <h2>Senha e recuperação</h2>
+    <div class="cfg-head"><h2>Senha e recuperação</h2></div>
     ${errorBanner}
     ${okBanner}
     ${flash}
@@ -117,9 +117,16 @@ export function renderPasswordCard(s: PasswordCardState): string {
     </form>
     <h3 style="font-size:14px;margin:16px 0 4px">Esqueci a senha — código de recuperação</h3>
     ${recoveryState}
-    <p style="color:var(--text-dim);font-size:13px">O código destrava a tela <a href="/app/login/recover">Esqueci a senha</a> pra definir uma senha nova sem estar logado. Gere enquanto você TEM acesso e guarde no 1Password.</p>
-    <form method="post" action="/app/config/recovery-code">
-      <button type="submit" class="btn btn-ghost">${s.recovery || s.freshRecoveryCode ? 'Gerar novo código (invalida o anterior)' : 'Gerar código de recuperação'}</button>
-    </form>
+    <div class="cfg-actions">
+      <form method="post" action="/app/config/recovery-code">
+        <button type="submit" class="btn btn-ghost">${s.recovery || s.freshRecoveryCode ? 'Gerar novo código (invalida o anterior)' : 'Gerar código de recuperação'}</button>
+      </form>
+    </div>
+    <details class="cfg-help">
+      <summary>Como funciona</summary>
+      <div class="cfg-help-body">
+        <p>O código destrava a tela <a href="/app/login/recover">Esqueci a senha</a> pra definir uma senha nova sem estar logado. Gere enquanto você TEM acesso e guarde no 1Password.</p>
+      </div>
+    </details>
   </div>`;
 }
