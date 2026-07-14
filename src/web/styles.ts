@@ -1357,20 +1357,37 @@ export const SURFACES_CSS = `
 .config-cards > .conn-card { margin-top: 0; }
 .config-cards > .conn-card[open] { grid-column: 1 / -1; }
 
+/* Face em GRID (redesign 13/07): antes era uma linha só (tile | info | estado |
+   engrenagem) e no card estreito o título quebrava em 2 linhas espremido pelo
+   label de estado. Agora: linha 1 = tile + título (1 linha, ellipsis) + estado
+   + engrenagem; linha 2 = descrição atravessando embaixo com a largura toda. */
 .conn-card > summary {
-  flex-direction: row; align-items: center; gap: 14px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto auto;
+  grid-template-areas:
+    "tile title state gear"
+    "tile sub   sub   sub";
+  column-gap: 14px; row-gap: 3px;
+  align-items: center;
   padding: 14px 16px;
 }
 /* A seta ::before do disclosure sai de cena — no card, quem sinaliza estado
    aberto e a engrenagem girada. */
 .conn-card > summary .adv-title::before { display: none; }
-.conn-card > summary .adv-title { font-size: 15px; }
+.conn-card > summary .adv-title {
+  grid-area: title; font-size: 15px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .conn-card > summary .adv-sub {
-  padding-left: 0;
+  grid-area: sub; padding-left: 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.conn-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+/* display:contents — os filhos (título/descrição) entram direto no grid. */
+.conn-info { display: contents; }
+.conn-card > summary .conn-tile { grid-area: tile; align-self: start; }
+.conn-card > summary .conn-state { grid-area: state; }
+.conn-card > summary .conn-gear { grid-area: gear; }
 
 .conn-tile {
   flex-shrink: 0; width: 44px; height: 44px;
@@ -1394,6 +1411,12 @@ export const SURFACES_CSS = `
   background: var(--success); opacity: 1;
   box-shadow: 0 0 8px color-mix(in srgb, var(--success) 60%, transparent);
 }
+/* Âmbar = dá pra resolver aqui (falta configurar/conectar); cinza = fora do ar. */
+.status-dot.is-warn { background: var(--warning, #fbbf24); opacity: 1; }
+/* Na FACE do card o estado é só o dot colorido com tooltip (redesign 13/07):
+   o label por extenso espremia o título até truncar — e o texto completo do
+   estado já vive dentro do card aberto (gc-status etc.). */
+.conn-card > summary .conn-state-label { display: none; }
 
 .conn-gear {
   flex-shrink: 0; display: inline-flex; color: var(--text-subtle);

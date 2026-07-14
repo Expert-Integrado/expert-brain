@@ -1018,7 +1018,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${connCardSummary({
         icon: ICON_GOOGLE,
         title: 'Google Contatos',
-        sub: 'Sincroniza etiquetas escolhidas da sua agenda pro vault de contatos — mão única, o Google nunca é alterado',
+        sub: 'Etiquetas escolhidas da agenda viram contatos — sem alterar o Google',
         dotId: 'gc-dot',
       })}
       <div class="adv-body">
@@ -1047,7 +1047,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${connCardSummary({
         icon: ICON_WHATSAPP,
         title: 'Grupos do WhatsApp',
-        sub: 'Integração opcional com o WhatsApp Agent — grupos escolhidos viram nós no grafo de contatos, com quem está dentro',
+        sub: 'Grupos escolhidos viram nós no grafo de contatos, com quem está dentro',
         dotId: 'wa-dot',
       })}
       <div class="adv-body">
@@ -1083,7 +1083,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${connCardSummary({
         icon: ICON_INSTAGRAM,
         title: 'Conversas do Instagram',
-        sub: 'Integração opcional com o Instagram Agent — conversas escolhidas viram contatos no grafo',
+        sub: 'Conversas escolhidas viram contatos no grafo',
         dotId: 'ig-dot',
       })}
       <div class="adv-body">
@@ -1110,7 +1110,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${connCardSummary({
         icon: ICON_FUNNEL,
         title: 'Pipedrive (CRM)',
-        sub: 'Integração opcional — enriquece contatos existentes com dados do seu CRM, mão única',
+        sub: 'Enriquece contatos existentes com dados do CRM — mão única',
         dotId: 'pd-dot',
       })}
       <div class="adv-body">

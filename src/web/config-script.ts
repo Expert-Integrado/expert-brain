@@ -26,11 +26,17 @@ export function configPageScript(): string {
     var msg = opts.body ? opts.title + ' ' + opts.body : opts.title;
     return Promise.resolve(window.confirm(msg));
   }
-  function setDot(id, on, label) {
+  // 'on': true = verde (funcionando), 'warn' = ambar (da pra resolver aqui:
+  // falta configurar/conectar), false = cinza (fora do ar). Na face do card so
+  // o dot aparece (o label fica display:none e vira tooltip junto do motivo) --
+  // o texto completo do estado vive dentro do card aberto.
+  function setDot(id, on, label, reason) {
     var dot = document.getElementById(id);
-    if (dot) dot.className = 'status-dot' + (on ? ' is-on' : '');
+    if (dot) dot.className = 'status-dot' + (on === true ? ' is-on' : on === 'warn' ? ' is-warn' : '');
     var lab = document.getElementById(id + '-label');
     if (lab) lab.textContent = label;
+    var state = lab && lab.parentElement;
+    if (state) state.setAttribute('title', label + (reason ? ' — ' + reason : ''));
   }
   function activateTab(slug, updateHash) {
     tabs.forEach(function (t) {
@@ -430,16 +436,16 @@ export function configPageScript(): string {
 
     function gcRender(st) {
       if (!st.ok) {
-        setDot('gc-dot', false, 'Indisponível');
+        setDot('gc-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         gcStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
-        setDot('gc-dot', false, 'Não configurado');
+        setDot('gc-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
         gcStatusEl.innerHTML = 'Falta configurar as credenciais do Google no servidor de contatos (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).';
         return;
       }
-      setDot('gc-dot', !!st.connected, st.connected ? 'Configurado' : 'Não conectado');
+      setDot('gc-dot', st.connected ? true : 'warn', st.connected ? 'Configurado' : 'Não conectado', st.connected ? '' : 'Clique no card e conecte sua conta Google');
       gcConnect.hidden = !!st.connected;
       gcSync.hidden = !st.connected;
       gcDisconnect.hidden = !st.connected;
@@ -558,12 +564,12 @@ export function configPageScript(): string {
 
     function waRender(st) {
       if (!st.ok) {
-        setDot('wa-dot', false, 'Indisponível');
+        setDot('wa-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         waStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
-        setDot('wa-dot', false, 'Não configurado');
+        setDot('wa-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
         waStatusEl.textContent = 'Integração desligada: falta configurar o WHATSAPP_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
         return;
       }
@@ -686,12 +692,12 @@ export function configPageScript(): string {
 
     function igRender(st) {
       if (!st.ok) {
-        setDot('ig-dot', false, 'Indisponível');
+        setDot('ig-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         igStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
-        setDot('ig-dot', false, 'Não configurado');
+        setDot('ig-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
         igStatusEl.textContent = 'Integração desligada: falta configurar o INSTAGRAM_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
         return;
       }
@@ -778,12 +784,12 @@ export function configPageScript(): string {
 
     function pdRender(st) {
       if (!st.ok) {
-        setDot('pd-dot', false, 'Indisponível');
+        setDot('pd-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         pdStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
       }
       if (!st.configured) {
-        setDot('pd-dot', false, 'Não configurado');
+        setDot('pd-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
         pdStatusEl.textContent = 'Integração desligada: nenhuma chave do Pipedrive conectada no servidor de contatos. Nada é sincronizado.';
         return;
       }
