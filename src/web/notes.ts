@@ -675,14 +675,13 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
 
     <div class="note-edit-bodyrow note-edit" data-note-id="${esc(note.id)}">
       <div class="note-edit-bodyview" data-bodyview>
-        <div class="note-edit-bodyhead">
-          <span class="note-edit-lbl">Corpo</span>
-          <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
+        <span class="note-edit-lbl">Corpo</span>
+        <div class="note-edit-preview-wrap">
+          <button type="button" class="note-edit-pencil" data-edit-body title="Editar em markdown" aria-label="Editar corpo">${PENCIL_SVG}</button>
+          <div class="note-body note-edit-preview${note.body.trim() ? '' : ' note-edit-preview-empty'}" data-preview>${note.body.trim()
+            ? renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })
+            : '<span class="note-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
         </div>
-        <div class="note-body note-edit-preview${note.body.trim() ? '' : ' note-edit-preview-empty'}" data-preview>${note.body.trim()
-          ? renderMarkdown(note.body, { titleIndex, idSet, currentId: note.id })
-          : '<span class="note-edit-empty-trigger" data-edit-body>Sem descrição</span>'}</div>
-        <button type="button" class="note-edit-editbtn" data-edit-body title="Editar em markdown">Editar</button>
       </div>
       <div class="note-edit-bodyedit" data-bodyedit hidden>
         <textarea class="note-edit-body" data-field="body" rows="12" aria-label="Corpo em markdown">${esc(note.body)}</textarea>
@@ -2064,6 +2063,22 @@ const NOTE_EDIT_CSS = `
    "Corpo" + Editar TAMBÉM no topo do bloco (não só no rodapé — corpo longo não
    deve exigir rolar tudo pra achar a edição). */
 .note-edit-bodyview { display:flex; flex-direction:column; gap:10px; }
+/* Lápis no canto do quadro (pedido 15/07): a edição do corpo entra por um
+   botão-ícone sobreposto no canto superior direito do preview — não mais dois
+   botões "Editar" soltos fora do quadro. Discreto até o hover do quadro. */
+.note-edit-preview-wrap { position:relative; }
+.note-edit-pencil {
+  position:absolute; top:8px; right:8px; z-index:2;
+  display:inline-flex; align-items:center; justify-content:center;
+  width:30px; height:30px; border-radius:var(--radius-sm);
+  border:1px solid transparent; background:var(--surface); color:var(--text-dim); cursor:pointer;
+  opacity:0; transition:opacity 140ms var(--ease), color 140ms var(--ease), background 140ms var(--ease), border-color 140ms var(--ease);
+}
+.note-edit-preview-wrap:hover .note-edit-pencil,
+.note-edit-pencil:focus-visible { opacity:1; }
+.note-edit-pencil:hover { color:var(--text); background:var(--bg-accent); border-color:var(--border); }
+/* Touch (sem hover): o lápis fica sempre visível. */
+@media (hover: none) { .note-edit-pencil { opacity:1; } }
 /* [hidden] precisa de display:none EXPLÍCITO: a regra .note-edit-bodyview
    { display:flex } (CSS de autor) tem prioridade sobre o [hidden] do UA
    stylesheet (também autor-normal, mas o UA perde no empate de origem) — sem
@@ -2099,6 +2114,11 @@ const NOTE_EDIT_CSS = `
 .note-edit-body:focus { outline:none; border-color:var(--accent-lav); }
 .note-edit-preview {
   background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 20px;
+  /* .note-body impõe max-width:68ch (medida de leitura) — na página de EDIÇÃO
+     isso deixava o quadro do corpo mais estreito que o de resumo. Aqui o quadro
+     é um campo de formulário, não texto corrido: ocupa a largura toda como os
+     demais. (O texto interno segue com o line-height/typografia de .note-body.) */
+  width:100%; max-width:none; box-sizing:border-box;
 }
 .note-edit-status { font-size:13px; min-height:20px; margin-top:14px; }
 .note-edit-status.ok { color:var(--success); }
