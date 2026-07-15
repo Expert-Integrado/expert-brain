@@ -155,3 +155,20 @@ operacional (alertas primeiro, números com peso, estado escaneável por cor):
   Devolver virou btn-ghost (hierarquia: Aprovar é a ação primária).
 - Labels de status e strings asseridas nos testes preservadas; `agentStatus`
   agora retorna rótulo curto ("dormindo" sem o carimbo).
+
+### v2 no mesmo dia (dado real: 19 bloqueios + 69 entregas viravam parede)
+
+- **Bloqueios**: o CSS `.task-awaiting-*` vive no extraHead do BOARD e nunca
+  chegou na fleet — o banner renderizava texto corrido ilegível (bug desde o
+  ship). Na fleet virou GAVETA (`<details>` fechada quando >3 itens) com linhas
+  estilizadas localmente (título/corpo 2 linhas/meta).
+- **Fila de validação virou grid de CARDS expansíveis** (`<details>` por task):
+  fechado = título (clamp 2) + crumb de projeto (dot colorido) + quem entregou +
+  há quanto tempo; clicar EXPANDE NO LUGAR (tldr + Aprovar/Devolver + link
+  "abrir task completa") — pedido explícito do dono: clique não navega.
+- **Filtros por chips** (agente / projeto), client-side. Grupo só aparece com
+  2+ valores. Contador vira "X de N entregas" no recorte. JS em rota própria
+  `/app/fleet/bundle.js` (fleetPageScript — CSP script-src 'self' proíbe
+  inline), immutable + `?v=<assetVersion>`.
+- **Query**: listValidationTasks ganhou tldr + LEFT JOIN task_projects
+  (label/cor) — payload do card sem request extra.

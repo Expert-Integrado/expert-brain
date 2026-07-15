@@ -3,6 +3,7 @@ import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { formError, formErrorBanner } from './form-error.js';
+import { assetVersion } from './asset-version.js';
 import { awaitingBannerHtml, dotHue, dotInitials } from '../util/task-badges.js';
 import {
   listKanbanColumns,
@@ -136,16 +137,50 @@ const FLEET_CSS = `
 .fleet-mailbox { color: var(--text-dim); }
 .fleet-mailbox strong { color: var(--text); }
 .fleet-validation { margin-bottom: 18px; }
-.fleet-validation-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.fleet-validation-item:last-child { border-bottom: 0; padding-bottom: 2px; }
-.fleet-validation-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); text-decoration: none; font-size: 14px; }
-.fleet-validation-title:hover { color: var(--accent-lav); }
-.fleet-validation-meta { flex-shrink: 0; color: var(--text-subtle); font-size: 12px; }
-.fleet-validation-meta.stale { color: var(--warning, #f59e0b); }
-.fleet-validation-actions { display: flex; gap: 6px; flex-shrink: 0; }
+/* ── Fila de validação como CARDS expansíveis (redesign 14/07, pedido do dono:
+   69 entregas em lista de linhas virava parede). Card = <details>: fechado
+   mostra título (2 linhas) + projeto + quem + há quanto tempo; clicar EXPANDE
+   no lugar (tldr + ações) sem navegar. Filtros por agente/projeto em chips. */
+.fleet-val-toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 12px 0; }
+.fleet-val-toolbar-label { font-size: 11px; color: var(--text-subtle); text-transform: uppercase; letter-spacing: 0.06em; margin-right: 2px; }
+.fleet-chip { font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-strong); background: transparent; color: var(--text-dim); cursor: pointer; transition: color 200ms cubic-bezier(0.32,0.72,0,1), border-color 200ms cubic-bezier(0.32,0.72,0,1), background 200ms cubic-bezier(0.32,0.72,0,1); }
+.fleet-chip:hover { color: var(--text); border-color: var(--accent-lav); }
+.fleet-chip.active { color: var(--accent-lav); border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.10); }
+.fleet-chip-gap { width: 10px; flex: none; }
+.fleet-val-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; align-items: start; }
+.fleet-val-card { border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.02); transition: border-color 240ms cubic-bezier(0.32,0.72,0,1), transform 240ms cubic-bezier(0.32,0.72,0,1), box-shadow 240ms cubic-bezier(0.32,0.72,0,1); }
+.fleet-val-card:hover { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: 0 6px 18px -12px rgba(0,0,0,0.6); }
+.fleet-val-card[open] { border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.05); }
+.fleet-val-card > summary { list-style: none; cursor: pointer; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+.fleet-val-card > summary::-webkit-details-marker { display: none; }
+.fleet-val-title { color: var(--text); font-size: 13.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fleet-val-meta { display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--text-subtle); min-width: 0; }
+.fleet-val-proj { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-val-proj-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-subtle); flex: none; }
+.fleet-val-ago { margin-left: auto; white-space: nowrap; flex: none; }
+.fleet-val-ago.stale { color: var(--warning, #fbbf24); }
+.fleet-val-body { margin: 0 14px; padding: 10px 0 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.fleet-val-tldr { margin: 0; font-size: 12.5px; color: var(--text-dim); line-height: 1.5; }
+.fleet-val-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.fleet-val-actions .fleet-val-open-link { font-size: 12px; color: var(--text-dim); margin-left: auto; text-decoration: none; }
+.fleet-val-actions .fleet-val-open-link:hover { color: var(--accent-lav); }
+.fleet-val-empty-filter { color: var(--text-dim); font-size: 13px; padding: 8px 0; display: none; }
+/* ── Bloqueios (spec 88): o CSS .task-awaiting-* vive na página do board e NÃO
+   vem junto aqui — sem isto o banner rende texto corrido ilegível. Na fleet o
+   bloco vira gaveta recolhida (19 bloqueios abertos = parede) com linhas. */
+.fleet-blockers > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.fleet-blockers > summary::-webkit-details-marker { display: none; }
+.fleet-blockers > summary h2 { margin: 0; }
+.fleet-blockers .task-awaiting-head { display: none; }
+.fleet-blockers .task-awaiting-list { margin-top: 6px; }
+.fleet-blockers .task-awaiting-item { display: flex; flex-direction: column; gap: 3px; padding: 10px 0; border-bottom: 1px solid var(--border); text-decoration: none; }
+.fleet-blockers .task-awaiting-item:last-child { border-bottom: 0; }
+.fleet-blockers .task-awaiting-item:hover .task-awaiting-title { color: var(--accent-lav); }
+.fleet-blockers .task-awaiting-title { color: var(--text); font-size: 13.5px; transition: color 200ms cubic-bezier(0.32,0.72,0,1); }
+.fleet-blockers .task-awaiting-body { color: var(--text-dim); font-size: 12.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.fleet-blockers .task-awaiting-meta { color: var(--text-subtle); font-size: 11.5px; }
 @media (max-width: 767px) {
-  .fleet-validation-item { flex-wrap: wrap; }
-  .fleet-validation-title { flex-basis: 100%; white-space: normal; }
+  .fleet-val-grid { grid-template-columns: 1fr; }
 }
 `;
 
@@ -199,30 +234,99 @@ function agentCardHtml(
   </section>`;
 }
 
+// Chips de filtro (agente / projeto) — só renderiza um grupo quando há 2+
+// valores distintos (filtro de opção única é ruído). O comportamento vive em
+// fleetPageScript() (CSP proíbe script inline).
+function filterChipsHtml(tasks: ValidationTask[]): string {
+  const agents = [...new Set(tasks.map((t) => t.deliveredBy).filter((x): x is string => !!x))].sort();
+  const projects = [...new Set(tasks.map((t) => t.projectLabel).filter((x): x is string => !!x))].sort();
+  const group = (label: string, key: string, values: string[]): string =>
+    `<span class="fleet-val-toolbar-label">${label}</span>
+     <button type="button" class="fleet-chip active" data-group="${key}" data-value="">Todos</button>
+     ${values.map((v) => `<button type="button" class="fleet-chip" data-group="${key}" data-value="${esc(v)}">${esc(v)}</button>`).join('')}`;
+  const parts: string[] = [];
+  if (agents.length > 1) parts.push(group('Agente', 'agent', agents));
+  if (projects.length > 1) parts.push(group('Projeto', 'project', projects));
+  if (parts.length === 0) return '';
+  return `<div class="fleet-val-toolbar">${parts.join('<span class="fleet-chip-gap"></span>')}</div>`;
+}
+
 function validationStripHtml(tasks: ValidationTask[], nowMs: number): string {
   if (tasks.length === 0) return '';
-  const rows = tasks
+  const cards = tasks
     .map((t) => {
       const who = t.deliveredBy ? `${esc(t.deliveredBy)} · ` : '';
       // Entrega parada há mais de 24h ganha cor de atenção — a fila é a razão
       // de existir do painel, envelhecer nela é o sinal que importa.
       const stale = nowMs - t.updatedAt > 24 * 60 * 60 * 1000;
-      return `<div class="fleet-validation-item">
-        <a class="fleet-validation-title" href="/app/tasks/${esc(t.id)}">${esc(t.title)}</a>
-        <span class="fleet-validation-meta${stale ? ' stale' : ''}"${stale ? ' title="Esperando há mais de 24h"' : ''}>${who}${esc(agoLabel(t.updatedAt, nowMs))}</span>
-        <form method="post" action="/app/fleet/task" class="fleet-validation-actions">
-          <input type="hidden" name="task_id" value="${esc(t.id)}">
-          <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>
-          <button type="submit" name="action" value="return" class="btn btn-sm btn-ghost">Devolver</button>
-        </form>
-      </div>`;
+      const proj = t.projectLabel
+        ? `<span class="fleet-val-proj" title="Projeto: ${esc(t.projectLabel)}"><span class="fleet-val-proj-dot"${t.projectColor && /^#[0-9a-fA-F]{6}$/.test(t.projectColor) ? ` style="background:${t.projectColor}"` : ''}></span>${esc(t.projectLabel)}</span>`
+        : '';
+      const tldr = t.tldr && t.tldr !== t.title ? `<p class="fleet-val-tldr">${esc(t.tldr)}</p>` : '';
+      return `<details class="fleet-val-card" data-agent="${esc(t.deliveredBy ?? '')}" data-project="${esc(t.projectLabel ?? '')}">
+        <summary title="${esc(t.title)}">
+          <span class="fleet-val-title">${esc(t.title)}</span>
+          <span class="fleet-val-meta">${proj}<span class="fleet-val-ago${stale ? ' stale' : ''}"${stale ? ' title="Esperando há mais de 24h"' : ''}>${who}${esc(agoLabel(t.updatedAt, nowMs))}</span></span>
+        </summary>
+        <div class="fleet-val-body">
+          ${tldr}
+          <form method="post" action="/app/fleet/task" class="fleet-val-actions">
+            <input type="hidden" name="task_id" value="${esc(t.id)}">
+            <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>
+            <button type="submit" name="action" value="return" class="btn btn-sm btn-ghost">Devolver</button>
+            <a class="fleet-val-open-link" href="/app/tasks/${esc(t.id)}">Abrir task completa</a>
+          </form>
+        </div>
+      </details>`;
     })
     .join('');
   return `<section class="card fleet-validation">
-    <div class="cfg-head"><h2>Esperando você</h2><span class="cfg-status warn">${tasks.length} entrega${tasks.length === 1 ? '' : 's'}</span></div>
-    <p class="cfg-desc">Aprovar conclui a task; devolver manda de volta pra execução.</p>
-    ${rows}
+    <div class="cfg-head"><h2>Esperando você</h2><span class="cfg-status warn" id="fleet-val-status" data-total="${tasks.length}">${tasks.length} entrega${tasks.length === 1 ? '' : 's'}</span></div>
+    <p class="cfg-desc">Clique num card pra ver o resumo e decidir — aprovar conclui a task; devolver manda de volta pra execução.</p>
+    ${filterChipsHtml(tasks)}
+    <div class="fleet-val-grid">${cards}</div>
+    <p class="fleet-val-empty-filter" id="fleet-val-empty">Nenhuma entrega com esse filtro.</p>
   </section>`;
+}
+
+// Script da página (rota /app/fleet/bundle.js — CSP script-src 'self' proíbe
+// inline). Só os filtros: chips setam estado {agent, project}, cards casam por
+// data-attribute, contador reflete o recorte.
+export function fleetPageScript(): string {
+  return `(function () {
+  var state = { agent: '', project: '' };
+  function apply() {
+    var cards = document.querySelectorAll('.fleet-val-card');
+    var visible = 0;
+    cards.forEach(function (c) {
+      var ok = (!state.agent || c.getAttribute('data-agent') === state.agent) &&
+               (!state.project || c.getAttribute('data-project') === state.project);
+      c.style.display = ok ? '' : 'none';
+      if (ok) visible++;
+    });
+    var empty = document.getElementById('fleet-val-empty');
+    if (empty) empty.style.display = visible === 0 ? 'block' : 'none';
+    var status = document.getElementById('fleet-val-status');
+    if (status) {
+      var total = parseInt(status.getAttribute('data-total') || '0', 10);
+      status.textContent = visible === total
+        ? total + ' entrega' + (total === 1 ? '' : 's')
+        : visible + ' de ' + total + ' entregas';
+    }
+  }
+  document.querySelectorAll('.fleet-chip').forEach(function (ch) {
+    ch.addEventListener('click', function () {
+      var group = ch.getAttribute('data-group');
+      if (!group) return;
+      state[group] = ch.getAttribute('data-value') || '';
+      document.querySelectorAll('.fleet-chip[data-group="' + group + '"]').forEach(function (o) {
+        o.classList.toggle('active', o === ch);
+      });
+      apply();
+    });
+  });
+})();
+`;
 }
 
 export async function handleFleetPage(req: Request, env: Env): Promise<Response> {
@@ -245,12 +349,20 @@ export async function handleFleetPage(req: Request, env: Env): Promise<Response>
   } catch (e) {
     console.error('fleet: mailbox indisponível (contadores omitidos)', e);
   }
+  // Bloqueios (spec 88) numa GAVETA: aberto por padrão só quando cabe (≤3);
+  // com fila grande (o dono chegou a 19) o bloco recolhido preserva a página.
   let awaitingHtml = '';
   try {
     const awaiting = await listAwaitingOwnerBanner(env);
-    awaitingHtml = awaitingBannerHtml(
-      awaiting.map((it) => ({ ...it, block_at_brt: brtStamp(it.block_at) }))
-    );
+    if (awaiting.length > 0) {
+      const inner = awaitingBannerHtml(
+        awaiting.map((it) => ({ ...it, block_at_brt: brtStamp(it.block_at) }))
+      );
+      awaitingHtml = `<details class="card fleet-validation fleet-blockers"${awaiting.length <= 3 ? ' open' : ''}>
+        <summary><h2>Aguardando sua resposta</h2><span class="cfg-status warn">${awaiting.length} bloqueio${awaiting.length === 1 ? '' : 's'}</span></summary>
+        ${inner}
+      </details>`;
+    }
   } catch (e) {
     console.error('fleet: fila de bloqueios indisponível (banner omitido)', e);
   }
@@ -295,9 +407,10 @@ export async function handleFleetPage(req: Request, env: Env): Promise<Response>
     <div class="page-header"><h1>Agentes</h1><span class="count">${agents.length}</span></div>
     ${subtitle}
     ${formErrorBanner(new URL(req.url))}
-    ${awaitingHtml ? `<section class="card fleet-validation">${awaitingHtml}</section>` : ''}
+    ${awaitingHtml}
     ${validationStripHtml(validation, nowMs)}
     ${gridHtml}
+    <script defer src="/app/fleet/bundle.js?v=${assetVersion}"></script>
   `;
 
   return htmlResponse(

@@ -21,7 +21,7 @@ import {
 } from './twofactor-config.js';
 import { handleRecoverGet, handleRecoverPost } from './recover.js';
 import { handlePasswordChangePost, handleRecoveryCodePost } from './password-config.js';
-import { handleFleetPage, handleFleetTaskActionPost } from './fleet.js';
+import { handleFleetPage, handleFleetTaskActionPost, fleetPageScript } from './fleet.js';
 import { handleApiKeysPage, handleApiKeyCreate, handleApiKeyOwner, handleApiKeyRevoke, handleApiKeySystem } from './api-keys.js';
 import { handleProjectShareCreate, handleProjectShareRevoke } from './project-share.js';
 import { handleNoteSearch, handleSearchAll } from './search.js';
@@ -64,6 +64,16 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   // Fleet view — painel operacional da frota de agentes (spec 80-frota-agentes/92).
   if (path === '/app/fleet' && req.method === 'GET') return handleFleetPage(req, env);
   if (path === '/app/fleet/task' && req.method === 'POST') return handleFleetTaskActionPost(req, env);
+  if (path === '/app/fleet/bundle.js' && req.method === 'GET') {
+    // Filtros da fila de validação (CSP script-src 'self' proíbe inline) —
+    // mesmo contrato do bundle da config: immutable, ?v=<hash> busta no deploy.
+    return new Response(fleetPageScript(), {
+      headers: {
+        'content-type': 'application/javascript; charset=utf-8',
+        'cache-control': 'public, max-age=31536000, immutable',
+      },
+    });
+  }
   if (path === '/app/notes' && req.method === 'GET') return handleNotesList(req, env);
   if (path === '/app/search' && req.method === 'GET') return handleNoteSearch(req, env);
   // Busca unificada da paleta de comando (spec 66): notas + tasks + contatos num
