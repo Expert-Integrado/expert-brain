@@ -648,9 +648,18 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     ${dupBannerHtml}
     <div class="note-edit" data-note-id="${esc(note.id)}" data-updated-at="${note.updated_at}">
       <div class="note-edit-titlerow">
-        <textarea class="note-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da nota" aria-label="Título da nota">${esc(note.title)}</textarea>
+        <textarea class="note-edit-title" data-field="title" maxlength="200" rows="1" placeholder="Título da nota" aria-label="Título da nota" title="Enter salva, Esc cancela">${esc(note.title)}</textarea>
         ${isPrivate ? '<span class="private-badge" title="Nota privada — invisível pra credenciais sem escopo private">🔒 privada</span>' : ''}
-        <button type="button" class="note-edit-save" data-save="title">Salvar</button>
+        <div class="note-actions-menu" data-note-menu>
+          <button type="button" class="note-actions-trigger" data-menu-trigger aria-label="Ações da nota" aria-haspopup="true" aria-expanded="false">${DOTS_SVG}</button>
+          <div class="note-actions-pop" data-menu-pop hidden>
+            <button type="button" class="note-actions-item" data-edit-body>${PENCIL_SVG}<span>Editar corpo</span></button>
+            <button type="button" class="note-actions-item" id="btn-copy-link">${LINK_SVG}<span>Copiar link</span></button>
+            <form method="post" action="/app/notes/${esc(note.id)}/delete" class="note-actions-delform" onsubmit="return confirm('Excluir esta nota? É reversível — a lista mostra Desfazer logo depois.')">
+              <button type="submit" class="note-actions-item note-actions-danger">${TRASH_SVG}<span>Excluir nota</span></button>
+            </form>
+          </div>
+        </div>
       </div>
 
       <div class="note-edit-meta">
@@ -663,13 +672,28 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
           <div class="note-edit-domains" data-field="domains">${domainChecks}</div>
         </div>
         <span class="note-edit-updated">Atualizada ${formatDate(note.updated_at)}</span>
-        <button id="btn-copy-link" class="note-edit-copy" type="button">Copiar link</button>
       </div>
 
       <div class="note-edit-ctl note-edit-ctl-tldr">
-        <span class="note-edit-lbl">Resumo (tldr · 10-280)</span>
-        <textarea class="note-edit-tldr" data-field="tldr" rows="2" maxlength="280" aria-label="Resumo">${esc(note.tldr ?? '')}</textarea>
-        <span class="note-edit-tldr-count" data-tldr-count>${tldrLen}/280</span>
+        <span class="note-edit-lbl">Resumo</span>
+        <div class="note-edit-tldrview" data-tldrview>
+          <div class="note-edit-preview-wrap">
+            <button type="button" class="note-edit-pencil" data-edit-tldr title="Editar resumo" aria-label="Editar resumo">${PENCIL_SVG}</button>
+            <div class="note-edit-tldr-preview${note.tldr?.trim() ? '' : ' note-edit-preview-empty'}" data-tldrpreview>${note.tldr?.trim()
+              ? esc(note.tldr)
+              : '<span class="note-edit-empty-trigger" data-edit-tldr>Sem resumo</span>'}</div>
+          </div>
+        </div>
+        <div class="note-edit-tldredit" data-tldredit hidden>
+          <textarea class="note-edit-tldr" data-field="tldr" rows="2" maxlength="280" aria-label="Resumo">${esc(note.tldr ?? '')}</textarea>
+          <div class="note-edit-tldredit-foot">
+            <span class="note-edit-tldr-count" data-tldr-count>${tldrLen}/280</span>
+            <div class="note-edit-bodyedit-actions">
+              <button type="button" class="note-edit-save" data-save="tldr">Salvar</button>
+              <button type="button" class="note-edit-cancel" data-cancel-tldr>Cancelar</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -721,13 +745,6 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
     </section>
 
     ${noteVisibilitySection}
-
-    <section class="note-danger">
-      <form method="post" action="/app/notes/${esc(note.id)}/delete">
-        <button type="submit" class="btn btn-danger">Excluir nota</button>
-        <span class="note-danger-hint">Reversível: a lista mostra "Desfazer" logo após excluir.</span>
-      </form>
-    </section>
 
     ${mentionsHtml}
     ${tasksFromNoteHtml}
@@ -1179,6 +1196,10 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
 // Ícone de lápis inline (CSP sem asset externo; stroke currentColor herda o tema).
 const PENCIL_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+// Ícones do menu de ações do cabeçalho da nota (3 pontinhos → editar/copiar/excluir).
+const DOTS_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>';
+const LINK_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>';
+const TRASH_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>';
 
 // Detalhe de TASK (/app/tasks/<id>). Task mora na mesma tabela que nota (kind='task'),
 // mas NÃO se apresenta como nota: sem grafo, sem edges, sem "Copiar link" de nota —
@@ -1987,7 +2008,38 @@ ${SHARE_SECTION_CSS}
 // campos borderless que só revelam a moldura no hover/focus (edição discreta).
 const NOTE_EDIT_CSS = `
 .note-edit { margin-bottom: 8px; }
-.note-edit-titlerow { display:flex; gap:12px; align-items:center; margin-bottom:16px; }
+.note-edit-titlerow { display:flex; gap:12px; align-items:flex-start; margin-bottom:16px; }
+/* Menu de ações no cabeçalho (pedido 15/07): 3 pontinhos → Editar corpo / Copiar
+   link / Excluir. Concentra o que antes era botão "Salvar" solto + "Copiar link"
+   no meta + seção "Excluir" no rodapé. */
+.note-actions-menu { position:relative; flex:none; margin-left:auto; }
+.note-actions-trigger {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:var(--radius-sm);
+  border:1px solid transparent; background:transparent; color:var(--text-dim); cursor:pointer;
+  transition:color 140ms var(--ease), background 140ms var(--ease), border-color 140ms var(--ease);
+}
+.note-actions-trigger:hover, .note-actions-menu.open .note-actions-trigger {
+  color:var(--text); background:var(--bg-accent); border-color:var(--border);
+}
+.note-actions-pop {
+  position:absolute; top:calc(100% + 6px); right:0; z-index:20;
+  min-width:184px; padding:6px; border-radius:var(--radius);
+  background:var(--surface); border:1px solid var(--border-strong);
+  box-shadow:0 12px 32px -10px rgba(0,0,0,0.6);
+  display:flex; flex-direction:column; gap:2px;
+}
+.note-actions-pop[hidden] { display:none; }
+.note-actions-delform { margin:0; display:contents; }
+.note-actions-item {
+  display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+  padding:9px 10px; border:none; border-radius:var(--radius-sm); background:none;
+  color:var(--text-dim); font-size:13.5px; font-family:inherit; cursor:pointer;
+  transition:color 140ms var(--ease), background 140ms var(--ease);
+}
+.note-actions-item svg { flex:none; }
+.note-actions-item:hover { color:var(--text); background:var(--bg-accent); }
+.note-actions-item.note-actions-danger:hover { color:var(--danger); background:color-mix(in srgb, var(--danger) 12%, transparent); }
 /* Textarea de 1 linha com auto-grow via JS (note-edit.ts) — título longo quebra
    em vez de cortar/colidir com "Salvar" (o antigo input de linha única truncava). */
 .note-edit-title {
@@ -2045,15 +2097,25 @@ const NOTE_EDIT_CSS = `
 .note-private-toggle { cursor:pointer; }
 
 .note-edit-ctl-tldr { position:relative; }
-.note-edit-tldr {
-  width:100%; box-sizing:border-box; resize:vertical; min-height:52px;
-  background:transparent; border:1px solid transparent; color:var(--text);
-  border-radius:var(--radius-sm); padding:9px 12px; font-family:inherit; font-size:14px; line-height:1.5;
-  transition:border-color 160ms var(--ease), background 160ms var(--ease);
+/* Resumo em LEITURA por padrão (pedido 15/07): igual o corpo — quadro fixo com
+   lápis no canto; clicar abre a edição (textarea + Salvar/Cancelar). Antes o
+   tldr já nascia como textarea aberta, destoando do corpo. */
+.note-edit-tldr-preview {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  padding:14px 18px; color:var(--text); font-size:14px; line-height:1.55; min-height:24px;
 }
-.note-edit-tldr:hover { border-color:var(--border); }
-.note-edit-tldr:focus { outline:none; border-color:var(--accent-lav); background:var(--surface); }
-.note-edit-tldr-count { position:absolute; right:4px; bottom:-16px; font-size:11px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
+.note-edit-tldredit { display:flex; flex-direction:column; gap:8px; }
+.note-edit-tldredit[hidden] { display:none; }
+.note-edit-tldrview[hidden] { display:none; }
+.note-edit-tldredit-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.note-edit-tldr {
+  width:100%; box-sizing:border-box; resize:vertical; min-height:60px;
+  background:var(--surface); border:1px solid var(--border); color:var(--text);
+  border-radius:var(--radius-sm); padding:12px 14px; font-family:inherit; font-size:14px; line-height:1.5;
+  transition:border-color 160ms var(--ease);
+}
+.note-edit-tldr:focus { outline:none; border-color:var(--accent-lav); }
+.note-edit-tldr-count { font-size:11px; color:var(--text-subtle); font-variant-numeric:tabular-nums; }
 .note-edit-tldr-count.bad { color:var(--danger); }
 
 .note-edit-bodyrow { margin-top:26px; margin-bottom:28px; }

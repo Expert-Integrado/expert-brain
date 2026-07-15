@@ -30,6 +30,11 @@ if (root) {
   const titleSaveBtn = root.querySelector<HTMLButtonElement>('[data-save="title"]');
   const tldrInput = root.querySelector<HTMLTextAreaElement>('[data-field="tldr"]');
   const tldrCount = root.querySelector<HTMLElement>('[data-tldr-count]');
+  const tldrViewEl = root.querySelector<HTMLElement>('[data-tldrview]');
+  const tldrEditEl = root.querySelector<HTMLElement>('[data-tldredit]');
+  const tldrPreviewEl = root.querySelector<HTMLElement>('[data-tldrpreview]');
+  const tldrSaveBtn = root.querySelector<HTMLButtonElement>('[data-save="tldr"]');
+  const tldrCancelBtn = root.querySelector<HTMLButtonElement>('[data-cancel-tldr]');
   const kindSel = root.querySelector<HTMLSelectElement>('[data-field="kind"]');
   const domainsBox = root.querySelector<HTMLElement>('[data-field="domains"]');
   const domainChecks = Array.from(root.querySelectorAll<HTMLInputElement>('[data-domain]'));
@@ -134,21 +139,57 @@ if (root) {
     return res.ok;
   }
 
-  // ── tldr: contador + autosave (enfileirado) ──
+  // ── tldr: LEITURA (prévia + lápis) ↔ EDIÇÃO (textarea + Salvar/Cancelar),
+  // mesmo padrão do corpo (pedido 15/07). Salva direto (não enfileirado) pra
+  // dar feedback imediato e sair da edição.
+  let tldrSaved = tldrInput?.value ?? '';
   function updateTldrCount() {
     if (!tldrInput || !tldrCount) return;
     const n = tldrInput.value.trim().length;
     tldrCount.textContent = `${n}/280`;
     tldrCount.classList.toggle('bad', n < 10 || n > 280);
   }
-  tldrInput?.addEventListener('input', updateTldrCount);
-  tldrInput?.addEventListener('change', () => {
-    const v = (tldrInput.value ?? '').trim();
+  function enterTldrEdit() {
+    if (!tldrInput || !tldrViewEl || !tldrEditEl) return;
+    tldrInput.value = tldrSaved;
+    updateTldrCount();
+    tldrViewEl.hidden = true;
+    tldrEditEl.hidden = false;
+    tldrInput.focus();
+  }
+  function exitTldrEdit() {
+    if (!tldrViewEl || !tldrEditEl) return;
+    tldrEditEl.hidden = true;
+    tldrViewEl.hidden = false;
+  }
+  async function saveTldr() {
+    if (!tldrInput) return;
+    const v = tldrInput.value.trim();
     if (v.length < 10 || v.length > 280) {
-      setStatus('Tldr precisa ter entre 10 e 280 caracteres.', 'err');
+      setStatus('Resumo precisa ter entre 10 e 280 caracteres.', 'err');
       return;
     }
-    queue.enqueue({ tldr: v });
+    if (await saveDirect({ tldr: v })) {
+      tldrSaved = v;
+      if (tldrPreviewEl) {
+        tldrPreviewEl.textContent = v;
+        tldrPreviewEl.classList.remove('note-edit-preview-empty');
+      }
+      exitTldrEdit();
+    }
+  }
+  tldrViewEl?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-edit-tldr]')) enterTldrEdit();
+  });
+  tldrInput?.addEventListener('input', updateTldrCount);
+  tldrSaveBtn?.addEventListener('click', saveTldr);
+  tldrCancelBtn?.addEventListener('click', () => {
+    if (tldrInput) tldrInput.value = tldrSaved;
+    exitTldrEdit();
+  });
+  tldrInput?.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveTldr(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (tldrInput) tldrInput.value = tldrSaved; exitTldrEdit(); }
   });
   updateTldrCount();
 
@@ -254,9 +295,40 @@ if (root) {
     if (e.key === 'Escape') { e.preventDefault(); if (bodyArea) bodyArea.value = bodySaved; exitBodyEdit(); }
   });
 
+  // ── Menu de ações do cabeçalho (3 pontinhos): abre/fecha, fecha ao clicar
+  // fora ou Esc. "Editar corpo" do menu dispara a mesma edição do lápis. ──
+  const menuEl = document.querySelector<HTMLElement>('[data-note-menu]');
+  const menuTrigger = menuEl?.querySelector<HTMLButtonElement>('[data-menu-trigger]');
+  const menuPop = menuEl?.querySelector<HTMLElement>('[data-menu-pop]');
+  function closeMenu() {
+    if (!menuEl || !menuPop || !menuTrigger) return;
+    menuEl.classList.remove('open');
+    menuPop.hidden = true;
+    menuTrigger.setAttribute('aria-expanded', 'false');
+  }
+  function toggleMenu() {
+    if (!menuEl || !menuPop || !menuTrigger) return;
+    const open = menuEl.classList.toggle('open');
+    menuPop.hidden = !open;
+    menuTrigger.setAttribute('aria-expanded', String(open));
+  }
+  menuTrigger?.addEventListener('click', (e) => { e.stopPropagation(); toggleMenu(); });
+  // "Editar corpo" do menu → mesma edição do lápis; fecha o menu e rola até o corpo.
+  menuPop?.querySelector('[data-edit-body]')?.addEventListener('click', () => {
+    closeMenu();
+    enterBodyEdit();
+    bodyEditEl?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+  document.addEventListener('click', (e) => {
+    if (menuEl && !menuEl.contains(e.target as Node)) closeMenu();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+
   // Aviso ao sair com edição de texto livre pendente OU save estruturado em voo.
   window.addEventListener('beforeunload', (e) => {
-    const dirtyText = (titleInput?.value ?? '') !== titleSaved || (bodyArea?.value ?? '') !== bodySaved;
+    const dirtyText = (titleInput?.value ?? '') !== titleSaved
+      || (bodyArea?.value ?? '') !== bodySaved
+      || (tldrInput?.value ?? '') !== tldrSaved;
     if (dirtyText || queue.isBusy()) { e.preventDefault(); e.returnValue = ''; }
   });
 }

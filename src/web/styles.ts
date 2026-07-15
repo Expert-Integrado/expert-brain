@@ -2541,7 +2541,7 @@ select.panel-form-input { cursor: pointer; }
 }
 .local-graph {
   position: relative;
-  height: 240px;
+  height: 420px;
   margin: 0 0 28px;
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border);
