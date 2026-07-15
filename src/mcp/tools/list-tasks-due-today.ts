@@ -11,7 +11,9 @@ const inputSchema = {
 
 const DESCRIPTION = `Lists OPEN/IN-PROGRESS tasks that are due soon or already overdue.
 
-By default returns tasks whose due date is within the next 24h OR already past — i.e. "what's on my plate today". Pass horizon_hours to widen (e.g. 168 = this week). Overdue tasks are always included. Results are ordered by due date, then priority (1 = highest).
+By default returns tasks whose due date is within the next 24h OR already past — i.e. "what's on my plate today". Pass horizon_hours to widen (e.g. 168 = this week; 168 is the max — this tool is deliberately a short-range "today/this week" digest). Overdue tasks are always included. Results are ordered by due date, then priority (1 = highest).
+
+To find a task with a due date FURTHER OUT than 7 days (or with no due date at all), or to search by keyword regardless of when it's due, this tool is the WRONG one — use list_tasks instead (query for full-text search over title+body, no time ceiling, also reaches done/canceled tasks). Do NOT try to raise horizon_hours past 168 to reach a distant task; it will be rejected.
 
 Each task includes: id, title, due (BRT), a human "when" string (e.g. "vence em 2h" / "vencida há 1d"), priority, status, assignees ([{id,name,type}] — who is responsible), and whether it is overdue. Read-only.`;
 

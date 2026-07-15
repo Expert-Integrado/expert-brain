@@ -16,8 +16,8 @@ Single-user, self-hosted, sem terceiros: seus dados vivem no D1/Vectorize/R2 da 
 
 - **~32 tools MCP** — conhecimento (`save_note`, `recall`, `expand`, `link`, `get_note`, `update_note`, `delete_note`/`restore_note`, `reembed`, `stats`), tasks em kanban (`save_task`, `list_tasks`, `list_tasks_due_today`, `update_task`, `complete_task`, `comment_task`, `share_task`/`unshare_task`), captura rápida (`capture`, `list_inbox`, `resolve_inbox`), digest de resurfacing, mídia em notas (opcional, via R2) e leitura de um vault de contatos separado (opcional, via service binding).
 - **Console web (`/app`)** — home, busca global Ctrl+K, grafo interativo 2D (Sigma.js + d3-force em Web Worker) e 3D, kanban de tasks com colunas e projetos customizáveis, journal, notas com comentários, contatos com dossiê/timeline, página de configuração (domínios, instruções do dono, API keys com escopo, backup manual).
-- **Grafo com 9 tipos de edge** (`analogous_to`, `same_mechanism_as`, `causes`, `contradicts`, `refines`, …) e **7 kinds de nota** (`concept`, `decision`, `insight`, `fact`, `pattern`, `principle`, `question`) — `task` mora na mesma tabela mas fica fora do grafo e do recall.
-- **Recall híbrido balanceado por domínio**: embedding (`bge-m3` via Workers AI, multilíngue) + FTS5, no máximo 3 notas por domínio até 5 domínios distintos — o objetivo é trazer a conexão inesperada, não só o hit mais óbvio.
+- **Grafo com 9 tipos de edge** (`analogous_to`, `same_mechanism_as`, `causes`, `contradicts`, `refines`, …) e **7 kinds de nota** (`concept`, `decision`, `insight`, `fact`, `pattern`, `principle`, `question`) — `task` mora na mesma tabela mas fica fora do grafo e do recall (decisão de design, não bug: task é operacional, não conhecimento — ver specs `10-backend/12` e `10-backend/15`).
+- **Recall híbrido balanceado por domínio**: embedding (`bge-m3` via Workers AI, multilíngue) + FTS5, no máximo 3 notas por domínio até 5 domínios distintos — o objetivo é trazer a conexão inesperada, não só o hit mais óbvio. Isso é só pra **notas** (conhecimento); para achar uma **task** sem saber o id, use `list_tasks({ query: "..." })` (busca textual dedicada, sem teto de tempo, cobre título+corpo, abertas e fechadas) — nunca `recall`.
 - **Privacidade por nota/task** (`mark_private`) e **PATs com escopo** (`full` / `read` / `+private`) — uma credencial com escopo `read` nem enxerga as tools de escrita no `tools/list`.
 - **Share público read-only** de nota ou task por link (`/s/<token>`), com expiração e revogação.
 - **Backup automático**: snapshot semanal D1 → R2 via cron (segunda-feira), mais backup manual pelo console.
@@ -186,7 +186,8 @@ npm run setup        # idempotente — redescobre os recursos existentes por nom
 **Criar e consultar uma task:**
 
 > "Cria uma task pra revisar o contrato até sexta." → `save_task`.
-> "O que vence hoje?" → `list_tasks_due_today`.
+> "O que vence hoje?" → `list_tasks_due_today` (janela de até 168h/7 dias — é o "hoje + esta semana", não a listagem completa).
+> "Cadê aquela task que eu criei sobre X, lá pra outubro?" → `list_tasks({ query: "X" })`, nunca `recall` — sem teto de tempo, acha qualquer task por título/corpo independente do quão distante seja o prazo.
 
 **Ver o grafo:** abra `https://<seu-worker>.workers.dev/app/graph` — grafo 2D navegável; `?mode=3d` pra visualização 3D.
 
