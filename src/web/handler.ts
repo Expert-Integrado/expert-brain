@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import { handleLoginGet, handleLoginPost, handleLogoutPost, handleTwoFactorGet, handleTwoFactorPost } from './login.js';
 import { handleNotesList, handleNoteDetail, handleTaskDetail, handleNoteUpdatePost, handleNoteCreatePost, handleNotePrivatePost, handleTaskFromNotePost, handleNoteDeletePost, handleNoteRestorePost } from './notes.js';
 import { handleGraphPage, handleContactsPage } from './graph.js';
-import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
+import { handleContactsData, handleContactsMeta, handleContactsEntity, handleContactsMedia, handleContactsEntityEvents, handleContactsEntityEventCreate, handleContactsEntityNeighbors, handleContactsEntityGroupGraph, handleContactMentions, handleContactsSearch, handleContactsEventsRecent, handleContactsGoogleGet, handleContactsGooglePost, handleContactsWhatsappStatus, handleContactsWhatsappAllowlist, handleContactsWhatsappCreateMembers, handleContactsInstagramStatus, handleContactsInstagramAllowlist, handleContactsPipedriveStatus, handleContactsPipedriveSync } from './contacts-data.js';
 import { handleHomePage } from './home.js';
 import { handleHomePrefsPost, handleStartDismissPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
@@ -221,6 +221,8 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/contacts/entity/event' && req.method === 'POST') return handleContactsEntityEventCreate(req, env);
   // Vizinhança de 1º/2º nível (spec 50-console-v2/56 §2) — mesmo proxy read-only.
   if (path === '/app/contacts/entity/neighbors' && req.method === 'GET') return handleContactsEntityNeighbors(req, env);
+  // Grafo interno de grupo (membros + arestas) — mesmo proxy read-only.
+  if (path === '/app/contacts/entity/group-graph' && req.method === 'GET') return handleContactsEntityGroupGraph(req, env);
   // Seções reversas da página do contato (spec 62 §4): notas e tasks que MENCIONAM o
   // contato. Brain-LOCAL (tabela mentions), sem proxy — sessão do dono.
   if (path === '/app/contacts/entity/mentions' && req.method === 'GET') return handleContactMentions(req, env);

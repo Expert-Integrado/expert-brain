@@ -10,11 +10,11 @@ export const ASSET_HASHES: Record<string, string> = {
   "shell.bundle.js": "e3d9b0a84e07",
   "tasks.bundle.js": "0ea5e4ca16ce",
   "task-edit.bundle.js": "2b6add912681",
-  "contact-page.bundle.js": "7573416f4b5c",
+  "contact-page.bundle.js": "b09d0fc031c0",
   "sim-worker.bundle.js": "2b1cd681554f",
   "home.bundle.js": "c468751218d3",
   "journal.bundle.js": "751bb6d7e745",
-  "styles.css": "e67a4e6be018",
+  "styles.css": "2550863472d0",
   "config.bundle.js": "9b4218ba5ac5"
 };
 

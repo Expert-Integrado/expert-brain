@@ -74,6 +74,12 @@ export function handleContactsEntityNeighbors(req: Request, env: Env): Promise<R
   return proxyToContacts(req, env, '/app/entity/neighbors');
 }
 
+// Grafo interno de um GRUPO (?id=): membros + arestas entre eles. Mesmo proxy
+// read-only; o contacts aceita GET /app/entity/group-graph na mesma allowlist.
+export function handleContactsEntityGroupGraph(req: Request, env: Env): Promise<Response> {
+  return proxyToContacts(req, env, '/app/entity/group-graph');
+}
+
 // Feed global de interações (?offset=&limit=) — spec 50-console-v2/65 §1. Rota de
 // SESSÃO do Brain (padrão dos proxies 56/57): repassa pro contacts via service
 // binding com o MESMO CONTACTS_PROXY_TOKEN read-only. Consumida pelo client da

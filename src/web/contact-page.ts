@@ -90,6 +90,34 @@ export async function handleContactPage(req: Request, env: Env, id: string): Pro
       .contact-page-acc[open] summary::before { content: '▾'; }
       .contact-page-acc summary:hover { opacity: 1; }
       .contact-page-acc-body { padding: 2px 14px 14px; }
+      /* Grafo do grupo (pedido 15/07): mini force-graph + grade de membros */
+      .group-count { font-size: 13px; opacity: 0.55; font-weight: 500; margin-left: 6px; }
+      .group-graph-canvas-wrap {
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 14px;
+        background: radial-gradient(60% 80% at 50% 0%, rgba(124,92,240,0.08), transparent 70%), rgba(255,255,255,0.015);
+        padding: 6px; margin-bottom: 16px; overflow: hidden;
+      }
+      .group-graph-canvas { width: 100%; height: 360px; display: block; }
+      .group-member-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+      .group-member {
+        display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+        text-decoration: none; color: inherit;
+        transition: border-color 200ms cubic-bezier(0.32,0.72,0,1), background 200ms cubic-bezier(0.32,0.72,0,1);
+      }
+      .group-member:hover { border-color: rgba(167,139,250,0.55); background: rgba(167,139,250,0.06); }
+      .group-member-avatar {
+        width: 30px; height: 30px; border-radius: 50%; flex: none;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 600; color: #0d0b14;
+        background: linear-gradient(140deg, #c4b5fd, #a78bfa);
+      }
+      .group-member-name { flex: 1; min-width: 0; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .group-member-degree {
+        flex: none; font-size: 11px; opacity: 0.6; background: rgba(255,255,255,0.08);
+        border-radius: 999px; padding: 1px 8px;
+      }
+      @media (max-width: 640px) { .group-graph-canvas { height: 280px; } }
     </style>
     <div class="contact-page" data-contact-id="${esc(id)}">
       <div class="contact-page-loading center-loading" role="status" aria-live="polite">

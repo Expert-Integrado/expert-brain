@@ -136,6 +136,7 @@ export function renderHeaderAndCartela(container: HTMLElement, id: string, detai
       <h2>Cartela</h2>
       <dl class="contact-page-fields">${fields || '<p class="contact-page-empty">Sem campos cadastrados.</p>'}</dl>
     </div>
+    <div class="contact-page-section" data-section="group-graph" hidden></div>
     <div class="contact-page-section" data-section="neighbors">
       <h2>Vínculos</h2>
       <p class="contact-page-empty">Carregando vínculos...</p>
@@ -414,6 +415,209 @@ function initTimeline(entityId: string, container: HTMLElement): void {
   }
 }
 
+// ── Grafo interno de um GRUPO (spec: pedido 15/07) ──────────────────────────
+// Quando o contato é kind='group', mostra os membros + a rede entre eles: um
+// mini force-graph em canvas (leve, sem lib — mesma linguagem visual do hero do
+// site) + a lista de membros ordenada por grau (mais conectado no topo). Hover
+// num nó destaca ele e seus vínculos; clicar abre a página do membro.
+interface GroupMember { id: string; label: string; kind: string; degree: number; }
+interface GroupEdge { source: string; target: string; type: string; strength: number; }
+interface GroupGraphResponse {
+  ok?: boolean; is_group?: boolean;
+  group?: { id: string; label: string };
+  members?: GroupMember[]; edges?: GroupEdge[];
+  total_members?: number; truncated?: boolean;
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return ((parts[0][0] ?? '') + (parts.length > 1 ? parts[1][0] ?? '' : '')).toUpperCase();
+}
+
+function renderGroupGraph(section: HTMLElement, data: GroupGraphResponse): void {
+  const members = data.members ?? [];
+  const edges = data.edges ?? [];
+  if (data.is_group === false || members.length === 0) {
+    // Não é grupo, ou grupo sem membro visível: some (não polui contato pessoa).
+    section.hidden = true;
+    section.innerHTML = '';
+    return;
+  }
+  section.hidden = false;
+  const trunc = data.truncated
+    ? `<p class="contact-page-warn">Mostrando ${members.length} de ${data.total_members} membros (grupo grande).</p>`
+    : '';
+  const withEdges = edges.length > 0;
+  const canvas = withEdges
+    ? `<div class="group-graph-canvas-wrap"><canvas class="group-graph-canvas" width="600" height="360" role="img" aria-label="Grafo de conexões entre os membros do grupo"></canvas></div>`
+    : `<p class="contact-page-warn">Ainda não há conexões mapeadas entre os membros (o grafo aparece quando houver interações entre eles).</p>`;
+
+  const list = members.map((m) => `
+    <a class="group-member" href="${esc(contactHref(m.id))}" data-member-id="${esc(m.id)}">
+      <span class="group-member-avatar" aria-hidden="true">${esc(initials(m.label))}</span>
+      <span class="group-member-name">${esc(m.label)}</span>
+      ${m.degree > 0 ? `<span class="group-member-degree" title="Conexões dentro do grupo">${m.degree}</span>` : ''}
+    </a>`).join('');
+
+  section.innerHTML = `
+    <h2>Membros <span class="group-count">${data.total_members ?? members.length}</span></h2>
+    ${trunc}
+    ${canvas}
+    <div class="group-member-grid">${list}</div>
+  `;
+
+  if (withEdges) {
+    const canvasEl = section.querySelector('.group-graph-canvas') as HTMLCanvasElement | null;
+    if (canvasEl) drawGroupGraph(canvasEl, members, edges);
+  }
+}
+
+// Force-graph mínimo em canvas: simulação de molas + repulsão por alguns ticks,
+// depois desenha. Sem rAF contínuo — o layout assenta e congela (barato, e um
+// grupo é estático). Hover realça o nó e suas arestas; clique navega.
+function drawGroupGraph(canvas: HTMLCanvasElement, members: GroupMember[], edges: GroupEdge[]): void {
+  const ctx0 = canvas.getContext('2d');
+  if (!ctx0) return;
+  const ctx = ctx0; // narrowing sobrevive nas closures (paint/handlers)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const W = canvas.clientWidth || 600;
+  const H = 360;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  type Node = { id: string; label: string; degree: number; x: number; y: number; vx: number; vy: number; r: number };
+  const maxDeg = Math.max(1, ...members.map((m) => m.degree));
+  const nodes: Node[] = members.map((m, i) => {
+    const ang = (i / members.length) * Math.PI * 2;
+    return {
+      id: m.id, label: m.label, degree: m.degree,
+      x: W / 2 + Math.cos(ang) * (W * 0.28), y: H / 2 + Math.sin(ang) * (H * 0.32),
+      vx: 0, vy: 0, r: 5 + (m.degree / maxDeg) * 9,
+    };
+  });
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const links = edges
+    .map((e) => ({ a: idx.get(e.source), b: idx.get(e.target), strength: e.strength }))
+    .filter((l): l is { a: number; b: number; strength: number } => l.a !== undefined && l.b !== undefined);
+
+  // Componentes conexos (union-find): o maior fica no palco central; os menores
+  // (par isolado, nó sozinho) são ANCORADOS numa faixa lateral própria em vez de
+  // escaparem pra um canto pela repulsão. Sem isso, força-dirigido puro joga
+  // componente desconexo pra fora do quadro.
+  const parent = nodes.map((_, i) => i);
+  const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  for (const l of links) { const ra = find(l.a), rb = find(l.b); if (ra !== rb) parent[ra] = rb; }
+  const comp = new Map<number, number[]>();
+  nodes.forEach((_, i) => { const r = find(i); if (!comp.has(r)) comp.set(r, []); comp.get(r)!.push(i); });
+  const groups = [...comp.values()].sort((a, b) => b.length - a.length);
+  const mainComp = new Set(groups[0] ?? []);
+  // Nós fora do componente principal: fixos numa coluna à direita, empilhados.
+  const outside = groups.slice(1).flat();
+  const fixed = new Set<number>();
+  outside.forEach((ni, k) => {
+    nodes[ni].x = W - 46;
+    nodes[ni].y = 40 + k * 40;
+    fixed.add(ni);
+  });
+
+  // Simulação (Fruchterman-Reingold enxuto), N ticks fixos, + gravidade fraca ao
+  // centro pra componentes desconexos (ex.: par isolado) não escaparem pro canto.
+  // Só o componente principal entra na simulação; a área útil exclui a coluna
+  // lateral dos isolados (quando houver) pra não sobrepor.
+  const rightMargin = outside.length ? 92 : 8;
+  const sim = [...mainComp];
+  const cx = (W - rightMargin) / 2, cy = H / 2;
+  const AREA = (W - rightMargin) * H;
+  const k = Math.sqrt(AREA / Math.max(1, sim.length)) * 0.95;
+  for (let iter = 0; iter < 320; iter++) {
+    for (const i of sim) {
+      let fx = 0, fy = 0;
+      for (const j of sim) {
+        if (i === j) continue;
+        let dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        let d = Math.hypot(dx, dy) || 0.01;
+        const rep = (k * k) / d;
+        fx += (dx / d) * rep; fy += (dy / d) * rep;
+      }
+      fx += (cx - nodes[i].x) * 0.045;
+      fy += (cy - nodes[i].y) * 0.045;
+      nodes[i].vx = fx; nodes[i].vy = fy;
+    }
+    for (const l of links) {
+      if (fixed.has(l.a) || fixed.has(l.b)) continue;
+      let dx = nodes[l.a].x - nodes[l.b].x, dy = nodes[l.a].y - nodes[l.b].y;
+      let d = Math.hypot(dx, dy) || 0.01;
+      const att = (d * d) / k;
+      const ux = (dx / d) * att, uy = (dy / d) * att;
+      nodes[l.a].vx -= ux; nodes[l.a].vy -= uy;
+      nodes[l.b].vx += ux; nodes[l.b].vy += uy;
+    }
+    const damp = 0.09 * (1 - iter / 320);
+    for (const i of sim) {
+      const n = nodes[i];
+      n.x += Math.max(-16, Math.min(16, n.vx * damp));
+      n.y += Math.max(-16, Math.min(16, n.vy * damp));
+      n.x = Math.max(n.r + 8, Math.min(W - rightMargin - n.r, n.x));
+      n.y = Math.max(n.r + 8, Math.min(H - n.r - 8, n.y));
+    }
+  }
+
+  const adj = new Map<number, Set<number>>();
+  links.forEach((l) => {
+    if (!adj.has(l.a)) adj.set(l.a, new Set());
+    if (!adj.has(l.b)) adj.set(l.b, new Set());
+    adj.get(l.a)!.add(l.b); adj.get(l.b)!.add(l.a);
+  });
+
+  let hover = -1;
+  function paint(): void {
+    ctx.clearRect(0, 0, W, H);
+    // arestas
+    for (const l of links) {
+      const on = hover === -1 || hover === l.a || hover === l.b;
+      ctx.strokeStyle = on ? 'rgba(167,139,250,0.42)' : 'rgba(167,139,250,0.08)';
+      ctx.lineWidth = on && hover !== -1 ? 1.6 : 1;
+      ctx.beginPath(); ctx.moveTo(nodes[l.a].x, nodes[l.a].y); ctx.lineTo(nodes[l.b].x, nodes[l.b].y); ctx.stroke();
+    }
+    // nós
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      const near = hover === -1 || hover === i || adj.get(hover)?.has(i);
+      ctx.globalAlpha = near ? 1 : 0.3;
+      ctx.fillStyle = hover === i ? '#c4b5fd' : 'rgba(167,139,250,0.9)';
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill();
+      if (hover === i || (hover === -1 && n.r > 9)) {
+        ctx.globalAlpha = near ? 0.95 : 0.3;
+        ctx.fillStyle = '#e9e4fb';
+        ctx.font = '11px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label.length > 18 ? n.label.slice(0, 17) + '…' : n.label, n.x, n.y - n.r - 5);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  paint();
+
+  function nodeAt(mx: number, my: number): number {
+    for (let i = nodes.length - 1; i >= 0; i--) {
+      if (Math.hypot(nodes[i].x - mx, nodes[i].y - my) <= nodes[i].r + 4) return i;
+    }
+    return -1;
+  }
+  canvas.addEventListener('mousemove', (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if (hit !== hover) { hover = hit; canvas.style.cursor = hit >= 0 ? 'pointer' : 'default'; paint(); }
+  });
+  canvas.addEventListener('mouseleave', () => { if (hover !== -1) { hover = -1; paint(); } });
+  canvas.addEventListener('click', (ev) => {
+    const rect = canvas.getBoundingClientRect();
+    const hit = nodeAt(ev.clientX - rect.left, ev.clientY - rect.top);
+    if (hit >= 0) window.location.href = contactHref(nodes[hit].id);
+  });
+}
+
 async function main(): Promise<void> {
   const container = document.querySelector('.contact-page') as HTMLElement | null;
   if (!container) return;
@@ -433,6 +637,19 @@ async function main(): Promise<void> {
   }
 
   renderHeaderAndCartela(container, id, detail);
+
+  // Grafo interno do grupo (só renderiza se o contato for kind='group'; o
+  // endpoint responde is_group:false pra pessoa/empresa e a seção some).
+  const groupSection = container.querySelector('[data-section="group-graph"]') as HTMLElement | null;
+  if (groupSection) {
+    void fetch(`/app/contacts/entity/group-graph?id=${encodeURIComponent(id)}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: GroupGraphResponse | null) => {
+        if (!d || d.ok === false) { groupSection.hidden = true; return; }
+        renderGroupGraph(groupSection, d);
+      })
+      .catch(() => { groupSection.hidden = true; });
+  }
 
   const neighborsSection = container.querySelector('[data-section="neighbors"]') as HTMLElement | null;
   if (neighborsSection) {
