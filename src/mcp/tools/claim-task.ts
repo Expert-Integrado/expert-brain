@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Env, AuthContext } from '../../env.js';
 import { safeToolHandler, toolError, toolSuccess, noteUrl } from '../helpers.js';
-import { getTaskById, claimTask, releaseTaskClaim, claimActive, getUserByIdOrName } from '../../db/queries.js';
+import { getTaskById, claimTask, releaseTaskClaim, claimActive, getUserByIdOrName, countActiveClaims } from '../../db/queries.js';
 import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { formatBrtDateTime } from '../../util/time.js';
 
@@ -80,6 +80,19 @@ export function registerClaimTask(server: any, env: Env, auth?: AuthContext): vo
         return toolError(
           `Task '${input.task_id}' is '${task.status}' — only open/in_progress tasks are claimable.`
         );
+      }
+      // WIP cap por agente (spec 80-frota-agentes/94): opt-in via FLEET_WIP_CAP.
+      // Renovar o claim da MESMA task nunca conta contra o teto (excludeTaskId) —
+      // só um claim NOVO (task diferente) é barrado quando o usuário já está no teto.
+      const wipCap = parseInt(env.FLEET_WIP_CAP ?? '', 10);
+      if (Number.isFinite(wipCap) && wipCap > 0 && task.claimed_by !== me.id) {
+        const active = await countActiveClaims(env, me.id, now, input.task_id);
+        if (active >= wipCap) {
+          return toolError(
+            `WIP cap reached: '${me.name}' already holds ${active} active claim(s) (limit ${wipCap}). ` +
+            'Finish or release one (release:true) before claiming another task. Do NOT retry this claim in a loop.'
+          );
+        }
       }
       const leaseMs = (input.minutes ?? DEFAULT_MINUTES) * 60_000;
       const won = await claimTask(env, input.task_id, me.id, now, leaseMs);

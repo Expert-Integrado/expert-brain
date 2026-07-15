@@ -1376,6 +1376,22 @@ export async function claimTask(
   return (r.meta?.changes ?? 0) > 0;
 }
 
+// Conta quantos claims ATIVOS (lease não vencido) um usuário detém, excluindo
+// opcionalmente uma task (renovação do PRÓPRIO claim não deve contar como "novo"
+// contra o teto). Base do WIP cap (spec 80-frota-agentes/94): teto por usuário
+// simultâneo, não histórico — lease vencido nunca conta (mesma regra de claimActive).
+export async function countActiveClaims(
+  env: Env, userId: string, nowMs: number, excludeTaskId?: string
+): Promise<number> {
+  const r = await env.DB.prepare(
+    `SELECT count(*) AS c FROM notes
+     WHERE kind = 'task' AND deleted_at IS NULL
+       AND claimed_by = ? AND claim_expires_at IS NOT NULL AND claim_expires_at > ?
+       AND id != ?`
+  ).bind(userId, nowMs, excludeTaskId ?? '').all<{ c: number }>();
+  return r.results?.[0]?.c ?? 0;
+}
+
 // Solta o claim — só o detentor solta (soltar task livre/de outro = changes 0; o
 // caller decide se isso é no-op ok ou erro). NÃO checa expiração: soltar lease
 // vencido próprio é inofensivo e idempotente.

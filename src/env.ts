@@ -54,6 +54,17 @@ export interface Env {
   VAPID_PRIVATE_KEY?: string;
   // Claim `sub` do JWT VAPID (contato do operador). Ausente → usa WORKER_URL.
   VAPID_SUBJECT?: string;
+  // WIP cap por agente (spec 80-frota-agentes/94). Ausente/vazia = SEM LIMITE
+  // (default, compat retroativo). Setada com N > 0: claim_task rejeita um NOVO
+  // claim (task diferente da já detida) quando o usuário já tem N claims ATIVOS
+  // simultâneos — renovar o claim da MESMA task nunca conta contra o teto.
+  FLEET_WIP_CAP?: string;
+  // Aging automático de task parada (spec 80-frota-agentes/94). Ausente/vazia =
+  // DESLIGADO (default). Setada com N > 0: o cron reabre (in_progress → open,
+  // limpando o claim) task sem NENHUM update (comentário/edição) há mais de N
+  // dias, com um comentário [info] automático explicando o motivo — nunca perde
+  // dado, é só devolver a task pra fila.
+  TASK_AGING_AFTER_DAYS?: string;
 }
 
 export interface AuthContext extends Record<string, unknown> {

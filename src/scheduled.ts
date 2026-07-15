@@ -1,7 +1,7 @@
 import type { Env } from './env.js';
 import { runDueReminder, sendTelegram } from './notify.js';
 import { runSnapshot } from './backup/snapshot.js';
-import { runTaskAutocancel } from './task-lifecycle.js';
+import { runTaskAutocancel, runTaskAging } from './task-lifecycle.js';
 import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
 import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js';
 import { runPushDigest } from './web/push.js';
@@ -127,6 +127,20 @@ function dispatchDaily(cron: string, env: Env, ctx: ExecutionContext, nowMs: num
     runTaskAutocancel(env, nowMs)
       .then((r) => console.log('task-autocancel', JSON.stringify(r)))
       .catch((e) => console.error('task-autocancel failed', e))
+  );
+  // Aging automático opcional (spec 80-frota-agentes/94): no-op sem a env var.
+  // Braço próprio — reusa o fluxo diário existente em vez de disputar 1 dos 5
+  // cron triggers do plano free (spec 89 já consolidou tudo num só).
+  ctx.waitUntil(
+    runTaskAging(env, nowMs)
+      .then(async (r) => {
+        console.log('task-aging', JSON.stringify(r));
+        await trackCronOutcome(env, 'task-aging', true);
+      })
+      .catch(async (e) => {
+        console.error('task-aging failed', e);
+        await trackCronOutcome(env, 'task-aging', false, String((e as Error)?.message ?? e));
+      })
   );
   // Digest de higiene do grafo (spec 70-grafo-higiene/73): só segunda, mensagem
   // PRÓPRIA no Telegram (sendTelegram é no-op seguro sem os secrets). Braço

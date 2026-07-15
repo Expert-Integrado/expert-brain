@@ -97,5 +97,6 @@ deploy → migrate imediato (mesmo runbook das 0019-0026).
   70-90%; exige endpoint por dispositivo.
 - Subtasks/dependências (blocked_by) — hoje o board é chato de decompor.
 - Definition-of-done + verifier (agente B confere entrega do agente A).
-- WIP cap por agente + aging automático de task parada.
+- ~~WIP cap por agente + aging automático de task parada~~ — implementado, ver
+  spec 94-wip-cap-aging.md.
 - Telemetria de custo por task (tokens/US$ por entrega).

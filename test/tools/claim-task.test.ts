@@ -201,6 +201,62 @@ describe('claim_task (MCP)', () => {
   });
 });
 
+describe('WIP cap por agente (spec 80-frota-agentes/94, FLEET_WIP_CAP)', () => {
+  it('sem FLEET_WIP_CAP => sem limite (compat retroativo)', async () => {
+    await seedAgents();
+    await seedTask('t1'); await seedTask('t2'); await seedTask('t3');
+    const r = reg(PAT_A);
+    for (const id of ['t1', 't2', 't3']) {
+      const res = parse(await r.claim_task({ task_id: id }));
+      expect(res.claimed).toBe(true);
+    }
+  });
+
+  it('com o teto: bloqueia o claim de uma NOVA task acima do limite, com erro orientado', async () => {
+    await seedAgents();
+    await seedTask('t1'); await seedTask('t2'); await seedTask('t3');
+    const capped = { ...E, FLEET_WIP_CAP: '2' };
+    const r: any = {};
+    const server = { registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any;
+    registerClaimTask(server, capped, PAT_A);
+    const a = parse(await r.claim_task({ task_id: 't1' }));
+    expect(a.claimed).toBe(true);
+    const b = parse(await r.claim_task({ task_id: 't2' }));
+    expect(b.claimed).toBe(true);
+    const c = await r.claim_task({ task_id: 't3' });
+    expect(c.isError).toBe(true);
+    expect(c.content[0].text).toContain('WIP cap');
+    expect(c.content[0].text).toContain('2');
+  });
+
+  it('renovar o claim da MESMA task no teto não conta como novo — sempre permitido', async () => {
+    await seedAgents();
+    await seedTask('t1'); await seedTask('t2');
+    const capped = { ...E, FLEET_WIP_CAP: '2' };
+    const r: any = {};
+    const server = { registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any;
+    registerClaimTask(server, capped, PAT_A);
+    await r.claim_task({ task_id: 't1' });
+    await r.claim_task({ task_id: 't2' });
+    // No teto (2/2) — renovar t1 (já minha) não deve ser barrado.
+    const renew = parse(await r.claim_task({ task_id: 't1', minutes: 120 }));
+    expect(renew.claimed).toBe(true);
+  });
+
+  it('lease vencido não conta contra o teto', async () => {
+    await seedAgents();
+    await seedTask('t1'); await seedTask('t2');
+    // t1 com lease já vencido, gravado direto.
+    await claimTask(E, 't1', 'user_a', Date.now() - 120_000, 60_000);
+    const capped = { ...E, FLEET_WIP_CAP: '1' };
+    const r: any = {};
+    const server = { registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any;
+    registerClaimTask(server, capped, PAT_A);
+    const res = parse(await r.claim_task({ task_id: 't2' }));
+    expect(res.claimed).toBe(true);
+  });
+});
+
 describe('comentários tipados + fila aguardando o dono (spec 88)', () => {
   it('kind deriva do prefixo [bloqueio]; explícito vence o prefixo', async () => {
     await seedAgents();
