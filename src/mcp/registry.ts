@@ -20,6 +20,7 @@ import { registerUpdateTask } from './tools/update-task.js';
 import { registerGetTask } from './tools/get-task.js';
 import { registerCommentTask } from './tools/comment-task.js';
 import { registerUpdateSubtask } from './tools/update-subtask.js';
+import { registerUpdateTaskDeps } from './tools/update-task-deps.js';
 import { registerClaimTask } from './tools/claim-task.js';
 import { registerShareTask } from './tools/share-task.js';
 import { registerUnshareTask } from './tools/unshare-task.js';
@@ -126,6 +127,10 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   // Checklist de task (spec 38): trabalho multi-parte = UM card com subtarefas
   // tickáveis ("3/8" no board), nunca N cards irmãos. Escrita — suprimida no read.
   registerUpdateSubtask(reg, env, auth);
+  // Dependências entre tasks (spec 93): "task X bloqueada por task Y" — cards
+  // separados que precisam de ordem, distinto do checklist (uma task só). Escrita —
+  // suprimida no escopo read.
+  registerUpdateTaskDeps(reg, env, auth);
   // Claim/lease de task (spec 88): posse temporária pra frota — atômico, expira
   // sozinho. Escrita (readOnlyHint:false) — suprimida no escopo read pelo guarda.
   registerClaimTask(reg, env, auth);

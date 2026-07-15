@@ -604,6 +604,32 @@ const MIGRATION_0029_STMTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_task_subtasks_task ON task_subtasks(task_id, position)`,
 ];
 
+// 0030 — dependências entre tasks (blocked_by, spec 80-frota-agentes/93). Tabela
+// FILHA no molde de `mentions`/`task_subtasks`: não é nota (não embeda, não entra em
+// grafo/recall), cascateia no hard-delete de QUALQUER ponta do par (soft-delete não
+// cascateia de propósito — restore_note traz a dependência de volta intacta). `task_id`
+// é a task BLOQUEADA; `depends_on_id` é a bloqueadora (`blocked_by` no output das
+// tools). UNIQUE(task_id, depends_on_id) deduplica o mesmo par declarado 2x. Auto-
+// referência e ciclo direto (A↔B) são rejeitados em CÓDIGO na escrita (não em CHECK —
+// SQLite não expressa "não existe linha inversa" em CHECK de coluna); ciclo
+// transitivo (A→B→C→A) fica fora de escopo v1 (poucas deps por task no uso real).
+// created_by segue o formato writeActor ('oauth:<email>' | id de PAT), mesma
+// convenção de autoria de task_subtasks/mentions. Índices nas duas direções: a
+// leitura roda tanto "quem me bloqueia" (task_id) quanto "eu bloqueio quem"
+// (depends_on_id).
+const MIGRATION_0030_STMTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS task_deps (
+    id            TEXT PRIMARY KEY,
+    task_id       TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    depends_on_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    created_at    INTEGER NOT NULL,
+    created_by    TEXT,
+    UNIQUE (task_id, depends_on_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_task_deps_task ON task_deps(task_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_task_deps_depends_on ON task_deps(depends_on_id)`,
+];
+
 export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0001_init', stmts: MIGRATION_0001_STMTS },
   { id: '0002_domains_json_valid', stmts: MIGRATION_0002_STMTS },
@@ -634,6 +660,7 @@ export const MIGRATIONS: Array<{ id: string; stmts: string[] }> = [
   { id: '0027_fleet_claim_comment_kind', stmts: MIGRATION_0027_STMTS },
   { id: '0028_insights_indexes', stmts: MIGRATION_0028_STMTS },
   { id: '0029_task_subtasks', stmts: MIGRATION_0029_STMTS },
+  { id: '0030_task_deps', stmts: MIGRATION_0030_STMTS },
 ];
 
 // SQLite não tem ADD COLUMN IF NOT EXISTS. Se uma versão antiga do executor

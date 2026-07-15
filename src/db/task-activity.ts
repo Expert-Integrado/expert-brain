@@ -11,7 +11,7 @@ import { formatBrtDateTime } from '../util/time.js';
 export type TaskActivityField =
   | 'created' | 'title' | 'body' | 'column' | 'priority' | 'due'
   | 'tags' | 'project' | 'assignees' | 'visibility' | 'share' | 'status'
-  | 'subtask';
+  | 'subtask' | 'dependency';
 
 export interface TaskActivityEntry {
   id: number;

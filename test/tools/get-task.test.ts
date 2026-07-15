@@ -62,4 +62,23 @@ describe('get_task', () => {
     expect(p.subtasks[0].done_by).toBe('key_pat9');
     expect(p.subtask_progress).toEqual({ done: 1, total: 2 });
   });
+
+  it('returns blocked_by/blocks/blocked (spec 93)', async () => {
+    const now = Date.now();
+    await insertTask(E, { id: 't1', title: 'Bloqueada', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    await insertTask(E, { id: 't2', title: 'Bloqueadora aberta', body: 'b', tldr: 't', domains: '["operations"]', status: 'open', due_at: null, priority: null, created_at: now, updated_at: now });
+    await insertTask(E, { id: 't3', title: 'Bloqueadora fechada', body: 'b', tldr: 't', domains: '["operations"]', status: 'done', due_at: null, priority: null, created_at: now, updated_at: now, completed_at: now });
+    const { addTaskDep } = await import('../../src/db/task-deps.js');
+    await addTaskDep(E, 't1', 't2', 'oauth:o@x', now);
+    await addTaskDep(E, 't1', 't3', 'oauth:o@x', now);
+
+    const p1 = JSON.parse((await reg().get_task({ id: 't1' })).content[0].text);
+    expect(p1.blocked_by.map((b: any) => b.id).sort()).toEqual(['t2', 't3']);
+    expect(p1.blocked).toBe(true); // t2 ainda aberta
+
+    const p2 = JSON.parse((await reg().get_task({ id: 't2' })).content[0].text);
+    expect(p2.blocks.map((b: any) => b.id)).toEqual(['t1']);
+    expect(p2.blocked_by).toEqual([]);
+    expect(p2.blocked).toBe(false);
+  });
 });

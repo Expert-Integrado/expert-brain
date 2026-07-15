@@ -18,6 +18,7 @@ import { registerCommentTask } from '../../src/mcp/tools/comment-task.js';
 import { registerCompleteTask } from '../../src/mcp/tools/complete-task.js';
 import { registerGetTask } from '../../src/mcp/tools/get-task.js';
 import { registerListTasks } from '../../src/mcp/tools/list-tasks.js';
+import { registerUpdateTaskDeps } from '../../src/mcp/tools/update-task-deps.js';
 
 const E = env as any;
 
@@ -33,6 +34,7 @@ function reg(auth?: AuthContext) {
   registerCompleteTask(server, E, auth as any);
   registerGetTask(server, E, auth);
   registerListTasks(server, E, auth);
+  registerUpdateTaskDeps(server, E, auth);
   return r;
 }
 
@@ -173,6 +175,29 @@ describe('claim_task (MCP)', () => {
 
     const avail = parse(await reg(PAT_A).list_tasks({ available: true }));
     expect(avail.tasks.map((t: any) => t.id).sort()).toEqual(['livre', 'minha', 'vencida']);
+  });
+
+  it('available exclui task bloqueada por dependência (spec 93), mesmo sem claim', async () => {
+    await seedAgents();
+    await seedTask('bloqueada');
+    await seedTask('bloqueadora', 'open');
+    await seedTask('livre');
+    await reg(PAT_A).update_task_deps({ task_id: 'bloqueada', block_on: ['bloqueadora'] });
+
+    const before = parse(await reg(PAT_A).list_tasks({ available: true }));
+    expect(before.tasks.map((t: any) => t.id).sort()).toEqual(['bloqueadora', 'livre']);
+
+    const withBlockedFlag = parse(await reg(PAT_A).list_tasks({}));
+    const byId = Object.fromEntries(withBlockedFlag.tasks.map((t: any) => [t.id, t.blocked]));
+    expect(byId['bloqueada']).toBe(true);
+    expect(byId['bloqueadora']).toBe(false);
+    expect(byId['livre']).toBe(false);
+
+    // bloqueadora fecha (some da base ativa open+in_progress) → a bloqueada volta a
+    // aparecer em available.
+    await E.DB.prepare(`UPDATE notes SET status='done' WHERE id='bloqueadora'`).run();
+    const after = parse(await reg(PAT_A).list_tasks({ available: true }));
+    expect(after.tasks.map((t: any) => t.id).sort()).toEqual(['bloqueada', 'livre']);
   });
 });
 

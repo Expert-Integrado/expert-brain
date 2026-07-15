@@ -5,6 +5,7 @@ import { TASK_STATUSES, listActiveTasks, listRecentClosedTasks, ftsSearchTasks, 
 import { resolveMe, resolveTaskVis } from './user-ref.js';
 import { hasScope, SCOPE_CONTACTS_NONE } from '../../auth/api-keys.js';
 import { countTaskSubtasksBatch } from '../../db/subtasks.js';
+import { isBlockedBatch } from '../../db/task-deps.js';
 import { formatBrtDateTime, relativeDue } from '../../util/time.js';
 
 const inputSchema = {
@@ -15,7 +16,7 @@ const inputSchema = {
   project: z.string().optional().describe('Only tasks in this PROJECT (folder). Accepts a project id (proj_...) or label (case-insensitive); resolves among BOTH active AND archived projects (so you can list a finished project’s history). A single-valued grouping, distinct from `tag`. No match → empty result.'),
   mentions_entity: z.string().optional().describe('Only tasks that MENTION this CONTACT (entity id from the Contacts vault) — "tasks with this person". Get the id via get_contact_by_phone / search_contacts. No match → empty result. Composes with status/tag/project/query.'),
   assignee: z.string().optional().describe('Only tasks ASSIGNED to this user (responsible). Ref by user id (user_...), name (case-insensitive), or "me" (the profile linked to this credential — an agent\'s own queue). Unknown ref → empty result; "me" without a linked profile → error explaining how to link. Composes with the other filters. See list_users.'),
-  available: z.boolean().optional().describe('Only tasks AVAILABLE to work on (spec 88): not claimed, claim expired, or claimed by ME. An agent picking work should use assignee:"me" + available:true, then claim_task the chosen one. Composes with the other filters.'),
+  available: z.boolean().optional().describe('Only tasks AVAILABLE to work on: not claimed, claim expired, or claimed by ME (spec 88); AND not blocked by an unfinished dependency (spec 93). An agent picking work should use assignee:"me" + available:true, then claim_task the chosen one. Composes with the other filters.'),
   awaiting_owner: z.boolean().optional().describe("Only tasks WAITING ON THE OWNER's decision (spec 88): the latest [bloqueio] comment has no owner reply after it. The owner's approval queue — replying in the thread clears the task from it. Composes with the other filters."),
   limit: z.number().int().min(1).max(500).optional().describe('Max tasks to return (default 200).'),
 };
@@ -24,7 +25,7 @@ const DESCRIPTION = `Lists tasks regardless of due date — including tasks WITH
 
 This is the complete task view: by default returns all OPEN + IN-PROGRESS tasks (ordered by due date then priority). Pass \`query\` for full-text search over tasks (title+body, all statuses), \`status\` to filter (asking for ['done']/['canceled'] auto-includes closed tasks — no include_closed needed, capped to the most recent by \`limit\`), \`tag\` to scope by a transversal label (multi), \`project\` to scope by a folder (single-valued, resolves active+archived), \`limit\` to cap. \`project\` and \`tag\` compose with \`status\`/\`query\`.
 
-Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`, adding \`available: true\` to skip tasks another agent is already working (claim_task lease, spec 88), (e) pull the owner's APPROVAL QUEUE with \`awaiting_owner: true\` (tasks whose latest [bloqueio] comment has no owner reply). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], claim ({by,expires_at,expires_brt}|null — the ACTIVE work lease; null = free), comment_count, subtask_progress ({done,total}|null — checklist progress; items via get_task), url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
+Use this to (a) see everything on the plate, (b) find or check if a task already exists BEFORE creating a new one (use \`query\` for dedup — it reaches finished tasks too), (c) pull everything in one project ("puxa as tarefas do projeto X"), (d) pull a user's queue with \`assignee\` — an agent instance lists ITS OWN work with \`assignee: 'me'\`, adding \`available: true\` to skip tasks another agent is already working (claim_task lease, spec 88), (e) pull the owner's APPROVAL QUEUE with \`awaiting_owner: true\` (tasks whose latest [bloqueio] comment has no owner reply). Each task returns id, title, status, priority, due (BRT) + "when", tags, project {id,label}|null, assignees [{id,name,type}], claim ({by,expires_at,expires_brt}|null — the ACTIVE work lease; null = free), comment_count, subtask_progress ({done,total}|null — checklist progress; items via get_task), blocked (true while any blocked_by dependency is not done/canceled, spec 93 — detail via get_task, edit via update_task_deps; a blocked task is excluded from available:true regardless of claim), url, updated_at. A task with \`stale: true\` (open/in-progress with no update for 60+ days) is likely dead weight — suggest the owner cancel it (update_task with status 'canceled') or reprioritize; never close it yourself without asking. Read-only. NOTE: tasks are intentionally OUT of recall()/the graph — this is the only text search over them.`;
 
 interface ListInput { query?: string; status?: string[]; include_closed?: boolean; tag?: string; project?: string; mentions_entity?: string; assignee?: string; available?: boolean; awaiting_owner?: boolean; limit?: number; }
 
@@ -132,12 +133,15 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
         tasks = tasks.filter((t) => assigned.has(t.id));
       }
 
-      // Filtro available (spec 88): só tasks LIVRES pra trabalhar — sem claim, lease
-      // vencido, ou claimada por MIM (renovar e seguir é legítimo). Credencial sem
-      // perfil vinculado ainda filtra (só não reconhece claims próprios).
+      // Filtro available (spec 88 + 93): só tasks LIVRES pra trabalhar — sem claim,
+      // lease vencido, ou claimada por MIM (renovar e seguir é legítimo) — E sem
+      // dependência pendente (blocked_by com bloqueadora ainda aberta, spec 93).
+      // Credencial sem perfil vinculado ainda filtra (só não reconhece claims próprios).
       if (input.available === true) {
         const meId = (await resolveMe(env, auth))?.id ?? null;
         tasks = tasks.filter((t) => !claimActive(t, now) || t.claimed_by === meId);
+        const blockedMap = await isBlockedBatch(env, tasks.map((t) => t.id));
+        tasks = tasks.filter((t) => !blockedMap.get(t.id));
       }
 
       // Filtro awaiting_owner (spec 88 §3): a fila de aprovação do dono — interseção
@@ -176,6 +180,9 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
       const commentCounts = await countTaskCommentsBatch(env, tasks.map((t) => t.id));
       // Progresso do checklist em lote (spec 38): idem, 1 query chunked.
       const subtaskCounts = await countTaskSubtasksBatch(env, tasks.map((t) => t.id));
+      // Bloqueio por dependência em lote (spec 93): idem, 1 query chunked (recalculado
+      // aqui pra cobrir o caso available!==true, onde o filtro acima não roda).
+      const blockedMap = await isBlockedBatch(env, tasks.map((t) => t.id));
       // Responsáveis em lote (spec 37): 1 query (chunked), nunca N+1.
       const assigneesById = await listAssigneesForTasks(env, tasks.map((t) => t.id));
       const items = tasks.map((t) => {
@@ -205,6 +212,9 @@ export function registerListTasks(server: any, env: Env, auth?: AuthContext): vo
           comment_count: commentCounts.get(t.id) ?? 0,
           // Checklist (spec 38): {done,total} | null (sem itens). Detalhe no get_task.
           subtask_progress: subtaskCounts.get(t.id) ?? null,
+          // Dependência pendente (spec 93): true enquanto alguma blocked_by não fechou.
+          // Detalhe (lista de bloqueadoras) no get_task.
+          blocked: blockedMap.get(t.id) ?? false,
           updated_at: t.updated_at,
           url: noteUrl(env, t.id),
         };

@@ -39,14 +39,14 @@ const NOTES = [
 const NOTES_MEDIA = ['attach_media_to_note', 'get_note_media', 'delete_note_media'];
 const TASKS = [
   'save_task', 'list_tasks', 'list_tasks_due_today', 'get_task',
-  'update_task', 'complete_task', 'comment_task', 'update_subtask', 'claim_task',
+  'update_task', 'complete_task', 'comment_task', 'update_subtask', 'update_task_deps', 'claim_task',
 ];
 const TASKS_SHARE = ['share_task', 'unshare_task'];
 const CONTACTS = ['list_contacts', 'search_contacts', 'get_contact', 'get_contact_by_phone'];
 const MAILBOX = ['check_mailbox', 'ack_mailbox'];
 const USERS = ['list_users'];
 
-const ALL_37 = [...NOTES, ...NOTES_MEDIA, ...TASKS, ...TASKS_SHARE, ...CONTACTS, ...MAILBOX, ...USERS].sort();
+const ALL_38 = [...NOTES, ...NOTES_MEDIA, ...TASKS, ...TASKS_SHARE, ...CONTACTS, ...MAILBOX, ...USERS].sort();
 
 // readOnlyHint:true — o que o escopo base 'read' enxerga (spec 17, intocado).
 const READ_ONLY_14 = [
@@ -56,26 +56,26 @@ const READ_ONLY_14 = [
 ].sort();
 
 // Robô de frota: zero notas/contatos, TODAS as tasks não-privadas + share + mailbox.
-const FLEET_14 = [...TASKS, ...TASKS_SHARE, ...MAILBOX, ...USERS].sort();
+const FLEET_15 = [...TASKS, ...TASKS_SHARE, ...MAILBOX, ...USERS].sort();
 // Robô colaborador: idem MENOS share (link público /s/ = exfiltração sob assigned-only).
-const TASK_WORKER_12 = [...TASKS, ...MAILBOX, ...USERS].sort();
+const TASK_WORKER_13 = [...TASKS, ...MAILBOX, ...USERS].sort();
 
 describe('registerAllTools — snapshot literal por preset (spec 91)', () => {
-  it('sanidade: as famílias somam exatamente 37 tools sem duplicata', () => {
-    expect(ALL_37).toHaveLength(37);
-    expect(new Set(ALL_37).size).toBe(37);
+  it('sanidade: as famílias somam exatamente 38 tools sem duplicata', () => {
+    expect(ALL_38).toHaveLength(38);
+    expect(new Set(ALL_38).size).toBe(38);
   });
 
-  it("preset 'personal-full' (full,private) registra as 37", () => {
-    expect(toolsFor(presetById('personal-full')!.scopes).names).toEqual(ALL_37);
+  it("preset 'personal-full' (full,private) registra as 38", () => {
+    expect(toolsFor(presetById('personal-full')!.scopes).names).toEqual(ALL_38);
   });
 
-  it("preset 'personal' (full) registra as 37", () => {
-    expect(toolsFor(presetById('personal')!.scopes).names).toEqual(ALL_37);
+  it("preset 'personal' (full) registra as 38", () => {
+    expect(toolsFor(presetById('personal')!.scopes).names).toEqual(ALL_38);
   });
 
-  it('sessão OAuth (scopes ausente) = personal-full: 37', () => {
-    expect(toolsFor(undefined).names).toEqual(ALL_37);
+  it('sessão OAuth (scopes ausente) = personal-full: 38', () => {
+    expect(toolsFor(undefined).names).toEqual(ALL_38);
   });
 
   it("preset 'reader' (read) registra as 14 readOnlyHint:true", () => {
@@ -86,12 +86,12 @@ describe('registerAllTools — snapshot literal por preset (spec 91)', () => {
     }
   });
 
-  it("preset 'fleet-worker' registra EXATAMENTE as 14 (tasks + share + mailbox + users)", () => {
-    expect(toolsFor(presetById('fleet-worker')!.scopes).names).toEqual(FLEET_14);
+  it("preset 'fleet-worker' registra EXATAMENTE as 15 (tasks + share + mailbox + users)", () => {
+    expect(toolsFor(presetById('fleet-worker')!.scopes).names).toEqual(FLEET_15);
   });
 
-  it("preset 'task-worker' registra EXATAMENTE as 12 (fleet menos share)", () => {
-    expect(toolsFor(presetById('task-worker')!.scopes).names).toEqual(TASK_WORKER_12);
+  it("preset 'task-worker' registra EXATAMENTE as 13 (fleet menos share)", () => {
+    expect(toolsFor(presetById('task-worker')!.scopes).names).toEqual(TASK_WORKER_13);
   });
 
   it('toda tool registrada sob credencial restrita declara annotations.resource', () => {
