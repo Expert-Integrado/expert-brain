@@ -29,6 +29,8 @@ describe('painel Google Contatos na config', () => {
     expect(html).toContain('id="gc-connect"');
     expect(html).toContain('id="gc-sync"');
     expect(html).toContain('id="gc-labels-section"');
+    expect(html).toContain('id="gc-labels-all"');
+    expect(html).toContain('id="gc-labels-none"');
     // microcopy que fixa o contrato: mão única, Google nunca alterado
     expect(html).toContain('sem alterar o Google');
   });

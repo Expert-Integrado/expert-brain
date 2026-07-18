@@ -641,6 +641,12 @@ export function configPageScript(): string {
       });
     });
 
+    function gcSetAllLabels(checked) {
+      Array.prototype.slice.call(document.querySelectorAll('.gc-label')).forEach(function (c) { c.checked = checked; });
+    }
+    document.getElementById('gc-labels-all').addEventListener('click', function () { gcSetAllLabels(true); });
+    document.getElementById('gc-labels-none').addEventListener('click', function () { gcSetAllLabels(false); });
+
     var gcSaveLabels = document.getElementById('gc-save-labels');
     gcSaveLabels.addEventListener('click', function () {
       var groups = Array.prototype.slice.call(document.querySelectorAll('.gc-label:checked')).map(function (c) { return c.value; });

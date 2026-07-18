@@ -1081,6 +1081,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         </div>
         <div class="adv-section" id="gc-labels-section" hidden>
           <h3>Etiquetas sincronizadas</h3>
+          <div class="row" style="gap:8px;margin-bottom:8px">
+            <button type="button" class="btn btn-ghost btn-sm" id="gc-labels-all">Marcar todas</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="gc-labels-none">Desmarcar todas</button>
+          </div>
           <div id="gc-labels" style="display:flex;flex-direction:column;gap:6px"></div>
           <div class="row" style="margin-top:10px;gap:8px;align-items:center">
             <button type="button" class="btn btn-primary" id="gc-save-labels">Salvar etiquetas</button>
