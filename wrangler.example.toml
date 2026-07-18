@@ -62,7 +62,10 @@ bucket_name = "expert-brain-media"
 # Depois de deploya-lo na MESMA conta, descomente pra ligar as mencoes @contato, a aba
 # Contatos do console e os paineis de integracao. W2W via service binding (sem token no
 # browser; fetch global entre Workers da mesma conta da erro 1042). Complete com os
-# secrets CONTACTS_PROXY_TOKEN / CONTACTS_WRITE_TOKEN (mesmo valor nos dois Workers).
+# secrets CONTACTS_PROXY_TOKEN / CONTACTS_WRITE_TOKEN (mesmo valor nos dois Workers)
+# e adicione ao bloco [vars] acima a URL PUBLICA do seu expert-contacts (o painel do
+# Google Contatos precisa dela pra montar a redirect URI do OAuth):
+#   CONTACTS_PUBLIC_URL = "https://expert-contacts.<seu-subdominio>.workers.dev"
 # [[services]]
 # binding = "CONTACTS"
 # service = "expert-contacts"

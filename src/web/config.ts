@@ -1034,6 +1034,38 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <button type="button" class="btn btn-ghost" id="gc-sync" hidden>Sincronizar agora</button>
             <button type="button" class="btn btn-ghost" id="gc-disconnect" hidden>Desconectar</button>
           </div>
+          <div class="row" id="gc-creds-row" hidden style="gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <span id="gc-creds-label" style="color:var(--text-dim)"></span>
+            <button type="button" class="btn btn-ghost" id="gc-change-client">Trocar credenciais</button>
+            <button type="button" class="btn btn-ghost" id="gc-remove-client" hidden>Remover credenciais</button>
+          </div>
+        </div>
+        <div class="adv-section" id="gc-setup" hidden>
+          <h3>Ativar a conexão com o Google (uma vez só)</h3>
+          <p>O Google exige que cada pessoa crie uma <strong>chave de acesso</strong> na própria conta — é de graça, leva uns 10 minutos e ninguém além de você tem acesso à sua agenda. Siga os passos; cada link abre a página certa do Google em outra aba (entre com a conta Google cujos contatos você quer trazer).</p>
+          <ol style="display:flex;flex-direction:column;gap:12px;padding-left:20px;margin:0 0 12px">
+            <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Criar um projeto</a> — dê um nome qualquer (ex.: <em>Meu Brain</em>) e clique em <strong>Criar</strong>. Depois confira, no topo da tela do Google, se esse projeto ficou selecionado.</li>
+            <li><a href="https://console.cloud.google.com/apis/library/people.googleapis.com" target="_blank" rel="noopener">Ativar o acesso à agenda</a> (People API) — clique em <strong>Ativar</strong>.</li>
+            <li><a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Configurar a tela de permissão</a> — clique em <strong>Primeiros passos</strong>: nome do app (ex.: <em>Meu Brain</em>), seu e-mail como suporte, público <strong>Externo</strong>, seu e-mail de contato, e finalize.</li>
+            <li><a href="https://console.cloud.google.com/auth/clients/create" target="_blank" rel="noopener">Criar a chave de acesso</a> — tipo <strong>Aplicativo da Web</strong>, nome livre. Em <strong>URIs de redirecionamento autorizados</strong>, clique em Adicionar URI e cole exatamente o endereço abaixo, depois clique em Criar:
+              <div class="row" style="gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+                <div id="gc-callback-uri" class="url-box">…</div>
+                <button type="button" data-copy="gc-callback-uri">Copiar endereço</button>
+              </div>
+            </li>
+            <li>O Google mostra o <strong>ID do cliente</strong> e a <strong>chave secreta</strong> da sua chave de acesso. Copie os dois e cole aqui:
+              <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-width:540px">
+                <input type="text" id="gc-client-id" class="input-text" placeholder="ID do cliente — termina com .apps.googleusercontent.com" autocomplete="off" spellcheck="false">
+                <input type="password" id="gc-client-secret" class="input-text" placeholder="Chave secreta — começa com GOCSPX" autocomplete="off">
+                <div class="row" style="gap:8px;align-items:center">
+                  <button type="button" class="btn btn-primary" id="gc-save-client">Salvar credenciais</button>
+                  <span id="gc-setup-status" style="color:var(--text-dim)"></span>
+                </div>
+              </div>
+            </li>
+            <li><a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Publicar o app</a> — clique em <strong>Publicar app</strong> e confirme. <strong>Sem este passo o Google corta a conexão a cada 7 dias</strong> e você teria que reconectar sempre.</li>
+          </ol>
+          <p class="callout-info" style="margin-bottom:0">Na hora de conectar, o Google mostra um aviso de app não verificado — é esperado: o app é seu e só seu. Clique em <strong>Avançado</strong> e depois em <strong>Acessar</strong> pra continuar.</p>
         </div>
         <div class="adv-section" id="gc-labels-section" hidden>
           <h3>Etiquetas sincronizadas</h3>

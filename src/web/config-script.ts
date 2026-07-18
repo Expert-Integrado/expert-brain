@@ -385,6 +385,16 @@ export function configPageScript(): string {
     var gcLabelsSection = document.getElementById('gc-labels-section');
     var gcLabels = document.getElementById('gc-labels');
     var gcLabelsStatus = document.getElementById('gc-labels-status');
+    var gcSetup = document.getElementById('gc-setup');
+    var gcCallbackUri = document.getElementById('gc-callback-uri');
+    var gcClientId = document.getElementById('gc-client-id');
+    var gcClientSecret = document.getElementById('gc-client-secret');
+    var gcSaveClient = document.getElementById('gc-save-client');
+    var gcSetupStatus = document.getElementById('gc-setup-status');
+    var gcCredsRow = document.getElementById('gc-creds-row');
+    var gcCredsLabel = document.getElementById('gc-creds-label');
+    var gcChangeClient = document.getElementById('gc-change-client');
+    var gcRemoveClient = document.getElementById('gc-remove-client');
 
     var gcParam = new URLSearchParams(location.search).get('google');
     if (gcParam) {
@@ -441,10 +451,36 @@ export function configPageScript(): string {
         return;
       }
       if (!st.configured) {
-        setDot('gc-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
-        gcStatusEl.innerHTML = 'Falta configurar as credenciais do Google no servidor de contatos (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).';
+        // Estado inicial de toda instalação: sem chave de acesso ainda. O wizard
+        // dentro do card guia a criação na conta Google da própria pessoa.
+        setDot('gc-dot', 'warn', 'Configuração necessária', 'Abra o card e siga o passo a passo — uma vez só');
+        gcSetup.hidden = false;
+        gcCredsRow.hidden = true;
+        gcConnect.hidden = true;
+        gcSync.hidden = true;
+        gcDisconnect.hidden = true;
+        gcLabelsSection.hidden = true;
+        if (st.callback_uri) gcCallbackUri.textContent = st.callback_uri;
+        if (st.callback_uri && st.callback_uri.indexOf('https://contacts/') === 0) {
+          // Instalação sem a URL pública do serviço de contatos: a URI exibida
+          // sairia errada e o Google recusaria a conexão. Erro de operador, não
+          // do usuário final — a mensagem aponta o conserto pro assistente.
+          gcStatusEl.textContent = 'Quase lá: o endereço público do serviço de contatos não está configurado. Peça ao seu assistente pra definir CONTACTS_PUBLIC_URL no Brain e recarregue esta página antes de seguir os passos.';
+          return;
+        }
+        gcStatusEl.textContent = 'Falta criar a chave de acesso na sua conta Google — siga o passo a passo abaixo (leva uns 10 minutos, uma vez só).';
         return;
       }
+      gcSetup.hidden = true;
+      gcCredsRow.hidden = false;
+      if (st.mode === 'panel') {
+        gcCredsLabel.textContent = 'Chave de acesso salva por aqui' + (st.client_id ? ' (' + st.client_id + ')' : '') + '.';
+        gcRemoveClient.hidden = false;
+      } else {
+        gcCredsLabel.textContent = 'Chave de acesso configurada direto no servidor.';
+        gcRemoveClient.hidden = true;
+      }
+      gcChangeClient.hidden = false;
       setDot('gc-dot', st.connected ? true : 'warn', st.connected ? 'Configurado' : 'Não conectado', st.connected ? '' : 'Clique no card e conecte sua conta Google');
       gcConnect.hidden = !!st.connected;
       gcSync.hidden = !st.connected;
@@ -469,11 +505,14 @@ export function configPageScript(): string {
     // round-trip no primeiro paint quando o painel está fechado. Se o deep-link
     // por hash já abriu esta seção (resolveHash rodou acima), dispara na hora.
     // Flag garante no máximo 1 chamada mesmo fechando/reabrindo depois.
+    function gcRefresh() {
+      gcJson('/app/config/google/status').then(gcRender);
+    }
     var gcLoaded = false;
     function gcLoad() {
       if (gcLoaded) return;
       gcLoaded = true;
-      gcJson('/app/config/google/status').then(gcRender);
+      gcRefresh();
     }
     integLoaders.push(gcLoad);
     if (gcRoot.open) gcLoad();
@@ -485,6 +524,62 @@ export function configPageScript(): string {
         if (data.ok && data.auth_url) { location.href = data.auth_url; return; }
         gcConnect.disabled = false;
         gcStatusEl.textContent = 'Não deu pra iniciar a conexão (' + (data.error || data._status) + ').';
+      });
+    });
+
+    // Wizard: salvar a chave de acesso criada no console do Google. O campo da
+    // chave secreta é limpo após o save — o valor não fica pendurado no DOM.
+    gcSaveClient.addEventListener('click', function () {
+      var id = gcClientId.value.trim();
+      var secret = gcClientSecret.value.trim();
+      if (!/\.apps\.googleusercontent\.com$/.test(id)) {
+        gcSetupStatus.textContent = 'O ID do cliente parece incompleto — ele termina com .apps.googleusercontent.com. Copie o valor inteiro.';
+        return;
+      }
+      if (!secret) {
+        gcSetupStatus.textContent = 'Falta colar a chave secreta.';
+        return;
+      }
+      gcSaveClient.disabled = true;
+      gcSetupStatus.textContent = 'Salvando…';
+      gcJson('/app/config/google/client', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ client_id: id, client_secret: secret }),
+      }).then(function (r) {
+        gcSaveClient.disabled = false;
+        if (!r.ok) {
+          gcSetupStatus.textContent = 'Não deu pra salvar (' + (r.error || r._status) + '). Confira se copiou os dois valores inteiros.';
+          return;
+        }
+        gcClientId.value = '';
+        gcClientSecret.value = '';
+        gcSetupStatus.textContent = '';
+        gcFlash.hidden = false;
+        gcFlash.style.color = '';
+        gcFlash.textContent = r.disconnected
+          ? 'Credenciais trocadas. A conexão anterior foi desfeita — clique em "Conectar ao Google" pra reconectar.'
+          : 'Credenciais salvas! Agora clique em "Conectar ao Google".';
+        gcRefresh();
+      });
+    });
+
+    gcChangeClient.addEventListener('click', function () {
+      gcSetup.hidden = false;
+      gcChangeClient.hidden = true;
+    });
+
+    gcRemoveClient.addEventListener('click', function () {
+      askConfirm({ title: 'Remover as credenciais do Google?', body: 'A conexão com a agenda é desfeita na hora; os contatos já sincronizados FICAM no vault. Pra usar de novo é só refazer o passo a passo.', verb: 'Remover' }).then(function (go) {
+        if (!go) return;
+        gcJson('/app/config/google/client', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ clear: true }),
+        }).then(function () {
+          location.href = '/app/config#google-contatos';
+          location.reload();
+        });
       });
     });
 

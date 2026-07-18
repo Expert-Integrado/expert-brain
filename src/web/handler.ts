@@ -345,6 +345,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/google/labels' && req.method === 'GET') return handleContactsGoogleGet(req, env, 'labels');
   if (path === '/app/config/google/connect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'connect');
   if (path === '/app/config/google/config' && req.method === 'POST') return handleContactsGooglePost(req, env, 'config');
+  if (path === '/app/config/google/client' && req.method === 'POST') return handleContactsGooglePost(req, env, 'client');
   if (path === '/app/config/google/sync' && req.method === 'POST') return handleContactsGooglePost(req, env, 'sync');
   if (path === '/app/config/google/disconnect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'disconnect');
   // WhatsApp Agent grupos (painel em /app/config#whatsapp-grupos): mesmo desenho

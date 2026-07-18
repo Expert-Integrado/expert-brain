@@ -32,17 +32,51 @@ describe('painel Google Contatos na config', () => {
     expect(html).toContain('sem alterar o Google');
   });
 
-  it('bundle da config carrega o wiring do painel', async () => {
+  it('wizard de configuração pela tela: passos com deep links, URI de copiar e campos de credencial', async () => {
+    const res = await SELF.fetch('https://x.test/app/config', { headers: { cookie: await cookie() } });
+    const html = await res.text();
+    expect(html).toContain('id="gc-setup"');
+    expect(html).toContain('id="gc-callback-uri"');
+    expect(html).toContain('data-copy="gc-callback-uri"');
+    expect(html).toContain('id="gc-client-id"');
+    expect(html).toContain('id="gc-client-secret"');
+    expect(html).toContain('id="gc-save-client"');
+    expect(html).toContain('id="gc-creds-row"');
+    // deep links pro console do Google — os 4 passos que acontecem lá
+    expect(html).toContain('console.cloud.google.com/projectcreate');
+    expect(html).toContain('console.cloud.google.com/apis/library/people.googleapis.com');
+    expect(html).toContain('console.cloud.google.com/auth/clients/create');
+    expect(html).toContain('console.cloud.google.com/auth/audience');
+    // a chave secreta entra em campo de senha (nunca visível na tela)
+    expect(html).toContain('type="password" id="gc-client-secret"');
+    // avisos que evitam os 2 tropeços clássicos: app não publicado e tela de não verificado
+    expect(html).toContain('Publicar app');
+    expect(html).toContain('app não verificado');
+  });
+
+  it('bundle da config carrega o wiring do painel (inclusive a rota de credencial)', async () => {
     const res = await SELF.fetch('https://x.test/app/config/bundle.js');
     const js = await res.text();
     expect(js).toContain('/app/config/google/status');
+    expect(js).toContain('/app/config/google/client');
+    expect(js).toContain('gc-callback-uri');
     expect(js).toContain('google-contatos');
+  });
+
+  it('copy 100% leiga: zero jargão de servidor no painel e no bundle', async () => {
+    const res = await SELF.fetch('https://x.test/app/config', { headers: { cookie: await cookie() } });
+    const html = await res.text();
+    const bundle = await (await SELF.fetch('https://x.test/app/config/bundle.js')).text();
+    for (const jargon of ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'wrangler secret']) {
+      expect(html, `html não pode conter ${jargon}`).not.toContain(jargon);
+      expect(bundle, `bundle não pode conter ${jargon}`).not.toContain(jargon);
+    }
   });
 });
 
 describe('proxies /app/config/google/* — gate de sessão + degradação graciosa', () => {
   const gets = ['/app/config/google/status', '/app/config/google/labels'];
-  const posts = ['/app/config/google/connect', '/app/config/google/config', '/app/config/google/sync', '/app/config/google/disconnect'];
+  const posts = ['/app/config/google/connect', '/app/config/google/config', '/app/config/google/client', '/app/config/google/sync', '/app/config/google/disconnect'];
 
   it('sem sessão → 302 (GET) / bloqueado (POST), nunca tenta o binding', async () => {
     for (const p of gets) {

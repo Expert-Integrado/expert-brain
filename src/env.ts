@@ -34,6 +34,11 @@ export interface Env {
   // embute o grafo de contatos puxando /app/graph/{data,meta}?vault=contacts por trás.
   CONTACTS?: Fetcher;
   CONTACTS_PROXY_TOKEN?: string;
+  // URL PÚBLICA do Worker expert-contacts (wrangler var). O service binding ignora
+  // o hostname da URL, mas o contacts deriva a origin do request pra montar a
+  // redirect URI do OAuth do Google — sem esta var o proxy manda "https://contacts"
+  // e o Google recusa com redirect_uri_mismatch.
+  CONTACTS_PUBLIC_URL?: string;
   // Bearer de ESCRITA escopado (spec 50-console-v2/57): o Brain usa pra registrar
   // interação (POST /app/contacts/entity/event) via service binding CONTACTS.
   // DIFERENTE do CONTACTS_PROXY_TOKEN (read-only) — o contacts autoriza esse token

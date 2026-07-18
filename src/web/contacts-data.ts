@@ -340,9 +340,19 @@ const GOOGLE_GET_PATHS = { status: '/google/status', labels: '/google/labels' } 
 const GOOGLE_POST_PATHS = {
   connect: '/google/connect-start',
   config: '/google/config',
+  client: '/google/client',
   sync: '/google/sync',
   disconnect: '/google/disconnect',
 } as const;
+
+// Base das requests do proxy Google: a URL PÚBLICA do contacts, não o host fake
+// "https://contacts". O service binding despacha pelo binding e ignora o hostname,
+// mas o contacts deriva a origin do request pra montar a redirect URI do OAuth e a
+// callback_uri do status — com host fake o Google recusa (redirect_uri_mismatch).
+function contactsPublicBase(env: Env): string {
+  if (!env.CONTACTS_PUBLIC_URL) return 'https://contacts';
+  try { return new URL(env.CONTACTS_PUBLIC_URL).origin; } catch { return 'https://contacts'; }
+}
 
 export async function handleContactsGoogleGet(req: Request, env: Env, action: keyof typeof GOOGLE_GET_PATHS): Promise<Response> {
   const session = await requireSession(req, env);
@@ -352,7 +362,7 @@ export async function handleContactsGoogleGet(req: Request, env: Env, action: ke
       status: 503, headers: { 'content-type': 'application/json' },
     });
   }
-  const res = await env.CONTACTS.fetch(new Request(`https://contacts${GOOGLE_GET_PATHS[action]}`, {
+  const res = await env.CONTACTS.fetch(new Request(`${contactsPublicBase(env)}${GOOGLE_GET_PATHS[action]}`, {
     method: 'GET',
     headers: { authorization: `Bearer ${env.CONTACTS_PROXY_TOKEN}` },
   }));
@@ -373,7 +383,7 @@ export async function handleContactsGooglePost(req: Request, env: Env, action: k
   }
   let bodyText: string;
   try { bodyText = await req.text(); } catch { bodyText = ''; }
-  const res = await env.CONTACTS.fetch(new Request(`https://contacts${GOOGLE_POST_PATHS[action]}`, {
+  const res = await env.CONTACTS.fetch(new Request(`${contactsPublicBase(env)}${GOOGLE_POST_PATHS[action]}`, {
     method: 'POST',
     headers: { authorization: `Bearer ${env.CONTACTS_WRITE_TOKEN}`, 'content-type': 'application/json' },
     body: bodyText || '{}',
