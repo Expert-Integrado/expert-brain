@@ -343,6 +343,7 @@ const GOOGLE_POST_PATHS = {
   client: '/google/client',
   sync: '/google/sync',
   disconnect: '/google/disconnect',
+  write_back: '/google/write-back',
 } as const;
 
 // Base das requests do proxy Google: a URL PÚBLICA do contacts, não o host fake

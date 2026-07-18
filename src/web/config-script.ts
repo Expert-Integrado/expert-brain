@@ -396,6 +396,10 @@ export function configPageScript(): string {
     var gcChangeClient = document.getElementById('gc-change-client');
     var gcRemoveClient = document.getElementById('gc-remove-client');
     var gcAgentPrompt = document.getElementById('gc-agent-prompt');
+    var gcWbSection = document.getElementById('gc-writeback-section');
+    var gcWbToggle = document.getElementById('gc-write-back');
+    var gcWbStatus = document.getElementById('gc-writeback-status');
+    var gcReauth = document.getElementById('gc-reauth');
 
     // Instrução pronta pro assistente de IA da pessoa executar o wizard sozinho
     // num navegador automatizado (Playwright etc.). Montada em runtime porque
@@ -483,6 +487,7 @@ export function configPageScript(): string {
         gcSync.hidden = true;
         gcDisconnect.hidden = true;
         gcLabelsSection.hidden = true;
+        gcWbSection.hidden = true;
         if (st.callback_uri) {
           gcCallbackUri.textContent = st.callback_uri;
           gcAgentPrompt.textContent = gcBuildAgentPrompt(st.callback_uri);
@@ -512,10 +517,12 @@ export function configPageScript(): string {
       gcSync.hidden = !st.connected;
       gcDisconnect.hidden = !st.connected;
       gcLabelsSection.hidden = !st.connected;
+      gcWbSection.hidden = !st.connected;
       if (!st.connected) {
         gcStatusEl.textContent = 'Não conectado. Clique em "Conectar ao Google" — abre a tela de permissão da sua conta.';
         return;
       }
+      gcRenderWriteBack(st);
       var parts = ['Conectado', st.linked_count + ' contatos vinculados'];
       if (st.groups && st.groups.length) parts.push(st.groups.length + ' etiqueta(s) configurada(s)');
       else parts.push('nenhuma etiqueta configurada ainda (o sync fica parado até salvar)');
@@ -526,6 +533,60 @@ export function configPageScript(): string {
       gcStatusEl.textContent = parts.join(' · ') + '.';
       gcRenderLabels(st.groups || []);
     }
+
+    // Estados do write-back: OFF (padrão, nada sai daqui) / ON com escrita
+    // autorizada / ON aguardando reautorização (o grant atual é só leitura — o
+    // botão refaz o consent do Google, agora pedindo também a escrita).
+    function gcRenderWriteBack(st) {
+      var enabled = !!(st.write_back && st.write_back.enabled);
+      gcWbToggle.checked = enabled;
+      if (!enabled) {
+        gcReauth.hidden = true;
+        gcWbStatus.textContent = 'Desligado — nada é alterado na sua agenda.';
+        return;
+      }
+      if (!st.can_write) {
+        gcReauth.hidden = false;
+        gcWbStatus.textContent = 'Quase lá: falta o Google autorizar a escrita. Clique em "Autorizar a escrita no Google" — é a mesma tela de permissão de antes, agora pedindo também pra atualizar contatos.';
+        return;
+      }
+      gcReauth.hidden = true;
+      var s = 'Ligado. Editar um contato vinculado aqui atualiza a agenda do Google.';
+      if (st.push_pending) s += ' ' + st.push_pending + ' atualização(ões) na fila de envio.';
+      if (st.push_failures) s += ' Últimos envios falharam — o sistema tenta de novo sozinho no próximo ciclo.';
+      if (st.last_push && st.last_push.at) s += ' Último envio: ' + new Date(st.last_push.at).toLocaleString() + '.';
+      gcWbStatus.textContent = s;
+    }
+
+    gcWbToggle.addEventListener('change', function () {
+      var enabled = gcWbToggle.checked;
+      gcWbToggle.disabled = true;
+      gcWbStatus.textContent = 'Salvando…';
+      gcJson('/app/config/google/write-back', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ enabled: enabled }),
+      }).then(function (r) {
+        gcWbToggle.disabled = false;
+        if (!r.ok) {
+          gcWbToggle.checked = !enabled;
+          gcWbStatus.textContent = 'Não deu pra salvar (' + (r.error || r._status) + ').';
+          return;
+        }
+        gcRefresh();
+      });
+    });
+
+    // Reautorizar = o MESMO fluxo do conectar: o servidor já escolhe o escopo
+    // maior porque o toggle está ligado; o Google só re-pede o consentimento.
+    gcReauth.addEventListener('click', function () {
+      gcReauth.disabled = true;
+      gcJson('/app/config/google/connect', { method: 'POST' }).then(function (data) {
+        if (data.ok && data.auth_url) { location.href = data.auth_url; return; }
+        gcReauth.disabled = false;
+        gcWbStatus.textContent = 'Não deu pra iniciar a autorização (' + (data.error || data._status) + ').';
+      });
+    });
 
     // Adia o fetch de status pro 1º OPEN do <details> (evento toggle) — evita
     // round-trip no primeiro paint quando o painel está fechado. Se o deep-link

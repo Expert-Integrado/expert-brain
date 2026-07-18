@@ -1021,12 +1021,12 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       ${connCardSummary({
         icon: ICON_GOOGLE,
         title: 'Google Contatos',
-        sub: 'Etiquetas escolhidas da agenda viram contatos — sem alterar o Google',
+        sub: 'Etiquetas escolhidas da agenda viram contatos — e, se você quiser, suas edições atualizam a agenda',
         dotId: 'gc-dot',
       })}
       <div class="adv-body">
         <div class="adv-section">
-          <p>Só entram os contatos das <strong>etiquetas que você escolher</strong> (nunca a agenda inteira). Nome, telefone, e-mail e aniversário vêm do Google; empresa e cargo só preenchem quando estão vazios aqui; observações e categorias locais nunca são tocadas. Apagar no Google <strong>não</strong> apaga o contato do vault. Roda sozinho 1x por dia.</p>
+          <p>Só entram os contatos das <strong>etiquetas que você escolher</strong> (nunca a agenda inteira). Nome, telefone, e-mail e aniversário vêm do Google; empresa e cargo só preenchem quando estão vazios aqui; observações e categorias locais nunca são tocadas. Apagar no Google <strong>não</strong> apaga o contato do vault. Roda sozinho 1x por dia. Por padrão nada é alterado na sua agenda — a atualização no sentido contrário só acontece se você ligar a opção <strong>Atualizar a agenda do Google</strong> abaixo.</p>
           <p id="gc-flash" class="callout-info" hidden></p>
           <p id="gc-status" style="color:var(--text-dim)">Carregando estado da conexão…</p>
           <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -1078,6 +1078,18 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             <li><a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Publicar o app</a> — clique em <strong>Publicar app</strong> e confirme. <strong>Sem este passo o Google corta a conexão a cada 7 dias</strong> e você teria que reconectar sempre.</li>
           </ol>
           <p class="callout-info" style="margin-bottom:0">Na hora de conectar, o Google mostra um aviso de app não verificado — é esperado: o app é seu e só seu. Clique em <strong>Avançado</strong> e depois em <strong>Acessar</strong> pra continuar.</p>
+        </div>
+        <div class="adv-section" id="gc-writeback-section" hidden>
+          <h3>Atualizar a agenda do Google</h3>
+          <p style="margin-top:0">Desligado (padrão), nada aqui altera sua agenda. Ligado, quando você <strong>editar um contato vinculado</strong> aqui (nome, telefone, e-mail, aniversário, empresa ou cargo), a mudança também é gravada no contato correspondente do Google — assim fica salvo lá também. Só esses campos saem daqui: <strong>dossiê, observações e categorias nunca vão pro Google</strong>, e contato criado aqui não é criado lá. Telefones e e-mails extras que o contato tenha na agenda ficam intactos.</p>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="gc-write-back">
+            <span>Atualizar a agenda do Google quando eu editar um contato aqui</span>
+          </label>
+          <p id="gc-writeback-status" style="color:var(--text-dim);margin-bottom:0"></p>
+          <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="btn btn-primary" id="gc-reauth" hidden>Autorizar a escrita no Google</button>
+          </div>
         </div>
         <div class="adv-section" id="gc-labels-section" hidden>
           <h3>Etiquetas sincronizadas</h3>

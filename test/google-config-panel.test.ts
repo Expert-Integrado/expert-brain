@@ -31,8 +31,22 @@ describe('painel Google Contatos na config', () => {
     expect(html).toContain('id="gc-labels-section"');
     expect(html).toContain('id="gc-labels-all"');
     expect(html).toContain('id="gc-labels-none"');
-    // microcopy que fixa o contrato: mão única, Google nunca alterado
-    expect(html).toContain('sem alterar o Google');
+    // microcopy que fixa o contrato: pull não altera a agenda; a volta é opt-in
+    expect(html).toContain('Por padrão nada é alterado na sua agenda');
+  });
+
+  it('seção do write-back: toggle default OFF, status e botão de reautorização', async () => {
+    const res = await SELF.fetch('https://x.test/app/config', { headers: { cookie: await cookie() } });
+    const html = await res.text();
+    expect(html).toContain('id="gc-writeback-section"');
+    expect(html).toContain('id="gc-write-back"');
+    expect(html).toContain('id="gc-writeback-status"');
+    expect(html).toContain('id="gc-reauth"');
+    // contrato na copy: só identidade sai; dossiê nunca; criação não
+    expect(html).toContain('dossiê, observações e categorias nunca vão pro Google');
+    // a seção e o botão nascem escondidos (só aparecem conectado / precisando reautorizar)
+    expect(html).toMatch(/id="gc-writeback-section" hidden/);
+    expect(html).toMatch(/id="gc-reauth" hidden/);
   });
 
   it('wizard de configuração pela tela: passos com deep links, URI de copiar e campos de credencial', async () => {
@@ -73,6 +87,7 @@ describe('painel Google Contatos na config', () => {
     const js = await res.text();
     expect(js).toContain('/app/config/google/status');
     expect(js).toContain('/app/config/google/client');
+    expect(js).toContain('/app/config/google/write-back');
     expect(js).toContain('gc-callback-uri');
     expect(js).toContain('google-contatos');
   });
@@ -90,7 +105,7 @@ describe('painel Google Contatos na config', () => {
 
 describe('proxies /app/config/google/* — gate de sessão + degradação graciosa', () => {
   const gets = ['/app/config/google/status', '/app/config/google/labels'];
-  const posts = ['/app/config/google/connect', '/app/config/google/config', '/app/config/google/client', '/app/config/google/sync', '/app/config/google/disconnect'];
+  const posts = ['/app/config/google/connect', '/app/config/google/config', '/app/config/google/client', '/app/config/google/sync', '/app/config/google/disconnect', '/app/config/google/write-back'];
 
   it('sem sessão → 302 (GET) / bloqueado (POST), nunca tenta o binding', async () => {
     for (const p of gets) {

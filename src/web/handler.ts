@@ -348,6 +348,7 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/config/google/client' && req.method === 'POST') return handleContactsGooglePost(req, env, 'client');
   if (path === '/app/config/google/sync' && req.method === 'POST') return handleContactsGooglePost(req, env, 'sync');
   if (path === '/app/config/google/disconnect' && req.method === 'POST') return handleContactsGooglePost(req, env, 'disconnect');
+  if (path === '/app/config/google/write-back' && req.method === 'POST') return handleContactsGooglePost(req, env, 'write_back');
   // WhatsApp Agent grupos (painel em /app/config#whatsapp-grupos): mesmo desenho
   // do Google — leitura de estado via proxy token, allowlist via write token.
   if (path === '/app/config/whatsapp/status' && req.method === 'GET') return handleContactsWhatsappStatus(req, env);
