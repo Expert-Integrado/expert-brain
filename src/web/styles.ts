@@ -526,6 +526,11 @@ export const COMPONENTS_CSS = `
   box-shadow: var(--shadow-1);
 }
 
+/* O atributo hidden SEMPRE vence: qualquer classe com display próprio (ex.: .btn
+   inline-flex) atropelava o display:none do UA e elementos escondidos por JS
+   apareciam (incidente do card Google Contatos, 18/07). */
+[hidden] { display: none !important; }
+
 /* ---- Botões: hierarquia única (primary > secondary > ghost; danger; -sm) ---- */
 .btn {
   display: inline-flex;

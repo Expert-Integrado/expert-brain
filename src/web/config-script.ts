@@ -549,7 +549,9 @@ export function configPageScript(): string {
       gcJson('/app/config/google/connect', { method: 'POST' }).then(function (data) {
         if (data.ok && data.auth_url) { location.href = data.auth_url; return; }
         gcConnect.disabled = false;
-        gcStatusEl.textContent = 'Não deu pra iniciar a conexão (' + (data.error || data._status) + ').';
+        gcStatusEl.textContent = data.error === 'google_client_not_configured'
+          ? 'Antes de conectar, falta salvar as credenciais: siga o passo a passo abaixo e clique em "Salvar credenciais".'
+          : 'Não deu pra iniciar a conexão (' + (data.error || data._status) + ').';
       });
     });
 
