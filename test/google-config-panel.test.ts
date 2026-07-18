@@ -2,6 +2,7 @@ import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
 import { signSession } from '../src/web/session.js';
+import { configPageScript } from '../src/web/config-script.js';
 
 // Painel "Google Contatos" em /app/config#google-contatos (expert-contacts
 // specs/google-contacts-sync.md). Mesmo padrão do contacts-entity-event-proxy:
@@ -55,6 +56,14 @@ describe('painel Google Contatos na config', () => {
     // avisos que evitam os 2 tropeços clássicos: app não publicado e tela de não verificado
     expect(html).toContain('Publicar app');
     expect(html).toContain('app não verificado');
+  });
+
+  it('bundle da config é JS sintaticamente válido (parse real, não só containment)', () => {
+    // Regressão do incidente 18/07: config-script.ts é um TEMPLATE LITERAL — um
+    // '\n' sem escape dobrado vira quebra de linha REAL no JS servido e mata o
+    // script da página inteira (abas, ícones, copiar). Containment não pega isso;
+    // new Function() parseia o código sem executar.
+    expect(() => new Function(configPageScript())).not.toThrow();
   });
 
   it('bundle da config carrega o wiring do painel (inclusive a rota de credencial)', async () => {

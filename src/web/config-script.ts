@@ -416,7 +416,7 @@ export function configPageScript(): string {
         '8. Clique em "Conectar ao Google" (id gc-connect). Na tela do Google eu escolho a conta e autorizo; no aviso de app não verificado, clique em Avançado e depois em Acessar. De volta ao painel, me pergunte quais etiquetas sincronizar, marque, clique em "Salvar etiquetas" e depois em "Sincronizar agora".',
         '',
         'Se alguma tela do Google estiver diferente do descrito, adapte — o objetivo de cada passo está dito. Prova final: o card Google Contatos mostrando "Conectado" com contatos vinculados.',
-      ].join('\n');
+      ].join('\\n');
     }
 
     var gcParam = new URLSearchParams(location.search).get('google');
@@ -558,7 +558,7 @@ export function configPageScript(): string {
     gcSaveClient.addEventListener('click', function () {
       var id = gcClientId.value.trim();
       var secret = gcClientSecret.value.trim();
-      if (!/\.apps\.googleusercontent\.com$/.test(id)) {
+      if (!/\\.apps\\.googleusercontent\\.com$/.test(id)) {
         gcSetupStatus.textContent = 'O ID do cliente parece incompleto — ele termina com .apps.googleusercontent.com. Copie o valor inteiro.';
         return;
       }
