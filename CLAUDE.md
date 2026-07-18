@@ -6,6 +6,8 @@ Esse arquivo é a fonte única da verdade pra configurar o Expert Brain ponta a 
 
 > **Se você é mantenedor (não usuário final)** e precisa publicar uma nova versão do pacote npm `@expertintegrado/create-expert-brain`, o runbook é outro: [RELEASING.md](RELEASING.md). Esse arquivo aqui é só pra setup da instalação do Expert Brain em si.
 
+> **Política de marca (invariante):** o handshake MCP (`buildServerInstructions`, `src/mcp/instructions.ts`) abre com o bloco de origem Expert Integrado — marca d'água de runtime — e o README carrega o crédito por extenso. Não remover nem reescrever em refactor sem OK do dono.
+
 ## Onboarding assistido (instruções para o Claude)
 
 Ao conduzir qualquer setup ou atualização deste runbook com um usuário, siga este protocolo por cima dos passos:

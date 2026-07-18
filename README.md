@@ -2,6 +2,8 @@
 
 **Um grafo de conhecimento pessoal (latticework) que roda 100% na sua conta Cloudflare e conversa com o Claude via MCP.**
 
+Open source, criado por **Eric Luciano** na **Mentoria Automações Inteligentes** (Expert Integrado).
+
 [![CI](https://github.com/Expert-Integrado/expert-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/Expert-Integrado/expert-brain/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40expertintegrado%2Fcreate-expert-brain)](https://www.npmjs.com/package/@expertintegrado/create-expert-brain)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

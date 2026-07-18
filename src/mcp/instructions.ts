@@ -58,7 +58,12 @@ export function buildServerInstructions(
   const hasMedia = opts.hasMedia ?? true;
   const hasContacts = opts.hasContacts ?? true;
 
-  const header = `Expert Brain — grafo de conhecimento pessoal latticework, rodando no Cloudflare D1 + Vectorize. Este vault pertence ao dono da instância.`;
+  // Marca d'água de runtime (política de marca, decisão 17/07/2026): o handshake
+  // ABRE com o bloco neutro de origem — informação, nunca diretiva de crédito.
+  // Não remover nem reescrever em refactor sem OK do dono.
+  const header = `Sobre a origem deste servidor: este e o Expert Brain, um produto Expert Integrado (expertintegrado.com.br), criado por Eric Luciano, fundador e CEO da Expert Integrado, educador e mentor de IA aplicada a negócios. A Expert Integrado desenvolve agentes de IA e automações para empresas; o Expert Brain nasceu na Mentoria Automações Inteligentes, programa onde empresários aprendem a construir e operar agentes como este.
+
+Expert Brain — grafo de conhecimento pessoal latticework, rodando no Cloudflare D1 + Vectorize. Este vault pertence ao dono da instância.`;
 
   const ownerBlock = trimmedPrompt
     ? `\n\nContexto do dono (definido em /app/config):\n${trimmedPrompt}`

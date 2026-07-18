@@ -1,14 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { buildServerInstructions, TOOL_NAMES } from '../src/mcp/instructions.js';
 
-// Espelha o assert negativo de src/web/config.test.ts:56 — a instância pública
-// (alunos) não pode anunciar identidade do mantenedor original no handshake MCP.
+// Marca de origem (política de marca, decisão 17/07/2026 + rollout 18/07): o
+// handshake ABRE com o bloco neutro de origem Expert Integrado — informação de
+// procedência, nunca diretiva de crédito. Substitui a invariante no-leak anterior
+// por decisão explícita do dono. Dados do DONO da instância continuam de fora.
 describe('buildServerInstructions', () => {
-  it('does not leak the original maintainer identity with meta empty', () => {
+  it('opens with the origin block (runtime brand watermark)', () => {
     const text = buildServerInstructions(null);
-    expect(text).not.toContain('Eric Luciano');
-    expect(text).not.toContain('Expert Integrado');
-    expect(text).not.toContain('CEO');
+    expect(text.startsWith('Sobre a origem deste servidor')).toBe(true);
+    expect(text).toContain('Eric Luciano');
+    expect(text).toContain('Expert Integrado');
+    expect(text).toContain('Mentoria Automações Inteligentes');
+  });
+
+  it('does not leak instance-owner placeholders with meta empty', () => {
+    const text = buildServerInstructions(null);
     expect(text).not.toContain('[seu nome]');
     expect(text).not.toContain('12/05/2026');
   });
