@@ -411,9 +411,9 @@ export function configPageScript(): string {
         '4. Abra https://console.cloud.google.com/auth/clients/create: tipo Aplicativo da Web, nome livre. Em "URIs de redirecionamento autorizados", adicione EXATAMENTE esta URI e clique em Criar:',
         '   ' + callbackUri,
         '5. Copie o ID do cliente e a Chave secreta exibidos (ou baixe o JSON e leia de lá). NUNCA cole esses valores no chat nem em arquivo — use-os só pra preencher campos no navegador.',
-        '6. Abra https://console.cloud.google.com/auth/audience e clique em Publicar app (confirme). Obrigatório: sem isso o Google corta a conexão a cada 7 dias.',
+        '6. Abra https://console.cloud.google.com/auth/audience e clique em Publicar app (confirme). SÓ marque este passo como feito depois de VALIDAR que o status virou "Em produção" (a Visão geral não pode mais dizer "Status de teste") — em teste o Google corta a conexão a cada 7 dias e recusa qualquer conta que não seja usuário de teste.',
         '7. Abra ' + brainUrl + ' (se pedir login, me passe o controle). No card Google Contatos, preencha "ID do cliente" (campo com id gc-client-id) e "Chave secreta" (id gc-client-secret) e clique em "Salvar credenciais" (id gc-save-client). Aguarde a confirmação.',
-        '8. Clique em "Conectar ao Google" (id gc-connect). Na tela do Google eu escolho a conta e autorizo; no aviso de app não verificado, clique em Avançado e depois em Acessar. De volta ao painel, me pergunte quais etiquetas sincronizar, marque, clique em "Salvar etiquetas" e depois em "Sincronizar agora".',
+        '8. Clique em "Conectar ao Google" (id gc-connect). Na tela do Google eu escolho a conta e autorizo — a conta dos CONTATOS pode ser diferente da conta dona do app (com o app publicado, qualquer conta conecta). No aviso de app não verificado, clique em Avançado e depois em Acessar. De volta ao painel, me pergunte quais etiquetas sincronizar, marque, clique em "Salvar etiquetas" e depois em "Sincronizar agora".',
         '',
         'Se alguma tela do Google estiver diferente do descrito, adapte — o objetivo de cada passo está dito. Prova final: o card Google Contatos mostrando "Conectado" com contatos vinculados.',
       ].join('\\n');
