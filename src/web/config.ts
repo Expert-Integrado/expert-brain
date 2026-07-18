@@ -1042,7 +1042,19 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
         </div>
         <div class="adv-section" id="gc-setup" hidden>
           <h3>Ativar a conexão com o Google (uma vez só)</h3>
-          <p>O Google exige que cada pessoa crie uma <strong>chave de acesso</strong> na própria conta — é de graça, leva uns 10 minutos e ninguém além de você tem acesso à sua agenda. Siga os passos; cada link abre a página certa do Google em outra aba (entre com a conta Google cujos contatos você quer trazer).</p>
+          <p>O Google exige que cada pessoa crie uma <strong>chave de acesso</strong> na própria conta — é de graça, leva uns 10 minutos e ninguém além de você tem acesso à sua agenda.</p>
+          <div class="callout-info" style="margin-bottom:12px">
+            <strong>Atalho: deixe seu assistente de IA clicar por você.</strong> Se você usa um assistente que controla o navegador (Claude Code com Playwright, por exemplo), copie a instrução pronta e cole lá — ele executa todos os passos sozinho e só pede o seu login do Google na hora certa.
+            <div class="row" style="gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+              <button type="button" class="btn btn-primary" data-copy="gc-agent-prompt">Copiar instrução pro assistente</button>
+              <span style="color:var(--text-dim)">ou siga os passos manuais abaixo</span>
+            </div>
+            <details style="margin-top:8px">
+              <summary>Ver a instrução</summary>
+              <pre id="gc-agent-prompt" style="white-space:pre-wrap;overflow-x:auto;margin:8px 0 0;font-size:12px;line-height:1.5"></pre>
+            </details>
+          </div>
+          <p>Fazendo na mão: siga os passos; cada link abre a página certa do Google em outra aba (entre com a conta Google cujos contatos você quer trazer).</p>
           <ol style="display:flex;flex-direction:column;gap:12px;padding-left:20px;margin:0 0 12px">
             <li><a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Criar um projeto</a> — dê um nome qualquer (ex.: <em>Meu Brain</em>) e clique em <strong>Criar</strong>. Depois confira, no topo da tela do Google, se esse projeto ficou selecionado.</li>
             <li><a href="https://console.cloud.google.com/apis/library/people.googleapis.com" target="_blank" rel="noopener">Ativar o acesso à agenda</a> (People API) — clique em <strong>Ativar</strong>.</li>

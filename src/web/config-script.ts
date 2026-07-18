@@ -395,6 +395,29 @@ export function configPageScript(): string {
     var gcCredsLabel = document.getElementById('gc-creds-label');
     var gcChangeClient = document.getElementById('gc-change-client');
     var gcRemoveClient = document.getElementById('gc-remove-client');
+    var gcAgentPrompt = document.getElementById('gc-agent-prompt');
+
+    // Instrução pronta pro assistente de IA da pessoa executar o wizard sozinho
+    // num navegador automatizado (Playwright etc.). Montada em runtime porque
+    // depende da callback_uri desta instalação (vem do status).
+    function gcBuildAgentPrompt(callbackUri) {
+      var brainUrl = location.origin + '/app/config#google-contatos';
+      return [
+        'Crie a credencial do Google pra integração Google Contatos do meu Brain, dirigindo o navegador você mesmo (Playwright ou outro navegador que você controle). O login é sempre MEU: quando aparecer tela de login do Google, me passe o controle (nunca peça senha no chat) e retome depois. Use a conta Google cujos contatos eu quero trazer. Valide cada passo antes de seguir pro próximo.',
+        '',
+        '1. Abra https://console.cloud.google.com/projectcreate e crie um projeto (nome livre, ex.: Meu Brain). Aguarde a criação terminar e confirme que ele ficou selecionado no topo da tela.',
+        '2. Abra https://console.cloud.google.com/apis/library/people.googleapis.com e clique em Ativar.',
+        '3. Abra https://console.cloud.google.com/auth/overview e clique em Primeiros passos: nome do app (ex.: Meu Brain), meu e-mail como suporte, público Externo, meu e-mail de contato; conclua.',
+        '4. Abra https://console.cloud.google.com/auth/clients/create: tipo Aplicativo da Web, nome livre. Em "URIs de redirecionamento autorizados", adicione EXATAMENTE esta URI e clique em Criar:',
+        '   ' + callbackUri,
+        '5. Copie o ID do cliente e a Chave secreta exibidos (ou baixe o JSON e leia de lá). NUNCA cole esses valores no chat nem em arquivo — use-os só pra preencher campos no navegador.',
+        '6. Abra https://console.cloud.google.com/auth/audience e clique em Publicar app (confirme). Obrigatório: sem isso o Google corta a conexão a cada 7 dias.',
+        '7. Abra ' + brainUrl + ' (se pedir login, me passe o controle). No card Google Contatos, preencha "ID do cliente" (campo com id gc-client-id) e "Chave secreta" (id gc-client-secret) e clique em "Salvar credenciais" (id gc-save-client). Aguarde a confirmação.',
+        '8. Clique em "Conectar ao Google" (id gc-connect). Na tela do Google eu escolho a conta e autorizo; no aviso de app não verificado, clique em Avançado e depois em Acessar. De volta ao painel, me pergunte quais etiquetas sincronizar, marque, clique em "Salvar etiquetas" e depois em "Sincronizar agora".',
+        '',
+        'Se alguma tela do Google estiver diferente do descrito, adapte — o objetivo de cada passo está dito. Prova final: o card Google Contatos mostrando "Conectado" com contatos vinculados.',
+      ].join('\n');
+    }
 
     var gcParam = new URLSearchParams(location.search).get('google');
     if (gcParam) {
@@ -460,7 +483,10 @@ export function configPageScript(): string {
         gcSync.hidden = true;
         gcDisconnect.hidden = true;
         gcLabelsSection.hidden = true;
-        if (st.callback_uri) gcCallbackUri.textContent = st.callback_uri;
+        if (st.callback_uri) {
+          gcCallbackUri.textContent = st.callback_uri;
+          gcAgentPrompt.textContent = gcBuildAgentPrompt(st.callback_uri);
+        }
         if (st.callback_uri && st.callback_uri.indexOf('https://contacts/') === 0) {
           // Instalação sem a URL pública do serviço de contatos: a URI exibida
           // sairia errada e o Google recusaria a conexão. Erro de operador, não

@@ -38,6 +38,9 @@ describe('painel Google Contatos na config', () => {
     expect(html).toContain('id="gc-setup"');
     expect(html).toContain('id="gc-callback-uri"');
     expect(html).toContain('data-copy="gc-callback-uri"');
+    // atalho pro assistente de IA: botão copia a instrução montada em runtime
+    expect(html).toContain('data-copy="gc-agent-prompt"');
+    expect(html).toContain('id="gc-agent-prompt"');
     expect(html).toContain('id="gc-client-id"');
     expect(html).toContain('id="gc-client-secret"');
     expect(html).toContain('id="gc-save-client"');
