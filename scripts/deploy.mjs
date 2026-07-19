@@ -5,6 +5,8 @@
 // rodam quando alguém chama POST /setup/provision. Este wrapper fecha essa
 // janela: deploya, extrai a URL do worker do output do wrangler e chama o
 // provision na sequência, com retry. Node >= 18, zero dependências.
+// Preflight fail-closed: com migration pendente E provision não garantido
+// (token ausente/erro de rede), ABORTA antes de publicar (seção 0b).
 //
 // Fallback de URL (custom domain / output inesperado): env BRAIN_URL.
 
@@ -49,19 +51,24 @@ const headers = bearer ? { authorization: `Bearer ${bearer}` } : undefined;
 // - Sem bearer ou sem URL → warn e segue (primeira instalação / vault sem token).
 // - Erro de rede/5xx → warn e segue (não bloquear deploy por transiente; o passo 3
 //   ainda vai tentar e falhar alto se persistir).
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const tomlUrl = (() => {
   try {
-    const toml = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'wrangler.toml'), 'utf8');
+    const toml = readFileSync(join(repoRoot, 'wrangler.toml'), 'utf8');
     return /^\s*WORKER_URL\s*=\s*"(https:\/\/[^"]+)"/m.exec(toml)?.[1];
   } catch {
     return undefined;
   }
 })();
 const preflightBase = process.env.BRAIN_URL || tomlUrl;
+let provisionGuaranteed = false;
+let preflightGap = '';
 if (!bearer) {
-  console.warn('[deploy] preflight: sem BRAIN_SETUP_TOKEN/SETUP_TOKEN no ambiente — pulando validação (ok em primeira instalação).');
+  preflightGap = 'sem BRAIN_SETUP_TOKEN/SETUP_TOKEN no ambiente';
+  console.warn(`[deploy] preflight: ${preflightGap} — validação do token pulada.`);
 } else if (!preflightBase) {
-  console.warn('[deploy] preflight: sem WORKER_URL no wrangler.toml nem BRAIN_URL — pulando validação do token.');
+  preflightGap = 'sem WORKER_URL no wrangler.toml nem BRAIN_URL';
+  console.warn(`[deploy] preflight: ${preflightGap} — validação do token pulada.`);
 } else {
   try {
     const resp = await fetch(`${preflightBase}/setup/provision`, { method: 'POST', headers });
@@ -72,10 +79,72 @@ if (!bearer) {
           `Corrija BRAIN_SETUP_TOKEN (valor do secret SETUP_TOKEN do worker) e rode de novo.`
       );
     }
+    provisionGuaranteed = true;
     console.log(`[deploy] preflight: token validado no worker atual (HTTP ${resp.status}).`);
   } catch (e) {
-    console.warn(`[deploy] preflight: validação indisponível (${String(e).slice(0, 120)}) — seguindo com o deploy.`);
+    preflightGap = `validação indisponível (${String(e).slice(0, 120)})`;
+    console.warn(`[deploy] preflight: ${preflightGap}.`);
   }
+}
+
+// 0b. PREFLIGHT DE SCHEMA DRIFT (3ª ocorrência da classe, 17-18/07/2026, migration
+// 0030/task_deps): quando o provision NÃO está garantido (token ausente, 401 já
+// aborta acima, erro de rede), o deploy pode publicar código que consulta tabela/
+// coluna que a migration pendente ainda não criou — prod degradada sem ninguém pra
+// migrar. Gate: compara a lista MIGRATIONS do CÓDIGO (src/db/migrate.ts, a MESMA
+// fonte que runMigrations usa no worker) com a tabela _migrations de PROD via
+// `wrangler d1 execute --remote` (read-only, coluna `id`). Migration pendente +
+// provision não garantido → ABORTA antes do deploy. Sem como verificar (wrangler
+// deslogado, erro de rede, parse falhou) → ABORTA também: fail CLOSED, nunca
+// "warn e segue" (foi exatamente o warn-e-segue que deixou a 0030 pra trás).
+function codeMigrationIds() {
+  const src = readFileSync(join(repoRoot, 'src', 'db', 'migrate.ts'), 'utf8');
+  const block = /export const MIGRATIONS[^=]*=\s*\[([\s\S]*?)\];/.exec(src)?.[1];
+  return [...(block ?? '').matchAll(/\bid:\s*'([^']+)'/g)].map((m) => m[1]);
+}
+
+function prodAppliedMigrationIds() {
+  // Read-only (SELECT); "expert-brain" = database_name do wrangler.toml. execSync
+  // (e não spawnSync) porque o --command tem espaços e o shell do Windows precisa
+  // das aspas preservadas. --json manda o resultado puro pro stdout.
+  const raw = execSync(
+    'npx wrangler d1 execute expert-brain --remote --json --command "SELECT id FROM _migrations"',
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }
+  );
+  const json = JSON.parse(raw.slice(raw.indexOf('[')));
+  const rows = json?.[0]?.results;
+  if (!Array.isArray(rows)) throw new Error(`output do wrangler d1 sem results: ${raw.slice(0, 200)}`);
+  return new Set(rows.map((r) => r.id));
+}
+
+if (!provisionGuaranteed) {
+  console.log(`[deploy] preflight: provision não garantido (${preflightGap}) — checando migrations pendentes em prod via wrangler d1...`);
+  const codeIds = codeMigrationIds();
+  if (!codeIds.length) {
+    fail(
+      `não consegui extrair a lista MIGRATIONS de src/db/migrate.ts — sem como checar drift de schema.\n` +
+        `Deploy ABORTADO (fail closed). Confira o arquivo ou rode com BRAIN_SETUP_TOKEN setado.`
+    );
+  }
+  let appliedIds;
+  try {
+    appliedIds = prodAppliedMigrationIds();
+  } catch (e) {
+    fail(
+      `não consegui ler _migrations de prod (${String(e?.stderr || e?.message || e).trim().slice(0, 300)}).\n` +
+        `Sem provision garantido E sem como conferir o schema, o deploy poderia subir código à frente das migrations — ABORTADO (fail closed).\n` +
+        `Autentique o wrangler (npx wrangler login) OU sete BRAIN_SETUP_TOKEN e rode de novo.`
+    );
+  }
+  const pending = codeIds.filter((id) => !appliedIds.has(id));
+  if (pending.length) {
+    fail(
+      `migration pendente em prod (${pending.join(', ')}) e provision não garantido (${preflightGap}).\n` +
+        `Deployar agora subiria código consultando schema que ainda não existe (caso real: 0030/task_deps, 17-18/07/2026).\n` +
+        `Sete BRAIN_SETUP_TOKEN (valor do secret SETUP_TOKEN do worker) e rode de novo — o deploy aplica a migration na sequência.`
+    );
+  }
+  console.log(`[deploy] preflight: sem migration pendente (${codeIds.length} no código, todas aplicadas em prod) — seguindo com o deploy.`);
 }
 
 // 1. wrangler deploy — captura stdout (pra extrair a URL) mas ecoa tudo.
