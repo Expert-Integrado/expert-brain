@@ -349,10 +349,9 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-/* Botões da sidebar que não navegam (Buscar, spec 91/93; Tema, spec 91/96):
-   mesmo desenho dos nav-item, com reset de button. */
-.sidebar .nav-search,
-.sidebar .nav-theme {
+/* Botão da sidebar que não navega (Buscar, spec 91/93): mesmo desenho dos
+   nav-item, com reset de button. (O Tema mudou pro popover do usuário, 19/07.) */
+.sidebar .nav-search {
   width: 100%;
   background: none;
   border: none;
@@ -372,8 +371,9 @@ export const SHELL_CSS = `
 }
 .sidebar-collapsed .nav-kbd { display: none; }
 
-/* Rodapé da sidebar (Onda 5, decisão do gate): grupo coeso Recolher → Configurações
-   → bloco do usuário (avatar + e-mail + Sair), separado da navegação por borda. */
+/* Rodapé da sidebar (redesign 19/07): menu do usuário (botão avatar + nome que
+   abre popover pra cima com Configurações/Tema/Trocar foto/Sair) + botão Recolher
+   discreto (só ícone) no cantinho, separado da navegação por borda. */
 .sidebar .bottom { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-subtle); display: flex; flex-direction: column; gap: 2px; }
 .sidebar .bottom form { margin: 0; }
 
@@ -397,48 +397,79 @@ export const SHELL_CSS = `
 .sidebar .nav-item svg { flex-shrink: 0; }
 .sidebar .nav-label { white-space: nowrap; overflow: hidden; }
 
-/* Botão de recolher: linha de ícone+texto, mesmo desenho dos nav-item. */
-.sidebar .bottom .sidebar-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 12px;
-  font-family: inherit;
-  font-weight: 500;
-  transition: color 180ms var(--ease), background 180ms var(--ease);
-}
-.sidebar .bottom .sidebar-toggle svg { transition: transform 220ms var(--ease); flex-shrink: 0; }
-.sidebar .bottom .sidebar-toggle:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
+/* Linha do rodapé: menu do usuário ocupa o espaço, Recolher no cantinho. */
+.sidebar .sidebar-foot { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.sidebar .sidebar-user-menu { flex: 1; min-width: 0; }
 
-/* Bloco do usuário: avatar com a inicial + e-mail truncado + Sair (ícone) */
+/* Botão do usuário: avatar (foto ou inicial) + nome/e-mail truncado. */
 .sidebar .sidebar-user {
   display: flex;
   align-items: center;
   gap: 9px;
+  width: 100%;
   min-width: 0;
-  padding: 8px 10px 4px 14px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 180ms var(--ease);
 }
+.sidebar .sidebar-user:hover { background: rgba(167, 139, 250, 0.08); }
+.sidebar .sidebar-user[aria-expanded="true"] { background: rgba(167, 139, 250, 0.14); }
 .sidebar .sidebar-avatar {
   width: 26px; height: 26px; border-radius: 50%; flex: 0 0 auto;
   display: inline-flex; align-items: center; justify-content: center;
   background: rgba(167, 139, 250, 0.22);
   color: var(--accent-lav); font-size: 11px; font-weight: 700;
+  overflow: hidden;
 }
+.sidebar .sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sidebar .sidebar-email { flex: 1; min-width: 0; font-family: var(--font-body); font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar .sidebar-logout {
+
+/* Popover do menu do usuário: abre PRA CIMA. position:fixed ancorado por JS
+   (client/shell.ts) — o <aside> tem overflow-y:auto, que clip-aria um absolute
+   mais largo que a régua de 60px do modo recolhido. Funciona igual nos 2 temas
+   (só tokens). */
+.sidebar-user-pop {
+  position: fixed;
+  z-index: 120;
+  min-width: 195px;
+  background: var(--surface-raised, var(--surface));
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 6px;
+  box-shadow: 0 14px 34px -14px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-user-pop[hidden] { display: none; }
+/* O form do Sair não pode quebrar o fluxo da coluna. */
+.sidebar-user-pop form { display: contents; }
+.sidebar-pop-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: none; border: none; cursor: pointer; text-align: left;
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text-dim);
+  transition: color 160ms var(--ease), background 160ms var(--ease);
+}
+.sidebar-pop-item svg { flex-shrink: 0; }
+.sidebar-pop-item:hover { color: var(--text); background: rgba(167, 139, 250, 0.1); }
+.sidebar-pop-logout:hover { color: var(--danger); }
+
+/* Recolher: discreto, só o ícone, no cantinho do rodapé. */
+.sidebar .sidebar-toggle {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
-  background: none; border: none; padding: 6px; border-radius: var(--radius-sm);
-  color: var(--text-dim); cursor: pointer;
+  width: 28px; height: 28px; padding: 0;
+  background: none; border: none; border-radius: var(--radius-sm);
+  color: var(--text-subtle); cursor: pointer;
   transition: color 180ms var(--ease), background 180ms var(--ease);
 }
-.sidebar .sidebar-logout:hover { color: var(--danger); background: rgba(167, 139, 250, 0.08); }
+.sidebar .sidebar-toggle svg { transition: transform 220ms var(--ease); flex-shrink: 0; }
+.sidebar .sidebar-toggle:hover { color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
 
 /* ---- Sidebar recolhida (régua de ícones, desktop) ---- */
 .sidebar { transition: width 200ms var(--ease), padding 200ms var(--ease); }
@@ -454,9 +485,7 @@ export const SHELL_CSS = `
   display: none;
 }
 .shell.sidebar-collapsed .sidebar .logo { justify-content: center; margin-bottom: 28px; gap: 0; }
-.shell.sidebar-collapsed .sidebar .nav-item,
-.shell.sidebar-collapsed .sidebar-toggle,
-.shell.sidebar-collapsed .sidebar .sidebar-logout {
+.shell.sidebar-collapsed .sidebar .nav-item {
   justify-content: center;
   padding-left: 0;
   padding-right: 0;
@@ -464,7 +493,11 @@ export const SHELL_CSS = `
 }
 .shell.sidebar-collapsed .sidebar .nav-item::before { display: none; }
 .shell.sidebar-collapsed .sidebar .bottom { align-items: center; }
-.shell.sidebar-collapsed .sidebar .sidebar-user { flex-direction: column; gap: 6px; padding: 8px 0 0; width: 44px; justify-content: center; }
+/* Rodapé recolhido: coluna — avatar em cima, Recolher embaixo. O popover segue
+   abrindo igual (position:fixed, ancorado no botão). */
+.shell.sidebar-collapsed .sidebar .sidebar-foot { flex-direction: column; gap: 6px; }
+.shell.sidebar-collapsed .sidebar .sidebar-user-menu { flex: 0 0 auto; }
+.shell.sidebar-collapsed .sidebar .sidebar-user { justify-content: center; padding: 8px 0; width: 44px; }
 /* Chevron aponta pra fora (expandir) quando recolhido. */
 .shell.sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 

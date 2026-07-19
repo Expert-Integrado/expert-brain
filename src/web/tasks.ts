@@ -68,7 +68,9 @@ import { createShare, revokeShare } from './share.js';
 import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, pendingBlockHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type PendingItem } from '../util/task-badges.js';
+import { findValidationColumn } from './fleet.js';
+import { listValidationTasks, type ValidationTask } from '../db/fleet-queries.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 import { renderMarkdown } from './markdown.js';
 
@@ -193,9 +195,11 @@ interface BoardPayload {
   projects: BoardProject[];
   // Mailbox (spec 82): contagem de não-lidas por usuário (badge da toolbar).
   mailbox_unread: Array<{ id: string; name: string; count: number }>;
-  // "Aguardando você" (spec 89): tasks com bloqueio pendente de resposta do dono —
-  // banner acima do board (fila de aprovações da frota). Ordem: bloqueio mais antigo primeiro.
-  awaiting: AwaitingItem[];
+  // "Pendências com você" (19/07, substitui o banner "Aguardando você" da spec 89):
+  // perguntas de agentes (bloqueio sem resposta do dono) + entregas pra aprovar
+  // (coluna "Validação humana") numa fila só, mais urgente primeiro (quem espera
+  // há mais tempo; prioridade desempata).
+  pending: PendingItem[];
 }
 
 // Monta o board a partir das colunas ATIVAS do banco + tasks ativas e fechadas
@@ -214,12 +218,22 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     listTaskProjects(env, true),
     // Usuários (spec 89): resolver claimed_by → nome pro chip de claim do card.
     listUsers(env, true),
-    // "Aguardando você" (spec 89): best-effort — o board nunca quebra por causa disto.
+    // Perguntas aguardando o dono (spec 89): best-effort — o board nunca quebra
+    // por causa disto.
     listAwaitingOwnerBanner(env).catch((err) => {
-      console.error('awaiting-owner: banner do board falhou (best-effort):', err instanceof Error ? err.message : err);
+      console.error('awaiting-owner: fila de perguntas do board falhou (best-effort):', err instanceof Error ? err.message : err);
       return [];
     }),
   ]);
+  // Entregas na coluna "Validação humana" (achada por label, mesma regra da spec
+  // 92) — segunda fila do "Pendências com você". Best-effort, como a de perguntas.
+  const validationCol = findValidationColumn(activeCols);
+  const validation: ValidationTask[] = validationCol
+    ? await listValidationTasks(env, validationCol.id).catch((err) => {
+        console.error('pendencias: fila de validação falhou (best-effort):', err instanceof Error ? err.message : err);
+        return [];
+      })
+    : [];
   const userNameById = new Map(allUsers.map((u) => [u.id, u.name]));
   const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
   // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
@@ -279,14 +293,41 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     color: p.color,
     archived: p.archived_at !== null,
   }));
-  const awaitingViews: AwaitingItem[] = awaiting.map((a) => ({
-    id: a.id,
-    title: a.title,
-    block_body: a.block_body,
-    block_author: a.block_author,
-    block_at_brt: formatBrtShort(a.block_at),
-  }));
-  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser, awaiting: awaitingViews };
+  // "Pendências com você": junta as duas filas e ordena por urgência — quem
+  // espera há mais tempo primeiro; prioridade (1=Crítica) desempata, sem
+  // prioridade por último. Task que está nas DUAS filas (entrega parada COM
+  // pergunta aberta) aparece uma vez só, como pergunta — é ela que trava tudo.
+  const questionIds = new Set(awaiting.map((a) => a.id));
+  const pendingSortable = [
+    ...awaiting.map((a) => ({
+      item: {
+        kind: 'question' as const,
+        id: a.id,
+        title: a.title,
+        body: a.block_body,
+        author: a.block_author,
+        since_brt: formatBrtShort(a.block_at),
+      },
+      since: a.block_at,
+      prio: a.priority ?? Number.MAX_SAFE_INTEGER,
+    })),
+    ...validation
+      .filter((v) => !questionIds.has(v.id))
+      .map((v) => ({
+        item: {
+          kind: 'approval' as const,
+          id: v.id,
+          title: v.title,
+          body: v.tldr && v.tldr !== v.title ? v.tldr : '',
+          author: v.deliveredBy,
+          since_brt: formatBrtShort(v.updatedAt),
+        },
+        since: v.updatedAt,
+        prio: v.priority ?? Number.MAX_SAFE_INTEGER,
+      })),
+  ].sort((x, y) => x.since - y.since || x.prio - y.prio);
+  const pending: PendingItem[] = pendingSortable.map((p) => p.item);
+  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser, pending };
 }
 
 // Total de tasks abertas (categorias open + in_progress) no board — pro contador do
@@ -313,8 +354,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const { columns, projects, mailbox_unread, awaiting } = await buildBoard(env, now);
-  return json({ now, columns, projects, mailbox_unread, awaiting });
+  const { columns, projects, mailbox_unread, pending } = await buildBoard(env, now);
+  return json({ now, columns, projects, mailbox_unread, pending });
 }
 
 // POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
@@ -1352,8 +1393,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   // catch global do worker e virava a página de erro FATAL inteira. Degrada pro
   // shell com banner + bundle — o "Tentar de novo" (client) recarrega os dados
   // in-place sem perder a navegação. Padrão análogo ao erro-por-card da home.
-  let boardData: { columns: BoardColumn[]; projects: BoardProject[]; awaiting: Parameters<typeof awaitingBannerHtml>[0] } =
-    { columns: [], projects: [], awaiting: [] };
+  let boardData: { columns: BoardColumn[]; projects: BoardProject[]; pending: PendingItem[] } =
+    { columns: [], projects: [], pending: [] };
   let boardError = false;
   try {
     boardData = await buildBoard(env, now);
@@ -1361,7 +1402,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     console.error('tasks: buildBoard falhou no SSR (degradando pro banner)', e);
     boardError = true;
   }
-  const { columns, projects, awaiting } = boardData;
+  const { columns, projects, pending } = boardData;
   const totalOpen = countOpenOnBoard(columns);
   const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
 
@@ -1448,8 +1489,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       ${renderProjectFilter(projects, initialProject)}
     </div>
 
-    <div class="task-awaiting" id="task-awaiting"${awaiting.length ? '' : ' hidden'}>
-      ${awaitingBannerHtml(awaiting)}
+    <div class="task-pending" id="task-pending"${pending.length ? '' : ' hidden'}>
+      ${pendingBlockHtml(pending)}
     </div>
 
     <div class="task-board" id="task-board">
@@ -1547,30 +1588,73 @@ export const TASKS_CSS = `
 }
 .task-mailbox-chip b { color: var(--accent-lav); font-weight: 600; margin-left: 2px; }
 
-/* Banner "Aguardando você" (spec 89): fila de bloqueios da frota pendentes de
-   resposta do dono, acima do board. Some inteiro quando vazio ([hidden]). */
-.task-awaiting {
+/* Bloco "Pendências com você" (19/07, substitui o banner antigo da spec 89 —
+   este CSS viaja inteiro pro <head> da página, então nada de citar o nome velho
+   aqui): perguntas de agentes + entregas pra aprovar, acima do board. Some
+   inteiro quando vazio ([hidden]). Só tokens de tema — funciona no claro e no
+   escuro. */
+.task-pending {
   background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.35);
   border-radius: var(--radius); padding: 12px 14px; margin-bottom: 20px;
 }
-.task-awaiting[hidden] { display: none; }
-.task-awaiting-head {
+.task-pending[hidden] { display: none; }
+.task-pending-head {
   font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--warning); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+  color: var(--warning); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
-.task-awaiting-count {
+.task-pending-count {
   font-size: 11px; background: rgba(251,191,36,0.15); border-radius: 999px;
   padding: 1px 8px; font-variant-numeric: tabular-nums;
 }
-.task-awaiting-list { display: flex; flex-direction: column; gap: 6px; }
-.task-awaiting-item {
-  display: flex; align-items: baseline; gap: 10px; text-decoration: none;
-  padding: 6px 8px; border-radius: var(--radius-sm); transition: background 140ms var(--ease);
+.task-pending-kinds { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-dim); margin-left: auto; }
+.task-pending-list { display: flex; flex-direction: column; gap: 4px; }
+.task-pending-item {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 8px; border-radius: var(--radius-sm); transition: background 140ms var(--ease);
 }
-.task-awaiting-item:hover { background: rgba(251,191,36,0.08); }
-.task-awaiting-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; flex: none; }
-.task-awaiting-body { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
-.task-awaiting-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
+.task-pending-item:hover { background: rgba(251,191,36,0.08); }
+.task-pending-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.task-pending-chip {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  border-radius: 999px; padding: 1px 8px; white-space: nowrap; flex: none; align-self: center;
+}
+.task-pending-chip-question { color: var(--warning); border: 1px solid rgba(251,191,36,0.45); background: rgba(251,191,36,0.12); }
+.task-pending-chip-approval { color: var(--accent-lav); border: 1px solid rgba(167,139,250,0.45); background: rgba(167,139,250,0.12); }
+.task-pending-title { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; text-decoration: none; }
+.task-pending-title:hover { color: var(--accent-lav); }
+.task-pending-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
+.task-pending-body { font-size: 12px; color: var(--text-dim); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Resposta rápida da pergunta: <details> expande inline (funciona sem JS). */
+.task-pending-reply > summary {
+  list-style: none; cursor: pointer; font-size: 12px; color: var(--accent-lav);
+  width: fit-content; padding: 2px 0;
+}
+.task-pending-reply > summary::-webkit-details-marker { display: none; }
+.task-pending-reply > summary:hover { color: var(--text); }
+.task-pending-reply-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.task-pending-reply-form textarea {
+  width: 100%; resize: vertical; min-height: 48px;
+  background: var(--surface); border: 1px solid var(--border); color: var(--text);
+  border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; font-family: inherit;
+}
+.task-pending-reply-form textarea:focus { outline: none; border-color: var(--accent-lav); }
+.task-pending-reply-form .btn { align-self: flex-start; }
+.task-pending-actions { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
+/* "Ver mais (N)": o resto da fila expande inline, sem navegar. */
+.task-pending-more { margin-top: 4px; }
+.task-pending-more > summary {
+  list-style: none; cursor: pointer; font-size: 12px; color: var(--text-dim);
+  width: fit-content; padding: 4px 8px; border-radius: var(--radius-sm);
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.task-pending-more > summary::-webkit-details-marker { display: none; }
+.task-pending-more > summary:hover { color: var(--text); background: rgba(251,191,36,0.08); }
+.task-pending-more[open] > summary { margin-bottom: 4px; }
+@media (max-width: 767px) {
+  .task-pending-row { flex-wrap: wrap; row-gap: 2px; }
+  .task-pending-title { white-space: normal; flex-basis: 100%; order: 3; }
+  .task-pending-meta { margin-left: auto; }
+}
 
 /* Chip de claim do card (spec 88/89): quem detém o lease de trabalho agora.
    Tokens --success* no lugar do mint cravado (TB-02): #6ee7b7 sumia no claro. */

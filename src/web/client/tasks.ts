@@ -14,7 +14,7 @@ import { toast } from './toast.js';
 import { createSaveQueue, type SaveQueue, type SaveResult } from './save-queue.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../../util/priority.js';
 import { commentBadge } from '../../util/comment-badge.js';
-import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type AwaitingItem, type SubtaskProgressRef } from '../../util/task-badges.js';
+import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, pendingBlockHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type PendingItem, type SubtaskProgressRef } from '../../util/task-badges.js';
 
 type Status = 'open' | 'in_progress' | 'done' | 'canceled';
 
@@ -68,8 +68,9 @@ interface BoardData {
   projects: BoardProject[];
   // Mailbox (spec 82): não-lidas por usuário — chips na toolbar.
   mailbox_unread?: Array<{ id: string; name: string; count: number }>;
-  // "Aguardando você" (spec 89): bloqueios da frota pendentes de resposta do dono.
-  awaiting?: AwaitingItem[];
+  // "Pendências com você" (19/07): perguntas de agentes + entregas pra aprovar,
+  // já ordenadas por urgência no servidor.
+  pending?: PendingItem[];
 }
 
 type Filter = 'all' | 'today' | 'week' | 'overdue' | 'mentions';
@@ -132,6 +133,7 @@ async function load(): Promise<boolean> {
     hideLoadError();
     refreshTagFilterOptions();
     render();
+    renderPending();
     renderMailboxBadges();
     focusTaskFromQuery();
     return true;
@@ -383,16 +385,6 @@ function render() {
     : activeEl.matches('[data-qe-due-time]') ? '[data-qe-due-time]'
     : null;
 
-  // Banner "Aguardando você" (spec 89): re-renderiza a cada load junto com o board
-  // (bloqueio respondido no detalhe some daqui no próximo refresh). Container fixo
-  // no SSR; vazio → [hidden].
-  const awaitingEl = document.getElementById('task-awaiting');
-  if (awaitingEl) {
-    const items = board.awaiting ?? [];
-    awaitingEl.innerHTML = awaitingBannerHtml(items);
-    awaitingEl.toggleAttribute('hidden', items.length === 0);
-  }
-
   root.innerHTML = board.columns.map((col) => {
     const items = columnTasks(col, now);
     const c = safeColor(col.color);
@@ -433,6 +425,61 @@ function render() {
   if (activeCardId && activeSel) {
     root.querySelector<HTMLElement>(`.task-card[data-id="${CSS.escape(activeCardId)}"] ${activeSel}`)?.focus();
   }
+}
+
+// Bloco "Pendências com você" (19/07): re-renderiza SÓ no load() (dados frescos) —
+// não a cada render() de filtro. Se o dono está no meio de algo ali (digitando uma
+// resposta, "Ver mais" aberto com foco), pula a atualização — o próximo load pega.
+// Container fixo no SSR; vazio → [hidden]. Mesmo contrato do banner antigo.
+function renderPending() {
+  const el = document.getElementById('task-pending');
+  if (!el || !board) return;
+  if (el.contains(document.activeElement)) return;
+  const items = board.pending ?? [];
+  el.innerHTML = pendingBlockHtml(items);
+  el.toggleAttribute('hidden', items.length === 0);
+}
+
+// Ações inline do bloco (delegado no container — sobrevive ao innerHTML):
+// pergunta → POST /app/tasks/comment (resposta do dono desarma o bloqueio);
+// entrega → POST /app/fleet/task approve/return (endpoints da antiga fleet,
+// mantidos vivos pra isto). Sem JS os forms seguem o caminho nativo (302).
+// Sucesso → load() atualiza board + bloco sem reload da página.
+function wirePendingActions() {
+  const el = document.getElementById('task-pending');
+  if (!el) return;
+  el.addEventListener('submit', (e) => {
+    const form = e.target instanceof HTMLFormElement ? e.target : null;
+    if (!form || !form.hasAttribute('data-pending-form')) return;
+    e.preventDefault();
+    const submitter = (e as SubmitEvent).submitter as HTMLButtonElement | null;
+    const fd = new FormData(form);
+    // FormData não carrega o botão que submeteu — approve/return viajam por ele.
+    if (submitter?.name) fd.set(submitter.name, submitter.value);
+    const kind = form.dataset.pendingKind;
+    const action = submitter?.value ?? '';
+    const buttons = Array.from(form.querySelectorAll('button'));
+    buttons.forEach((b) => { b.disabled = true; });
+    void (async () => {
+      try {
+        const res = await appFetch(form.getAttribute('action') || '', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error('pending ' + res.status);
+        toast(
+          kind === 'question'
+            ? 'Resposta enviada — o agente foi liberado pra continuar.'
+            : action === 'approve'
+              ? 'Entrega aprovada e concluída.'
+              : 'Entrega devolvida pra execução.',
+          'ok'
+        );
+        await load();
+      } catch (err) {
+        console.warn('tasks: ação de pendência falhou', err);
+        toast('Não deu pra concluir a ação — tenta de novo.');
+        buttons.forEach((b) => { b.disabled = false; });
+      }
+    })();
+  });
 }
 
 // Toggle de colapso por coluna — persiste e re-renderiza (board já está em memória,
@@ -928,6 +975,7 @@ wirePrioFilter();
 wireDateFilter();
 wireTagFilter();
 wireCreateModal();
+wirePendingActions();
 // DnD + card clicável (spec 65): delegado no container, wired UMA vez — os
 // re-renders trocam o innerHTML mas o listener fica no #task-board.
 {
@@ -957,8 +1005,11 @@ function safeToRefresh(): boolean {
   // Popover de edição aberto ou campo do board focado = usuário no meio de algo;
   // valor digitado-e-ainda-não-salvo não pode ser atropelado pelo refresh.
   if (document.querySelector('#task-board [data-editpanel]:not([hidden])')) return false;
+  // Resposta rápida aberta no "Pendências com você" = mesma regra (o renderPending
+  // já pula com foco dentro, mas um reply aberto sem foco também não é atropelado).
+  if (document.querySelector('#task-pending .task-pending-reply[open]')) return false;
   const a = document.activeElement as HTMLElement | null;
-  if (a && a.closest('#task-board') && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return false;
+  if (a && (a.closest('#task-board') || a.closest('#task-pending')) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return false;
   return true;
 }
 document.addEventListener('visibilitychange', () => {

@@ -358,9 +358,9 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   } catch (e) {
     // Falha NÃO pode ser 100% silenciosa (revisão 19/07): a faixa carrega a fila
     // de "Validação humana"/bloqueios — sumir sem sinal esconde trabalho parado.
-    // Linha discreta no lugar, com rota pra página da frota.
+    // Linha discreta no lugar, com rota pro board (as pendências moram lá).
     console.error('home: falha ao montar a faixa da frota (linha de aviso)', e);
-    fleetStripHtml = '<p class="config-subtitle" role="status">Não deu pra carregar a faixa dos agentes agora — <a href="/app/fleet">abrir a página Agentes</a>.</p>';
+    fleetStripHtml = '<p class="config-subtitle" role="status">Não deu pra carregar a faixa dos agentes agora — <a href="/app/tasks">abrir as Tarefas</a>.</p>';
   }
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
@@ -409,7 +409,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     hasDigestBox = true;
   }
 
-  // Card "Seu cérebro" (spec 99): resumo do mês corrente com delta vs anterior.
+  // Card "Estatísticas" (spec 99): resumo do mês corrente com delta vs anterior.
   // Payload vem do cache KV (1h) — a home não paga as agregações a cada visita.
   let insightsCardHtml = '';
   try {
@@ -422,7 +422,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     insightsCardHtml = renderInsightsCard(curData, prevData, prefs);
   } catch (e) {
     console.error('home: falha ao carregar o resumo mensal (spec 99)', e);
-    insightsCardHtml = renderCardError('Seu cérebro <a href="/app/insights">ver detalhes →</a>', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs);
+    insightsCardHtml = renderCardError('Estatísticas <a href="/app/insights">ver detalhes →</a>', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs);
   }
 
   // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,

@@ -432,7 +432,10 @@ export async function handleFleetPage(req: Request, env: Env): Promise<Response>
   return htmlResponse(
     await renderShell({
       title: 'Agentes',
-      active: 'fleet',
+      // A rota /app/fleet virou redirect (19/07) — esta página ficou fora da
+      // navegação e sem item próprio no menu; se voltar a ser montada, acende
+      // Tarefas (é onde as pendências moram agora).
+      active: 'tasks',
       email: session.email,
       env,
       body,
@@ -442,9 +445,11 @@ export async function handleFleetPage(req: Request, env: Env): Promise<Response>
   );
 }
 
-// Aprovar/devolver da faixa "Esperando você": mover pra coluna default da
-// categoria (done / in_progress) via moveTaskToColumn — invariante coluna→status
-// e task_activity vêm de graça do caminho já testado do board.
+// Aprovar/devolver uma entrega da coluna "Validação humana": mover pra coluna
+// default da categoria (done / in_progress) via moveTaskToColumn — invariante
+// coluna→status e task_activity vêm de graça do caminho já testado do board.
+// Desde 19/07 quem consome é o bloco "Pendências com você" do board (a página
+// /app/fleet virou redirect) — por isso o retorno sem JS volta pra /app/tasks.
 export async function handleFleetTaskActionPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -452,20 +457,21 @@ export async function handleFleetTaskActionPost(req: Request, env: Env): Promise
   const taskId = String(form.get('task_id') ?? '');
   const action = String(form.get('action') ?? '');
   if (!taskId || (action !== 'approve' && action !== 'return')) {
-    return formError(req, 'Ação inválida.', { returnTo: '/app/fleet' });
+    return formError(req, 'Ação inválida.', { returnTo: '/app/tasks' });
   }
   const target = await defaultColumnForCategory(env, action === 'approve' ? 'done' : 'in_progress');
-  if (!target) return formError(req, 'Nenhuma coluna destino disponível.', { returnTo: '/app/fleet', status: 500 });
+  if (!target) return formError(req, 'Nenhuma coluna destino disponível.', { returnTo: '/app/tasks', status: 500 });
   const moved = await moveTaskToColumn(env, taskId, target.id, Date.now(), `oauth:${session.email}`);
-  if (moved === 'not-found') return formError(req, 'Task não encontrada.', { returnTo: '/app/fleet', status: 404 });
-  if (moved === 'column-not-found') return formError(req, 'Coluna destino não existe mais.', { returnTo: '/app/fleet', status: 500 });
-  return new Response(null, { status: 302, headers: { location: '/app/fleet' } });
+  if (moved === 'not-found') return formError(req, 'Task não encontrada.', { returnTo: '/app/tasks', status: 404 });
+  if (moved === 'column-not-found') return formError(req, 'Coluna destino não existe mais.', { returnTo: '/app/tasks', status: 500 });
+  return new Response(null, { status: 302, headers: { location: '/app/tasks' } });
 }
 
 // Resumo pra home ("Frota: N ativos hoje · M esperando você") — acima do grid,
 // fora do sistema de caixas (é uma linha de navegação, não um card arrastável).
 // Best-effort no caller; retorna '' quando não há frota (home de instância nova
-// não ganha faixa vazia).
+// não ganha faixa vazia). Aponta pro BOARD (a tela de Agentes virou redirect,
+// 19/07): as entregas esperando o dono moram no "Pendências com você" de lá.
 export async function fleetHomeStripHtml(env: Env, nowMs: number): Promise<string> {
   const [agents, lastSeen, cols] = await Promise.all([
     listFleetAgents(env),
@@ -480,7 +486,7 @@ export async function fleetHomeStripHtml(env: Env, nowMs: number): Promise<strin
   const waitingHtml = waiting > 0
     ? `<strong>${waiting} esperando você</strong>`
     : 'nada esperando você';
-  return `<a class="card card--interactive" href="/app/fleet" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:12px 16px;font-size:13.5px;text-decoration:none;color:var(--text)">
+  return `<a class="card card--interactive" href="/app/tasks" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:12px 16px;font-size:13.5px;text-decoration:none;color:var(--text)">
     <span class="status-dot${activeToday > 0 ? ' is-on' : ''}" aria-hidden="true"></span>
     Frota: ${activeToday} de ${agents.length} agente${agents.length === 1 ? '' : 's'} ativo${activeToday === 1 ? '' : 's'} hoje · ${waitingHtml}
   </a>`;

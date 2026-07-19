@@ -30,8 +30,7 @@ const COMMANDS: Command[] = [
   { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
   { id: 'go-tasks',  label: 'Ir pras Tarefas',      hint: 'Ctrl+T', action: () => (window.location.href = '/app/tasks') },
   { id: 'go-contacts', label: 'Ir pros Contatos',   action: () => (window.location.href = '/app/contacts') },
-  { id: 'go-insights', label: 'Ir pro Seu cérebro', action: () => (window.location.href = '/app/insights') },
-  { id: 'go-fleet',  label: 'Ir pros Agentes',      action: () => (window.location.href = '/app/fleet') },
+  { id: 'go-insights', label: 'Ir pras Estatísticas', action: () => (window.location.href = '/app/insights') },
   { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
   // Único caminho de trocar tema no CELULAR (a sidebar com o botão some ≤767px).
   { id: 'toggle-theme', label: 'Alternar tema (auto → claro → escuro)', action: () => cycleTheme() },
@@ -616,6 +615,59 @@ function wireSidebarToggle() {
   btn.addEventListener('click', () => toggleSidebar());
 }
 
+// ─────────────── Menu do usuário no rodapé da sidebar (19/07) ───────────────
+// O bloco do usuário virou botão (avatar + nome) que abre um popover PRA CIMA
+// com Configurações / Tema / Trocar foto / Sair. O popover é position:fixed e é
+// ancorado aqui no clique (o <aside> tem overflow-y:auto — um absolute mais
+// largo que a régua de 60px do modo recolhido seria clipado). Fecha com Esc e
+// clique-fora (mesmo padrão do popover de tags do board, client/tasks.ts).
+function wireUserMenu() {
+  const btn = document.getElementById('sidebar-user-btn');
+  const pop = document.getElementById('sidebar-user-pop');
+  if (!btn || !pop) return;
+
+  const onOutside = (e: MouseEvent) => {
+    const t = e.target as Node | null;
+    if (t && !pop.contains(t) && !btn.contains(t)) closeMenu();
+  };
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      closeMenu();
+      btn.focus();
+    }
+  };
+
+  function closeMenu() {
+    if (pop!.hidden) return;
+    pop!.hidden = true;
+    btn!.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('click', onOutside, true);
+    document.removeEventListener('keydown', onEsc, true);
+  }
+
+  function openMenu() {
+    // Âncora: acima do botão, alinhado à esquerda dele (clampado na viewport).
+    const r = btn!.getBoundingClientRect();
+    pop!.style.left = `${Math.max(8, Math.round(r.left))}px`;
+    pop!.style.bottom = `${Math.round(window.innerHeight - r.top + 6)}px`;
+    pop!.hidden = false;
+    btn!.setAttribute('aria-expanded', 'true');
+    document.addEventListener('click', onOutside, true);
+    document.addEventListener('keydown', onEsc, true);
+  }
+
+  btn.addEventListener('click', () => {
+    if (pop.hidden) openMenu(); else closeMenu();
+  });
+  // Navegar por um item (link/Sair) fecha; o Tema fica aberto de propósito —
+  // dá pra ver o rótulo ciclar (auto → claro → escuro) sem reabrir o menu.
+  pop.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement | null)?.closest?.('.sidebar-pop-item');
+    if (item && !item.hasAttribute('data-theme-toggle')) closeMenu();
+  });
+}
+
 // Gatilhos sem teclado da palette (spec 91/93): botão "Buscar" da sidebar e lupa
 // da bottom-nav, ambos marcados com data-cmd-open no shell SSR. Delegação no
 // document — funciona em toda página sem depender da ordem de boot.
@@ -739,6 +791,7 @@ function escText(s: string): string {
 ensurePalette();
 wire();
 wireSidebarToggle();
+wireUserMenu();
 wireSearchTriggers();
 wireClickProxies();
 wireAjaxForms();

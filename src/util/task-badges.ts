@@ -103,6 +103,77 @@ export function awaitingBannerHtml(items: AwaitingItem[]): string {
   return `<div class="task-awaiting-head">⏳ Aguardando você <span class="task-awaiting-count">${items.length}</span></div><div class="task-awaiting-list">${rows}</div>`;
 }
 
+// ─────────── Bloco "Pendências com você" do board (19/07) ───────────
+// Substitui o banner "Aguardando você" (spec 89) unificando DUAS filas:
+// PERGUNTAS de agentes (bloqueio sem resposta do dono — responder desarma) e
+// ENTREGAS pra aprovar (coluna "Validação humana" — aprovar conclui, devolver
+// volta pra execução). Itens chegam JÁ ordenados por urgência (quem espera há
+// mais tempo primeiro, prioridade desempata — buildBoard em src/web/tasks.ts) e
+// com data formatada. Compartilhado SSR + client (render idêntico); os forms
+// funcionam sem JS (POST + redirect) e o client do board os intercepta pra
+// atualizar sem reload (data-pending-form).
+export interface PendingItem {
+  kind: 'question' | 'approval';
+  id: string;
+  title: string;
+  body: string; // pergunta: corpo do [bloqueio]; entrega: tldr ('' = sem corpo)
+  author: string | null; // quem travou / quem entregou
+  since_brt: string; // desde quando espera, já formatado
+}
+
+const MAX_PENDING_VISIBLE = 5;
+const MAX_PENDING_BODY = 160;
+
+function pendingRowHtml(it: PendingItem): string {
+  const body = it.body.length > MAX_PENDING_BODY ? `${it.body.slice(0, MAX_PENDING_BODY)}…` : it.body;
+  const who = it.author ? `${it.author} · ` : '';
+  const chip = it.kind === 'question'
+    ? `<span class="task-pending-chip task-pending-chip-question">Pergunta</span>`
+    : `<span class="task-pending-chip task-pending-chip-approval">Para aprovar</span>`;
+  // Pergunta: resposta rápida inline (POST /app/tasks/comment — comentário do
+  // dono desarma o bloqueio por definição). <details> expande sem JS.
+  // Entrega: Aprovar/Devolver inline — REUSA o endpoint da antiga fleet
+  // (POST /app/fleet/task, mantido vivo pra isto).
+  const actions = it.kind === 'question'
+    ? `<details class="task-pending-reply">
+        <summary>Responder</summary>
+        <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-reply-form" data-pending-form data-pending-kind="question">
+          <input type="hidden" name="task_id" value="${escBadge(it.id)}">
+          <textarea name="body" rows="2" required placeholder="Escreva a resposta — ela libera o agente pra continuar" aria-label="Resposta rápida"></textarea>
+          <button type="submit" class="btn btn-sm btn-primary">Enviar resposta</button>
+        </form>
+      </details>`
+    : `<form method="post" action="/app/fleet/task" class="task-pending-form task-pending-actions" data-pending-form data-pending-kind="approval">
+        <input type="hidden" name="task_id" value="${escBadge(it.id)}">
+        <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>
+        <button type="submit" name="action" value="return" class="btn btn-sm btn-ghost">Devolver</button>
+      </form>`;
+  return `<div class="task-pending-item" data-kind="${it.kind}" data-task="${escBadge(it.id)}">
+    <div class="task-pending-row">${chip}<a class="task-pending-title" href="/app/tasks/${escBadge(it.id)}">${escBadge(it.title)}</a><span class="task-pending-meta">${escBadge(who)}${escBadge(it.since_brt)}</span></div>
+    ${body ? `<div class="task-pending-body">${escBadge(body)}</div>` : ''}
+    ${actions}
+  </div>`;
+}
+
+// Bloco completo: cabeçalho com contagem por fila, as 5 mais urgentes visíveis
+// e o resto atrás de "Ver mais (N)" (<details> — expande inline, sem JS).
+// Vazio → string vazia; o CALLER esconde/mostra o container (mesmo contrato do
+// banner antigo).
+export function pendingBlockHtml(items: PendingItem[]): string {
+  if (!items || items.length === 0) return '';
+  const q = items.filter((i) => i.kind === 'question').length;
+  const a = items.length - q;
+  const kinds: string[] = [];
+  if (q > 0) kinds.push(`${q} pergunta${q === 1 ? '' : 's'}`);
+  if (a > 0) kinds.push(`${a} para aprovar`);
+  const visible = items.slice(0, MAX_PENDING_VISIBLE).map(pendingRowHtml).join('');
+  const rest = items.slice(MAX_PENDING_VISIBLE);
+  const more = rest.length > 0
+    ? `<details class="task-pending-more"><summary>Ver mais (${rest.length})</summary><div class="task-pending-list">${rest.map(pendingRowHtml).join('')}</div></details>`
+    : '';
+  return `<div class="task-pending-head">Pendências com você <span class="task-pending-count">${items.length}</span><span class="task-pending-kinds">${escBadge(kinds.join(' · '))}</span></div><div class="task-pending-list">${visible}</div>${more}`;
+}
+
 const MAX_VISIBLE_DOTS = 3;
 
 // Ícone de pessoa (outline) pro slot vazio — inline pra não depender de asset.

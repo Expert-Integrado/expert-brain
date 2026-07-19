@@ -1,6 +1,9 @@
-// Fleet view (specs/80-frota-agentes/92-fleet-view.md): página /app/fleet,
-// contagens de hoje (BRT), faixa Validação humana com aprovar/devolver e o
-// resumo da frota na home. Seeds no padrão do fleet-watchdog.test.ts.
+// Frota de agentes (specs/80-frota-agentes/92 + redesign 19/07): a página
+// /app/fleet virou redirect pro board — as pendências (perguntas de agentes +
+// entregas da coluna Validação humana) moram no bloco "Pendências com você" de
+// /app/tasks, que reusa o POST /app/fleet/task de aprovar/devolver. Aqui cobre:
+// contagens de hoje (BRT), o redirect, o bloco no board, o POST e o resumo da
+// frota na home. Seeds no padrão do fleet-watchdog.test.ts.
 import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { runMigrations } from '../src/db/migrate.js';
@@ -12,6 +15,7 @@ import { OWNER_TASK_VIS } from '../src/auth/visibility.js';
 import { listTaskActivity } from '../src/db/task-activity.js';
 import { startOfTodayBrt, fleetActivityToday, listFleetAgents } from '../src/db/fleet-queries.js';
 import { agentStatus, agoLabel, FLEET_ACTIVE_WINDOW_MS } from '../src/web/fleet.js';
+import { pendingBlockHtml, type PendingItem } from '../src/util/task-badges.js';
 
 const E = env as any;
 const H = 3600_000;
@@ -147,28 +151,24 @@ describe('fleetActivityToday (queries)', () => {
   });
 });
 
-describe('GET /app/fleet', () => {
-  it('exige sessão; com sessão lista agentes com status e mailbox', async () => {
+describe('GET /app/fleet (redirect — a tela saiu da navegação, 19/07)', () => {
+  it('302 pro board, com e sem sessão; link antigo não quebra', async () => {
     const anon = await SELF.fetch('https://example.com/app/fleet', { redirect: 'manual' });
     expect(anon.status).toBe(302);
-    expect(anon.headers.get('location')).toMatch(/^\/app\/login/);
+    expect(anon.headers.get('location')).toBe('/app/tasks');
 
-    await seedAgent('fa_a', 'PC Test');
-    await touch('key_fa_a', Date.now() - 60_000);
-    await createUser(E, { id: 'fa_b', name: 'Orfao', type: 'agent', bio: null, api_key_id: null }, 1);
-
-    const res = await fleetGet(await cookie());
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('Agentes');
-    expect(html).toContain('PC Test');
-    expect(html).toContain('ativo agora');
-    expect(html).toContain('Orfao');
-    expect(html).toContain('sem credencial');
-    expect(html).toContain('Sem atividade hoje.');
+    const logged = await fleetGet(await cookie());
+    expect(logged.status).toBe(302);
+    expect(logged.headers.get('location')).toBe('/app/tasks');
   });
+});
 
-  it('faixa Esperando você lista tasks da coluna Validação humana com quem entregou', async () => {
+function boardGet(c: string): Promise<Response> {
+  return SELF.fetch('https://example.com/app/tasks', { headers: { cookie: c }, redirect: 'manual' });
+}
+
+describe('bloco "Pendências com você" no board (/app/tasks)', () => {
+  it('entrega da coluna Validação humana vira item "Para aprovar" com quem entregou e ações inline', async () => {
     await seedAgent('fa_a', 'PC Test');
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     await seedTask('fv1', { columnId: 'col_fleettest' });
@@ -177,11 +177,57 @@ describe('GET /app/fleet', () => {
       body: '[entrega] pronto', created_at: Date.now(), author_user_id: 'fa_a', kind: 'entrega',
     });
 
-    const html = await (await fleetGet(await cookie())).text();
-    expect(html).toContain('Esperando você');
+    const html = await (await boardGet(await cookie())).text();
+    expect(html).toContain('Pendências com você');
+    expect(html).toContain('Para aprovar');
     expect(html).toContain('Task fv1');
     expect(html).toContain('PC Test ·');
+    // Ações inline reusam o endpoint da antiga fleet.
+    expect(html).toContain('action="/app/fleet/task"');
     expect(html).toContain('value="approve"');
+    expect(html).toContain('value="return"');
+    // O nome antigo do banner sumiu da UI.
+    expect(html).not.toContain('Aguardando você');
+  });
+
+  it('pergunta (bloqueio sem resposta) vira item "Pergunta" com resposta rápida; quem espera há mais tempo vem primeiro', async () => {
+    await seedAgent('fa_a', 'PC Test');
+    await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
+    // Pergunta esperando desde t=1000; entrega parada desde t=5000 → pergunta primeiro.
+    await seedTask('fq1');
+    await addTaskComment(E, {
+      id: 'fb1', task_id: 'fq1', author: 'agent', author_name: null,
+      body: 'Preciso do OK pro deploy', created_at: 1000, author_user_id: 'fa_a', kind: 'bloqueio',
+    });
+    await seedTask('fv1', { columnId: 'col_fleettest' });
+    await E.DB.prepare(`UPDATE notes SET updated_at = 5000 WHERE id = 'fv1'`).run();
+
+    const html = await (await boardGet(await cookie())).text();
+    expect(html).toContain('Pergunta');
+    expect(html).toContain('Preciso do OK pro deploy');
+    // Resposta rápida inline → POST /app/tasks/comment (desarma o bloqueio).
+    expect(html).toContain('action="/app/tasks/comment"');
+    expect(html.indexOf('Task fq1')).toBeLessThan(html.indexOf('Task fv1'));
+  });
+});
+
+describe('pendingBlockHtml (unit)', () => {
+  const item = (i: number): PendingItem => ({
+    kind: i % 2 === 0 ? 'question' : 'approval', id: `t${i}`, title: `Título ${i}`,
+    body: '', author: null, since_brt: '01/07',
+  });
+
+  it('mostra as 5 mais urgentes e esconde o resto atrás de "Ver mais (N)"', () => {
+    const html = pendingBlockHtml(Array.from({ length: 8 }, (_, i) => item(i)));
+    expect(html).toContain('Pendências com você');
+    expect(html).toContain('4 perguntas · 4 para aprovar');
+    expect(html).toContain('Ver mais (3)');
+    // Os 8 itens estão no HTML (os 3 finais dentro do <details>).
+    for (let i = 0; i < 8; i++) expect(html).toContain(`Título ${i}`);
+  });
+
+  it('vazio → string vazia (o caller esconde o container)', () => {
+    expect(pendingBlockHtml([])).toBe('');
   });
 });
 
@@ -192,7 +238,8 @@ describe('POST /app/fleet/task (aprovar/devolver)', () => {
 
     const res = await fleetPost({ task_id: 'fv1', action: 'approve' }, await cookie());
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('/app/fleet');
+    // Sem JS o form volta pro board — a página da fleet virou redirect.
+    expect(res.headers.get('location')).toBe('/app/tasks');
 
     const task = await getTaskById(E, 'fv1', OWNER_TASK_VIS);
     expect(task?.status).toBe('done');
@@ -229,7 +276,7 @@ describe('POST /app/fleet/task (aprovar/devolver)', () => {
 });
 
 describe('faixa da frota na home', () => {
-  it('home mostra "Frota: N ... ativo hoje" e linka /app/fleet; sem agentes, sem faixa', async () => {
+  it('home mostra "Frota: N ... ativo hoje" e linka o board; sem agentes, sem faixa', async () => {
     const c = await cookie();
     let html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
     expect(html).not.toContain('Frota:');
@@ -239,6 +286,8 @@ describe('faixa da frota na home', () => {
     html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
     expect(html).toContain('Frota: 1 de 1 agente ativo hoje');
     expect(html).toContain('nada esperando você');
+    // A faixa aponta pro board — a tela de Agentes virou redirect (19/07).
+    expect(html).toMatch(/<a class="card card--interactive" href="\/app\/tasks"/);
 
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     await seedTask('fv1', { columnId: 'col_fleettest' });

@@ -6,9 +6,10 @@ import { domainColor } from './domain-colors.js';
 import { brtYearMonth, getMonthInsightsCached, type MonthInsights } from '../db/insights-queries.js';
 import { HOME_BOX_DEFAULTS, HOME_BOX_MIN, HOME_BOX_MAX, type HomePrefs } from './home-prefs.js';
 
-// Dashboard "Seu cérebro este mês" (specs/91-experiencia-premium/99): captura,
-// conexão e execução do mês em BRT, com delta vs mês anterior. SSR puro — o
-// gráfico de barras é SVG inline (zero lib, zero JS novo).
+// Dashboard "Estatísticas do mês" (specs/91-experiencia-premium/99; rebatizado de
+// "Seu cérebro este mês" em 19/07): captura, conexão e execução do mês em BRT,
+// com delta vs mês anterior. SSR puro — o gráfico de barras é SVG inline (zero
+// lib, zero JS novo).
 
 const MONTHS = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
@@ -116,7 +117,7 @@ export async function handleInsightsPage(req: Request, env: Env): Promise<Respon
     : '<p class="home-empty">Nenhuma task concluída neste mês.</p>';
 
   const body = `
-    <div class="page-header"><h1>Seu cérebro</h1></div>
+    <div class="page-header"><h1>Estatísticas</h1></div>
     ${nav}
     <div class="insights-stats">
       ${statTile('notas capturadas', cur.captured, deltaChip(cur.captured, before.captured))}
@@ -151,7 +152,7 @@ export async function handleInsightsPage(req: Request, env: Env): Promise<Respon
 
   return htmlResponse(
     await renderShell({
-      title: 'Seu cérebro',
+      title: 'Estatísticas',
       active: 'insights',
       email: session.email,
       env,
@@ -170,7 +171,7 @@ export function renderInsightsCard(cur: MonthInsights, prev: MonthInsights, pref
   const boxAttrs = ` data-home-item="insights" data-home-box="insights" data-home-default="${HOME_BOX_DEFAULTS.insights}" data-home-min="${HOME_BOX_MIN}" data-home-max="${HOME_BOX_MAX}"${h ? ` style="--home-card-h:${h}px"` : ''}`;
   return `<section class="card home-card"${boxAttrs}>
     <div class="home-resize" aria-hidden="true"></div>
-    <h2 class="home-box-handle">Seu cérebro <a href="/app/insights">ver detalhes →</a></h2>
+    <h2 class="home-box-handle">Estatísticas <a href="/app/insights">ver detalhes →</a></h2>
     <div class="insights-stats insights-stats-card">
       ${statTile('capturas', cur.captured, deltaChip(cur.captured, prev.captured))}
       ${statTile('conexões', cur.edgesCreated, deltaChip(cur.edgesCreated, prev.edgesCreated))}

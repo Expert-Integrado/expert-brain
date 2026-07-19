@@ -4,6 +4,7 @@ import { FONT_LINKS, THEME_COLOR, THEME_COLOR_LIGHT } from './styles.js';
 import { readCookie } from './session.js';
 import { assetVersion } from './asset-version.js';
 import { releaseBannerHtml } from './releases-data.js';
+import { getOwnerUser } from '../db/queries.js';
 
 // Lê a preferência de menu recolhido do cookie (gravado client-side pelo shell
 // bundle). Server-side render evita o "flash" de menu abrindo/fechando ao trocar
@@ -28,8 +29,6 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   insights:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="6"/><line x1="16" y1="20" x2="16" y2="10"/><line x1="22" y1="20" x2="22" y2="16"/></svg>',
-  fleet:
-    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="9" width="14" height="10" rx="2"/><path d="M12 9V5"/><circle cx="12" cy="4" r="1"/><path d="M9.5 13.5h.01"/><path d="M14.5 13.5h.01"/><path d="M9 16.5h6"/></svg>',
   config:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   logout:
@@ -38,11 +37,35 @@ const SIDEBAR_ICONS = {
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>',
   theme:
     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>',
+  camera:
+    '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
 };
+
+// Usuário mostrado no rodapé da sidebar (menu do usuário): shape enxuto — a foto
+// vem de /app/users/<id>/avatar (users.ts) com cache-bust por updated_at, mesmo
+// padrão do avatarCell da config.
+export interface ShellUser {
+  id: string;
+  name: string;
+  has_avatar: boolean;
+  updated_at: number;
+}
+
+// Avatar do rodapé: foto quando o perfil do dono tem uma; senão a inicial do
+// e-mail, como sempre foi.
+function shellAvatarHtml(user: ShellUser | null, email: string): string {
+  if (user?.has_avatar) {
+    return `<span class="sidebar-avatar" aria-hidden="true"><img src="/app/users/${esc(user.id)}/avatar?v=${user.updated_at}" alt=""></span>`;
+  }
+  return `<span class="sidebar-avatar" aria-hidden="true">${esc((email[0] ?? '?').toUpperCase())}</span>`;
+}
 
 // O Inbox saiu da navegação (Onda 8, spec 70): ele mora na home como card de
 // captura + triagem — a página /app/inbox segue existindo (link "ver tudo" do card
 // e Web Share Target do PWA), mas sem item de menu nem badge de contagem.
+// A tela de Agentes (/app/fleet) também saiu (decisão do dono, 19/07): duplicava o
+// board — a rota redireciona pra /app/tasks e as pendências viraram o bloco
+// "Pendências com você" de lá. Os cards de agentes seguem em /app/config.
 
 // Identidade PWA compartilhada por TODO head servido — shell logado E login/erro
 // (rodada PWA 11/07): instalar o app a partir da tela de login ficava sem manifest,
@@ -62,14 +85,31 @@ export const PWA_HEAD = `<meta name="viewport" content="width=device-width,initi
 
 export async function renderShell(opts: {
   title: string;
-  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'insights' | 'fleet' | 'config' | 'api-keys';
+  active: 'home' | 'notes' | 'graph' | 'tasks' | 'contacts' | 'insights' | 'config' | 'api-keys';
   email: string;
   body: string;
   env: Env;
   extraHead?: string;
   sidebarCollapsed?: boolean;
+  // Usuário do rodapé (menu do usuário). Omitido = o shell resolve sozinho o
+  // perfil-dono (getOwnerUser) — ponto ÚNICO de montagem, nenhum call site muda.
+  user?: ShellUser | null;
 }): Promise<string> {
   const collapsed = opts.sidebarCollapsed === true;
+  // Foto/nome do dono no rodapé: best-effort — a página nunca quebra por causa
+  // do avatar (sem perfil/erro de D1 → inicial do e-mail, como sempre foi).
+  let user: ShellUser | null = opts.user ?? null;
+  if (opts.user === undefined) {
+    try {
+      const owner = await getOwnerUser(opts.env);
+      user = owner
+        ? { id: owner.id, name: owner.name, has_avatar: owner.avatar_key !== null, updated_at: owner.updated_at }
+        : null;
+    } catch (e) {
+      console.error('shell: perfil do dono indisponível (avatar degrada pra inicial)', e);
+      user = null;
+    }
+  }
   // Banner "Novidades" (spec 71): aparece em toda página logada até o dono
   // visitar /app/novidades após uma release nova. A própria página não mostra
   // o banner (já está nela).
@@ -91,16 +131,22 @@ ${opts.extraHead ?? ''}
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>
     <a class="nav-item${opts.active === 'tasks' ? ' active' : ''}" href="/app/tasks" title="Tarefas">${SIDEBAR_ICONS.tasks}<span class="nav-label">Tarefas</span></a>
     <a class="nav-item${opts.active === 'contacts' ? ' active' : ''}" href="/app/contacts" title="Contatos">${SIDEBAR_ICONS.contacts}<span class="nav-label">Contatos</span></a>
-    <a class="nav-item${opts.active === 'insights' ? ' active' : ''}" href="/app/insights" title="Seu cérebro">${SIDEBAR_ICONS.insights}<span class="nav-label">Seu cérebro</span></a>
-    <a class="nav-item${opts.active === 'fleet' ? ' active' : ''}" href="/app/fleet" title="Agentes">${SIDEBAR_ICONS.fleet}<span class="nav-label">Agentes</span></a>
+    <a class="nav-item${opts.active === 'insights' ? ' active' : ''}" href="/app/insights" title="Estatísticas">${SIDEBAR_ICONS.insights}<span class="nav-label">Estatísticas</span></a>
     <div class="bottom">
-      <button class="nav-item nav-theme" type="button" data-theme-toggle title="Tema (auto/claro/escuro)">${SIDEBAR_ICONS.theme}<span class="nav-label" data-theme-label>Tema</span></button>
-      <button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="${collapsed ? 'false' : 'true'}" title="Recolher menu (Ctrl+B)">${SIDEBAR_ICONS.chevron}<span class="nav-label">Recolher</span></button>
-      <a class="nav-item${opts.active === 'config' ? ' active' : ''}" href="/app/config" title="Configurações">${SIDEBAR_ICONS.config}<span class="nav-label">Configurações</span></a>
-      <div class="sidebar-user" title="${esc(opts.email)}">
-        <span class="sidebar-avatar" aria-hidden="true">${esc((opts.email[0] ?? '?').toUpperCase())}</span>
-        <span class="sidebar-email">${esc(opts.email)}</span>
-        <form method="post" action="/app/logout"><button type="submit" class="sidebar-logout" title="Sair" aria-label="Sair">${SIDEBAR_ICONS.logout}</button></form>
+      <div class="sidebar-foot">
+        <div class="sidebar-user-menu" id="sidebar-user-menu">
+          <div class="sidebar-user-pop" id="sidebar-user-pop" hidden role="menu" aria-label="Menu do usuário">
+            <a class="sidebar-pop-item" role="menuitem" href="/app/config">${SIDEBAR_ICONS.config}<span>Configurações</span></a>
+            <button class="sidebar-pop-item" role="menuitem" type="button" data-theme-toggle title="Tema (auto/claro/escuro)">${SIDEBAR_ICONS.theme}<span data-theme-label>Tema</span></button>
+            <a class="sidebar-pop-item" role="menuitem" href="/app/config#users">${SIDEBAR_ICONS.camera}<span>Trocar foto</span></a>
+            <form method="post" action="/app/logout" role="none"><button type="submit" role="menuitem" class="sidebar-pop-item sidebar-pop-logout">${SIDEBAR_ICONS.logout}<span>Sair</span></button></form>
+          </div>
+          <button class="sidebar-user" id="sidebar-user-btn" type="button" aria-haspopup="menu" aria-expanded="false" title="${esc(opts.email)}">
+            ${shellAvatarHtml(user, opts.email)}
+            <span class="sidebar-email">${esc(user?.name || opts.email)}</span>
+          </button>
+        </div>
+        <button class="sidebar-toggle" type="button" aria-label="Recolher menu" aria-expanded="${collapsed ? 'false' : 'true'}" title="Recolher menu (Ctrl+B)">${SIDEBAR_ICONS.chevron}</button>
       </div>
     </div>
   </aside>

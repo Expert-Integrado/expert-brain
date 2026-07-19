@@ -1432,13 +1432,14 @@ export async function listTasksAwaitingOwner(env: Env, vis: TaskVisibility): Pro
 export interface AwaitingOwnerBannerItem {
   id: string;
   title: string;
+  priority: number | null; // desempate de urgência no "Pendências com você" do board
   block_body: string;
   block_at: number;
   block_author: string | null;
 }
 export async function listAwaitingOwnerBanner(env: Env): Promise<AwaitingOwnerBannerItem[]> {
   const r = await env.DB.prepare(
-    `SELECT n.id, n.title, b.body AS block_body, b.created_at AS block_at, u.name AS block_author
+    `SELECT n.id, n.title, n.priority, b.body AS block_body, b.created_at AS block_at, u.name AS block_author
      FROM notes n
      JOIN task_comments b ON b.id = (
        SELECT b2.id FROM task_comments b2

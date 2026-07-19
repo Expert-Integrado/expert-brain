@@ -109,22 +109,24 @@ export async function fleetActivityToday(env: Env, nowMs: number): Promise<Map<s
 export interface ValidationTask {
   id: string;
   title: string;
-  /** Resumo curto da task (tldr) — corpo do card expandido na fleet. */
+  /** Resumo curto da task (tldr) — corpo do item no "Pendências com você". */
   tldr: string;
   updatedAt: number;
+  /** Prioridade da task (1-4/null) — desempate de urgência no bloco do board. */
+  priority: number | null;
   /** Autor do último comentário [entrega] — quem entregou pro dono validar. */
   deliveredBy: string | null;
-  /** Projeto (pasta) da task — filtro e crumb no card da fleet. */
+  /** Projeto (pasta) da task. */
   projectLabel: string | null;
   projectColor: string | null;
 }
 
 // Tasks paradas na coluna de validação (mais antiga primeiro — quem espera há mais
-// tempo no topo, mesma regra do banner de bloqueios). Projeto e tldr entram no
-// payload pro card expansível da fleet (filtro + preview sem abrir a task).
+// tempo no topo, mesma regra do banner de bloqueios). Consumido pelo bloco
+// "Pendências com você" do board (src/web/tasks.ts) desde 19/07.
 export async function listValidationTasks(env: Env, columnId: string): Promise<ValidationTask[]> {
   const r = await env.DB.prepare(
-    `SELECT n.id, n.title, n.tldr, n.updated_at, p.label AS project_label, p.color AS project_color,
+    `SELECT n.id, n.title, n.tldr, n.updated_at, n.priority, p.label AS project_label, p.color AS project_color,
             (SELECT u.name FROM task_comments tc JOIN users u ON u.id = tc.author_user_id
               WHERE tc.task_id = n.id AND tc.kind = 'entrega'
               ORDER BY tc.created_at DESC, tc.id DESC LIMIT 1) AS delivered_by
@@ -132,12 +134,13 @@ export async function listValidationTasks(env: Env, columnId: string): Promise<V
      LEFT JOIN task_projects p ON p.id = n.project_id
      WHERE n.kind = 'task' AND n.column_id = ? AND n.deleted_at IS NULL
      ORDER BY n.updated_at ASC`
-  ).bind(columnId).all<{ id: string; title: string; tldr: string; updated_at: number; project_label: string | null; project_color: string | null; delivered_by: string | null }>();
+  ).bind(columnId).all<{ id: string; title: string; tldr: string; updated_at: number; priority: number | null; project_label: string | null; project_color: string | null; delivered_by: string | null }>();
   return (r.results ?? []).map((row) => ({
     id: row.id,
     title: row.title,
     tldr: row.tldr,
     updatedAt: row.updated_at,
+    priority: row.priority,
     deliveredBy: row.delivered_by,
     projectLabel: row.project_label,
     projectColor: row.project_color,
