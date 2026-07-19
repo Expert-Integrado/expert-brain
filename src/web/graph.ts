@@ -84,20 +84,20 @@ async function renderGraphLikePage(
       }
       /* Overlay panel mais clean: preto-grafite em vez de violeta-tinted */
       .main:has(#graph-canvas) .graph-overlay {
-        background: rgba(14, 14, 18, 0.88);
-        border-color: rgba(255, 255, 255, 0.08);
+        background: var(--surface-overlay);
+        border-color: var(--border);
       }
       .main:has(#graph-canvas) .graph-zoom-controls {
-        background: rgba(14, 14, 18, 0.88);
-        border-color: rgba(255, 255, 255, 0.08);
+        background: var(--surface-overlay);
+        border-color: var(--border);
       }
       /* A.22 — Display + Forces sections */
       .graph-section {
         margin-top: 8px;
         padding: 6px 8px;
-        border: 1px solid rgba(255,255,255,0.06);
+        border: 1px solid var(--border);
         border-radius: 6px;
-        background: rgba(255,255,255,0.02);
+        background: color-mix(in srgb, var(--text) 3%, transparent);
       }
       .graph-section[open] { padding-bottom: 8px; }
       .graph-section-summary {
@@ -105,19 +105,19 @@ async function renderGraphLikePage(
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 0.06em;
-        color: rgba(255,255,255,0.55);
+        color: var(--text-subtle);
         font-weight: 500;
         user-select: none;
         padding: 2px 0;
       }
-      .graph-section-summary:hover { color: rgba(255,255,255,0.85); }
+      .graph-section-summary:hover { color: var(--text); }
       .graph-section .graph-slider-label {
         display: flex;
         flex-direction: column;
         gap: 2px;
         margin-top: 6px;
         font-size: 11px;
-        color: rgba(255,255,255,0.7);
+        color: var(--text-dim);
       }
       .graph-section .graph-slider-label input[type=range] { width: 100%; }
       .graph-section .graph-check-label { margin-top: 6px; }
@@ -137,14 +137,14 @@ async function renderGraphLikePage(
       }
       .graph-group-select-row small {
         font-size: 10px;
-        color: rgba(255,255,255,0.4);
+        color: var(--text-subtle);
         line-height: 1.3;
       }
       .graph-select {
         width: 100%;
         padding: 5px 8px;
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.12);
+        background: var(--input-bg);
+        border: 1px solid var(--border);
         border-radius: 6px;
         color: inherit;
         font-family: inherit;
@@ -162,7 +162,7 @@ async function renderGraphLikePage(
         display: block;
         margin-top: 1px;
         font-size: 10px;
-        color: rgba(255,255,255,0.4);
+        color: var(--text-subtle);
         line-height: 1.3;
       }
       /* A.30 — Indicador de filtro ativo no topo (Contrário: crítico pós-A.29). */
@@ -173,23 +173,23 @@ async function renderGraphLikePage(
         padding: 4px 8px;
         margin: 4px 0;
         font-size: 11px;
-        background: rgba(167, 139, 250, 0.12);
-        border: 1px solid rgba(167, 139, 250, 0.3);
+        background: rgba(var(--accent-lav-rgb), 0.12);
+        border: 1px solid rgba(var(--accent-lav-rgb), 0.3);
         border-radius: 6px;
-        color: rgba(220, 200, 255, 0.95);
+        color: var(--text);
       }
       .graph-active-filters.show { display: flex; }
       .graph-active-filters button {
         margin-left: auto;
         background: transparent;
-        border: 1px solid rgba(255,255,255,0.2);
-        color: rgba(255,255,255,0.85);
+        border: 1px solid var(--border-strong);
+        color: var(--text);
         font-size: 10px;
         padding: 2px 8px;
         border-radius: 4px;
         cursor: pointer;
       }
-      .graph-active-filters button:hover { background: rgba(255,255,255,0.06); }
+      .graph-active-filters button:hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
       /* A.35 — Chips inline pra Coloração (substituiu <select>). */
       .graph-color-chips {
         display: flex;
@@ -203,25 +203,25 @@ async function renderGraphLikePage(
         padding: 4px 8px;
         font-size: 10px;
         font-family: inherit;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: color-mix(in srgb, var(--text) 5%, transparent);
+        border: 1px solid var(--border);
         border-radius: 4px;
-        color: rgba(255,255,255,0.65);
+        color: var(--text-dim);
         cursor: pointer;
         transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
         white-space: nowrap;
       }
-      .graph-color-chip:hover { background: rgba(255,255,255,0.08); color: #f4ecff; }
+      .graph-color-chip:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
       .graph-color-chip.active {
-        background: rgba(167, 139, 250, 0.2);
-        border-color: rgba(167, 139, 250, 0.6);
-        color: #f4ecff;
+        background: rgba(var(--accent-lav-rgb), 0.2);
+        border-color: rgba(var(--accent-lav-rgb), 0.6);
+        color: var(--text);
       }
       /* A.31 — Cmd+K command palette */
       .graph-palette-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(0,0,0,0.55);
+        background: var(--backdrop);
         backdrop-filter: blur(4px);
         z-index: 9000;
         display: none;
@@ -233,10 +233,10 @@ async function renderGraphLikePage(
       .graph-palette {
         width: min(560px, 90vw);
         max-height: 60vh;
-        background: rgba(20, 20, 26, 0.98);
-        border: 1px solid rgba(167, 139, 250, 0.3);
+        background: var(--surface-overlay-strong);
+        border: 1px solid rgba(var(--accent-lav-rgb), 0.3);
         border-radius: 12px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        box-shadow: var(--shadow-3);
         overflow: hidden;
         display: flex;
         flex-direction: column;
@@ -246,13 +246,13 @@ async function renderGraphLikePage(
         padding: 14px 16px;
         background: transparent;
         border: 0;
-        border-bottom: 1px solid rgba(255,255,255,0.08);
-        color: #f4ecff;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
         font-size: 14px;
         font-family: inherit;
         outline: none;
       }
-      .graph-palette-input::placeholder { color: rgba(255,255,255,0.35); }
+      .graph-palette-input::placeholder { color: var(--text-faint); }
       .graph-palette-list {
         list-style: none;
         margin: 0;
@@ -269,39 +269,39 @@ async function renderGraphLikePage(
         border-left: 2px solid transparent;
       }
       .graph-palette-item.active {
-        background: rgba(167, 139, 250, 0.12);
-        border-left-color: rgba(167, 139, 250, 0.7);
+        background: rgba(var(--accent-lav-rgb), 0.12);
+        border-left-color: rgba(var(--accent-lav-rgb), 0.7);
       }
-      .graph-palette-item-title { color: #f4ecff; font-size: 13px; }
-      .graph-palette-item-meta { color: rgba(255,255,255,0.45); font-size: 11px; }
-      .graph-palette-empty { padding: 16px; text-align: center; color: rgba(255,255,255,0.4); font-size: 12px; }
+      .graph-palette-item-title { color: var(--text); font-size: 13px; }
+      .graph-palette-item-meta { color: var(--text-subtle); font-size: 11px; }
+      .graph-palette-empty { padding: 16px; text-align: center; color: var(--text-subtle); font-size: 12px; }
       .graph-palette-hint {
         padding: 6px 16px;
         font-size: 10px;
-        color: rgba(255,255,255,0.4);
-        background: rgba(0,0,0,0.25);
-        border-top: 1px solid rgba(255,255,255,0.05);
+        color: var(--text-subtle);
+        background: var(--surface-2);
+        border-top: 1px solid var(--border);
       }
       /* A.32 — Botão "Mostrar conexões sugeridas" + lista de sugestões */
       .graph-suggested-row { margin-top: 10px; }
       .graph-suggested-row button {
         width: 100%;
-        background: rgba(255, 200, 100, 0.08);
-        border: 1px dashed rgba(255, 200, 100, 0.4);
-        color: rgba(255, 220, 160, 0.9);
+        background: var(--warning-bg);
+        border: 1px dashed var(--warning-border);
+        color: var(--warning);
         padding: 6px 10px;
         font-size: 11px;
         border-radius: 6px;
         cursor: pointer;
       }
-      .graph-suggested-row button:hover { background: rgba(255, 200, 100, 0.15); }
+      .graph-suggested-row button:hover { background: color-mix(in srgb, var(--warning) 15%, transparent); }
       .graph-suggested-row button.active {
-        background: rgba(255, 200, 100, 0.18);
+        background: color-mix(in srgb, var(--warning) 18%, transparent);
         border-style: solid;
       }
       .graph-suggest-modal-backdrop {
         position: fixed; inset: 0;
-        background: rgba(0,0,0,0.55);
+        background: var(--backdrop);
         backdrop-filter: blur(4px);
         z-index: 9100;
         display: none;
@@ -312,23 +312,23 @@ async function renderGraphLikePage(
       .graph-suggest-modal-backdrop.open { display: flex; }
       .graph-suggest-modal {
         width: min(540px, 100%);
-        background: rgba(20, 20, 26, 0.98);
-        border: 1px solid rgba(255, 200, 100, 0.4);
+        background: var(--surface-overlay-strong);
+        border: 1px solid var(--warning-border);
         border-radius: 12px;
         padding: 20px;
-        color: #f4ecff;
+        color: var(--text);
       }
-      .graph-suggest-modal h3 { margin: 0 0 4px; font-size: 14px; color: rgba(255, 220, 160, 0.95); }
+      .graph-suggest-modal h3 { margin: 0 0 4px; font-size: 14px; color: var(--warning); }
       .graph-suggest-modal .pair { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
-      .graph-suggest-modal .pair span { flex: 1; font-size: 13px; padding: 6px 10px; background: rgba(255,255,255,0.04); border-radius: 6px; }
-      .graph-suggest-modal .arrow { color: rgba(255, 200, 100, 0.7); }
+      .graph-suggest-modal .pair span { flex: 1; font-size: 13px; padding: 6px 10px; background: var(--surface-2); border-radius: 6px; }
+      .graph-suggest-modal .arrow { color: var(--warning); }
       .graph-suggest-modal textarea {
         width: 100%;
         min-height: 80px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,255,255,0.1);
+        background: var(--input-bg);
+        border: 1px solid var(--border);
         border-radius: 6px;
-        color: #f4ecff;
+        color: var(--text);
         padding: 8px 10px;
         font-family: inherit;
         font-size: 12px;
@@ -337,12 +337,12 @@ async function renderGraphLikePage(
       .graph-suggest-modal-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
       .graph-suggest-modal-actions button {
         padding: 6px 14px; border-radius: 6px; font-size: 12px;
-        cursor: pointer; border: 1px solid rgba(255,255,255,0.15);
-        background: rgba(255,255,255,0.05); color: #f4ecff;
+        cursor: pointer; border: 1px solid var(--border-strong);
+        background: var(--surface-2); color: var(--text);
       }
       .graph-suggest-modal-actions button.primary {
-        background: rgba(255, 200, 100, 0.2);
-        border-color: rgba(255, 200, 100, 0.5);
+        background: color-mix(in srgb, var(--warning) 20%, transparent);
+        border-color: var(--warning-border);
       }
       .graph-suggest-modal-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -358,16 +358,16 @@ async function renderGraphLikePage(
         width: max-content;
         max-width: 220px;
         padding: 7px 10px;
-        background: rgba(20, 20, 26, 0.98);
-        border: 1px solid rgba(167, 139, 250, 0.35);
+        background: var(--surface-overlay-strong);
+        border: 1px solid rgba(var(--accent-lav-rgb), 0.35);
         border-radius: 6px;
-        color: #f4ecff;
+        color: var(--text);
         font-size: 11px;
         font-weight: 400;
         line-height: 1.35;
         text-align: left;
         white-space: normal;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+        box-shadow: var(--shadow-2);
         opacity: 0;
         pointer-events: none;
         transition: opacity 140ms var(--ease, ease), transform 140ms var(--ease, ease);
@@ -388,8 +388,8 @@ async function renderGraphLikePage(
         height: 14px;
         margin-left: 6px;
         border-radius: 50%;
-        border: 1px solid rgba(255,255,255,0.35);
-        color: rgba(255,255,255,0.6);
+        border: 1px solid var(--border-strong);
+        color: var(--text-subtle);
         font-size: 9px;
         font-style: normal;
         font-weight: 700;
@@ -421,7 +421,7 @@ async function renderGraphLikePage(
         cursor: pointer;
         padding: 0;
       }
-      .graph-search-clear:hover { color: var(--text, #e8e6f0); background: rgba(167, 139, 250, 0.18); }
+      .graph-search-clear:hover { color: var(--text, #e8e6f0); background: rgba(var(--accent-lav-rgb), 0.18); }
       .graph-search-row:has(.graph-search-input:not(:placeholder-shown)) .graph-search-clear { display: inline-flex; }
       .graph-search-row:has(.graph-search-input:not(:placeholder-shown)) .graph-search-input { padding-right: 58px; }
       .graph-panel-toggle {
@@ -437,11 +437,11 @@ async function renderGraphLikePage(
         background: transparent;
         border: none;
         border-radius: 5px;
-        color: rgba(255, 255, 255, 0.5);
+        color: var(--text-subtle);
         cursor: pointer;
         transition: color 140ms ease, background 140ms ease;
       }
-      .graph-panel-toggle:hover { color: var(--accent-lav, #a78bfa); background: rgba(255, 255, 255, 0.08); }
+      .graph-panel-toggle:hover { color: var(--accent-lav, #a78bfa); background: color-mix(in srgb, var(--text) 9%, transparent); }
       .graph-panel-toggle svg { transition: transform 200ms ease; }
       /* Recolhido: esconde tudo menos a barra de busca; chevron inverte. */
       .graph-overlay.collapsed #graph-overlay-body { display: none; }
@@ -507,7 +507,7 @@ async function renderGraphLikePage(
         max-width: 300px;
         text-align: center;
         font-size: 12px;
-        color: rgba(255,255,255,0.45);
+        color: var(--text-subtle);
         line-height: 1.4;
       }
       .graph-retry-btn {
@@ -517,13 +517,13 @@ async function renderGraphLikePage(
         font-family: inherit;
         font-size: 12px;
         font-weight: 500;
-        color: #f4ecff;
-        background: rgba(167, 139, 250, 0.16);
-        border: 1px solid rgba(167, 139, 250, 0.45);
+        color: var(--text);
+        background: rgba(var(--accent-lav-rgb), 0.16);
+        border: 1px solid rgba(var(--accent-lav-rgb), 0.45);
         border-radius: 6px;
         cursor: pointer;
       }
-      .graph-retry-btn:hover { background: rgba(167, 139, 250, 0.26); }
+      .graph-retry-btn:hover { background: rgba(var(--accent-lav-rgb), 0.26); }
       /* Sem dados (erro, ou recarregando após erro): overlay de filtros/busca e
          controles de zoom ficam atenuados e inertes — não fazem sentido sobre um
          canvas vazio. O client reabilita (remove a classe) assim que o fetch
@@ -750,7 +750,7 @@ async function renderGraphLikePage(
         <div class="graph-legend-line">
           <span class="legend-swatch swatch-explicit"></span> explícita
           <span class="legend-swatch swatch-similar"></span> semântica
-          <span style="margin-left:auto; font-size:10px; color:rgba(255,255,255,0.4); font-variant-numeric:tabular-nums;">v A.35</span>
+          <span style="margin-left:auto; font-size:10px; color:var(--text-subtle); font-variant-numeric:tabular-nums;">v A.35</span>
         </div>
         </div><!-- /#graph-overlay-body -->
       </div>
@@ -799,25 +799,25 @@ async function renderGraphLikePage(
       <div id="graph-suggest-modal-backdrop" class="graph-suggest-modal-backdrop" role="dialog" aria-label="Sugestão de ligação">
         <div class="graph-suggest-modal">
           <h3>Conexão sugerida</h3>
-          <p style="font-size:12px; color:rgba(255,255,255,0.55); margin:0">Notas semanticamente próximas que ainda não têm ligação explícita. Edite a justificativa e crie a ligação se fizer sentido.</p>
+          <p style="font-size:12px; color:var(--text-dim); margin:0">Notas semanticamente próximas que ainda não têm ligação explícita. Edite a justificativa e crie a ligação se fizer sentido.</p>
           <div class="pair">
             <span id="suggest-from"></span>
             <span class="arrow">↔</span>
             <span id="suggest-to"></span>
           </div>
-          <label style="font-size:11px; color:rgba(255,255,255,0.65); display:block;">
+          <label style="font-size:11px; color:var(--text-dim); display:block;">
             Tipo de relação
-            <select id="suggest-relation" style="width:100%; margin-top:4px; padding:6px 8px; background:rgba(255,255,255,0.05); color:inherit; border:1px solid rgba(255,255,255,0.12); border-radius:6px; font-size:12px;">
+            <select id="suggest-relation" style="width:100%; margin-top:4px; padding:6px 8px; background:var(--input-bg); color:inherit; border:1px solid var(--border); border-radius:6px; font-size:12px;">
               <option value="analogous_to" selected>análogo a</option>
               <option value="same_mechanism_as">mesmo mecanismo que</option>
             </select>
           </label>
-          <label style="font-size:11px; color:rgba(255,255,255,0.65); display:block;">
+          <label style="font-size:11px; color:var(--text-dim); display:block;">
             Por que se conectam? (nomeie o mecanismo — mín. 20 caracteres)
             <textarea id="suggest-why" placeholder="Ex: ambas tratam de filtros mentais que distorcem decisão"></textarea>
           </label>
-          <p id="suggest-why-count" style="font-size:11px; color:rgba(255,255,255,0.45); margin:2px 0 0; text-align:right;">0/20 mín</p>
-          <p id="suggest-error" class="suggest-error" style="display:none; font-size:12px; color:rgba(255,120,120,0.9); margin:6px 0 0;"></p>
+          <p id="suggest-why-count" style="font-size:11px; color:var(--text-subtle); margin:2px 0 0; text-align:right;">0/20 mín</p>
+          <p id="suggest-error" class="suggest-error" style="display:none; font-size:12px; color:var(--danger); margin:6px 0 0;"></p>
           <div class="graph-suggest-modal-actions">
             <button data-graph-action="suggest-cancel" type="button">Cancelar</button>
             <button id="suggest-create-btn" data-graph-action="suggest-create" class="primary" type="button" disabled>Criar ligação</button>

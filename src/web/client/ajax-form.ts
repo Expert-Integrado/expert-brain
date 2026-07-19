@@ -54,8 +54,10 @@ export function wireAjaxForms(): void {
         if (submitBtn) submitBtn.disabled = false;
       })
       .catch(() => {
-        // appFetch já redirecionou pro login no 401; falha de rede: reabilita.
+        // appFetch já redirecionou pro login no 401; falha de rede: reabilita E
+        // avisa (antes era 100% silencioso — clicar Salvar offline não fazia nada).
         if (submitBtn) submitBtn.disabled = false;
+        toast('Falha de conexão — nada foi salvo. Tenta de novo.', 'error');
       });
   });
 }

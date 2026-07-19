@@ -345,7 +345,11 @@ export function configPageScript(): string {
               statusEl.style.color = 'var(--danger)';
               return;
             }
-            location.href = '/app/config?saved=taxonomy#taxonomy';
+            // 2º save na mesma visita: a URL já é ?saved=taxonomy#taxonomy e
+            // atribuir location.href idêntico vira navegação de fragmento no-op
+            // (ficava preso em "Salvando…"). Recarrega explícito nesse caso.
+            if (location.search.indexOf('saved=taxonomy') !== -1) location.reload();
+            else location.href = '/app/config?saved=taxonomy#taxonomy';
           });
         })
         .catch(function () {
@@ -361,7 +365,17 @@ export function configPageScript(): string {
       askConfirm({ title: 'Restaurar a taxonomia padrão?', body: 'Cores e nomes customizados (e áreas pré-criadas sem notas) somem.', verb: 'Restaurar' }).then(function (go) {
         if (!go) return;
         fetch('/app/config/taxonomy/reset', { method: 'POST', headers: { accept: 'application/json' }, credentials: 'same-origin' })
-          .then(function () { location.href = '/app/config?saved=taxonomy#taxonomy'; })
+          .then(function (res) {
+            var statusEl = document.getElementById('taxonomy-status');
+            if (!res.ok) {
+              // Erro do servidor não pode parecer sucesso: antes recarregava igual.
+              statusEl.textContent = 'Erro ao restaurar (' + res.status + ').';
+              statusEl.style.color = 'var(--danger)';
+              return;
+            }
+            if (location.search.indexOf('saved=taxonomy') !== -1) location.reload();
+            else location.href = '/app/config?saved=taxonomy#taxonomy';
+          })
           .catch(function () {
             var statusEl = document.getElementById('taxonomy-status');
             statusEl.textContent = 'Falha de rede ao restaurar.';
@@ -451,6 +465,10 @@ export function configPageScript(): string {
           data._status = res.status;
           return data;
         });
+      }).catch(function () {
+        // Rede caiu: resolve com ok:false em vez de rejeitar — os consumidores já
+        // tratam !ok (senão botão ficava disabled e status preso pra sempre).
+        return { ok: false, error: 'falha de rede', _status: 0 };
       });
     }
 
@@ -512,8 +530,14 @@ export function configPageScript(): string {
         gcRemoveClient.hidden = true;
       }
       gcChangeClient.hidden = false;
-      setDot('gc-dot', st.connected ? true : 'warn', st.connected ? 'Configurado' : 'Não conectado', st.connected ? '' : 'Clique no card e conecte sua conta Google');
-      gcConnect.hidden = !!st.connected;
+      // Autorização expirada (gsync_reconnect_required): o caminho de conserto é
+      // RECONECTAR — mostra o botão Conectar e o dot vira alerta (antes o texto
+      // mandava reconectar com o botão escondido e o dot verde).
+      var gcNeedsReconnect = !!(st.connected && st.alert && st.alert.kind === 'gsync_reconnect_required');
+      setDot('gc-dot', st.connected && !gcNeedsReconnect ? true : 'warn',
+        gcNeedsReconnect ? 'Reconexão necessária' : (st.connected ? 'Configurado' : 'Não conectado'),
+        gcNeedsReconnect ? 'A autorização do Google expirou — clique em "Conectar ao Google"' : (st.connected ? '' : 'Clique no card e conecte sua conta Google'));
+      gcConnect.hidden = !!st.connected && !gcNeedsReconnect;
       gcSync.hidden = !st.connected;
       gcDisconnect.hidden = !st.connected;
       gcLabelsSection.hidden = !st.connected;
@@ -527,8 +551,8 @@ export function configPageScript(): string {
       if (st.groups && st.groups.length) parts.push(st.groups.length + ' etiqueta(s) configurada(s)');
       else parts.push('nenhuma etiqueta configurada ainda (o sync fica parado até salvar)');
       if (st.last_run && st.last_run.at) parts.push('último sync: ' + new Date(st.last_run.at).toLocaleString());
-      if (st.alert && st.alert.kind === 'gsync_reconnect_required') {
-        parts.push('ATENÇÃO: a autorização expirou, reconecte');
+      if (gcNeedsReconnect) {
+        parts.push('ATENÇÃO: a autorização expirou — clique em "Conectar ao Google" pra renovar');
       }
       gcStatusEl.textContent = parts.join(' · ') + '.';
       gcRenderLabels(st.groups || []);
@@ -593,7 +617,11 @@ export function configPageScript(): string {
     // por hash já abriu esta seção (resolveHash rodou acima), dispara na hora.
     // Flag garante no máximo 1 chamada mesmo fechando/reabrindo depois.
     function gcRefresh() {
-      gcJson('/app/config/google/status').then(gcRender);
+      gcJson('/app/config/google/status').then(function (st) {
+        // Falha de rede: destrava a flag pra reabrir o card refazer o fetch.
+        if (!st.ok && st._status === 0) gcLoaded = false;
+        gcRender(st);
+      });
     }
     var gcLoaded = false;
     function gcLoad() {
@@ -665,7 +693,11 @@ export function configPageScript(): string {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ clear: true }),
-        }).then(function () {
+        }).then(function (r) {
+          if (!r.ok) {
+            gcStatusEl.textContent = 'Não deu pra remover as credenciais (' + (r.error || r._status) + ').';
+            return;
+          }
           location.href = '/app/config#google-contatos';
           location.reload();
         });
@@ -695,7 +727,11 @@ export function configPageScript(): string {
     gcDisconnect.addEventListener('click', function () {
       askConfirm({ title: 'Desconectar do Google?', body: 'Os contatos já sincronizados FICAM no vault; só a ponte com a agenda é desfeita.', verb: 'Desconectar' }).then(function (go) {
         if (!go) return;
-        gcJson('/app/config/google/disconnect', { method: 'POST' }).then(function () {
+        gcJson('/app/config/google/disconnect', { method: 'POST' }).then(function (r) {
+          if (!r.ok) {
+            gcStatusEl.textContent = 'Não deu pra desconectar (' + (r.error || r._status) + ').';
+            return;
+          }
           location.href = '/app/config#google-contatos';
           location.reload();
         });
@@ -749,6 +785,8 @@ export function configPageScript(): string {
           data._status = res.status;
           return data;
         });
+      }).catch(function () {
+        return { ok: false, error: 'falha de rede', _status: 0 };
       });
     }
 
@@ -760,7 +798,7 @@ export function configPageScript(): string {
       }
       if (!st.configured) {
         setDot('wa-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
-        waStatusEl.textContent = 'Integração desligada: falta configurar o WHATSAPP_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
+        waStatusEl.textContent = 'Integração desligada: a ponte com o WhatsApp ainda não foi configurada no servidor de contatos. Peça ao seu assistente pra configurar (variável WHATSAPP_SYNC_TOKEN) e recarregue esta página.';
         return;
       }
       setDot('wa-dot', true, 'Configurado');
@@ -807,7 +845,10 @@ export function configPageScript(): string {
     function waLoad() {
       if (waLoaded) return;
       waLoaded = true;
-      waJson('/app/config/whatsapp/status').then(waRender);
+      waJson('/app/config/whatsapp/status').then(function (st) {
+        if (!st.ok && st._status === 0) waLoaded = false;
+        waRender(st);
+      });
     }
     integLoaders.push(waLoad);
     if (waRoot.open) waLoad();
@@ -877,6 +918,8 @@ export function configPageScript(): string {
           data._status = res.status;
           return data;
         });
+      }).catch(function () {
+        return { ok: false, error: 'falha de rede', _status: 0 };
       });
     }
 
@@ -888,7 +931,7 @@ export function configPageScript(): string {
       }
       if (!st.configured) {
         setDot('ig-dot', 'warn', 'Não configurado', 'Falta configurar credenciais no servidor de contatos');
-        igStatusEl.textContent = 'Integração desligada: falta configurar o INSTAGRAM_SYNC_TOKEN no servidor de contatos. Sem ele, nada é sincronizado.';
+        igStatusEl.textContent = 'Integração desligada: a ponte com o Instagram ainda não foi configurada no servidor de contatos. Peça ao seu assistente pra configurar (variável INSTAGRAM_SYNC_TOKEN) e recarregue esta página.';
         return;
       }
       setDot('ig-dot', true, 'Configurado');
@@ -929,7 +972,10 @@ export function configPageScript(): string {
     function igLoad() {
       if (igLoaded) return;
       igLoaded = true;
-      igJson('/app/config/instagram/status').then(igRender);
+      igJson('/app/config/instagram/status').then(function (st) {
+        if (!st.ok && st._status === 0) igLoaded = false;
+        igRender(st);
+      });
     }
     integLoaders.push(igLoad);
     if (igRoot.open) igLoad();
@@ -969,6 +1015,8 @@ export function configPageScript(): string {
           data._status = res.status;
           return data;
         });
+      }).catch(function () {
+        return { ok: false, error: 'falha de rede', _status: 0 };
       });
     }
 
@@ -998,7 +1046,10 @@ export function configPageScript(): string {
     function pdLoad() {
       if (pdLoaded) return;
       pdLoaded = true;
-      pdJson('/app/config/pipedrive/status').then(pdRender);
+      pdJson('/app/config/pipedrive/status').then(function (st) {
+        if (!st.ok && st._status === 0) pdLoaded = false;
+        pdRender(st);
+      });
     }
     integLoaders.push(pdLoad);
     if (pdRoot.open) pdLoad();

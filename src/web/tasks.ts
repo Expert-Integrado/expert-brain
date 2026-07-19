@@ -1348,7 +1348,20 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   if (!session.ok) return session.response;
 
   const now = Date.now();
-  const { columns, projects, awaiting } = await buildBoard(env, now);
+  // Resiliência (revisão 19/07): um hiccup de D1 dentro do buildBoard subia até o
+  // catch global do worker e virava a página de erro FATAL inteira. Degrada pro
+  // shell com banner + bundle — o "Tentar de novo" (client) recarrega os dados
+  // in-place sem perder a navegação. Padrão análogo ao erro-por-card da home.
+  let boardData: { columns: BoardColumn[]; projects: BoardProject[]; awaiting: Parameters<typeof awaitingBannerHtml>[0] } =
+    { columns: [], projects: [], awaiting: [] };
+  let boardError = false;
+  try {
+    boardData = await buildBoard(env, now);
+  } catch (e) {
+    console.error('tasks: buildBoard falhou no SSR (degradando pro banner)', e);
+    boardError = true;
+  }
+  const { columns, projects, awaiting } = boardData;
   const totalOpen = countOpenOnBoard(columns);
   const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
 
@@ -1391,7 +1404,11 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       </button>
     </div>
     ${formErrorBanner(url)}
-    ${columns.every((c) => c.tasks.length === 0) ? `<div class="empty-state tasks-empty-state">
+    ${boardError ? `<div class="callout-error" id="task-board-error" role="alert">
+      Não deu pra carregar o board agora.
+      <button type="button" class="btn btn-sm btn-ghost" id="task-board-retry">Tentar de novo</button>
+    </div>` : ''}
+    ${!boardError && columns.every((c) => c.tasks.length === 0) ? `<div class="empty-state tasks-empty-state">
       <p class="empty-state-title">Nenhuma task ainda</p>
       <p>O board organiza o que você e seus agentes estão tocando — comece pela primeira.</p>
       <button type="button" class="btn btn-primary" data-click-proxy="task-new-btn">Criar primeira tarefa</button>

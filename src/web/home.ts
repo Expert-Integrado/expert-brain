@@ -356,7 +356,11 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   try {
     fleetStripHtml = await fleetHomeStripHtml(env, now);
   } catch (e) {
-    console.error('home: falha ao montar a faixa da frota (omitida)', e);
+    // Falha NÃO pode ser 100% silenciosa (revisão 19/07): a faixa carrega a fila
+    // de "Validação humana"/bloqueios — sumir sem sinal esconde trabalho parado.
+    // Linha discreta no lugar, com rota pra página da frota.
+    console.error('home: falha ao montar a faixa da frota (linha de aviso)', e);
+    fleetStripHtml = '<p class="config-subtitle" role="status">Não deu pra carregar a faixa dos agentes agora — <a href="/app/fleet">abrir a página Agentes</a>.</p>';
   }
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um

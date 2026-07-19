@@ -102,18 +102,43 @@ function esc(s: string): string {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
 }
 
-async function load() {
+// Falha de rede/servidor NÃO pode ser silenciosa (revisão 19/07): o board antigo
+// congelava sem aviso ("if (!res.ok) return" + catch mudo). Agora: banner in-place
+// com "Tentar de novo" ANTES do board, preservando o DOM atual (cards do último
+// load seguem visíveis/utilizáveis). Retorna boolean pra quem precisa ser honesto
+// no feedback (move()).
+function showLoadError() {
+  if (document.getElementById('task-board-error')) return;
+  const root = document.getElementById('task-board');
+  if (!root || !root.parentElement) return;
+  const div = document.createElement('div');
+  div.id = 'task-board-error';
+  div.className = 'callout-error';
+  div.setAttribute('role', 'alert');
+  div.innerHTML = 'Não deu pra atualizar o board agora. <button type="button" class="btn btn-sm btn-ghost" id="task-board-retry">Tentar de novo</button>';
+  root.parentElement.insertBefore(div, root);
+}
+
+function hideLoadError() {
+  document.getElementById('task-board-error')?.remove();
+}
+
+async function load(): Promise<boolean> {
   try {
     const res = await appFetch('/app/tasks/data');
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     board = (await res.json()) as BoardData;
     projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
+    hideLoadError();
     refreshTagFilterOptions();
     render();
     renderMailboxBadges();
     focusTaskFromQuery();
+    return true;
   } catch (err) {
     console.warn('tasks: load failed', err);
+    showLoadError();
+    return false;
   }
 }
 
@@ -342,6 +367,22 @@ function render() {
   const now = board.now;
   const collapsed = loadCollapsed();
 
+  // O re-render por innerHTML destruía o popover de edição rápida ABERTO (o
+  // autosave dispara load() → render() e o painel renascia hidden ~400ms depois,
+  // engolindo o campo de hora debaixo do clique — revisão 19/07). Captura painéis
+  // abertos + campo focado e restaura depois do wire.
+  const openPanelIds = Array.from(root.querySelectorAll<HTMLElement>('.task-card'))
+    .filter((c) => { const p = c.querySelector<HTMLElement>('[data-editpanel]'); return !!p && !p.hidden; })
+    .map((c) => c.dataset.id || '')
+    .filter(Boolean);
+  const activeEl = document.activeElement as HTMLElement | null;
+  const activeCardId = activeEl?.closest<HTMLElement>('.task-card')?.dataset.id || null;
+  const activeSel = !activeEl ? null
+    : activeEl.matches('[data-qe-prio]') ? '[data-qe-prio]'
+    : activeEl.matches('[data-qe-due-date]') ? '[data-qe-due-date]'
+    : activeEl.matches('[data-qe-due-time]') ? '[data-qe-due-time]'
+    : null;
+
   // Banner "Aguardando você" (spec 89): re-renderiza a cada load junto com o board
   // (bloqueio respondido no detalhe some daqui no próximo refresh). Container fixo
   // no SSR; vazio → [hidden].
@@ -383,6 +424,15 @@ function render() {
   wireCards();
   wireCollapseToggles();
   wireInlineCreate();
+
+  // Restaura popovers de edição rápida que estavam abertos + o foco do campo.
+  for (const id of openPanelIds) {
+    const p = root.querySelector<HTMLElement>(`.task-card[data-id="${CSS.escape(id)}"] [data-editpanel]`);
+    if (p) p.hidden = false;
+  }
+  if (activeCardId && activeSel) {
+    root.querySelector<HTMLElement>(`.task-card[data-id="${CSS.escape(activeCardId)}"] ${activeSel}`)?.focus();
+  }
 }
 
 // Toggle de colapso por coluna — persiste e re-renderiza (board já está em memória,
@@ -424,7 +474,10 @@ function wireInlineCreate() {
         if (res.ok) {
           input.value = '';
           await load();
-          return; // load() já re-renderiza (novo input não fica desabilitado)
+          // Refoca o input NOVO da mesma coluna (o re-render destruiu o antigo) —
+          // criar 5 tasks em série não pode exigir 5 cliques (revisão 19/07).
+          document.querySelector<HTMLInputElement>(`[data-inline-input="${CSS.escape(columnId)}"]`)?.focus();
+          return;
         }
         console.warn('tasks: inline create failed', res.status);
         toast('Não foi possível criar a tarefa — tenta de novo.');
@@ -451,7 +504,13 @@ async function move(id: string, columnId: string) {
     if (!res.ok) throw new Error('move ' + res.status);
   } catch (err) {
     console.warn('tasks: move failed', err);
-    toast('Não foi possível mover a tarefa — o board foi recarregado.');
+    // Só afirma "recarregado" se o reload realmente passou (senão o banner de
+    // erro do load() já está na tela e o toast não pode mentir).
+    const reloaded = await load();
+    toast(reloaded
+      ? 'Não foi possível mover a tarefa — o board foi recarregado.'
+      : 'Não foi possível mover a tarefa nem atualizar o board — confira a conexão.');
+    return;
   }
   await load();
 }
@@ -882,6 +941,33 @@ wireCreateModal();
     });
   }
 }
+// "Tentar de novo" do banner de erro — delegado pra cobrir tanto o banner do SSR
+// (buildBoard falhou) quanto o injetado pelo showLoadError().
+document.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest?.('#task-board-retry');
+  if (btn) void load();
+});
+
+// Auto-refresh (revisão 19/07): agentes escrevem via MCP o dia todo e o board é o
+// daily-driver — aba aberta ficava congelada (inclusive o "vencem hoje" calculado
+// com board.now da véspera). Recarrega ao voltar pra aba + poll leve com a aba
+// visível. Nunca no meio de um drag (body.task-dragging, setado pelo board-dnd).
+function safeToRefresh(): boolean {
+  if (document.hidden || document.body.classList.contains('task-dragging')) return false;
+  // Popover de edição aberto ou campo do board focado = usuário no meio de algo;
+  // valor digitado-e-ainda-não-salvo não pode ser atropelado pelo refresh.
+  if (document.querySelector('#task-board [data-editpanel]:not([hidden])')) return false;
+  const a = document.activeElement as HTMLElement | null;
+  if (a && a.closest('#task-board') && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return false;
+  return true;
+}
+document.addEventListener('visibilitychange', () => {
+  if (safeToRefresh()) void load();
+});
+setInterval(() => {
+  if (safeToRefresh()) void load();
+}, 90_000);
+
 load();
 
 export {};

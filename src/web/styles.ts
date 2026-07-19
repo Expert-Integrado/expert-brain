@@ -105,6 +105,13 @@ export const TOKENS_CSS = `
      que o Obsidian (#1e1e1e) de propósito. graph3d.ts (BG_COLOR) espelha o valor
      em JS pro WebGL — mudar aqui = mudar lá. */
   --surface-canvas: #0c0c10;
+  /* Overlays flutuantes (painéis do grafo, bottom-nav): translúcido + blur.
+     Par claro no bloco light — nunca cravar rgba(10,6,24,...) em componente. */
+  --surface-overlay: rgba(10, 6, 24, 0.82);
+  --surface-overlay-strong: rgba(10, 6, 24, 0.94);
+  /* Texto dos badges --chip: mistura da cor da área com a "tinta" do tema —
+     white no dark clareia, black no light escurece (senão o badge some no claro). */
+  --chip-ink: white;
 
   /* -- tema: fundo e grain tokenizados (gradiente calmo da direção A) -- */
   --bg-gradient:
@@ -190,6 +197,10 @@ export const TOKENS_CSS = `
   --info-border: rgba(29, 78, 216, 0.4);
   --prio-4: #475569;
   --surface-canvas: #eef0f6;
+  --surface-overlay: rgba(255, 255, 255, 0.85);
+  --surface-overlay-strong: rgba(255, 255, 255, 0.94);
+  --chip-ink: black;
+  --chip-ink-mix: 55%; /* % da cor da área na mistura do texto do badge (dark usa o fallback por regra) */
 
   /* -- tema: gradiente calmo claro + grain quase imperceptível -- */
   --bg-gradient:
@@ -345,7 +356,7 @@ export const SHELL_CSS = `
   margin-left: auto;
   font-size: 10px;
   padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
   border: 1px solid var(--border);
   border-radius: 3px;
   color: var(--text-subtle);
@@ -512,7 +523,7 @@ export const COMPONENTS_CSS = `
   margin: 0 0 10px;
 }
 .card pre {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--input-bg);
   padding: var(--space-3) 14px;
   border-radius: var(--radius-sm);
   overflow-x: auto;
@@ -842,7 +853,7 @@ export const SURFACES_CSS = `
      (customizada ou da paleta compilada). Fallback = lavanda original, pro
      badge de relação de edge (que não é de área) ficar igual a antes. */
   background: color-mix(in srgb, var(--chip, #a78bfa) 16%, transparent);
-  color: color-mix(in srgb, var(--chip, #a78bfa) 88%, white);
+  color: color-mix(in srgb, var(--chip, #a78bfa) var(--chip-ink-mix, 88%), var(--chip-ink, white));
   border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 32%, transparent);
   margin-right: 6px;
 }
@@ -942,7 +953,7 @@ export const SURFACES_CSS = `
   margin: 0 0 10px;
 }
 .card pre {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--input-bg);
   padding: 12px 14px;
   border-radius: var(--radius-sm);
   overflow-x: auto;
@@ -956,7 +967,7 @@ export const SURFACES_CSS = `
   min-width: 260px;
   word-break: break-all;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   padding: 12px 14px;
@@ -1091,7 +1102,7 @@ export const SURFACES_CSS = `
 /* Hint/instrucao curta abaixo do titulo de um passo */
 .config-hint { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; margin: 8px 0 14px; }
 .config-hint code, .callout-info code {
-  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1.5px 6px; border-radius: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
 }
 
@@ -1124,7 +1135,7 @@ export const SURFACES_CSS = `
   width: 100%; box-sizing: border-box;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 13px; line-height: 1.55;
-  background: rgba(0, 0, 0, 0.4); color: var(--text);
+  background: var(--input-bg); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 12px 14px; resize: vertical;
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
@@ -1181,7 +1192,7 @@ export const SURFACES_CSS = `
 }
 .adv-section p { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; margin: 0 0 8px; }
 .adv-section p code, .adv-section code {
-  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1.5px 6px; border-radius: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
 }
 .adv-section label { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 6px; }
@@ -1190,7 +1201,7 @@ export const SURFACES_CSS = `
 .input-text {
   width: 100%; box-sizing: border-box; margin-top: 6px;
   padding: 9px 12px;
-  background: rgba(0, 0, 0, 0.4); color: var(--text);
+  background: var(--input-bg); color: var(--text);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   font-family: inherit; font-size: 14px;
   transition: border-color 180ms var(--ease);
@@ -1207,7 +1218,7 @@ export const SURFACES_CSS = `
 .keys-table td { padding: 10px; border-bottom: 1px solid var(--border); color: var(--text); vertical-align: middle; }
 .keys-table tr:last-child td { border-bottom: none; }
 .keys-table code {
-  background: rgba(255, 255, 255, 0.07); padding: 1.5px 6px; border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, transparent); padding: 1.5px 6px; border-radius: 4px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px;
 }
 /* Acoes destrutivas (Arquivar/Revogar): .btn .btn-danger .btn-sm do COMPONENTS_CSS (Onda 5) */
@@ -1313,7 +1324,7 @@ export const SURFACES_CSS = `
    tarefas / Projetos / Tags / Áreas e tipos). Só CSS: o HTML das seções fica
    intacto de propósito (contratos dos testes kanban/tags/taxonomy/projects). */
 .keys-table tbody tr { transition: background 150ms var(--ease); }
-.keys-table tbody tr:hover td { background: rgba(255, 255, 255, 0.025); }
+.keys-table tbody tr:hover td { background: color-mix(in srgb, var(--text) 4%, transparent); }
 /* Botões soltos dentro das tabelas (Salvar/Renomear/Desarquivar): mesma pele do
    .row button, em tamanho compacto de linha. Declarado DEPOIS de .row button
    :not(.btn) (mesma especificidade) pra vencer nos forms .row dentro de tabela.
@@ -1335,7 +1346,7 @@ export const SURFACES_CSS = `
 .keys-table button[aria-label="Subir"],
 .keys-table button[aria-label="Descer"] {
   min-width: 30px; padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
   color: var(--text-subtle);
 }
 .keys-table button[aria-label="Subir"]:hover,
@@ -1366,7 +1377,7 @@ export const SURFACES_CSS = `
 .key-flash p { color: var(--text-dim); font-size: 13px; margin: 0 0 10px; }
 .key-flash input.key-flash-value {
   width: 100%; box-sizing: border-box; padding: 12px 14px;
-  background: rgba(0, 0, 0, 0.4); color: #b9f6ca;
+  background: var(--input-bg); color: var(--success);
   border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); border-radius: var(--radius-sm);
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px;
 }
@@ -1612,7 +1623,7 @@ export const SURFACES_CSS = `
   width: 280px;
   max-height: calc(100vh - 32px);
   overflow-y: auto;
-  background: rgba(10, 6, 24, 0.82);
+  background: var(--surface-overlay);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
@@ -1628,7 +1639,7 @@ export const SURFACES_CSS = `
 }
 .graph-overlay-row { display: block; }
 .graph-overlay::-webkit-scrollbar { width: 6px; }
-.graph-overlay::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+.graph-overlay::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--text) 12%, transparent); border-radius: 3px; }
 
 /* Mobile-only toggle do overlay — escondido em desktop. Em mobile, fixa no
    canto top-left e abre/fecha o overlay pra liberar o canvas do grafo. */
@@ -1642,7 +1653,7 @@ export const SURFACES_CSS = `
   height: 40px;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 6, 24, 0.82);
+  background: var(--surface-overlay);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
@@ -1668,7 +1679,7 @@ export const SURFACES_CSS = `
 .graph-search-input {
   width: 100%;
   padding: 8px 12px 8px 32px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -1677,7 +1688,7 @@ export const SURFACES_CSS = `
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
 .graph-search-input::placeholder { color: var(--text-subtle); }
-.graph-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
+.graph-search-input:focus { border-color: var(--accent-lav); background: var(--input-bg); }
 .graph-search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 
 /* Dropdown typeahead da busca (lista de resultados sob a caixa) */
@@ -1687,10 +1698,10 @@ export const SURFACES_CSS = `
   left: 0;
   right: 0;
   z-index: 60;
-  background: rgba(14, 12, 24, 0.97);
+  background: var(--surface-overlay-strong);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow-3);
   backdrop-filter: blur(8px);
   max-height: 340px;
   overflow-y: auto;
@@ -1860,7 +1871,7 @@ export const SURFACES_CSS = `
   width: 100%;
   box-sizing: border-box;
   padding: 8px 11px;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--input-bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1940,7 +1951,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 6px;
   padding: 4px 8px 4px 6px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-dim);
@@ -1949,7 +1960,7 @@ select.panel-form-input { cursor: pointer; }
   cursor: pointer;
   transition: background 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease);
 }
-.graph-chip:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.graph-chip:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
 .graph-chip.active {
   background: rgba(124, 58, 237, 0.22);
   border-color: rgba(167, 139, 250, 0.55);
@@ -1978,7 +1989,7 @@ select.panel-form-input { cursor: pointer; }
   gap: 8px;
   padding: 8px 10px;
   margin-top: 4px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
@@ -2037,7 +2048,7 @@ select.panel-form-input { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: rgba(10, 6, 24, 0.82);
+  background: var(--surface-overlay);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border);
@@ -2071,13 +2082,18 @@ select.panel-form-input { cursor: pointer; }
   right: 0;
   width: min(380px, 90vw);
   height: 100vh;
-  background: rgba(10, 6, 24, 0.94);
+  background: var(--surface-overlay-strong);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-left: 1px solid var(--border);
   z-index: 50;
   transform: translateX(100%);
-  transition: transform 320ms var(--ease);
+  /* visibility esconde o painel FECHADO de verdade: estacionado em translateX(100%)
+     a box-shadow dele vazava ~30px pra dentro da viewport (faixa escura na borda
+     direita, gritante no tema claro/mobile). O delay de 320ms preserva a animação
+     de saída; .open zera o delay pra aparecer junto do slide. */
+  visibility: hidden;
+  transition: transform 320ms var(--ease), visibility 0s 320ms;
   padding: 32px 28px 28px;
   color: var(--text);
   overflow-y: auto;
@@ -2086,7 +2102,7 @@ select.panel-form-input { cursor: pointer; }
   flex-direction: column;
   gap: 14px;
 }
-#graph-panel.open { transform: translateX(0); }
+#graph-panel.open { transform: translateX(0); visibility: visible; transition: transform 320ms var(--ease), visibility 0s 0s; }
 .panel-close {
   position: absolute;
   top: 10px;
@@ -2102,7 +2118,7 @@ select.panel-form-input { cursor: pointer; }
   border-radius: 6px;
   transition: background 160ms var(--ease), color 160ms var(--ease);
 }
-.panel-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.panel-close:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
 
 .panel-meta {
   display: flex;
@@ -2116,7 +2132,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 2px 8px;
   /* --chip (spec 54): cor do kind resolvida, setada inline pelo client/graph.ts. */
   background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
-  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  color: color-mix(in srgb, var(--chip, #a78bfa) var(--chip-ink-mix, 90%), var(--chip-ink, white));
   border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
@@ -2145,7 +2161,7 @@ select.panel-form-input { cursor: pointer; }
   padding: 3px 10px;
   background: color-mix(in srgb, var(--chip) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--chip) 45%, transparent);
-  color: color-mix(in srgb, var(--chip) 85%, white);
+  color: color-mix(in srgb, var(--chip) var(--chip-ink-mix, 85%), var(--chip-ink, white));
   border-radius: 999px;
   font-size: 11px;
   font-weight: 500;
@@ -2153,7 +2169,7 @@ select.panel-form-input { cursor: pointer; }
 .panel-tldr {
   margin: 0;
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
   border-left: 2px solid var(--accent-lav);
   border-radius: 0 8px 8px 0;
   color: var(--text-dim);
@@ -2189,7 +2205,7 @@ select.panel-form-input { cursor: pointer; }
   z-index: 80;
   height: calc(60px + env(safe-area-inset-bottom));
   padding: 0 4px env(safe-area-inset-bottom);
-  background: rgba(10, 6, 24, 0.94);
+  background: var(--surface-overlay-strong);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-top: 1px solid var(--border);
@@ -2302,6 +2318,13 @@ select.panel-form-input { cursor: pointer; }
   .graph-overlay.open { display: flex; }
 
   #graph-panel { width: 100vw; padding: 32px 20px 20px; }
+
+  /* iOS Safari dá auto-zoom em campo com fonte < 16px — depois de focar, a tela
+     fica zoomada/deslocada. Só mobile; o !important vence os font-size de 13-15px
+     das classes de campo (especificidade maior que element selector). */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  select,
+  textarea { font-size: 16px !important; }
 }
 
 /* ==========================================================================
@@ -2335,7 +2358,7 @@ select.panel-form-input { cursor: pointer; }
 .notes-search-input {
   flex: 1;
   padding: 10px 14px 10px 36px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -2344,12 +2367,12 @@ select.panel-form-input { cursor: pointer; }
   transition: border-color 180ms var(--ease), background 180ms var(--ease);
 }
 .notes-search-input::placeholder { color: var(--text-subtle); }
-.notes-search-input:focus { border-color: var(--accent-lav); background: rgba(0, 0, 0, 0.5); }
+.notes-search-input:focus { border-color: var(--accent-lav); background: var(--input-bg); }
 
 .notes-toolbar-actions { display: flex; gap: 8px; }
 .notes-select {
   padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text);
@@ -2382,7 +2405,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 6px;
   padding: 4px 9px 4px 7px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text-dim);
@@ -2391,7 +2414,7 @@ select.panel-form-input { cursor: pointer; }
   cursor: pointer;
   transition: background 160ms var(--ease), border-color 160ms var(--ease), color 160ms var(--ease);
 }
-.notes-chip:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.notes-chip:hover { background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); }
 .notes-chip.active {
   background: rgba(124, 58, 237, 0.22);
   border-color: rgba(167, 139, 250, 0.55);
@@ -2457,7 +2480,7 @@ select.panel-form-input { cursor: pointer; }
      customização o resolver ainda manda uma cor (fallback da paleta), então
      --chip está SEMPRE setado aqui — o default abaixo é só defesa. */
   background: color-mix(in srgb, var(--chip, #a78bfa) 22%, transparent);
-  color: color-mix(in srgb, var(--chip, #a78bfa) 90%, white);
+  color: color-mix(in srgb, var(--chip, #a78bfa) var(--chip-ink-mix, 90%), var(--chip-ink, white));
   border: 1px solid color-mix(in srgb, var(--chip, #a78bfa) 36%, transparent);
   border-radius: 999px;
   font-size: 10.5px;
@@ -2466,15 +2489,16 @@ select.panel-form-input { cursor: pointer; }
   text-transform: uppercase;
 }
 /* Selo de privacidade (spec 31): badge 🔒 no card de nota e no detalhe. Amarelo
-   discreto — sinaliza confidencialidade sem gritar. */
+   discreto — sinaliza confidencialidade sem gritar. Tokens --warning*: no tema
+   claro o #fcd34d cravado sumia (1.3:1) justamente no selo do modo palestra. */
 .private-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 2px 9px;
-  background: rgba(251, 191, 36, 0.12);
-  color: #fcd34d;
-  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: var(--warning-bg);
+  color: var(--warning);
+  border: 1px solid var(--warning-border);
   border-radius: 999px;
   font-size: 10.5px;
   font-weight: 600;
@@ -2526,7 +2550,7 @@ select.panel-form-input { cursor: pointer; }
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-bottom: none;
   border-radius: var(--radius) var(--radius) 0 0;
@@ -2552,7 +2576,7 @@ select.panel-form-input { cursor: pointer; }
   position: relative;
   height: 420px;
   margin: 0 0 28px;
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--surface-canvas);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;

@@ -25,10 +25,16 @@ interface Command {
 }
 
 const COMMANDS: Command[] = [
+  { id: 'go-home',   label: 'Ir pro Início',        action: () => (window.location.href = '/app') },
   { id: 'go-graph',  label: 'Ir pro Grafo',         hint: 'Ctrl+G', action: () => (window.location.href = '/app/graph') },
   { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
   { id: 'go-tasks',  label: 'Ir pras Tarefas',      hint: 'Ctrl+T', action: () => (window.location.href = '/app/tasks') },
+  { id: 'go-contacts', label: 'Ir pros Contatos',   action: () => (window.location.href = '/app/contacts') },
+  { id: 'go-insights', label: 'Ir pro Seu cérebro', action: () => (window.location.href = '/app/insights') },
+  { id: 'go-fleet',  label: 'Ir pros Agentes',      action: () => (window.location.href = '/app/fleet') },
   { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
+  // Único caminho de trocar tema no CELULAR (a sidebar com o botão some ≤767px).
+  { id: 'toggle-theme', label: 'Alternar tema (auto → claro → escuro)', action: () => cycleTheme() },
   { id: 'toggle-sidebar', label: 'Recolher/expandir menu', hint: 'Ctrl+B', action: () => toggleSidebar() },
   { id: 'logout',    label: 'Sair',                 action: () => submitLogout() },
 ];
@@ -549,6 +555,10 @@ function onKey(e: KeyboardEvent) {
   const meta = e.ctrlKey || e.metaKey;
   // Ctrl+K é especial: funciona até com a palette aberta (toggle) e digitando.
   if (meta && e.key.toLowerCase() === 'k') {
+    // Na página do grafo o bundle do grafo é DONO do Ctrl+K (palette própria de
+    // busca de nós) — sem este guard abriam as DUAS empilhadas disputando foco
+    // (revisão 19/07). O grafo faz o próprio preventDefault.
+    if (document.getElementById('graph-canvas')) return;
     e.preventDefault();
     SHORTCUT_ACTIONS.palette();
     return;
@@ -663,14 +673,20 @@ function applyTheme(pref: ThemePref) {
   if (label) label.textContent = pref === 'auto' ? 'Tema: auto' : pref === 'light' ? 'Tema: claro' : 'Tema: escuro';
 }
 
+// Ciclo auto → claro → escuro — usado pelo botão da sidebar E pelo comando da
+// paleta (única rota no celular, onde a sidebar não existe).
+function cycleTheme() {
+  const next: ThemePref = ({ auto: 'light', light: 'dark', dark: 'auto' } as const)[themePref()];
+  try { localStorage.setItem('theme', next); } catch { /* modo privado etc. */ }
+  applyTheme(next);
+}
+
 function wireThemeToggle() {
   applyTheme(themePref()); // sincroniza label/metas com o que o boot carimbou
   document.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement | null)?.closest?.('[data-theme-toggle]');
     if (!btn) return;
-    const next: ThemePref = ({ auto: 'light', light: 'dark', dark: 'auto' } as const)[themePref()];
-    try { localStorage.setItem('theme', next); } catch { /* modo privado etc. */ }
-    applyTheme(next);
+    cycleTheme();
   });
   // auto acompanha o SO sem reload; storage sincroniza a escolha entre abas.
   window.matchMedia?.('(prefers-color-scheme: light)')
@@ -845,13 +861,21 @@ async function wirePushCard(): Promise<void> {
     return;
   }
 
+  // Permissão já BLOQUEADA no navegador: o botão "Ativar" não teria efeito
+  // nenhum (o prompt nem abre). Esconde o botão e ensina onde desbloquear.
+  if (Notification.permission === 'denied') {
+    enableBtn.hidden = true;
+    setStatus('As notificações estão bloqueadas pra este site no navegador. Pra liberar: clique no cadeado ao lado do endereço → Notificações → Permitir, e recarregue esta página.');
+    return;
+  }
+
   let vapidKey: string | null = null;
   try {
     const res = await appFetch('/app/push/vapid-key');
     if (res.ok) vapidKey = ((await res.json()) as { key: string | null }).key;
   } catch { /* trata como não configurado abaixo */ }
   if (!vapidKey) {
-    setStatus('Push não configurado no servidor (chave VAPID ausente).');
+    setStatus('As notificações ainda não foram configuradas no servidor — peça ao seu assistente pra configurar o push (chave VAPID) e recarregue esta página.');
     return;
   }
 
@@ -869,7 +893,7 @@ async function wirePushCard(): Promise<void> {
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') {
-        toast('Permissão de notificação negada pelo navegador.');
+        toast('Permissão negada. Pra liberar depois: cadeado ao lado do endereço → Notificações → Permitir.');
         return;
       }
       const sub = await reg.pushManager.subscribe({

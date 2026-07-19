@@ -3,7 +3,6 @@ import { esc } from '../util/html.js';
 import { requireSession } from './session.js';
 import { renderShell, htmlResponse, sidebarCollapsedFromReq } from './render.js';
 import { formError, formErrorBanner } from './form-error.js';
-import { assetVersion } from './asset-version.js';
 import { awaitingBannerHtml, dotHue, dotInitials } from '../util/task-badges.js';
 import {
   listKanbanColumns,
@@ -329,6 +328,23 @@ export function fleetPageScript(): string {
 `;
 }
 
+// Cache-bust REAL do bundle da fleet: o script acima é gerado aqui (não passa
+// pelo esbuild, então não existe em ASSET_HASHES — `?v=${assetVersion}` antigo
+// interpolava a FUNÇÃO e nunca mudava entre deploys, com o handler servindo
+// immutable/1 ano). Hash FNV-1a do conteúdo: muda quando o script muda.
+let fleetScriptHash: string | null = null;
+function fleetScriptVersion(): string {
+  if (fleetScriptHash) return fleetScriptHash;
+  const s = fleetPageScript();
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  fleetScriptHash = (h >>> 0).toString(16);
+  return fleetScriptHash;
+}
+
 export async function handleFleetPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -410,7 +426,7 @@ export async function handleFleetPage(req: Request, env: Env): Promise<Response>
     ${awaitingHtml}
     ${validationStripHtml(validation, nowMs)}
     ${gridHtml}
-    <script defer src="/app/fleet/bundle.js?v=${assetVersion}"></script>
+    <script defer src="/app/fleet/bundle.js?v=${fleetScriptVersion()}"></script>
   `;
 
   return htmlResponse(
