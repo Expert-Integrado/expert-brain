@@ -239,6 +239,33 @@ describe('/app/config — banner one-time e listagem agrupada', () => {
     expect(await again.text()).not.toContain('id="key-flash"');
   });
 
+  it('GET do fetch (accept: application/json) NÃO consome o flash — só a navegação real (fix FLASH-EATEN)', async () => {
+    await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: null }, 1);
+    const ck = await cookie();
+    const create = await postForm('/app/api-keys/create', {
+      name: 'pat-ajax', scope: 'full', user_id: 'user_vps',
+    }, ck);
+    const loc = create.headers.get('location')!;
+
+    // 1) O fetch do data-ajax-form segue o 302 até este GET carregando o accept:
+    //    application/json do appFetch — esse GET fantasma não pode consumir o
+    //    flash (o client navega de verdade logo em seguida, pra MESMA URL).
+    const probe = await SELF.fetch(`https://x${loc}`, {
+      headers: { cookie: ck, accept: 'application/json' },
+    });
+    expect(await probe.text()).not.toContain('id="key-flash"');
+
+    // 2) A navegação real (accept de browser, sem application/json) mostra a chave...
+    const page = await SELF.fetch(`https://x${loc}`, { headers: { cookie: ck } });
+    const html = await page.text();
+    expect(html).toContain('id="key-flash"');
+    expect(html).toContain('eb_pat_');
+
+    // 3) ...uma única vez: o segundo GET real não re-exibe (single-use preservado).
+    const secondReal = await SELF.fetch(`https://x${loc}`, { headers: { cookie: ck } });
+    expect(await secondReal.text()).not.toContain('id="key-flash"');
+  });
+
   it('listagem agrupa por sistema (frota primeiro), mostra dono e selo dormindo em 30+ dias', async () => {
     await createUser(E, { id: 'user_vps', name: 'Claude VPS', type: 'agent', bio: null, api_key_id: null }, 1);
     const a = await createApiKey(E, E.OWNER_EMAIL, 'pat-frota-vps', 'full', 'user_vps');

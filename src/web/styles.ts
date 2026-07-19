@@ -52,6 +52,10 @@ export const TOKENS_CSS = `
   --text: #f8fafc;
   --text-body: rgba(248, 250, 252, 0.86); /* corpo longo de nota/descrição — 1 degrau mais suave que --text, ainda AA */
   --surface-glass: rgba(7, 10, 19, 0.5); /* card translúcido sobre o gradiente (login) — par claro no bloco light */
+  --code-block-bg: rgba(0, 0, 0, 0.35); /* fundo dos blocos de código (.note-body pre) — par claro no bloco light */
+  --code-inline-bg: rgba(255, 255, 255, 0.07); /* fundo do code inline no corpo de nota */
+  --link-underline: rgba(140, 200, 255, 0.3); /* sublinhado suave dos links do corpo de nota */
+  --date-icon-filter: invert(0.7); /* clareia o ícone nativo do <input type=date> (TASKS_CSS) — no claro fica sem filtro */
   --text-dim: #b9bfd0;    /* AA 9.7:1 sobre --surface-1 */
   --text-faint: rgba(248, 250, 252, 0.34); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
   --border: rgba(167, 139, 250, 0.16);
@@ -161,6 +165,10 @@ export const TOKENS_CSS = `
   --text: #171c2e;
   --text-body: rgba(23, 28, 46, 0.88); /* corpo longo — espelho claro do token do dark */
   --surface-glass: rgba(255, 255, 255, 0.78); /* card translúcido do login sobre o gradiente claro */
+  --code-block-bg: rgba(23, 28, 46, 0.05); /* bloco de código: cinza sutil sobre o branco (o rgba preto .35 do dark cegava) */
+  --code-inline-bg: rgba(23, 28, 46, 0.07); /* code inline — espelho claro (o rgba branco do dark sumia no claro) */
+  --link-underline: rgba(15, 118, 110, 0.35); /* sublinhado na cor do --accent-cyan claro */
+  --date-icon-filter: none; /* ícone nativo do date input já é escuro — invert o apagava no claro */
   --text-dim: #454e66;    /* AA 7.6:1 sobre --surface-1 */
   --text-faint: rgba(23, 28, 46, 0.34); /* decorativo, mesma regra do dark */
   --border: rgba(109, 40, 217, 0.16);
@@ -779,7 +787,7 @@ export const COMPONENTS_CSS = `
   font-style: italic;
 }
 .note-body pre {
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--code-block-bg);
   border: 1px solid var(--border);
   padding: 14px 18px;
   border-radius: var(--radius-sm);
@@ -788,14 +796,14 @@ export const COMPONENTS_CSS = `
   line-height: 1.55;
 }
 .note-body code {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--code-inline-bg);
   padding: 1.5px 6px;
   border-radius: 4px;
   font-size: 13px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 .note-body pre code { background: none; padding: 0; }
-.note-body a { color: var(--accent-cyan); border-bottom: 1px solid rgba(140, 200, 255, 0.3); }
+.note-body a { color: var(--accent-cyan); border-bottom: 1px solid var(--link-underline); }
 .note-body a:hover { border-bottom-color: var(--accent-cyan); }
 .note-body hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
 `;
@@ -2321,10 +2329,12 @@ select.panel-form-input { cursor: pointer; }
 
   /* iOS Safari dá auto-zoom em campo com fonte < 16px — depois de focar, a tela
      fica zoomada/deslocada. Só mobile; o !important vence os font-size de 13-15px
-     das classes de campo (especificidade maior que element selector). */
+     das classes de campo (especificidade maior que element selector).
+     Os textareas de TÍTULO (nota 30px / task 28px) ficam FORA da regra: já são
+     >= 16px (iOS não zooma) e o !important os encolhia pra 16px no celular. */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   select,
-  textarea { font-size: 16px !important; }
+  textarea:not(.note-edit-title):not(.task-edit-title) { font-size: 16px !important; }
 }
 
 /* ==========================================================================

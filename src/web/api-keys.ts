@@ -98,7 +98,9 @@ export async function handleApiKeyOwner(req: Request, env: Env): Promise<Respons
   if (!owner || owner.archived_at !== null) return formError(req, 'Usuário dono da chave não existe ou está arquivado', { field: 'user_id', returnTo: '/app/config#api-keys' });
   const ok = await assignApiKeyUser(env, session.email, id, userId);
   if (!ok) return formError(req, 'Chave não encontrada, revogada ou já tem dono — pra trocar identidade, revogue e crie outra', { returnTo: '/app/config#api-keys' });
-  return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
+  // ?saved=keys reabre o accordion (fix KEYS-STATE-LOST): o fetch do ajax-form
+  // perde o #api-keys do Location — sem o query param a seção voltava fechada.
+  return new Response(null, { status: 302, headers: { location: '/app/config?saved=keys#api-keys' } });
 }
 
 // Edição tardia do sistema (pedido 11/07): o agrupamento nascia na criação e
@@ -112,7 +114,7 @@ export async function handleApiKeySystem(req: Request, env: Env): Promise<Respon
   const systemRaw = String(form.get('system') ?? '').trim().slice(0, 40);
   const ok = await setApiKeySystem(env, session.email, id, systemRaw || null);
   if (!ok) return formError(req, 'Chave não encontrada ou revogada', { returnTo: '/app/config#api-keys' });
-  return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
+  return new Response(null, { status: 302, headers: { location: '/app/config?saved=keys#api-keys' } });
 }
 
 export async function handleApiKeyRevoke(req: Request, env: Env): Promise<Response> {
@@ -122,5 +124,5 @@ export async function handleApiKeyRevoke(req: Request, env: Env): Promise<Respon
   const id = String(form.get('id') ?? '').trim();
   if (!id) return formError(req, 'id obrigatório', { returnTo: '/app/config#api-keys' });
   await revokeApiKey(env, session.email, id);
-  return new Response(null, { status: 302, headers: { location: '/app/config#api-keys' } });
+  return new Response(null, { status: 302, headers: { location: '/app/config?saved=keys#api-keys' } });
 }

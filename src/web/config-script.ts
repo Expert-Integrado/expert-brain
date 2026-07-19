@@ -26,6 +26,14 @@ export function configPageScript(): string {
     var msg = opts.body ? opts.title + ' ' + opts.body : opts.title;
     return Promise.resolve(window.confirm(msg));
   }
+  // Módulo de contatos AUSENTE (binding não configurado nesta instância): estado
+  // permanente de instalação, não queda temporária — a mensagem não pode prometer
+  // que "volta sozinha". A string vem de contacts-data.ts ('contacts binding/token
+  // not configured'); o erro técnico fica só no title/tooltip.
+  function contactsNotInstalled(err) {
+    var s = String(err || '');
+    return s.indexOf('contacts binding') !== -1 || s.indexOf('not configured') !== -1;
+  }
   // 'on': true = verde (funcionando), 'warn' = ambar (da pra resolver aqui:
   // falta configurar/conectar), false = cinza (fora do ar). Na face do card so
   // o dot aparece (o label fica display:none e vira tooltip junto do motivo) --
@@ -87,6 +95,14 @@ export function configPageScript(): string {
   }
   resolveHash();
   window.addEventListener('hashchange', resolveHash);
+
+  // ?saved=users (fix KEYS-STATE-LOST): o fetch do ajax-form perde o #users do
+  // Location — o query param leva o dono de volta pra seção de usuários. O
+  // ?saved=keys equivalente abre o accordion #api-keys no servidor.
+  if (new URLSearchParams(location.search).get('saved') === 'users') {
+    var usersBox = document.getElementById('users');
+    if (usersBox) usersBox.scrollIntoView();
+  }
 
   var url = location.origin + '/mcp';
   // Pode haver mais de um box de URL (aba "agente local" e aba "sistemas web").
@@ -249,6 +265,68 @@ export function configPageScript(): string {
     });
   });
 
+  // Revogar link de board compartilhado (fix PSHARE-REVOKE): mesma mecânica do
+  // key-revoke-form — revogação é TERMINAL (sem un-revoke), o modal deixa claro.
+  document.querySelectorAll('form.pshare-revoke-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.getAttribute('data-confirmed') === '1') return;
+      e.preventDefault();
+      var who = f.getAttribute('data-share-label') || 'esta identidade';
+      askConfirm({ title: 'Revogar o link de "' + who + '"?', body: 'Quem tem o link perde o acesso na hora. A revogação é definitiva, não dá pra reativar — pra compartilhar de novo, crie outro link.', verb: 'Revogar' }).then(function (go) {
+        if (!go) return;
+        f.setAttribute('data-confirmed', '1');
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
+    });
+  });
+
+  // Gerar código de recuperação (fix RECOVERY-DOUBLE): quando JÁ existe um código
+  // (data-has-code), gerar outro invalida o anterior na hora — pede confirmação.
+  // Em ambos os casos o botão desabilita durante o POST (form nativo navega; o
+  // disable só evita o duplo clique antes da navegação).
+  document.querySelectorAll('form.recovery-code-form').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      var btn = f.querySelector('button[type="submit"]');
+      if (f.getAttribute('data-confirmed') === '1' || f.getAttribute('data-has-code') !== '1') {
+        if (btn) btn.disabled = true;
+        return;
+      }
+      e.preventDefault();
+      askConfirm({ title: 'Gerar um novo código de recuperação?', body: 'O código anterior deixa de funcionar na hora. O novo aparece uma única vez — guarde assim que ele for mostrado.', verb: 'Gerar novo código' }).then(function (go) {
+        if (!go) return;
+        f.setAttribute('data-confirmed', '1');
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
+    });
+  });
+
+  // Renomear tag pra um nome que JÁ existe = fusão irreversível das duas (fix
+  // TAG-MERGE) — confirma antes. A comparação replica a normalização do servidor
+  // (trim + minúsculas, db/tag-admin.ts renameTag).
+  document.querySelectorAll('#tags-tbody form[action="/app/tasks/tags/rename"]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (f.getAttribute('data-confirmed') === '1') return;
+      var fromEl = f.querySelector('input[name="from"]');
+      var toEl = f.querySelector('input[name="to"]');
+      if (!fromEl || !toEl) return;
+      var from = String(fromEl.value || '').trim().toLowerCase();
+      var to = String(toEl.value || '').trim().toLowerCase();
+      if (!to || to === from) return;
+      var exists = false;
+      document.querySelectorAll('#tags-tbody tr[data-tag-row]').forEach(function (tr) {
+        var t = String(tr.getAttribute('data-tag-row') || '').trim().toLowerCase();
+        if (t === to && t !== from) exists = true;
+      });
+      if (!exists) return;
+      e.preventDefault();
+      askConfirm({ title: 'Já existe uma tag "' + to + '"', body: 'Renomear pra esse nome UNE as duas tags — todas as notas e tasks passam a usar uma só, e não dá pra separar depois. Continuar?', verb: 'Unir tags' }).then(function (go) {
+        if (!go) return;
+        f.setAttribute('data-confirmed', '1');
+        if (f.requestSubmit) f.requestSubmit(); else f.submit();
+      });
+    });
+  });
+
   // ── Áreas e tipos (taxonomia configurável — spec 54) ──
   // Slugifica um label pro mesmo formato exigido no servidor (DOMAIN_SLUG_REGEX:
   // minúsculo, kebab-case ASCII, começa com letra, 2-40 chars).
@@ -332,6 +410,9 @@ export function configPageScript(): string {
       var statusEl = document.getElementById('taxonomy-status');
       statusEl.textContent = 'Salvando...';
       statusEl.style.color = '';
+      // Sem disable, o duplo clique disparava dois POSTs (fix SAVE-NO-DISABLE);
+      // no sucesso a página navega, então o botão pode ficar desabilitado.
+      taxSaveBtn.disabled = true;
       fetch('/app/config/taxonomy', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
@@ -341,6 +422,7 @@ export function configPageScript(): string {
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (data) {
             if (!res.ok) {
+              taxSaveBtn.disabled = false;
               statusEl.textContent = data.error || ('Erro ao salvar (' + res.status + ')');
               statusEl.style.color = 'var(--danger)';
               return;
@@ -353,6 +435,7 @@ export function configPageScript(): string {
           });
         })
         .catch(function () {
+          taxSaveBtn.disabled = false;
           statusEl.textContent = 'Falha de rede ao salvar.';
           statusEl.style.color = 'var(--danger)';
         });
@@ -364,11 +447,13 @@ export function configPageScript(): string {
     taxResetBtn.addEventListener('click', function () {
       askConfirm({ title: 'Restaurar a taxonomia padrão?', body: 'Cores e nomes customizados (e áreas pré-criadas sem notas) somem.', verb: 'Restaurar' }).then(function (go) {
         if (!go) return;
+        taxResetBtn.disabled = true;
         fetch('/app/config/taxonomy/reset', { method: 'POST', headers: { accept: 'application/json' }, credentials: 'same-origin' })
           .then(function (res) {
             var statusEl = document.getElementById('taxonomy-status');
             if (!res.ok) {
               // Erro do servidor não pode parecer sucesso: antes recarregava igual.
+              taxResetBtn.disabled = false;
               statusEl.textContent = 'Erro ao restaurar (' + res.status + ').';
               statusEl.style.color = 'var(--danger)';
               return;
@@ -378,6 +463,7 @@ export function configPageScript(): string {
           })
           .catch(function () {
             var statusEl = document.getElementById('taxonomy-status');
+            taxResetBtn.disabled = false;
             statusEl.textContent = 'Falha de rede ao restaurar.';
             statusEl.style.color = 'var(--danger)';
           });
@@ -491,6 +577,12 @@ export function configPageScript(): string {
 
     function gcRender(st) {
       if (!st.ok) {
+        if (contactsNotInstalled(st.error)) {
+          setDot('gc-dot', false, 'Módulo de contatos não instalado', String(st.error || ''));
+          gcStatusEl.textContent = 'O módulo de contatos não está instalado nesta instância.';
+          gcStatusEl.title = String(st.error || '');
+          return;
+        }
         setDot('gc-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         gcStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
@@ -534,9 +626,12 @@ export function configPageScript(): string {
       // RECONECTAR — mostra o botão Conectar e o dot vira alerta (antes o texto
       // mandava reconectar com o botão escondido e o dot verde).
       var gcNeedsReconnect = !!(st.connected && st.alert && st.alert.kind === 'gsync_reconnect_required');
-      setDot('gc-dot', st.connected && !gcNeedsReconnect ? true : 'warn',
-        gcNeedsReconnect ? 'Reconexão necessária' : (st.connected ? 'Configurado' : 'Não conectado'),
-        gcNeedsReconnect ? 'A autorização do Google expirou — clique em "Conectar ao Google"' : (st.connected ? '' : 'Clique no card e conecte sua conta Google'));
+      // Conectado SEM etiqueta salva = sync parado — dot ambar, não verde (fix
+      // DOT-VERDE-PARADO): verde prometia "funcionando" com o sync congelado.
+      var gcNoLabels = !!(st.connected && !(st.groups && st.groups.length));
+      setDot('gc-dot', st.connected && !gcNeedsReconnect && !gcNoLabels ? true : 'warn',
+        gcNeedsReconnect ? 'Reconexão necessária' : gcNoLabels ? 'Falta salvar etiquetas' : (st.connected ? 'Configurado' : 'Não conectado'),
+        gcNeedsReconnect ? 'A autorização do Google expirou — clique em "Conectar ao Google"' : gcNoLabels ? 'Conectado, mas o sync fica parado até salvar as etiquetas' : (st.connected ? '' : 'Clique no card e conecte sua conta Google'));
       gcConnect.hidden = !!st.connected && !gcNeedsReconnect;
       gcSync.hidden = !st.connected;
       gcDisconnect.hidden = !st.connected;
@@ -550,7 +645,7 @@ export function configPageScript(): string {
       var parts = ['Conectado', st.linked_count + ' contatos vinculados'];
       if (st.groups && st.groups.length) parts.push(st.groups.length + ' etiqueta(s) configurada(s)');
       else parts.push('nenhuma etiqueta configurada ainda (o sync fica parado até salvar)');
-      if (st.last_run && st.last_run.at) parts.push('último sync: ' + new Date(st.last_run.at).toLocaleString());
+      if (st.last_run && st.last_run.at) parts.push('último sync: ' + new Date(st.last_run.at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
       if (gcNeedsReconnect) {
         parts.push('ATENÇÃO: a autorização expirou — clique em "Conectar ao Google" pra renovar');
       }
@@ -578,7 +673,7 @@ export function configPageScript(): string {
       var s = 'Ligado. Editar um contato vinculado aqui atualiza a agenda do Google.';
       if (st.push_pending) s += ' ' + st.push_pending + ' atualização(ões) na fila de envio.';
       if (st.push_failures) s += ' Últimos envios falharam — o sistema tenta de novo sozinho no próximo ciclo.';
-      if (st.last_push && st.last_push.at) s += ' Último envio: ' + new Date(st.last_push.at).toLocaleString() + '.';
+      if (st.last_push && st.last_push.at) s += ' Último envio: ' + new Date(st.last_push.at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) + '.';
       gcWbStatus.textContent = s;
     }
 
@@ -747,12 +842,17 @@ export function configPageScript(): string {
     var gcSaveLabels = document.getElementById('gc-save-labels');
     gcSaveLabels.addEventListener('click', function () {
       var groups = Array.prototype.slice.call(document.querySelectorAll('.gc-label:checked')).map(function (c) { return c.value; });
+      // Duplo clique = dois POSTs em corrida (fix SAVE-NO-DISABLE) — mesmo padrão
+      // do gcSync/gcConnect: desabilita antes do fetch, reabilita no retorno
+      // (gcJson nunca rejeita — falha de rede resolve com ok:false).
+      gcSaveLabels.disabled = true;
       gcLabelsStatus.textContent = 'Salvando…';
       gcJson('/app/config/google/config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ groups: groups }),
       }).then(function (r) {
+        gcSaveLabels.disabled = false;
         gcLabelsStatus.textContent = r.ok
           ? 'Salvo. O próximo sync aplica o recorte novo (ou clique em "Sincronizar agora").'
           : 'Erro ao salvar (' + (r.error || r._status) + ').';
@@ -792,6 +892,12 @@ export function configPageScript(): string {
 
     function waRender(st) {
       if (!st.ok) {
+        if (contactsNotInstalled(st.error)) {
+          setDot('wa-dot', false, 'Módulo de contatos não instalado', String(st.error || ''));
+          waStatusEl.textContent = 'O módulo de contatos não está instalado nesta instância.';
+          waStatusEl.title = String(st.error || '');
+          return;
+        }
         setDot('wa-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         waStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
@@ -801,16 +907,19 @@ export function configPageScript(): string {
         waStatusEl.textContent = 'Integração desligada: a ponte com o WhatsApp ainda não foi configurada no servidor de contatos. Peça ao seu assistente pra configurar (variável WHATSAPP_SYNC_TOKEN) e recarregue esta página.';
         return;
       }
-      setDot('wa-dot', true, 'Configurado');
       var parts = ['Integração ativa'];
       if (st.groups_linked) parts.push(st.groups_linked + ' grupo(s) no grafo');
-      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
+      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
       if (st.last_run && st.last_run.unmatched) parts.push(st.last_run.unmatched + ' participante(s) sem contato correspondente (não viraram vínculo)');
       if (!st.catalog || !st.catalog.length) {
-        parts.push('nenhum catálogo de grupos ainda — rode o script de push pra listar seus grupos aqui');
+        // Configurado SEM catálogo = nada sincroniza ainda — dot ambar, não verde
+        // (fix DOT-VERDE-PARADO); copy leiga igual à do texto SSR do card.
+        setDot('wa-dot', 'warn', 'Sem catálogo de grupos', 'Peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo"');
+        parts.push('nenhum catálogo de grupos ainda — peça ao Claude: "sincroniza os grupos do WhatsApp pro grafo"');
         waStatusEl.textContent = parts.join(' · ') + '.';
         return;
       }
+      setDot('wa-dot', true, 'Configurado');
       waStatusEl.textContent = parts.join(' · ') + '.';
       waGroupsSection.hidden = false;
       var waCreateSection = document.getElementById('wa-create-section');
@@ -880,12 +989,15 @@ export function configPageScript(): string {
     var waSave = document.getElementById('wa-save-groups');
     waSave.addEventListener('click', function () {
       var ids = Array.prototype.slice.call(document.querySelectorAll('.wa-group:checked')).map(function (c) { return c.value; });
+      // fix SAVE-NO-DISABLE — waJson nunca rejeita, o then reabilita sempre.
+      waSave.disabled = true;
       waGroupsStatus.textContent = 'Salvando…';
       waJson('/app/config/whatsapp/allowlist', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ chat_ids: ids }),
       }).then(function (r) {
+        waSave.disabled = false;
         waGroupsStatus.textContent = r.ok
           ? 'Salvo. A próxima rodada do script sincroniza só os grupos marcados.'
           : 'Erro ao salvar (' + (r.error || r._status) + ').';
@@ -925,6 +1037,12 @@ export function configPageScript(): string {
 
     function igRender(st) {
       if (!st.ok) {
+        if (contactsNotInstalled(st.error)) {
+          setDot('ig-dot', false, 'Módulo de contatos não instalado', String(st.error || ''));
+          igStatusEl.textContent = 'O módulo de contatos não está instalado nesta instância.';
+          igStatusEl.title = String(st.error || '');
+          return;
+        }
         setDot('ig-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         igStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;
@@ -937,9 +1055,10 @@ export function configPageScript(): string {
       setDot('ig-dot', true, 'Configurado');
       var parts = ['Integração ativa'];
       if (st.contacts_linked) parts.push(st.contacts_linked + ' conversa(s) vinculada(s) a contatos');
-      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString());
+      if (st.last_run && st.last_run.at) parts.push('última sincronização: ' + new Date(st.last_run.at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
       if (!st.catalog || !st.catalog.length) {
-        parts.push('nenhum catálogo de conversas ainda — rode o script de push pra listar suas conversas aqui');
+        // Copy leiga igual à do texto SSR do card (fix COPY-SCRIPT-PUSH).
+        parts.push('nenhum catálogo de conversas ainda — peça ao Claude: "sincroniza as conversas do Instagram pro grafo"');
         igStatusEl.textContent = parts.join(' · ') + '.';
         return;
       }
@@ -984,12 +1103,15 @@ export function configPageScript(): string {
     var igSave = document.getElementById('ig-save-contacts');
     igSave.addEventListener('click', function () {
       var ids = Array.prototype.slice.call(document.querySelectorAll('.ig-contact:checked')).map(function (c) { return c.value; });
+      // fix SAVE-NO-DISABLE — igJson nunca rejeita, o then reabilita sempre.
+      igSave.disabled = true;
       igContactsStatus.textContent = 'Salvando…';
       igJson('/app/config/instagram/allowlist', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ igsids: ids }),
       }).then(function (r) {
+        igSave.disabled = false;
         igContactsStatus.textContent = r.ok
           ? 'Salvo. A próxima rodada do script sincroniza só as conversas marcadas.'
           : 'Erro ao salvar (' + (r.error || r._status) + ').';
@@ -1022,6 +1144,12 @@ export function configPageScript(): string {
 
     function pdRender(st) {
       if (!st.ok) {
+        if (contactsNotInstalled(st.error)) {
+          setDot('pd-dot', false, 'Módulo de contatos não instalado', String(st.error || ''));
+          pdStatusEl.textContent = 'O módulo de contatos não está instalado nesta instância.';
+          pdStatusEl.title = String(st.error || '');
+          return;
+        }
         setDot('pd-dot', false, 'Indisponível', 'O servidor de contatos não respondeu — a integração volta sozinha quando ele estiver no ar');
         pdStatusEl.textContent = 'Integração indisponível (' + (st.error || st._status) + ').';
         return;

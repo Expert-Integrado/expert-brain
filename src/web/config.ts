@@ -83,7 +83,12 @@ function renderColumnRow(col: KanbanColumn, count: number, activeSameCat: Kanban
          <input type="hidden" name="archived" value="0">
          <button type="submit">Desarquivar</button>
        </form>`
-    : `<form method="post" data-ajax-form action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
+    : count > 0 && !destOptions
+      // Fix ARCHIVE-DEADEND: sem coluna destino na mesma categoria, o form de
+      // arquivar era um beco sem saída (select vazio obrigatório) — explica o
+      // caminho em vez de renderizar um submit que nunca passa.
+      ? `<p style="color:var(--text-dim);font-size:12px;margin:0">Esta é a única coluna ativa desta categoria. Crie outra coluna da mesma categoria ou mova as tarefas antes de arquivar.</p>`
+      : `<form method="post" data-ajax-form action="/app/tasks/columns/archive" class="row" style="gap:6px;align-items:center">
          <input type="hidden" name="id" value="${esc(col.id)}">
          <input type="hidden" name="archived" value="1">
          ${count > 0 ? `<select name="to" required><option value="">mover ${count} task${count === 1 ? '' : 's'} p/…</option>${destOptions}</select>` : ''}
@@ -193,7 +198,7 @@ function renderKeyWizard(allUsers: BrainUser[], knownSystems: string[]): string 
     <fieldset class="wizard-step" data-step="3">
       <legend>Onde ela vai rodar?</legend>
       <label>Nome (pra você lembrar onde usa)
-        <input type="text" name="name" required maxlength="80" placeholder="hermes-vps / openclaw-asafe / ..." class="input-text">
+        <input type="text" name="name" required maxlength="80" placeholder="meu-vps / agente-financeiro / notebook" class="input-text">
       </label>
       <label style="display:block;margin-top:12px">Sistema <span style="color:var(--text-dim)">— agrupa a listagem (opcional): frota, hermes, openclaw...</span>
         <input type="text" name="system" maxlength="40" list="key-systems" placeholder="frota" class="input-text" style="display:block;margin-top:4px">
@@ -327,7 +332,7 @@ function renderProjectsSection(
       <td>${s.mode === 'comment' ? 'leitura + comentários' : 'somente leitura'}</td>
       <td><code>${esc(s.prefix)}…</code></td>
       <td>${s.expires_at != null ? `${esc(formatBrtDateTime(s.expires_at))}${expired ? ' (expirado)' : ''}` : 'sem expiração'}</td>
-      <td><form method="post" data-ajax-form action="/app/project-shares/revoke" style="display:inline">
+      <td><form method="post" data-ajax-form action="/app/project-shares/revoke" class="pshare-revoke-form" data-share-label="${esc(s.label)}" style="display:inline">
         <input type="hidden" name="id" value="${esc(s.id)}">
         <button type="submit" class="btn btn-danger btn-sm">Revogar</button>
       </form></td>
@@ -496,7 +501,7 @@ function renderTaxonomySection(
             <tbody id="taxonomy-domains-body">${domainRows}</tbody>
           </table>
           <div class="row" style="gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap">
-            <input type="text" id="tax-new-label" placeholder="Nome da nova área (ex: Vida Pessoal)" maxlength="40" class="input-text" style="width:220px">
+            <input type="text" id="tax-new-label" placeholder="Nome da nova área (ex: Vida Pessoal)" maxlength="40" class="input-text" style="width:220px" aria-label="Nome da nova área">
             <button type="button" id="tax-add-domain">+ Nova área</button>
           </div>
           <p id="tax-new-error" class="tax-inline-error" style="display:none"></p>
@@ -581,6 +586,14 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
   const url = new URL(req.url);
+  // Fix FLASH-EATEN: o fetch do data-ajax-form segue o 302 do POST até este GET
+  // mandando accept: application/json (appFetch em client/http.ts) e SÓ DEPOIS o
+  // client navega de verdade pra mesma URL. Consumir o flash nesse GET fantasma
+  // deletava o segredo do KV antes do dono ver — o banner one-time nunca aparecia.
+  // Navegação real de browser manda accept: text/html..., nunca application/json,
+  // então flash/pflash só são consumidos em navegação real; no GET do fetch a
+  // página renderiza SEM o banner (o flash fica intacto pro paint seguinte).
+  const isAjaxFetch = (req.headers.get('accept') ?? '').includes('application/json');
   // M6 fix: a chave plaintext NÃO chega mais via query param. /app/api-keys/create
   // grava em KV com TTL curto e redireciona com um id opaco; aqui consumimos e
   // deletamos (single-use). Sem fallback pra ?new=: redirects em voo no momento
@@ -588,7 +601,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // melhor do que continuar vazando a chave no histórico do browser.
   const flash = url.searchParams.get('flash');
   let justCreatedKey: string | null = null;
-  if (flash && /^[a-f0-9]{32}$/.test(flash)) {
+  if (!isAjaxFetch && flash && /^[a-f0-9]{32}$/.test(flash)) {
     const key = flashKvKey(flash);
     const value = await env.OAUTH_KV.get(key);
     if (value) {
@@ -600,7 +613,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // aparece uma vez, via ?pflash= consumido do KV (single-use).
   const pflash = url.searchParams.get('pflash');
   let justCreatedShareUrl: string | null = null;
-  if (pflash && /^[a-f0-9]{32}$/.test(pflash)) {
+  if (!isAjaxFetch && pflash && /^[a-f0-9]{32}$/.test(pflash)) {
     const key = pshareFlashKey(pflash);
     const value = await env.OAUTH_KV.get(key);
     if (value) {
@@ -652,6 +665,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   const savedTags = url.searchParams.get('saved') === 'tags';
   // Idem pra usuários/responsáveis (?saved=users reabre "Usuários" — spec 37).
   const savedUsers = url.searchParams.get('saved') === 'users';
+  // Idem pras ações de chave (revogar/vincular/salvar sistema): ?saved=keys reabre
+  // o accordion "Agentes externos e automações" — o fetch do ajax-form perde o
+  // #api-keys do Location (fix KEYS-STATE-LOST).
+  const savedKeys = url.searchParams.get('saved') === 'keys';
   // Idem pras instruções do dono (?saved=owner reabre "Instruções pros agentes").
   const savedOwner = url.searchParams.get('saved') === 'owner';
 
@@ -747,8 +764,10 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
   // quando a chave não existe) + estado do accordion.
   const ownerInstructions = ownerInstructionsRaw ?? '';
   const ownerInstructionsSection = renderOwnerInstructionsSection(ownerInstructions, savedOwner);
+  // Fix VAULT-UTC: toLocaleString sem timeZone renderizava a hora em UTC do
+  // Worker (3h adiantada) — mesmo helper BRT do card Backup.
   const lastWriteStr = stats.lastWrite
-    ? new Date(stats.lastWrite).toLocaleString('pt-BR')
+    ? formatBrtDateTime(stats.lastWrite)
     : 'Nunca';
 
   // Seção Backup (spec 67): status do último snapshot lido de meta.last_backup
@@ -988,7 +1007,7 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
       </div>
     </details>
 
-    <details class="disclosure-advanced conn-section" id="api-keys"${justCreatedKey ? ' open' : ''}>
+    <details class="disclosure-advanced conn-section" id="api-keys"${justCreatedKey || savedKeys ? ' open' : ''}>
       <summary>
         <span class="adv-title">Agentes externos e automações</span>
         <span class="adv-sub">OpenClaw ou sistemas rodando numa VPS — precisam de uma chave de API (token)</span>
@@ -1067,8 +1086,8 @@ export async function handleConfigPage(req: Request, env: Env): Promise<Response
             </li>
             <li>O Google mostra o <strong>ID do cliente</strong> e a <strong>chave secreta</strong> da sua chave de acesso. Copie os dois e cole aqui:
               <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px;max-width:540px">
-                <input type="text" id="gc-client-id" class="input-text" placeholder="ID do cliente — termina com .apps.googleusercontent.com" autocomplete="off" spellcheck="false">
-                <input type="password" id="gc-client-secret" class="input-text" placeholder="Chave secreta — começa com GOCSPX" autocomplete="off">
+                <input type="text" id="gc-client-id" class="input-text" placeholder="ID do cliente — termina com .apps.googleusercontent.com" autocomplete="off" spellcheck="false" aria-label="ID do cliente">
+                <input type="password" id="gc-client-secret" class="input-text" placeholder="Chave secreta — começa com GOCSPX" autocomplete="off" aria-label="Chave secreta">
                 <div class="row" style="gap:8px;align-items:center">
                   <button type="button" class="btn btn-primary" id="gc-save-client">Salvar credenciais</button>
                   <span id="gc-setup-status" style="color:var(--text-dim)"></span>

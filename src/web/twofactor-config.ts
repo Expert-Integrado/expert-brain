@@ -120,7 +120,7 @@ export function renderTwoFactorCard(s: TwoFactorCardState): string {
   } else if (s.pendingSecret) {
     const uri = otpauthUri(s.pendingSecret, s.ownerEmail, 'Expert Brain');
     body = `
-      <p><strong>Passo 1.</strong> Cadastre este código secreto no seu app: no 1Password, edite o item do Brain e adicione um campo <strong>senha de uso único</strong>, colando o código. No celular (Google Authenticator etc.), <a href="${esc(uri)}">toque aqui</a> ou digite o código manualmente.</p>
+      <p><strong>Passo 1.</strong> Cadastre o código secreto abaixo no seu app autenticador. No celular: abra o app (Google Authenticator, 1Password…), escolha adicionar uma conta e toque em <strong>"inserir chave de configuração manualmente"</strong> — dê um nome (ex.: Expert Brain) e digite o código mostrado abaixo. No 1Password do computador: edite o item do Brain e adicione um campo <strong>senha de uso único</strong>, colando o código. Atalho: se você está lendo esta página no próprio celular, <a href="${esc(uri)}">toque aqui</a> pra cadastrar direto, sem digitar.</p>
       <p><code class="tf-secret" id="tf-secret-value">${esc(s.pendingSecret)}</code> <button type="button" data-copy="tf-secret-value" class="btn btn-sm">Copiar</button></p>
       <p><strong>Passo 2.</strong> Digite o código de 6 dígitos que o app está mostrando agora — isso prova que deu certo antes de ligar (você não fica trancado fora).</p>
       <div class="row" style="gap:8px;flex-wrap:wrap">

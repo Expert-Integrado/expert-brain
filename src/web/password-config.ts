@@ -118,7 +118,11 @@ export function renderPasswordCard(s: PasswordCardState): string {
     <h3 style="font-size:14px;margin:16px 0 4px">Esqueci a senha — código de recuperação</h3>
     ${recoveryState}
     <div class="cfg-actions">
-      <form method="post" action="/app/config/recovery-code">
+      ${'' /* Fix RECOVERY-DOUBLE: gerar de novo invalida o código anterior na hora —
+            o config-script pede confirmação quando já existe um (data-has-code) e
+            desabilita o botão durante o POST (duplo clique gerava dois códigos,
+            só o segundo válido). */}
+      <form method="post" action="/app/config/recovery-code" class="recovery-code-form"${s.recovery || s.freshRecoveryCode ? ' data-has-code="1"' : ''}>
         <button type="submit" class="btn btn-ghost">${s.recovery || s.freshRecoveryCode ? 'Gerar novo código (invalida o anterior)' : 'Gerar código de recuperação'}</button>
       </form>
     </div>

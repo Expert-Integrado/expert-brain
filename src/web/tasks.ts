@@ -1556,7 +1556,7 @@ export const TASKS_CSS = `
 .task-awaiting[hidden] { display: none; }
 .task-awaiting-head {
   font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: #fbbf24; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+  color: var(--warning); margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
 }
 .task-awaiting-count {
   font-size: 11px; background: rgba(251,191,36,0.15); border-radius: 999px;
@@ -1572,10 +1572,11 @@ export const TASKS_CSS = `
 .task-awaiting-body { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
 .task-awaiting-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
 
-/* Chip de claim do card (spec 88/89): quem detém o lease de trabalho agora. */
+/* Chip de claim do card (spec 88/89): quem detém o lease de trabalho agora.
+   Tokens --success* no lugar do mint cravado (TB-02): #6ee7b7 sumia no claro. */
 .task-claim-chip {
-  font-size: 11px; color: #6ee7b7; border: 1px solid rgba(110,231,183,0.35);
-  background: rgba(110,231,183,0.08); border-radius: 999px; padding: 1px 8px;
+  font-size: 11px; color: var(--success); border: 1px solid var(--success-border);
+  background: var(--success-bg); border-radius: 999px; padding: 1px 8px;
   white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -1605,7 +1606,7 @@ export const TASKS_CSS = `
   background: none; border: none; color: var(--text-dim); font-size: 11px; line-height: 1;
   cursor: pointer; padding: 3px 5px; border-radius: 5px; transition: color 140ms var(--ease), background 140ms var(--ease);
 }
-.task-col-collapse-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+.task-col-collapse-btn:hover { color: var(--text); background: var(--surface-2); }
 .task-col.collapsed { padding-bottom: 12px; }
 .task-col.collapsed .task-col-body,
 .task-col.collapsed .task-col-inline-create { display: none; }
@@ -1761,7 +1762,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   padding: 4px 0; width: 118px; cursor: pointer;
 }
 .task-date-input:focus { outline: none; }
-.task-date-input::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
+.task-date-input::-webkit-calendar-picker-indicator { filter: var(--date-icon-filter); cursor: pointer; }
 .task-date-sep { font-size: 11.5px; color: var(--text-subtle); }
 .task-date-clear {
   background: none; border: none; color: var(--accent-lav); font-size: 12px; line-height: 1;
@@ -1805,7 +1806,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 .task-tag-filter.has-value .task-tag-clear {
   border-color: var(--accent-lav); color: var(--accent-lav); background: rgba(167,139,250,0.1); border-left: none;
 }
-.task-tag-clear:hover { color: var(--text); background: rgba(255,255,255,0.08); }
+.task-tag-clear:hover { color: var(--text); background: var(--surface-2); }
 .task-tag-clear[hidden] { display: none; }
 .task-tag-panel {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
@@ -1879,7 +1880,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 }
 .task-modal-dialog {
   position: relative; max-width: 520px; margin: 12vh auto 0;
-  background: rgba(16,11,36,0.97); border: 1px solid var(--border-strong);
+  background: var(--surface-raised); border: 1px solid var(--border-strong);
   border-radius: var(--radius); box-shadow: 0 40px 80px -20px rgba(0,0,0,0.7);
   padding: 22px 24px 24px; animation: taskSlideIn 200ms var(--ease);
 }
@@ -1889,7 +1890,7 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
   background: none; border: none; color: var(--text-subtle); font-size: 18px; line-height: 1;
   cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: background 160ms var(--ease), color 160ms var(--ease);
 }
-.task-modal-x:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.task-modal-x:hover { background: var(--surface-2); color: var(--text); }
 .task-create-form { display: flex; flex-direction: column; gap: 16px; }
 .task-create-ctl { display: flex; flex-direction: column; gap: 6px; }
 .task-create-lbl {
