@@ -50,6 +50,8 @@ export const TOKENS_CSS = `
   --bg-mid: #0b0f19;
   --bg-accent: var(--surface-1); /* legado — degrau 1 da escada de superfícies */
   --text: #f8fafc;
+  --text-body: rgba(248, 250, 252, 0.86); /* corpo longo de nota/descrição — 1 degrau mais suave que --text, ainda AA */
+  --surface-glass: rgba(7, 10, 19, 0.5); /* card translúcido sobre o gradiente (login) — par claro no bloco light */
   --text-dim: #b9bfd0;    /* AA 9.7:1 sobre --surface-1 */
   --text-faint: rgba(248, 250, 252, 0.34); /* SÓ decorativo (divisores, ornamentos) — nunca texto informativo (reprova AA) */
   --border: rgba(167, 139, 250, 0.16);
@@ -150,6 +152,8 @@ export const TOKENS_CSS = `
   --bg: #f6f7fb;
   --bg-mid: #eef0f8;
   --text: #171c2e;
+  --text-body: rgba(23, 28, 46, 0.88); /* corpo longo — espelho claro do token do dark */
+  --surface-glass: rgba(255, 255, 255, 0.78); /* card translúcido do login sobre o gradiente claro */
   --text-dim: #454e66;    /* AA 7.6:1 sobre --surface-1 */
   --text-faint: rgba(23, 28, 46, 0.34); /* decorativo, mesma regra do dark */
   --border: rgba(109, 40, 217, 0.16);
@@ -739,7 +743,7 @@ export const COMPONENTS_CSS = `
 .note-body {
   line-height: 1.75;
   font-size: 16px;
-  color: rgba(248, 250, 252, 0.86);
+  color: var(--text-body);
   max-width: 68ch;
 }
 .note-body h1, .note-body h2, .note-body h3 {
@@ -848,12 +852,12 @@ export const SURFACES_CSS = `
   max-width: 400px;
   margin: 12vh auto;
   padding: 40px 36px;
-  background: rgba(7, 10, 19, 0.5);
+  background: var(--surface-glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: 0 32px 80px -20px rgba(0, 0, 0, 0.65), 0 0 40px -10px rgba(167, 139, 250, 0.25);
+  box-shadow: var(--shadow-3);
   position: relative;
   z-index: 1;
 }
@@ -1813,7 +1817,7 @@ export const SURFACES_CSS = `
    do form de adicionar conexão do console standalone de contatos. */
 .panel-addconn {
   margin-top: 12px;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -2162,9 +2166,9 @@ select.panel-form-input { cursor: pointer; }
   gap: 4px;
   margin-top: auto;
   padding: 10px 16px;
-  background: rgba(124, 58, 237, 0.2);
-  color: #c4b5fd;
-  border: 1px solid rgba(167, 139, 250, 0.4);
+  background: rgba(var(--accent-violet-rgb), 0.14);
+  color: var(--accent-lav);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: 600;
@@ -2172,7 +2176,7 @@ select.panel-form-input { cursor: pointer; }
   transition: background 160ms var(--ease), color 160ms var(--ease);
   align-self: flex-start;
 }
-.panel-open:hover { background: rgba(124, 58, 237, 0.32); color: var(--text); }
+.panel-open:hover { background: rgba(var(--accent-violet-rgb), 0.26); color: var(--text); }
 
 /* Bottom navigation — só em mobile (regra mobile no fim do arquivo).
    Em desktop fica escondida; a sidebar lateral continua sendo a navegação. */
@@ -2595,7 +2599,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(4, 2, 14, 0.72);
+  background: var(--backdrop);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   animation: cmdFadeIn 160ms var(--ease);
@@ -2604,10 +2608,10 @@ select.panel-form-input { cursor: pointer; }
   position: relative;
   max-width: 620px;
   margin: 10vh auto 0;
-  background: rgba(16, 11, 36, 0.96);
+  background: var(--surface-raised);
   border: 1px solid var(--border-strong);
   border-radius: 14px;
-  box-shadow: 0 40px 80px -20px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--shadow-3);
   overflow: hidden;
   animation: cmdSlideIn 200ms var(--ease);
 }
@@ -2636,7 +2640,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-esc {
   font-size: 11px;
   padding: 3px 7px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-subtle);
@@ -2661,7 +2665,7 @@ select.panel-form-input { cursor: pointer; }
   transition: background 120ms var(--ease), color 120ms var(--ease);
 }
 .cmd-row.active, .cmd-row:hover {
-  background: rgba(124, 58, 237, 0.22);
+  background: rgba(var(--accent-violet-rgb), 0.18);
   color: var(--text);
 }
 .cmd-kind {
@@ -2715,7 +2719,7 @@ select.panel-form-input { cursor: pointer; }
 .cmd-help kbd {
   display: inline-block;
   padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 3px;
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;

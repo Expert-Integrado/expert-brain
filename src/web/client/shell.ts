@@ -731,6 +731,27 @@ wireThemeToggle();
 // Ponte pro bundle-string do config (spec 95): configPageScript() não importa
 // módulo ES, então o confirmModal chega lá via window (com fallback nativo).
 (window as unknown as { __ebConfirm?: typeof confirmModal }).__ebConfirm = confirmModal;
+// Descartar captura do inbox é destrutivo (o anexo sai do R2 quando é a última
+// referência) e não tem undo na UI — e os botões são forms server-rendered em
+// DUAS páginas (home + /app/inbox). A confirmação entra aqui por delegação:
+// o shell é o único bundle garantido nas duas. Sem JS, o form segue direto
+// (comportamento antigo) — a confirmação é progressive enhancement.
+document.addEventListener('submit', (e) => {
+  const form = e.target instanceof HTMLFormElement ? e.target : null;
+  if (!form || !form.action.endsWith('/app/inbox/resolve')) return;
+  if (form.querySelector<HTMLInputElement>('input[name="action"]')?.value !== 'discard') return;
+  if (form.dataset.confirmed === '1') return;
+  e.preventDefault();
+  void confirmModal({
+    title: 'Descartar esta captura?',
+    body: 'Ela sai do inbox e o anexo (se houver) é apagado — não dá pra desfazer.',
+    verb: 'Descartar',
+  }).then((ok) => {
+    if (!ok) return;
+    form.dataset.confirmed = '1';
+    form.requestSubmit();
+  });
+});
 window.addEventListener('keydown', onKey);
 // loadNotes() removido do boot (spec 23): o meta agora carrega lazy na 1ª abertura
 // da palette (ensureNotesLoaded via openPalette). Páginas sem busca visível não

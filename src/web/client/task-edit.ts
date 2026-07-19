@@ -87,6 +87,10 @@ if (root) {
     return (titleInput?.value ?? '') !== titleSaved || (bodyArea?.value ?? '') !== bodySaved;
   }
 
+  // HTML da prévia devolvido pelo último save com body (servidor renderiza; ver
+  // saveBody). Fora do SaveResult de propósito — a fila só entende { ok, updatedAt }.
+  let lastRenderedBody: string | null = null;
+
   // POST cru → SaveResult. Trata 409/erro com feedback; devolve { ok, updatedAt }
   // pra a fila (rajada) e pro save() por botão saberem se avançar a base.
   async function doPost(patch: Record<string, unknown>, expected: number | null): Promise<SaveResult> {
@@ -108,6 +112,8 @@ if (root) {
         return { ok: false, updatedAt: null };
       }
       setStatus('Salvo', 'ok');
+      // Prévia canônica do servidor (quando o patch tinha body) — ver saveBody.
+      lastRenderedBody = data && typeof (data as any).rendered_body === 'string' ? (data as any).rendered_body : null;
       const ua = data && typeof (data as any).updated_at === 'number' ? (data as any).updated_at : null;
       return { ok: true, updatedAt: ua };
     } catch (err) {
@@ -322,8 +328,10 @@ if (root) {
     if (await save({ body: v })) {
       bodySaved = v;
       if (previewEl) {
+        // Preferência: HTML canônico do servidor (rendered_body do último save);
+        // o mini-parser local fica só como fallback — ele diverge do render final.
         previewEl.innerHTML = v.trim()
-          ? renderPreview(v)
+          ? (lastRenderedBody ?? renderPreview(v))
           : '<span class="task-edit-empty-trigger" data-edit-body>Sem descrição</span>';
         previewEl.classList.toggle('task-edit-preview-empty', !v.trim());
       }

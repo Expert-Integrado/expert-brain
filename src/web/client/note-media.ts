@@ -39,7 +39,7 @@ async function load() {
   if (!grid || !noteId) return;
   try {
     const res = await appFetch(`/app/notes/${encodeURIComponent(noteId)}/media`);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`media list ${res.status}`);
     const data = await res.json();
     current = (data.media || []) as MediaView[];
     grid.innerHTML = current.map((m) =>
@@ -48,7 +48,12 @@ async function load() {
     grid.querySelectorAll<HTMLElement>('.media-tile').forEach((tile) => {
       tile.addEventListener('click', () => openModal(tile.dataset.id || ''));
     });
-  } catch (err) { console.warn('media: load failed', err); }
+  } catch (err) {
+    // Falha silenciosa aqui fazia a nota parecer "sem anexos" — o dono re-subia
+    // duplicado ou achava que perdeu arquivo. Erro tem que aparecer NO grid.
+    console.warn('media: load failed', err);
+    grid.innerHTML = '<p class="media-load-error">Não deu pra carregar os anexos — recarregue a página.</p>';
+  }
 }
 
 function openModal(id: string) {
@@ -76,7 +81,10 @@ function openModal(id: string) {
     try {
       const res = await appFetch(`/app/media/${encodeURIComponent(id)}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('delete ' + res.status);
-    } catch (err) { console.warn('media: delete failed', err); }
+    } catch (err) {
+      console.warn('media: delete failed', err);
+      alert('Não deu pra excluir a mídia — tente de novo.');
+    }
     close();
     await load();
   });
@@ -94,7 +102,12 @@ async function uploadFiles(files: FileList | File[]) {
         method: 'POST', body: fd,
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); console.warn('upload failed', res.status, e); alert(`Falha ao subir "${file.name}": ${(e as any).error || res.status}`); }
-    } catch (err) { console.warn('media: upload error', err); }
+    } catch (err) {
+      // Queda de rede no meio do upload era 100% muda — o arquivo simplesmente
+      // não aparecia. Mesmo canal de aviso do erro HTTP logo acima.
+      console.warn('media: upload error', err);
+      alert(`Falha ao subir "${file.name}" — verifique a conexão e tente de novo.`);
+    }
   }
   dropzone.classList.remove('uploading');
   await load();

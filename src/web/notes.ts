@@ -68,8 +68,11 @@ interface NoteListItem {
 }
 
 // updated_at / created_at are stored as milliseconds (Date.now()) — not seconds.
+// Exibição em BRT + DD/MM/YYYY (mesma convenção do journal): toISOString virava
+// o dia às 21h de Brasília e mostrava formato ISO numa UI pt-BR.
 function formatDate(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 10);
+  const [y, mo, d] = brtDateOnly(ts).split('-');
+  return `${d}/${mo}/${y}`;
 }
 
 // Primeira linha (título/tldr derivado), truncada. Vazia → cai no corpo inteiro.
@@ -655,8 +658,8 @@ export async function handleNoteDetail(req: Request, env: Env, id: string): Prom
           <div class="note-actions-pop" data-menu-pop hidden>
             <button type="button" class="note-actions-item" data-edit-body>${PENCIL_SVG}<span>Editar corpo</span></button>
             <button type="button" class="note-actions-item" id="btn-copy-link">${LINK_SVG}<span>Copiar link</span></button>
-            <form method="post" action="/app/notes/${esc(note.id)}/delete" class="note-actions-delform" onsubmit="return confirm('Excluir esta nota? É reversível — a lista mostra Desfazer logo depois.')">
-              <button type="submit" class="note-actions-item note-actions-danger">${TRASH_SVG}<span>Excluir nota</span></button>
+            <form method="post" action="/app/notes/${esc(note.id)}/delete" class="note-actions-delform">
+              <button type="submit" class="note-actions-item note-actions-danger" title="Reversível — a lista mostra Desfazer logo depois">${TRASH_SVG}<span>Excluir nota</span></button>
             </form>
           </div>
         </div>
@@ -945,11 +948,25 @@ export async function handleNoteUpdatePost(req: Request, env: Env): Promise<Resp
     }
   }
 
+  // Prévia canônica pro client: o bundle re-renderizava o markdown salvo com um
+  // mini-parser divergente do servidor (listas/links/tabelas/wikilinks viravam
+  // texto cru até o reload). Quando o body mudou, devolvemos o HTML do MESMO
+  // renderMarkdown da página — o client só injeta, zero parser duplicado.
+  let renderedBody: string | undefined;
+  if (noteBody !== undefined) {
+    const titles = await env.DB.prepare(`SELECT id, title FROM notes WHERE deleted_at IS NULL`).all<{ id: string; title: string }>();
+    const titleIndex = new Map<string, string>();
+    const idSet = new Set<string>();
+    for (const r of titles.results ?? []) { titleIndex.set(r.title.trim().toLowerCase(), r.id); idSet.add(r.id); }
+    renderedBody = renderMarkdown(noteBody, { titleIndex, idSet, currentId: id });
+  }
+
   return json({
     ok: true,
     id,
     updated_at: now,
     reembedded,
+    ...(renderedBody !== undefined ? { rendered_body: renderedBody } : {}),
     ...(mentionsChanged ? { mentions_created: mentionsChanged.created, mentions_removed: mentionsChanged.removed } : {}),
   });
 }
@@ -2198,6 +2215,7 @@ const NOTE_MEDIA_CSS = `
 .note-media h2 { font-size: 15px; margin-bottom: 12px; }
 .media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
 .media-grid:empty { display: none; }
+.media-load-error { grid-column: 1 / -1; color: var(--danger); font-size: 13px; margin: 0; }
 .media-tile {
   position: relative; aspect-ratio: 1; border-radius: var(--radius-sm); overflow: hidden;
   border: 1px solid var(--border); background: var(--bg-accent); cursor: pointer;

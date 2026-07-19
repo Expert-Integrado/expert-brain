@@ -70,6 +70,7 @@ import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
 import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, awaitingBannerHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type AwaitingItem } from '../util/task-badges.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
+import { renderMarkdown } from './markdown.js';
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -143,7 +144,9 @@ function toView(t: TaskRow, now: number, commentCount = 0, tags: string[] = [], 
     due_local: due !== null ? brtDatetimeLocal(due) : null,
     due_date: due !== null ? brtDateOnly(due) : null,
     due_time: due !== null ? brtTimeOnly(due) : null,
-    when: due !== null ? relativeDue(due, now) : null,
+    // Task encerrada não "vence": o relativo (vencida há Xd / vence em Xd) só faz
+    // sentido em aberto — no card concluído/cancelado fica só a data do prazo.
+    when: due !== null && t.status !== 'done' && t.status !== 'canceled' ? relativeDue(due, now) : null,
     overdue: due !== null && due < now && t.status !== 'done' && t.status !== 'canceled',
     created_at: t.created_at,
     completed_at: t.completed_at,
@@ -545,6 +548,12 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
   // outros patches, muito mais frequentes) — devolve já sem as reservadas dedupe:*,
   // pro chip editor da sidebar (spec 52) atualizar sem precisar de reload.
   const tagsOut = patch.tags !== undefined ? visibleTags(await getTagsByNote(env, task.id)) : undefined;
+  // Prévia canônica da descrição quando o body mudou: o bundle re-renderizava com
+  // um mini-parser divergente do servidor (mesmo fix do /app/notes/update). Task
+  // não resolve wikilink na página (índices vazios em handleTaskDetail) — idem aqui.
+  const renderedBody = patch.body !== undefined && task.body.trim()
+    ? renderMarkdown(task.body, { titleIndex: new Map(), idSet: new Set(), currentId: task.id })
+    : undefined;
   return json({
     ok: true,
     id: task.id,
@@ -554,6 +563,7 @@ export async function handleTaskUpdatePost(req: Request, env: Env): Promise<Resp
     due_at: task.due_at,
     due_brt: task.due_at !== null ? formatBrtDateTime(task.due_at) : null,
     updated_at: task.updated_at,
+    ...(renderedBody !== undefined ? { rendered_body: renderedBody } : {}),
     ...(tagsOut !== undefined ? { tags: tagsOut } : {}),
   });
 }

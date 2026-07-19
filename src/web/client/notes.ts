@@ -450,8 +450,13 @@ function esc(s: string): string {
   });
 }
 
+// Espelha o formatDate do SSR (notes.ts): BRT fixo (UTC-3) + DD/MM/YYYY — client
+// e server precisam pintar a MESMA data no card (duplicado pela mesma razão dos
+// demais helpers: bundles não compartilham módulo com o server).
 function formatDate(ts: number): string {
-  return new Date(ts).toISOString().slice(0, 10);
+  const d = new Date(ts - 3 * 60 * 60 * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
 }
 
 // Espelha formatCountLabel de src/web/notes.ts (SSR) — mesma regra pt-BR + "notas de

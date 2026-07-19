@@ -94,6 +94,10 @@ if (root) {
     statusEl.appendChild(btn);
   }
 
+  // HTML da prévia devolvido pelo último save com body (servidor renderiza; ver
+  // saveBody). Fora do SaveResult de propósito — a fila só entende { ok, updatedAt }.
+  let lastRenderedBody: string | null = null;
+
   // POST cru → SaveResult (a fila só entende { ok, updatedAt }). Trata 409/erro
   // aqui pra o aviso aparecer, mas devolve ok=false pra fila parar de reenviar.
   async function doPost(patch: Record<string, unknown>, expected: number | null): Promise<SaveResult> {
@@ -115,6 +119,9 @@ if (root) {
         return { ok: false, updatedAt: null };
       }
       setStatus('Salvo', 'ok');
+      // Prévia canônica do servidor (quando o patch tinha body) — substitui o
+      // mini-parser local, que divergia do render final (listas/wikilinks).
+      lastRenderedBody = data && typeof (data as any).rendered_body === 'string' ? (data as any).rendered_body : null;
       const ua = data && typeof (data as any).updated_at === 'number' ? (data as any).updated_at : null;
       return { ok: true, updatedAt: ua };
     } catch {
@@ -252,6 +259,12 @@ if (root) {
       titleInput.blur();
     }
   });
+  // Autosave no blur: no touch não existe Enter confiável nem tooltip — editar o
+  // título e tocar fora salvava NADA em silêncio. Mesmo contrato do kind/domains
+  // (autosave direto); Escape acima continua sendo o caminho de desistir.
+  titleInput?.addEventListener('blur', () => {
+    if (titleInput.value !== titleSaved) saveTitle();
+  });
 
   // ── body: campo único (spec 74) — LEITURA (prévia + Editar) ↔ EDIÇÃO (textarea +
   // Salvar/Cancelar). Sem live-preview durante a digitação (o painel de prévia fica
@@ -279,7 +292,9 @@ if (root) {
     if (await saveDirect({ body: v })) {
       bodySaved = v;
       if (previewEl) {
-        previewEl.innerHTML = renderPreview(v);
+        // Preferência: HTML canônico do servidor; o mini-parser local é só
+        // fallback (resposta antiga/sem o campo).
+        previewEl.innerHTML = lastRenderedBody ?? renderPreview(v);
         previewEl.classList.remove('note-edit-preview-empty');
       }
       exitBodyEdit();
