@@ -143,6 +143,11 @@ describe('GET /app — home (spec 65 §2, smoke)', () => {
     expect(html).toContain('/app/journal/bundle.js');
     // Journal saiu da navegação (sidebar e bottom-nav) — o feed mora na home.
     expect(html).not.toContain('href="/app/journal"');
+    // Estatísticas saiu do menu (fusão 19/07) — o dashboard é card da home e a
+    // rota antiga redireciona; nenhum link vivo pra ela.
+    expect(html).not.toContain('href="/app/insights"');
+    const sidebar = html.slice(html.indexOf('<aside class="sidebar"'), html.indexOf('</aside>'));
+    expect(sidebar).not.toContain('Estatísticas');
   });
 
   it('/app/ (com barra) também renderiza a home', async () => {

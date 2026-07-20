@@ -6,7 +6,6 @@ import { handleContactsData, handleContactsMeta, handleContactsEntity, handleCon
 import { handleHomePage } from './home.js';
 import { handleHomePrefsPost, handleStartDismissPost } from './home-prefs.js';
 import { handleJournalPage } from './journal.js';
-import { handleInsightsPage } from './insights.js';
 import { handleContactPage } from './contact-page.js';
 import { handleGraphData, handleGraphMeta, handleGraphLink, handleNoteGraph } from './graph-data.js';
 import { handleGraphPrefsPost } from './graph-prefs.js';
@@ -59,8 +58,12 @@ export async function handleApp(req: Request, env: Env): Promise<Response | null
   if (path === '/app/logout' && req.method === 'POST') return handleLogoutPost(req);
   // Journal cronológico unificado (spec 65 §3): notas + tasks + interações de contato.
   if (path === '/app/journal' && req.method === 'GET') return handleJournalPage(req, env);
-  // Dashboard mensal "Seu cérebro" (spec 91-experiencia-premium/99).
-  if (path === '/app/insights' && req.method === 'GET') return handleInsightsPage(req, env);
+  // O dashboard mensal (spec 99) fundiu na home como card "Estatísticas"
+  // (decisão do dono, 19/07) — a rota vira redirect pra /app: link antigo/
+  // favorito não quebra. O card é a âncora #estatisticas na home.
+  if (path === '/app/insights' && req.method === 'GET') {
+    return new Response(null, { status: 302, headers: { location: '/app' } });
+  }
   // A tela de Agentes saiu da navegação (decisão do dono, 19/07): duplicava o
   // board. A rota vira redirect — link antigo/favorito não quebra. Os POSTs de
   // aprovar/devolver continuam vivos: o bloco "Pendências com você" do board os

@@ -1,7 +1,8 @@
 // Dashboard "Seu cérebro este mês" (specs/91-experiencia-premium/99): agregados
-// mensais em janela BRT (captura/conexão/execução/frota), card resumo na home e
-// página /app/insights navegável por mês. Seed determinístico direto no D1 — o
-// critério "divisão dono vs agente" é conferível por SQL manual sobre updated_by.
+// mensais em janela BRT (captura/conexão/execução/frota). Desde a fusão de 19/07
+// o dashboard COMPLETO mora no card "Estatísticas" da home (renderInsightsCard)
+// e GET /app/insights vira redirect 302 pra /app. Seed determinístico direto no
+// D1 — o critério "divisão dono vs agente" é conferível por SQL sobre updated_by.
 import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -150,61 +151,60 @@ describe('getMonthInsights (agregados do mês)', () => {
   });
 });
 
-describe('página /app/insights', () => {
-  it('renderiza o mês pedido com as 4 seções e navegação de meses', async () => {
-    const res = await SELF.fetch('https://x.test/app/insights?m=2026-07', {
+describe('GET /app/insights → redirect (fusão na home, 19/07)', () => {
+  it('redireciona 302 pra /app (link antigo não quebra)', async () => {
+    const res = await SELF.fetch('https://x.test/app/insights', {
       headers: { cookie: await authCookie() },
+      redirect: 'manual',
     });
-    expect(res.status).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('julho');
-    expect(html).toContain('2026');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/app');
+  });
+
+  it('?m= antigo também redireciona (a navegação por mês morreu com a página)', async () => {
+    const res = await SELF.fetch('https://x.test/app/insights?m=2026-06', { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe('/app');
+  });
+});
+
+describe('card "Estatísticas" da home (dashboard completo, fusão 19/07)', () => {
+  it('renderInsightsCard traz as 4 seções, o mês e os deltas vs mês anterior', async () => {
+    const cur = await getMonthInsights(E, 2026, 7);
+    const prev = await getMonthInsights(E, 2026, 6);
+    const html = renderInsightsCard(2026, 7, cur, prev);
+    expect(html).toContain('julho de 2026');
     for (const s of ['Captura', 'Conexão', 'Execução', 'Frota']) expect(html).toContain(s);
-    // Navegação: link pro mês anterior.
-    expect(html).toContain('m=2026-06');
-    // Payload < 100KB (critério de aceite).
-    expect(html.length).toBeLessThan(100_000);
+    expect(html).toContain('notas capturadas');
+    expect(html).toContain('ações de agentes');
+    // Delta de captura: 5 - 1 = +4 vs junho.
+    expect(html).toContain('+4');
+    // Caixa do sistema da home: âncora da palette + item reordenável + alça +
+    // expandido por DEFAULT (dashboard inteiro pede a linha toda).
+    expect(html).toContain('id="estatisticas"');
+    expect(html).toContain('data-home-item="insights"');
+    expect(html).toContain('class="home-resize"');
+    expect(html).toContain('home-card-wide');
+    // Pref explícita 'normal' vence o default wide.
+    const normal = renderInsightsCard(2026, 7, cur, prev, {}, { insights: 'normal' });
+    expect(normal).not.toContain('home-card-wide');
+    expect(normal).toContain('aria-label="Expandir card"');
   });
 
   it('nota privada NUNCA aparece nomeada', async () => {
-    const res = await SELF.fetch('https://x.test/app/insights?m=2026-07', {
-      headers: { cookie: await authCookie() },
-    });
-    const html = await res.text();
+    const cur = await getMonthInsights(E, 2026, 7);
+    const prev = await getMonthInsights(E, 2026, 6);
+    const html = renderInsightsCard(2026, 7, cur, prev);
     expect(html).not.toContain('Segredo industrial XYZW');
     expect(html.toLowerCase()).toContain('nota privada');
   });
 
-  it('sem sessão redireciona pro login', async () => {
-    const res = await SELF.fetch('https://x.test/app/insights', { redirect: 'manual' });
-    expect([302, 303]).toContain(res.status);
-  });
-
-  it('m= inválido cai no mês corrente (200, sem 500)', async () => {
-    const res = await SELF.fetch('https://x.test/app/insights?m=banana', {
-      headers: { cookie: await authCookie() },
-    });
-    expect(res.status).toBe(200);
-  });
-});
-
-describe('card resumo na home', () => {
-  it('renderInsightsCard mostra métricas com delta vs mês anterior e link pra página', async () => {
-    const cur = await getMonthInsights(E, 2026, 7);
-    const prev = await getMonthInsights(E, 2026, 6);
-    const html = renderInsightsCard(cur, prev, {});
-    expect(html).toContain('/app/insights');
-    expect(html).toContain('5'); // capturas
-    expect(html).toContain('3'); // conexões
-    expect(html).toContain('2'); // tasks
-    // Delta de captura: 5 - 1 = +4 vs junho.
-    expect(html).toContain('+4');
-  });
-
-  it('a home inclui o card (caixa insights no grid)', async () => {
+  it('a home inclui o card (caixa insights no grid), sem link pra página extinta', async () => {
     const res = await SELF.fetch('https://x.test/app', { headers: { cookie: await authCookie() } });
     const html = await res.text();
     expect(html).toContain('data-home-item="insights"');
-    expect(html).toContain('/app/insights');
+    expect(html).toContain('id="estatisticas"');
+    // Nenhuma referência viva à rota antiga (nem no sidebar, nem no card).
+    expect(html).not.toContain('href="/app/insights"');
   });
 });

@@ -9,7 +9,7 @@ import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 import { JOURNAL_CSS } from './journal.js';
-import { getHomePrefs, HOME_BOX_DEFAULTS, HOME_BOX_KEYS, HOME_BOX_MIN, HOME_BOX_MAX, type HomeBoxKey, type HomePrefs, type HomePrefsState } from './home-prefs.js';
+import { getHomePrefs, HOME_BOX_KEYS, homeBoxAttrs, homeItemAttr, homeWideClass, homeSizeToggleHtml, HOME_RESIZE_HANDLE, type HomeBoxKey, type HomePrefs, type HomeSizes, type HomePrefsState } from './home-prefs.js';
 import { renderInsightsCard } from './insights.js';
 import { brtYearMonth, getMonthInsightsCached } from '../db/insights-queries.js';
 import { fleetHomeStripHtml } from './fleet.js';
@@ -46,10 +46,27 @@ const HOME_CSS = `
    o default e DEVE bater com HOME_BOX_DEFAULTS (home-prefs.ts). */
 .home-card { max-height: var(--home-card-h, 420px); display: flex; flex-direction: column; overflow: hidden; }
 .home-card > :last-child { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
-/* fonte/peso herdam do .card h2 (Onda 3) — aqui só o layout flex do link à direita */
-.home-card h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; flex: none; }
-.home-card h2 a { font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
+/* fonte/peso herdam do .card h2 (Onda 3) — aqui só o layout flex: link e botão de
+   largura encostam à direita (margin-left:auto no primeiro deles; com os dois,
+   o botão segue o link só com o gap). */
+.home-card h2 { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin: 0 0 14px; flex: none; }
+.home-card h2 a { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
 .home-card h2 a:hover { text-decoration: underline; }
+/* ── Largura do card (revisão 19/07): normal = 1 track do grid; expandido =
+   linha inteira. O toggle mora no header; em mobile (1 coluna) ele some. ── */
+.home-grid > .home-card-wide { grid-column: 1 / -1; }
+.home-size-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  margin-left: auto; padding: 4px; background: none; border: none; border-radius: 6px;
+  color: var(--text-subtle); cursor: pointer;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.home-card h2 a ~ .home-size-toggle { margin-left: 0; }
+.home-size-toggle:hover { color: var(--accent-lav); background: rgba(var(--accent-lav-rgb), 0.1); }
+/* Um ícone por estado — a classe do card decide, o client só troca a classe. */
+.home-card-wide .home-size-icon-expand { display: none; }
+.home-card:not(.home-card-wide) .home-size-icon-reduce { display: none; }
+@media (max-width: 767px) { .home-size-toggle { display: none; } }
 /* Captura rápida do inbox DENTRO do card (Onda 8): o inbox saiu do menu — cria por aqui */
 .home-inbox-capture { display: flex; gap: 8px; margin: 0 0 12px; flex: none; }
 .home-inbox-capture input[type="text"] {
@@ -145,21 +162,13 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
 .start-step .btn { flex-shrink: 0; }
 `;
 
-// Atributos do ALVO DE ALTURA (o elemento que recebe --home-card-h): identidade da
-// caixa + default + limites (o client lê daqui — número único com home-prefs.ts) +
-// style inline quando há altura salva (ausente = fallback do var() no CSS).
-function boxAttrs(box: HomeBoxKey, prefs: HomePrefs): string {
-  const h = prefs[box];
-  return ` data-home-box="${box}" data-home-default="${HOME_BOX_DEFAULTS[box]}" data-home-min="${HOME_BOX_MIN}" data-home-max="${HOME_BOX_MAX}"${h ? ` style="--home-card-h:${h}px"` : ''}`;
-}
-
-// Atributo do ITEM REORDENÁVEL (filho direto da .home-grid). Nos cards, item e
-// alvo de altura são o MESMO elemento; na Atividade o alvo é a caixa interna.
-const itemAttr = (box: HomeBoxKey): string => ` data-home-item="${box}"`;
-
-// Alça de redimensionamento (borda de baixo). aria-hidden: interação de ponteiro;
-// o teclado tem o fallback natural (o conteúdo rola de qualquer jeito).
-const resizeHandle = '<div class="home-resize" aria-hidden="true"></div>';
+// Helpers de SSR das caixas (boxAttrs/itemAttr/resizeHandle/size toggle) moram
+// em home-prefs.ts desde a revisão 19/07 — compartilhados com o card de
+// Estatísticas (insights.ts) sem criar ciclo de import. Nos cards, item e alvo
+// de altura são o MESMO elemento; na Atividade o alvo é a caixa interna.
+const boxAttrs = homeBoxAttrs;
+const itemAttr = homeItemAttr;
+const resizeHandle = HOME_RESIZE_HANDLE;
 
 // ── Card "Comece aqui" (spec 91/92) ─────────────────────────────────────────
 // Ativação SEM tabela nova: os 4 passos são DERIVADOS dos dados que já existem.
@@ -229,10 +238,10 @@ function taskWhenHtml(t: TaskRow, now: number): string {
 // Card 1 — Hoje: tasks due hoje/atrasadas, com quick-complete (checkbox → mesmo
 // endpoint do board, POST /app/tasks/complete) + link pro board completo.
 // Exportado: testado isoladamente (sem D1/HTTP) em test/web/home.test.ts.
-export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}): string {
+export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
   if (tasks.length === 0) {
-    return `<section class="card home-card"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a></h2>
+    return `<section class="card home-card${homeWideClass('today', sizes)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}</h2>
       <p class="home-empty">Nada vencendo nas próximas 24h.</p>
     </section>`;
   }
@@ -246,8 +255,8 @@ export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs 
       </li>`;
     })
     .join('');
-  return `<section class="card home-card"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a></h2>
+  return `<section class="card home-card${homeWideClass('today', sizes)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}</h2>
     <ul class="home-list" id="home-today-list">${items}</ul>
   </section>`;
 }
@@ -263,15 +272,15 @@ function firstLine(body: string, max: number): string {
 // inline (nota / tarefa / descartar, mesmos endpoints do /app/inbox). O "ver tudo"
 // leva pra página completa (corpo em markdown, itens além do cap).
 // Exportado: testado isoladamente em test/web/home.test.ts.
-export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}): string {
+export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
   const capture = `<form class="home-inbox-capture" method="post" action="/app/inbox/add">
       <input type="text" name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Capturar ideia solta — tria depois" aria-label="Captura rápida pro inbox" autocomplete="off" required />
       <input type="hidden" name="next" value="/app" />
       <button type="submit" class="btn btn-sm">Capturar</button>
     </form>`;
   if (pending === 0) {
-    return `<section class="card home-card"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a></h2>
+    return `<section class="card home-card${homeWideClass('inbox', sizes)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a>${homeSizeToggleHtml('inbox', sizes)}</h2>
       ${capture}
       <p class="home-empty">Inbox vazio.</p>
     </section>`;
@@ -289,8 +298,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
       </span>
     </li>`)
     .join('');
-  return `<section class="card home-card"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a></h2>
+  return `<section class="card home-card${homeWideClass('inbox', sizes)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a>${homeSizeToggleHtml('inbox', sizes)}</h2>
     ${capture}
     <ul class="home-list home-inbox-list">${rows}</ul>
   </section>`;
@@ -318,9 +327,12 @@ function renderActivityFeedSection(prefs: HomePrefs = {}): string {
 
 // Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
 // visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
-function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}): string {
-  return `<section class="card home-card"${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
-    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}</h2>
+function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
+  // A âncora #estatisticas (palette "Ir pras Estatísticas") precisa existir
+  // TAMBÉM no card de erro — senão falha da query mensal quebra o link.
+  const anchor = box === 'insights' ? ' id="estatisticas"' : '';
+  return `<section class="card home-card${box ? homeWideClass(box, sizes) : ''}"${anchor}${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
+    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}${box ? homeSizeToggleHtml(box, sizes) : ''}</h2>
     <p class="error-state">${esc(msg)}</p>
   </section>`;
 }
@@ -332,11 +344,12 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   const now = Date.now();
 
   // Layout salvo das caixas (Onda 9b) — falha na leitura degrada pros defaults.
-  let prefsState: HomePrefsState = { heights: {}, order: null, startDismissed: false };
+  let prefsState: HomePrefsState = { heights: {}, sizes: {}, order: null, startDismissed: false };
   try { prefsState = await getHomePrefs(env); } catch (e) {
     console.error('home: falha ao ler home_prefs (defaults aplicados)', e);
   }
   const prefs = prefsState.heights;
+  const sizes = prefsState.sizes;
 
   // Card "Comece aqui" (spec 92): acima do grid, fora do sistema de caixas
   // arrastáveis (é temporário por natureza). Falha na derivação NÃO vira card de
@@ -370,10 +383,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     // OWNER_TASK_VIS: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
     // convenção do board de tasks e do lembrete diário.
     const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, OWNER_TASK_VIS);
-    todayCardHtml = renderTodayCard(tasks, now, prefs);
+    todayCardHtml = renderTodayCard(tasks, now, prefs, sizes);
   } catch (e) {
     console.error('home: falha ao carregar tasks de hoje', e);
-    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs);
+    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs, sizes);
   }
 
   let inboxCardHtml = '';
@@ -382,10 +395,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       countPendingInbox(env),
       listInboxItems(env, { pendingOnly: true, limit: INBOX_SCAN_LIMIT }),
     ]);
-    inboxCardHtml = renderInboxCard(pending, items, prefs);
+    inboxCardHtml = renderInboxCard(pending, items, prefs, sizes);
   } catch (e) {
     console.error('home: falha ao carregar inbox (spec 63 pode não ter rodado)', e);
-    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs);
+    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs, sizes);
   }
 
   let digestCardHtml = '';
@@ -397,20 +410,22 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       // só a FALHA de leitura vira card de erro visível. Onda 9: o card ganhou o
       // MESMO h2 dos vizinhos (era o "card sem título" do feedback do dono) — o
       // renderDigestCard entra em modo bare (sem o <strong> interno duplicado).
-      digestCardHtml = `<section class="card home-card"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
-        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a></h2>
+      digestCardHtml = `<section class="card home-card${homeWideClass('digest', sizes)}"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
+        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a>${homeSizeToggleHtml('digest', sizes)}</h2>
         ${renderDigestCard(digest, { bare: true })}
       </section>`;
       hasDigestBox = true;
     }
   } catch (e) {
     console.error('home: falha ao ler cache do resurface digest (spec 64 pode não ter rodado)', e);
-    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs);
+    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs, sizes);
     hasDigestBox = true;
   }
 
-  // Card "Estatísticas" (spec 99): resumo do mês corrente com delta vs anterior.
-  // Payload vem do cache KV (1h) — a home não paga as agregações a cada visita.
+  // Card "Estatísticas" (spec 99; fusão do /app/insights na home, 19/07): o
+  // dashboard mensal COMPLETO (mês corrente + delta vs anterior) mora aqui —
+  // a página /app/insights virou redirect. Payload vem do cache KV (1h) — a
+  // home não paga as agregações a cada visita.
   let insightsCardHtml = '';
   try {
     const cur = brtYearMonth(now);
@@ -419,10 +434,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       getMonthInsightsCached(env, cur.year, cur.month, now),
       getMonthInsightsCached(env, prev.year, prev.month, now),
     ]);
-    insightsCardHtml = renderInsightsCard(curData, prevData, prefs);
+    insightsCardHtml = renderInsightsCard(cur.year, cur.month, curData, prevData, prefs, sizes);
   } catch (e) {
     console.error('home: falha ao carregar o resumo mensal (spec 99)', e);
-    insightsCardHtml = renderCardError('Estatísticas <a href="/app/insights">ver detalhes →</a>', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs);
+    insightsCardHtml = renderCardError('Estatísticas', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs, sizes);
   }
 
   // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,

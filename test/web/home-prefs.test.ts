@@ -4,9 +4,10 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
 import { sanitizeHomePrefs, HOME_BOX_MIN, HOME_BOX_MAX, HOME_PREFS_META_KEY } from '../../src/web/home-prefs.js';
 
-// Layout das caixas da home (Onda 9b, specs/60-ux-reforma/72): sanitize puro
-// (alturas + ordem) + endpoint POST /app/home/prefs + reflexo no SSR da home
-// (ordem dos filhos da grid e a custom property --home-card-h só onde há valor).
+// Layout das caixas da home (Onda 9b, specs/60-ux-reforma/72 + largura 19/07):
+// sanitize puro (alturas + larguras + ordem) + endpoint POST /app/home/prefs +
+// reflexo no SSR da home (ordem dos filhos da grid, a custom property
+// --home-card-h só onde há valor e a classe .home-card-wide por card).
 
 const E = env as any;
 
@@ -56,6 +57,18 @@ describe('sanitizeHomePrefs (spec 72)', () => {
     expect(p.heights).toEqual({ today: 500 });
     expect(p.order).toEqual(['digest', 'today', 'inbox', 'activity', 'insights']);
   });
+
+  it('sizes: só wide/normal em chave conhecida; o resto é dropado (default)', () => {
+    const p = sanitizeHomePrefs({ sizes: { today: 'wide', insights: 'normal', inbox: 'gigante', hacker: 'wide' } })!;
+    expect(p.sizes).toEqual({ today: 'wide', insights: 'normal' });
+    expect(p.heights).toEqual({});
+    expect(p.order).toBeNull();
+  });
+
+  it('pref antiga sem sizes = todos os defaults (retrocompatível)', () => {
+    const p = sanitizeHomePrefs({ heights: { today: 500 } })!;
+    expect(p.sizes).toEqual({});
+  });
 });
 
 describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
@@ -101,7 +114,49 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(clear.status).toBe(200);
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value)).toEqual({ heights: {}, order: null, startDismissed: false });
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, startDismissed: false });
+  });
+
+  it('largura (19/07): salva sizes, reflete a classe home-card-wide no SSR; default = insights expandido', async () => {
+    const ck = await cookie();
+
+    // Sem pref salva: insights nasce expandido (default wide), today normal —
+    // e todo card com toggle expõe o botão acessível.
+    const before = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
+    expect(before).toMatch(/class="card home-card home-card-wide" id="estatisticas"/);
+    expect(before).toMatch(/class="card home-card"[^>]*data-home-item="today"/);
+    expect(before).toContain('class="home-size-toggle"');
+    expect(before).toContain('aria-label="Expandir card"');
+    expect(before).toContain('aria-label="Reduzir card"');
+
+    // Inverte: today expandido, insights normal.
+    const res = await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ sizes: { today: 'wide', insights: 'normal' } }),
+    });
+    expect(res.status).toBe(200);
+    const html = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
+    expect(html).toMatch(/class="card home-card home-card-wide"[^>]*data-home-item="today"/);
+    expect(html).toMatch(/class="card home-card" id="estatisticas"/);
+
+    // POST de layout SEM o campo sizes (cliente antigo) preserva as larguras salvas.
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ heights: { inbox: 500 } }),
+    });
+    const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
+    expect(JSON.parse(row.value).sizes).toEqual({ today: 'wide', insights: 'normal' });
+
+    // limpar: sizes vazio volta todo mundo pro default.
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ heights: {}, sizes: {} }),
+    });
+    const after = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
+    expect(after).toMatch(/class="card home-card home-card-wide" id="estatisticas"/);
   });
 
   it('body inválido → 400', async () => {

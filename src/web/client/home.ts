@@ -46,8 +46,9 @@ function wireToday(): void {
 const DRAG_THRESHOLD = 6;
 
 // Lê o layout ATUAL do DOM e persiste: ordem = filhos da grid com data-home-item;
-// alturas = só as que diferem do default (chave ausente = default, mesma semântica
-// do servidor). Chamada UMA vez no fim do gesto (drop/solta da borda), nunca durante.
+// alturas e larguras = só as que diferem do default (chave ausente = default,
+// mesma semântica do servidor). Chamada UMA vez no fim do gesto (drop/solta da
+// borda/clique no toggle de largura), nunca durante.
 async function persistLayout(grid: HTMLElement): Promise<void> {
   const order = Array.from(grid.children)
     .map((el) => (el as HTMLElement).dataset.homeItem)
@@ -59,17 +60,45 @@ async function persistLayout(grid: HTMLElement): Promise<void> {
     if (!box || Number.isNaN(px)) return;
     if (px !== Number(el.dataset.homeDefault)) heights[box] = px;
   });
+  // Largura (revisão 19/07): só cards COM toggle participam (a Atividade ocupa
+  // a linha inteira por CSS e fica de fora). data-home-wide-default vem do SSR.
+  const sizes: Record<string, 'wide' | 'normal'> = {};
+  grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
+    const item = btn.closest<HTMLElement>('[data-home-item]');
+    const box = item?.dataset.homeItem;
+    if (!item || !box) return;
+    const wideDefault = btn.dataset.homeWideDefault === '1';
+    const wide = item.classList.contains('home-card-wide');
+    if (wide !== wideDefault) sizes[box] = wide ? 'wide' : 'normal';
+  });
   try {
     const res = await appFetch('/app/home/prefs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ order, heights }),
+      body: JSON.stringify({ order, heights, sizes }),
     });
     if (!res.ok) throw new Error(`prefs ${res.status}`);
   } catch (err) {
     console.warn('home: prefs save failed', err);
     toast('Não deu pra salvar o layout. Tente de novo.');
   }
+}
+
+// Toggle de LARGURA do card (revisão 19/07): normal (1 coluna) ↔ expandido
+// (linha inteira). O CSS troca o ícone pela classe; aqui só classe + rótulos +
+// persistência (mesmo POST do layout).
+function wireSizeToggles(grid: HTMLElement): void {
+  grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest<HTMLElement>('[data-home-item]');
+      if (!item) return;
+      const wide = item.classList.toggle('home-card-wide');
+      const label = wide ? 'Reduzir card' : 'Expandir card';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+      void persistLayout(grid);
+    });
+  });
 }
 
 // Reordenação: ghost segue o ponteiro (o item original fica esmaecido no lugar),
@@ -185,6 +214,7 @@ function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): 
 function wireArrange(): void {
   const grid = document.querySelector<HTMLElement>('.home-grid');
   if (!grid) return;
+  wireSizeToggles(grid);
 
   grid.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;

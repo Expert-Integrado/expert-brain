@@ -349,27 +349,27 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-/* Botão da sidebar que não navega (Buscar, spec 91/93): mesmo desenho dos
-   nav-item, com reset de button. (O Tema mudou pro popover do usuário, 19/07.) */
-.sidebar .nav-search {
-  width: 100%;
+/* Lupa no cabeçalho da sidebar (revisão 19/07): o "Buscar" saiu da lista de
+   itens do menu — virou botão ícone-só na MESMA linha da marca, alinhado à
+   direita. Discreto, hover igual aos nav-items. Dispara a palette (data-cmd-open),
+   Ctrl+K continua valendo. */
+.sidebar .logo-search {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
   background: none;
   border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
   cursor: pointer;
-  font-family: inherit;
-  text-align: left;
+  transition: color 180ms var(--ease), background 180ms var(--ease);
 }
-.nav-kbd {
-  margin-left: auto;
-  font-size: 10px;
-  padding: 1px 5px;
-  background: color-mix(in srgb, var(--text) 7%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--text-subtle);
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-}
-.sidebar-collapsed .nav-kbd { display: none; }
+.sidebar .logo-search:hover { color: var(--text); background: rgba(167, 139, 250, 0.08); }
 
 /* Rodapé da sidebar (redesign 19/07): menu do usuário (botão avatar + nome que
    abre popover pra cima com Configurações/Tema/Trocar foto/Sair) + botão Recolher
@@ -484,7 +484,9 @@ export const SHELL_CSS = `
 .shell.sidebar-collapsed .sidebar .sidebar-email {
   display: none;
 }
-.shell.sidebar-collapsed .sidebar .logo { justify-content: center; margin-bottom: 28px; gap: 0; }
+/* Recolhida: a lupa continua visível/clicável — empilha SOB o logo (coluna). */
+.shell.sidebar-collapsed .sidebar .logo { flex-direction: column; justify-content: center; margin-bottom: 28px; gap: 8px; }
+.shell.sidebar-collapsed .sidebar .logo-search { margin-left: 0; }
 .shell.sidebar-collapsed .sidebar .nav-item {
   justify-content: center;
   padding-left: 0;
@@ -586,6 +588,71 @@ export const COMPONENTS_CSS = `
    inline-flex) atropelava o display:none do UA e elementos escondidos por JS
    apareciam (incidente do card Google Contatos, 18/07). */
 [hidden] { display: none !important; }
+
+/* ---- Scrollbar fina nas áreas de scroll INTERNAS (revisão 19/07) ----
+   A barra default (grossa, fundo claro) gritava no tema escuro — ex.: o card de
+   Atividade da home. Regra REUTILIZÁVEL: container de scroll interno novo entra
+   neste seletor OU ganha a classe .scroll-thin. Só tokens (claro E escuro);
+   nada de regra global agressiva no body — a barra da página segue a do SO. */
+.scroll-thin,
+.home-card > :last-child,
+.home-activity-box,
+.sidebar,
+#graph-panel,
+.cmd-list,
+.mention-suggest,
+.graph-search-results,
+.task-assignees-list,
+.task-tag-list,
+.task-board,
+.task-funnel,
+.keys-table,
+.card pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.scroll-thin::-webkit-scrollbar,
+.home-card > :last-child::-webkit-scrollbar,
+.home-activity-box::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar,
+#graph-panel::-webkit-scrollbar,
+.cmd-list::-webkit-scrollbar,
+.mention-suggest::-webkit-scrollbar,
+.graph-search-results::-webkit-scrollbar,
+.task-assignees-list::-webkit-scrollbar,
+.task-tag-list::-webkit-scrollbar,
+.task-board::-webkit-scrollbar,
+.task-funnel::-webkit-scrollbar,
+.keys-table::-webkit-scrollbar,
+.card pre::-webkit-scrollbar { width: 8px; height: 8px; }
+.scroll-thin::-webkit-scrollbar-thumb,
+.home-card > :last-child::-webkit-scrollbar-thumb,
+.home-activity-box::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb,
+#graph-panel::-webkit-scrollbar-thumb,
+.cmd-list::-webkit-scrollbar-thumb,
+.mention-suggest::-webkit-scrollbar-thumb,
+.graph-search-results::-webkit-scrollbar-thumb,
+.task-assignees-list::-webkit-scrollbar-thumb,
+.task-tag-list::-webkit-scrollbar-thumb,
+.task-board::-webkit-scrollbar-thumb,
+.task-funnel::-webkit-scrollbar-thumb,
+.keys-table::-webkit-scrollbar-thumb,
+.card pre::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+.scroll-thin::-webkit-scrollbar-track,
+.home-card > :last-child::-webkit-scrollbar-track,
+.home-activity-box::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track,
+#graph-panel::-webkit-scrollbar-track,
+.cmd-list::-webkit-scrollbar-track,
+.mention-suggest::-webkit-scrollbar-track,
+.graph-search-results::-webkit-scrollbar-track,
+.task-assignees-list::-webkit-scrollbar-track,
+.task-tag-list::-webkit-scrollbar-track,
+.task-board::-webkit-scrollbar-track,
+.task-funnel::-webkit-scrollbar-track,
+.keys-table::-webkit-scrollbar-track,
+.card pre::-webkit-scrollbar-track { background: transparent; }
 
 /* ---- Botões: hierarquia única (primary > secondary > ghost; danger; -sm) ---- */
 .btn {
@@ -1309,9 +1376,10 @@ export const SURFACES_CSS = `
 .error-card code { background: var(--surface-2); padding: 1px 6px; border-radius: 4px; }
 
 /* Dashboard mensal "Seu cérebro" (spec 99) — tiles, barras SVG e split dono/agente. */
-.insights-nav { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-5); }
-.insights-month { font-family: var(--font-display); font-size: var(--text-lg); text-transform: capitalize; }
-.insights-nav-spacer { min-width: 90px; }
+/* A página /app/insights virou card da home (fusão 19/07) — a navegação por mês
+   morreu; o rótulo do mês corrente é a linha discreta .insights-card-month. */
+.insights-card-month { font-size: 12px; color: var(--text-subtle); margin: 0 0 12px; }
+.insights-card-month::first-letter { text-transform: uppercase; }
 .insights-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: var(--space-5); }
 .insights-stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .insights-stat-value { font-family: var(--font-display); font-size: 26px; line-height: 1.1; display: flex; align-items: baseline; gap: 8px; }
@@ -1321,7 +1389,7 @@ export const SURFACES_CSS = `
 .insights-delta.down { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
 .insights-delta.flat { color: var(--text-subtle); background: var(--surface-2); }
 /* Na home o card é compacto: tiles sem borda própria, só os números. */
-.insights-stats-card { grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 0; }
+.insights-stats-card { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: var(--space-4); }
 .insights-stats-card .insights-stat { padding: 10px 12px; }
 .insights-stats-card .insights-stat-value { font-size: 22px; }
 .insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; align-items: start; }

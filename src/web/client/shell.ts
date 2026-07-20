@@ -30,7 +30,8 @@ const COMMANDS: Command[] = [
   { id: 'go-notes',  label: 'Ir pras Notas',        hint: 'Ctrl+N', action: () => (window.location.href = '/app/notes') },
   { id: 'go-tasks',  label: 'Ir pras Tarefas',      hint: 'Ctrl+T', action: () => (window.location.href = '/app/tasks') },
   { id: 'go-contacts', label: 'Ir pros Contatos',   action: () => (window.location.href = '/app/contacts') },
-  { id: 'go-insights', label: 'Ir pras Estatísticas', action: () => (window.location.href = '/app/insights') },
+  // O dashboard fundiu na home (19/07) — o comando leva pra âncora do card.
+  { id: 'go-insights', label: 'Ir pras Estatísticas', action: () => (window.location.href = '/app#estatisticas') },
   { id: 'go-config', label: 'Ir pras Configurações', hint: 'Ctrl+,', action: () => (window.location.href = '/app/config') },
   // Único caminho de trocar tema no CELULAR (a sidebar com o botão some ≤767px).
   { id: 'toggle-theme', label: 'Alternar tema (auto → claro → escuro)', action: () => cycleTheme() },
