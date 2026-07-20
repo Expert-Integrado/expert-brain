@@ -43,19 +43,36 @@ describe('sanitizeHomePrefs (spec 72)', () => {
     expect(p.heights.digest).toBe(400);
   });
 
-  it('order: só chaves conhecidas, sem duplicata, faltantes completadas no fim', () => {
+  it('order: só chaves conhecidas, sem duplicata, faltantes entram na POSIÇÃO default', () => {
     const p = sanitizeHomePrefs({ order: ['inbox', 'hacker', 'inbox', 'activity'] })!;
-    // 'hacker' e a duplicata caem; today/digest/insights (ausentes) entram na
-    // ordem default — pref antiga nunca esconde caixa nova (a 'insights' entrou
-    // na spec 99 e é o caso real desse mecanismo).
-    expect(p.order).toEqual(['inbox', 'activity', 'today', 'digest', 'insights']);
+    // 'hacker' e a duplicata caem; as ausentes entram na posição que têm na
+    // ordem default (não no fim) — pref antiga nunca esconde nem ENTERRA caixa
+    // nova: 'pending' (rodada 6) precisa nascer no topo mesmo pra quem já tinha
+    // layout salvo antes dela existir.
+    expect(p.order).toEqual(['pending', 'today', 'inbox', 'digest', 'insights', 'activity']);
     expect(p.heights).toEqual({});
   });
 
   it('heights e order juntos no mesmo body', () => {
     const p = sanitizeHomePrefs({ heights: { today: 500 }, order: ['digest', 'today', 'inbox', 'activity'] })!;
     expect(p.heights).toEqual({ today: 500 });
-    expect(p.order).toEqual(['digest', 'today', 'inbox', 'activity', 'insights']);
+    // Ordem custom preservada entre as presentes; pending entra na frente
+    // (posição default 0) e insights antes de activity (posição default).
+    expect(p.order).toEqual(['pending', 'digest', 'today', 'inbox', 'insights', 'activity']);
+  });
+
+  it('hidden (rodada 6): só chaves conhecidas, sem duplicata; ausente = [] (blob antigo carrega intacto)', () => {
+    const p = sanitizeHomePrefs({ hidden: ['digest', 'hacker', 'digest', 'activity'] })!;
+    expect(p.hidden).toEqual(['digest', 'activity']);
+    expect(p.heights).toEqual({});
+    expect(p.order).toBeNull();
+    // Retrocompat: blob salvo ANTES da rodada 6 (sem pending nem hidden) segue
+    // legível — hidden vira [] e 'pending' entra na PRIMEIRA posição (default),
+    // não enterrado no fim: é a fila do dono, nasce no topo.
+    const old = sanitizeHomePrefs({ heights: { today: 500 }, sizes: { insights: 'normal' }, order: ['today', 'inbox', 'digest', 'insights', 'activity'] })!;
+    expect(old.hidden).toEqual([]);
+    expect(old.order).toEqual(['pending', 'today', 'inbox', 'digest', 'insights', 'activity']);
+    expect(old.heights).toEqual({ today: 500 });
   });
 
   it('sizes: só wide/normal em chave conhecida; o resto é dropado (default)', () => {
@@ -114,7 +131,56 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(clear.status).toBe(200);
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, startDismissed: false });
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false });
+  });
+
+  it('hidden (rodada 6): salva, reflete a classe home-card-hidden no SSR; POST sem o campo preserva', async () => {
+    const ck = await cookie();
+    const res = await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ hidden: ['today'] }),
+    });
+    expect(res.status).toBe(200);
+    const html = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
+    expect(html).toMatch(/class="card home-card home-card-hidden"[^>]*data-home-item="today"/);
+    // As demais caixas seguem sem a classe.
+    expect(html).not.toMatch(/home-card-hidden"[^>]*data-home-item="inbox"/);
+
+    // POST de layout SEM o campo hidden (cliente antigo) preserva o salvo.
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ heights: { inbox: 500 } }),
+    });
+    let row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
+    expect(JSON.parse(row.value).hidden).toEqual(['today']);
+
+    // hidden: [] explícito LIMPA (mostrar tudo de novo).
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ heights: {}, hidden: [] }),
+    });
+    row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
+    expect(JSON.parse(row.value).hidden).toEqual([]);
+  });
+
+  it('reset:true (rodada 6, Restaurar padrão): apaga o layout salvo inteiro', async () => {
+    const ck = await cookie();
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ heights: { today: 500 }, sizes: { today: 'wide' }, order: ['inbox', 'today'], hidden: ['digest'] }),
+    });
+    const res = await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ reset: true }),
+    });
+    expect(res.status).toBe(200);
+    const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false });
   });
 
   it('largura (19/07): salva sizes, reflete a classe home-card-wide no SSR; default = insights expandido', async () => {

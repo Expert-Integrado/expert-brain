@@ -107,12 +107,24 @@ describe('SSR /app/tasks — filtro e breadcrumb de projeto (spec 58 + Onda 5)',
     // muted "Em <projeto>" abaixo do título (anatomia ClickUp).
     expect(html).toContain('task-card-crumb');
     expect(html).toContain('data-project="proj_a"');
-    // Onda 8 (spec 70): busca + filtros de prioridade e tag no toolbar.
+    // Onda 8 (spec 70): busca + filtros de prioridade e tag; rodada 6: a busca
+    // fica na toolbar e os filtros avançados moram no popover "Filtros".
     expect(html).toContain('id="task-search"');
     expect(html).toContain('id="task-prio-filter"');
     expect(html).toContain('id="task-tag-filter"');
     expect(html).toContain('Todas as prioridades');
     expect(html).toContain('Todas as tags');
+    // Rodada 6: botão "Filtros" (funil) + popover com as 4 seções + linha de chips.
+    expect(html).toMatch(/id="task-filter-trigger"[^>]*aria-haspopup="true"[^>]*aria-expanded="false"/);
+    expect(html).toMatch(/id="task-filter-panel"[^>]*hidden/);
+    expect(html).toContain('id="task-filter-chips"');
+    for (const label of ['Prazo', 'Prioridade', 'Etiquetas', 'Projeto']) {
+      expect(html).toContain(`<span class="task-filter-section-label">${label}</span>`);
+    }
+    // Contrato dos ids (getElementById dos wire*): mantidos e SEM duplicar.
+    for (const id of ['task-search', 'task-prio-filter', 'task-tag-filter', 'task-tag-search', 'task-tag-list', 'task-date-filter', 'task-project-filter', 'task-filter-trigger', 'task-filter-panel', 'task-filter-chips']) {
+      expect(html.split(`id="${id}"`).length - 1).toBe(1);
+    }
   });
 });
 

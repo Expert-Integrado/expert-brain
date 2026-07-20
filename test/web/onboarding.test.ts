@@ -123,6 +123,29 @@ describe('home + dismiss (spec 92 §1)', () => {
     expect(save.status).toBe(200);
     expect((await getHomePrefs(E)).startDismissed).toBe(true);
   });
+
+  it('Restaurar padrão (reset:true, rodada 6) apaga o layout mas PRESERVA o dismiss', async () => {
+    const ck = await authCookie();
+    await SELF.fetch('https://x.test/app/home/start-dismiss', {
+      method: 'POST', headers: { cookie: ck }, body: '', redirect: 'manual',
+    });
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { cookie: ck, 'content-type': 'application/json' },
+      body: JSON.stringify({ heights: { today: 300 }, hidden: ['digest'] }),
+    });
+    const reset = await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { cookie: ck, 'content-type': 'application/json' },
+      body: JSON.stringify({ reset: true }),
+    });
+    expect(reset.status).toBe(200);
+    const prefs = await getHomePrefs(E);
+    expect(prefs.startDismissed).toBe(true); // dismiss sobrevive ao reset
+    expect(prefs.heights).toEqual({});
+    expect(prefs.hidden).toEqual([]);
+    expect(prefs.order).toBeNull();
+  });
 });
 
 describe('empty states guiados (spec 92 §2)', () => {

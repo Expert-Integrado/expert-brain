@@ -1,7 +1,7 @@
 import { esc } from '../util/html.js';
 import { domainColor } from './domain-colors.js';
 import type { MonthInsights } from '../db/insights-queries.js';
-import { homeBoxAttrs, homeItemAttr, homeWideClass, homeSizeToggleHtml, HOME_RESIZE_HANDLE, type HomePrefs, type HomeSizes } from './home-prefs.js';
+import { homeBoxAttrs, homeItemAttr, homeWideClass, homeHiddenClass, homeSizeToggleHtml, homeEditControlsHtml, HOME_RESIZE_HANDLE, type HomeBoxKey, type HomePrefs, type HomeSizes } from './home-prefs.js';
 
 // Dashboard "Estatísticas do mês" (specs/91-experiencia-premium/99; rebatizado de
 // "Seu cérebro este mês" em 19/07): captura, conexão e execução do mês em BRT,
@@ -75,7 +75,8 @@ export function renderInsightsCard(
   cur: MonthInsights,
   prev: MonthInsights,
   heights: HomePrefs = {},
-  sizes: HomeSizes = {}
+  sizes: HomeSizes = {},
+  hidden: HomeBoxKey[] = []
 ): string {
   const kindChips = cur.byKind.length
     ? `<div class="insights-chips">${cur.byKind.map((k) => `<span class="chip">${esc(k.kind)} <strong>${k.c}</strong></span>`).join('')}</div>`
@@ -99,9 +100,9 @@ export function renderInsightsCard(
       </div>`
     : '<p class="home-empty">Nenhuma task concluída neste mês.</p>';
 
-  return `<section class="card home-card${homeWideClass('insights', sizes)}" id="estatisticas"${homeItemAttr('insights')}${homeBoxAttrs('insights', heights)}>
+  return `<section class="card home-card${homeWideClass('insights', sizes)}${homeHiddenClass('insights', hidden)}" id="estatisticas"${homeItemAttr('insights')}${homeBoxAttrs('insights', heights)}>
     ${HOME_RESIZE_HANDLE}
-    <h2 class="home-box-handle">Estatísticas${homeSizeToggleHtml('insights', sizes)}</h2>
+    <h2 class="home-box-handle">Estatísticas${homeSizeToggleHtml('insights', sizes)}${homeEditControlsHtml('insights', hidden)}</h2>
     <div class="home-insights-body">
       <p class="insights-card-month">${monthLabel(year, month)} · deltas vs mês anterior</p>
       <div class="insights-stats insights-stats-card">

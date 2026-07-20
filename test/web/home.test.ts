@@ -2,8 +2,9 @@ import { env, SELF } from 'cloudflare:test';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
-import { renderTodayCard, renderInboxCard } from '../../src/web/home.js';
+import { renderTodayCard, renderInboxCard, renderPendingCard } from '../../src/web/home.js';
 import type { TaskRow, InboxItem } from '../../src/db/queries.js';
+import type { PendingItem } from '../../src/util/task-badges.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2). As funções de
 // render dos cards "Hoje"/"Inbox" são testadas ISOLADAS (sem D1/HTTP) — o banco de
@@ -79,6 +80,57 @@ describe('renderTodayCard (spec 65 §2, card "Hoje")', () => {
     const withPref = renderTodayCard([], Date.now(), { today: 640 });
     expect(withPref).toMatch(/data-home-box="today"[^>]* style="--home-card-h:640px"/);
   });
+
+  it('rodada 6: controles de edição SSR sempre (subir/descer + ocultar) e classe home-card-hidden via prefs', () => {
+    const noHidden = renderTodayCard([], Date.now());
+    expect(noHidden).toContain('data-home-move="up"');
+    expect(noHidden).toContain('data-home-move="down"');
+    expect(noHidden).toContain('data-home-hide');
+    expect(noHidden).toContain('aria-label="Mover card pra cima"');
+    expect(noHidden).toContain('aria-label="Ocultar card"');
+    expect(noHidden).not.toContain('home-card-hidden');
+    const hiddenCard = renderTodayCard([], Date.now(), {}, {}, ['today']);
+    expect(hiddenCard).toContain('home-card-hidden');
+    expect(hiddenCard).toContain('aria-label="Mostrar card"');
+  });
+});
+
+describe('renderPendingCard (rodada 6: Pendências com você na home)', () => {
+  const items: PendingItem[] = [
+    { kind: 'question', id: 'tq1', title: 'Preciso do OK', body: 'posso seguir?', author: 'PC Test', since_brt: '01/07' },
+    { kind: 'approval', id: 'ta1', title: 'Entrega pronta', body: '', author: 'Notebook', since_brt: '02/07' },
+  ];
+
+  it('vazio → string vazia (card OMITIDO do grid, padrão digest)', () => {
+    expect(renderPendingCard([])).toBe('');
+  });
+
+  it('reusa o bloco do board com back=/app; cabeçalho com contagem por fila; wide por default', () => {
+    const html = renderPendingCard(items);
+    expect(html).toContain('data-home-item="pending"');
+    expect(html).toContain('data-home-box="pending"');
+    expect(html).toContain('data-home-default="320"');
+    // Wide por default (HOME_BOX_WIDE_DEFAULTS.pending = true).
+    expect(html).toContain('home-card-wide');
+    // Cabeçalho: "· N — X perguntas, Y para aprovar".
+    expect(html).toContain('Pendências com você');
+    expect(html).toContain('· 2 — 1 pergunta, 1 para aprovar');
+    // Mesmo markup do board (forms inline) + hidden back pro 302 sem JS voltar pra home.
+    expect(html).toContain('action="/app/fleet/task"');
+    expect(html).toContain('action="/app/tasks/comment"');
+    expect(html).toContain('name="back" value="/app"');
+    // Handles SSR completos como as demais caixas.
+    expect(html).toContain('class="home-resize"');
+    expect(html).toContain('home-box-handle');
+    expect(html).toContain('home-size-toggle');
+    expect(html).toContain('data-home-move="up"');
+    // O nome antigo do banner não existe aqui.
+    expect(html).not.toContain('Aguardando você');
+  });
+
+  it('ocultável como as demais caixas (classe via prefs.hidden)', () => {
+    expect(renderPendingCard(items, {}, {}, ['pending'])).toContain('home-card-hidden');
+  });
 });
 
 describe('renderInboxCard (spec 65 §2 + Onda 8/spec 70: captura e triagem na home)', () => {
@@ -136,6 +188,17 @@ describe('GET /app — home (spec 65 §2, smoke)', () => {
     const html = await res.text();
     expect(html).toContain('>Início<');
     expect(html).toContain('nav-item active');
+    // Modo de edição (rodada 6): botão Personalizar (aria-pressed) + barra
+    // Salvar/Cancelar/Restaurar padrão SSR (o CSS os revela sob .home-editing).
+    expect(html).toMatch(/id="home-edit-toggle"[^>]*aria-pressed="false"/);
+    expect(html).toContain('Personalizar');
+    expect(html).toContain('id="home-edit-bar"');
+    expect(html).toContain('id="home-edit-save"');
+    expect(html).toContain('id="home-edit-cancel"');
+    expect(html).toContain('id="home-edit-reset"');
+    expect(html).toContain('Restaurar padrão');
+    // Affordances gated por CSS: o seletor .home-grid.home-editing existe no <style>.
+    expect(html).toContain('.home-grid.home-editing');
     // Feed de atividade absorvido do /app/journal: container lazy + filtros + bundle.
     expect(html).toContain('id="journal-groups" data-lazy="1"');
     expect(html).toContain('journal-filter');

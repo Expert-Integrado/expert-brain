@@ -49,7 +49,6 @@ import {
   getOwnerUser,
   listUsers,
   claimActive,
-  listAwaitingOwnerBanner,
 } from '../db/queries.js';
 import {
   addTaskSubtasks,
@@ -69,8 +68,7 @@ import { newId } from '../util/id.js';
 import { PRIORITIES, priorityMeta, flagSvg } from '../util/priority.js';
 import { commentBadge } from '../util/comment-badge.js';
 import { tagChipsHtml, shareIconHtml, projectCrumbHtml, assigneeDotsHtml, claimChipHtml, pendingBlockHtml, subtaskBadge, type AssigneeDot, type ClaimChip, type PendingItem } from '../util/task-badges.js';
-import { findValidationColumn } from './fleet.js';
-import { listValidationTasks, type ValidationTask } from '../db/fleet-queries.js';
+import { buildPendingItems, pendingKindsLabel, PENDING_CSS } from './pending.js';
 import { formatBrtShort, relativeDue, parseDueToMs, formatBrtDateTime, brtDatetimeLocal, brtDateOnly, brtTimeOnly } from '../util/time.js';
 import { renderMarkdown } from './markdown.js';
 
@@ -209,7 +207,7 @@ interface BoardPayload {
 // cuja categoria não tem NENHUMA coluna ativa (ex.: canceladas com col_cancelado
 // arquivado) simplesmente não renderizam, mantendo o comportamento histórico do board.
 async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
-  const [activeCols, active, closed, allProjects, allUsers, awaiting] = await Promise.all([
+  const [activeCols, active, closed, allProjects, allUsers] = await Promise.all([
     listKanbanColumns(env, false),
     // OWNER_TASK_VIS (specs 59 + 91): o board é superfície do dono (sessão OU bearer de
     // tasks) — mostra task privada com badge 🔒. O gate por escopo é dos read paths MCP.
@@ -218,22 +216,12 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     listTaskProjects(env, true),
     // Usuários (spec 89): resolver claimed_by → nome pro chip de claim do card.
     listUsers(env, true),
-    // Perguntas aguardando o dono (spec 89): best-effort — o board nunca quebra
-    // por causa disto.
-    listAwaitingOwnerBanner(env).catch((err) => {
-      console.error('awaiting-owner: fila de perguntas do board falhou (best-effort):', err instanceof Error ? err.message : err);
-      return [];
-    }),
   ]);
-  // Entregas na coluna "Validação humana" (achada por label, mesma regra da spec
-  // 92) — segunda fila do "Pendências com você". Best-effort, como a de perguntas.
-  const validationCol = findValidationColumn(activeCols);
-  const validation: ValidationTask[] = validationCol
-    ? await listValidationTasks(env, validationCol.id).catch((err) => {
-        console.error('pendencias: fila de validação falhou (best-effort):', err instanceof Error ? err.message : err);
-        return [];
-      })
-    : [];
+  // "Pendências com você" (perguntas + entregas de Validação humana): a montagem
+  // vive em src/web/pending.ts desde a rodada 6 (20/07) — o card da home consome
+  // a MESMA função. Best-effort por fila lá dentro; as colunas ativas já
+  // carregadas entram de carona (economiza 1 query).
+  const pending = await buildPendingItems(env, activeCols);
   const userNameById = new Map(allUsers.map((u) => [u.id, u.name]));
   const activeById = new Map<string, KanbanColumn>(activeCols.map((c) => [c.id, c]));
   // Primeira coluna ativa (menor position) por categoria — activeCols já vem ordenado.
@@ -293,40 +281,6 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     color: p.color,
     archived: p.archived_at !== null,
   }));
-  // "Pendências com você": junta as duas filas e ordena por urgência — quem
-  // espera há mais tempo primeiro; prioridade (1=Crítica) desempata, sem
-  // prioridade por último. Task que está nas DUAS filas (entrega parada COM
-  // pergunta aberta) aparece uma vez só, como pergunta — é ela que trava tudo.
-  const questionIds = new Set(awaiting.map((a) => a.id));
-  const pendingSortable = [
-    ...awaiting.map((a) => ({
-      item: {
-        kind: 'question' as const,
-        id: a.id,
-        title: a.title,
-        body: a.block_body,
-        author: a.block_author,
-        since_brt: formatBrtShort(a.block_at),
-      },
-      since: a.block_at,
-      prio: a.priority ?? Number.MAX_SAFE_INTEGER,
-    })),
-    ...validation
-      .filter((v) => !questionIds.has(v.id))
-      .map((v) => ({
-        item: {
-          kind: 'approval' as const,
-          id: v.id,
-          title: v.title,
-          body: v.tldr && v.tldr !== v.title ? v.tldr : '',
-          author: v.deliveredBy,
-          since_brt: formatBrtShort(v.updatedAt),
-        },
-        since: v.updatedAt,
-        prio: v.priority ?? Number.MAX_SAFE_INTEGER,
-      })),
-  ].sort((x, y) => x.since - y.since || x.prio - y.prio);
-  const pending: PendingItem[] = pendingSortable.map((p) => p.item);
   return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser, pending };
 }
 
@@ -873,12 +827,18 @@ function taskDetailRedirect(taskId: string): Response {
   });
 }
 
-// POST /app/tasks/comment — form { task_id, body }. author='owner'.
+// POST /app/tasks/comment — form { task_id, body, back? }. author='owner'.
+// `back` opcional (rodada 6, 20/07): a resposta rápida do card "Pendências com
+// você" da home envia back=/app pro 302 sem JS voltar pra home. SÓ caminhos
+// internos ('/app...') são honrados — qualquer outra coisa cai no default
+// (detalhe da task), nunca vira open redirect.
 export async function handleTaskCommentPost(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
   const form = await req.formData();
 
+  const backRaw = String(form.get('back') ?? '');
+  const back = backRaw.startsWith('/app') ? backRaw : null;
   const taskId = String(form.get('task_id') ?? '').trim();
   if (!taskId) return formError(req, 'task_id obrigatório', { returnTo: '/app/tasks' });
   const body = String(form.get('body') ?? '').trim().slice(0, OWNER_COMMENT_MAX);
@@ -902,7 +862,9 @@ export async function handleTaskCommentPost(req: Request, env: Env): Promise<Res
   await produceCommentMailbox(env, {
     taskId, commentId, body, actorUserId: owner?.id ?? null,
   });
-  return taskDetailRedirect(taskId);
+  return back
+    ? new Response(null, { status: 302, headers: { location: back } })
+    : taskDetailRedirect(taskId);
 }
 
 // POST /app/tasks/comment/delete — form { id, task_id? }. Apaga qualquer comentário.
@@ -1464,34 +1426,52 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
       <button class="task-filter" data-filter="overdue" type="button">Atrasadas</button>
       <button class="task-filter" data-filter="mentions" type="button">Menções a mim</button>
       <span class="task-mailbox-badges" id="task-mailbox-badges"></span>
-      <div class="task-date-filter" id="task-date-filter" title="Filtrar por intervalo de vencimento">
-        <input type="date" class="task-date-input" id="task-date-from" aria-label="Vencimento a partir de" />
-        <span class="task-date-sep">até</span>
-        <input type="date" class="task-date-input" id="task-date-to" aria-label="Vencimento até" />
-        <button type="button" class="task-date-clear" id="task-date-clear" hidden aria-label="Limpar filtro de data" title="Limpar filtro de data">✕</button>
-      </div>
       <span class="task-toolbar-spacer"></span>
-      <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
-      <div class="task-tag-filter" id="task-tag-filter">
-        <button type="button" class="task-tag-trigger" id="task-tag-trigger" aria-haspopup="true" aria-expanded="false">
-          <span id="task-tag-trigger-label">Todas as tags</span>
+      <div class="task-filter-wrap" id="task-filter-wrap">
+        <button type="button" class="task-filter-trigger" id="task-filter-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="task-filter-panel">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <span id="task-filter-trigger-label">Filtros</span>
         </button>
-        <button type="button" class="task-tag-clear" id="task-tag-clear" hidden aria-label="Limpar filtro de tag" title="Limpar filtro de tag">✕</button>
-        <div class="task-tag-panel" id="task-tag-panel" hidden>
-          <input type="search" class="task-tag-search" id="task-tag-search" placeholder="Buscar tag…"
-            autocomplete="off" aria-label="Buscar tag" />
-          <div class="task-tag-list" id="task-tag-list" role="listbox" aria-label="Tags">
-            <button type="button" class="task-tag-opt selected" data-tag-value="all">Todas as tags</button>
-            ${tagOptionsHtml}
+        <div class="task-filter-panel" id="task-filter-panel" hidden>
+          <div class="task-filter-section">
+            <span class="task-filter-section-label">Prazo</span>
+            <div class="task-date-filter" id="task-date-filter" title="Filtrar por intervalo de vencimento">
+              <input type="date" class="task-date-input" id="task-date-from" aria-label="Vencimento a partir de" />
+              <span class="task-date-sep">até</span>
+              <input type="date" class="task-date-input" id="task-date-to" aria-label="Vencimento até" />
+              <button type="button" class="task-date-clear" id="task-date-clear" hidden aria-label="Limpar filtro de data" title="Limpar filtro de data">✕</button>
+            </div>
+          </div>
+          <div class="task-filter-section">
+            <span class="task-filter-section-label">Prioridade</span>
+            <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
+          </div>
+          <div class="task-filter-section">
+            <span class="task-filter-section-label">Etiquetas</span>
+            <div class="task-tag-filter" id="task-tag-filter">
+              <input type="search" class="task-tag-search" id="task-tag-search" placeholder="Buscar tag…"
+                autocomplete="off" aria-label="Buscar tag" />
+              <div class="task-tag-list" id="task-tag-list" role="listbox" aria-label="Tags">
+                <button type="button" class="task-tag-opt selected" data-tag-value="all">Todas as tags</button>
+                ${tagOptionsHtml}
+              </div>
+            </div>
+          </div>
+          <div class="task-filter-section">
+            <span class="task-filter-section-label">Projeto</span>
+            ${renderProjectFilter(projects, initialProject)}
           </div>
         </div>
       </div>
-      ${renderProjectFilter(projects, initialProject)}
     </div>
+    <div class="task-filter-chips" id="task-filter-chips" hidden></div>
 
-    <div class="task-pending" id="task-pending"${pending.length ? '' : ' hidden'}>
-      ${pendingBlockHtml(pending)}
-    </div>
+    <details class="task-pending-collapse" id="task-pending-collapse"${pending.length ? '' : ' hidden'}>
+      <summary id="task-pending-summary">Pendências com você · ${pending.length}${pending.length ? ` (${esc(pendingKindsLabel(pending))})` : ''}</summary>
+      <div class="task-pending" id="task-pending">
+        ${pendingBlockHtml(pending)}
+      </div>
+    </details>
 
     <div class="task-board" id="task-board">
       ${columns.map((c) => renderColumnSSR(c, projectsById)).join('')}
@@ -1564,7 +1544,14 @@ export const TASKS_CSS = `
 .task-new-btn { margin-left: auto; }
 .task-new-plus { font-size: 17px; line-height: 1; font-weight: 400; }
 
-.task-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+/* 1 LINHA no desktop (rodada 6): os filtros avançados moram no popover, então a
+   toolbar cabe sem wrap — busca + quick-filters + badges + botão Filtros. No
+   mobile o wrap volta (media query no fim). */
+.task-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; margin-bottom: 20px; }
+/* Janela média (768-1150px): a linha única não cabe com os badges do mailbox —
+   volta o wrap ANTES de espremer (overflow-x cortaria o popover, que é filho
+   absoluto da toolbar). */
+@media (max-width: 1150px) { .task-toolbar { flex-wrap: wrap; } }
 /* Busca do board (Onda 8): título + descrição + tags, client-side sobre o payload */
 .task-search {
   flex: 1 1 240px; min-width: 180px; max-width: 380px;
@@ -1577,6 +1564,9 @@ export const TASKS_CSS = `
 .task-filter {
   background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
   border-radius: 999px; padding: 6px 14px; font-size: 13px; cursor: pointer;
+  /* nowrap + flex none: em janela estreita a pill não pode virar 2 linhas nem
+     ser espremida — a toolbar rola no eixo x (overflow-x acima). */
+  white-space: nowrap; flex: 0 0 auto;
   transition: all 160ms var(--ease);
 }
 .task-filter:hover { color: var(--text); border-color: var(--border-strong); }
@@ -1588,73 +1578,28 @@ export const TASKS_CSS = `
 }
 .task-mailbox-chip b { color: var(--accent-lav); font-weight: 600; margin-left: 2px; }
 
-/* Bloco "Pendências com você" (19/07, substitui o banner antigo da spec 89 —
-   este CSS viaja inteiro pro <head> da página, então nada de citar o nome velho
-   aqui): perguntas de agentes + entregas pra aprovar, acima do board. Some
-   inteiro quando vazio ([hidden]). Só tokens de tema — funciona no claro e no
-   escuro. */
-.task-pending {
+/* Bloco de pendências: CSS compartilhado com o card da home (PENDING_CSS,
+   src/web/pending.ts — rodada 6). */
+${PENDING_CSS}
+/* Gaveta do bloco no board (rodada 6, pedido explícito): fechada por default,
+   o <summary> carrega a contagem — o board volta a ser a primeira coisa da
+   página. O cabeçalho interno do bloco vira redundância sob o summary. */
+.task-pending-collapse { margin-bottom: 20px; }
+.task-pending-collapse[hidden] { display: none; }
+.task-pending-collapse > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 600; color: var(--warning);
   background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.35);
-  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 20px;
+  border-radius: var(--radius); padding: 9px 14px;
+  transition: background 140ms var(--ease);
 }
-.task-pending[hidden] { display: none; }
-.task-pending-head {
-  font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--warning); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-}
-.task-pending-count {
-  font-size: 11px; background: rgba(251,191,36,0.15); border-radius: 999px;
-  padding: 1px 8px; font-variant-numeric: tabular-nums;
-}
-.task-pending-kinds { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-dim); margin-left: auto; }
-.task-pending-list { display: flex; flex-direction: column; gap: 4px; }
-.task-pending-item {
-  display: flex; flex-direction: column; gap: 3px;
-  padding: 8px; border-radius: var(--radius-sm); transition: background 140ms var(--ease);
-}
-.task-pending-item:hover { background: rgba(251,191,36,0.08); }
-.task-pending-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.task-pending-chip {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-  border-radius: 999px; padding: 1px 8px; white-space: nowrap; flex: none; align-self: center;
-}
-.task-pending-chip-question { color: var(--warning); border: 1px solid rgba(251,191,36,0.45); background: rgba(251,191,36,0.12); }
-.task-pending-chip-approval { color: var(--accent-lav); border: 1px solid rgba(167,139,250,0.45); background: rgba(167,139,250,0.12); }
-.task-pending-title { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; text-decoration: none; }
-.task-pending-title:hover { color: var(--accent-lav); }
-.task-pending-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
-.task-pending-body { font-size: 12px; color: var(--text-dim); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-/* Resposta rápida da pergunta: <details> expande inline (funciona sem JS). */
-.task-pending-reply > summary {
-  list-style: none; cursor: pointer; font-size: 12px; color: var(--accent-lav);
-  width: fit-content; padding: 2px 0;
-}
-.task-pending-reply > summary::-webkit-details-marker { display: none; }
-.task-pending-reply > summary:hover { color: var(--text); }
-.task-pending-reply-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-.task-pending-reply-form textarea {
-  width: 100%; resize: vertical; min-height: 48px;
-  background: var(--surface); border: 1px solid var(--border); color: var(--text);
-  border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; font-family: inherit;
-}
-.task-pending-reply-form textarea:focus { outline: none; border-color: var(--accent-lav); }
-.task-pending-reply-form .btn { align-self: flex-start; }
-.task-pending-actions { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
-/* "Ver mais (N)": o resto da fila expande inline, sem navegar. */
-.task-pending-more { margin-top: 4px; }
-.task-pending-more > summary {
-  list-style: none; cursor: pointer; font-size: 12px; color: var(--text-dim);
-  width: fit-content; padding: 4px 8px; border-radius: var(--radius-sm);
-  transition: color 140ms var(--ease), background 140ms var(--ease);
-}
-.task-pending-more > summary::-webkit-details-marker { display: none; }
-.task-pending-more > summary:hover { color: var(--text); background: rgba(251,191,36,0.08); }
-.task-pending-more[open] > summary { margin-bottom: 4px; }
-@media (max-width: 767px) {
-  .task-pending-row { flex-wrap: wrap; row-gap: 2px; }
-  .task-pending-title { white-space: normal; flex-basis: 100%; order: 3; }
-  .task-pending-meta { margin-left: auto; }
-}
+.task-pending-collapse > summary:hover { background: rgba(251,191,36,0.1); }
+.task-pending-collapse > summary::-webkit-details-marker { display: none; }
+.task-pending-collapse > summary::before { content: '▸'; font-size: 11px; transition: transform 140ms var(--ease); }
+.task-pending-collapse[open] > summary::before { transform: rotate(90deg); }
+.task-pending-collapse[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none; }
+.task-pending-collapse[open] .task-pending { border-top-left-radius: 0; border-top-right-radius: 0; margin-bottom: 0; }
+.task-pending-collapse .task-pending-head { display: none; }
 
 /* Chip de claim do card (spec 88/89): quem detém o lease de trabalho agora.
    Tokens --success* no lugar do mint cravado (TB-02): #6ee7b7 sumia no claro. */
@@ -1864,42 +1809,65 @@ body.task-dragging .task-col-empty { border-color: var(--border); }
 }
 .task-project-filter:focus { outline: none; border-color: var(--accent-lav); }
 
-/* Filtro de tag (P1 audit item T1): popover com busca no lugar do <select> nativo
-   de centenas de opções — padrão ClickUp (botão abre painel com input no topo +
-   lista filtrada; tag selecionada vira chip com × pra limpar). */
-.task-tag-filter { position: relative; display: inline-flex; align-items: stretch; }
-.task-tag-trigger {
-  background: var(--surface); border: 1px solid var(--border); color: var(--text);
-  border-radius: 999px; padding: 6px 12px; font-size: 13px; font-family: inherit; cursor: pointer;
-  transition: border-color 160ms var(--ease), color 160ms var(--ease), background 160ms var(--ease);
-  display: inline-flex; align-items: center; gap: 6px; max-width: 160px;
+/* ── Botão "Filtros" + popover (rodada 6, Linear/Jira): os filtros avançados
+   (prazo/prioridade/etiquetas/projeto) saem da toolbar pro painel — a toolbar
+   volta a caber em 1 linha. O padrão visual do painel herda do antigo popover
+   de tags. Badge "Filtros · N" + borda accent = tem filtro ativo. ── */
+.task-filter-wrap { position: relative; display: inline-flex; }
+.task-filter-trigger {
+  background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+  border-radius: 999px; padding: 6px 14px; font-size: 13px; font-family: inherit; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
 }
-.task-tag-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-tag-trigger:hover { border-color: var(--border-strong); }
-.task-tag-trigger[aria-expanded="true"] { border-color: var(--accent-lav); }
-/* Tag ativa: o gatilho vira o "corpo" do chip — a cor lavanda comunica filtro ligado */
-.task-tag-filter.has-value .task-tag-trigger {
-  border-radius: 999px 0 0 999px; border-right: none; color: var(--accent-lav);
-  border-color: var(--accent-lav); background: rgba(167,139,250,0.1);
-}
-.task-tag-clear {
-  background: var(--surface); border: 1px solid var(--border); border-left: none; color: var(--text-dim);
-  border-radius: 0 999px 999px 0; padding: 6px 10px; font-size: 12px; line-height: 1; cursor: pointer;
-  display: inline-flex; align-items: center; transition: color 140ms var(--ease), background 140ms var(--ease);
-}
-.task-tag-filter.has-value .task-tag-clear {
-  border-color: var(--accent-lav); color: var(--accent-lav); background: rgba(167,139,250,0.1); border-left: none;
-}
-.task-tag-clear:hover { color: var(--text); background: var(--surface-2); }
-.task-tag-clear[hidden] { display: none; }
-.task-tag-panel {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
-  width: 240px; max-height: 320px;
+.task-filter-trigger:hover { color: var(--text); border-color: var(--border-strong); }
+.task-filter-trigger[aria-expanded="true"] { border-color: var(--accent-lav); color: var(--text); }
+.task-filter-trigger.has-filters { color: var(--accent-lav); border-color: var(--accent-lav); background: rgba(167,139,250,0.1); }
+.task-filter-panel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  width: 300px; max-height: min(520px, 70vh); overflow-y: auto; scrollbar-width: thin;
   background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius);
   box-shadow: 0 16px 40px -12px rgba(0,0,0,0.6);
-  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  padding: 12px; display: flex; flex-direction: column; gap: 14px;
 }
-.task-tag-panel[hidden] { display: none; }
+.task-filter-panel[hidden] { display: none; }
+.task-filter-section { display: flex; flex-direction: column; gap: 6px; }
+.task-filter-section-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--text-subtle);
+}
+.task-filter-panel .task-project-filter { width: 100%; border-radius: var(--radius-sm); }
+.task-filter-panel .task-date-filter { border-radius: var(--radius-sm); width: 100%; box-sizing: border-box; }
+/* ── Linha de chips dos filtros ativos (NN-g: badge nunca sozinho — o valor
+   aplicado fica visível e removível fora do popover). ── */
+.task-filter-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: -10px 0 20px; }
+.task-filter-chips[hidden] { display: none; }
+.task-filter-chip {
+  display: inline-flex; align-items: center; gap: 0;
+  border: 1px solid var(--accent-lav); border-radius: 999px; overflow: hidden;
+  background: rgba(167,139,250,0.1); font-size: 12px;
+}
+.task-filter-chip-body {
+  background: none; border: none; color: var(--accent-lav); font-family: inherit; font-size: 12px;
+  padding: 4px 4px 4px 11px; cursor: pointer; max-width: 240px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.task-filter-chip-body:hover { color: var(--text); }
+.task-filter-chip-x {
+  background: none; border: none; color: var(--accent-lav); font-size: 11px; line-height: 1;
+  cursor: pointer; padding: 4px 9px 4px 5px; display: inline-flex; align-items: center;
+  transition: color 140ms var(--ease);
+}
+.task-filter-chip-x:hover { color: var(--text); }
+.task-filter-chips-clear {
+  background: none; border: none; color: var(--text-dim); font-size: 12px; font-family: inherit;
+  cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);
+  transition: color 140ms var(--ease);
+}
+.task-filter-chips-clear:hover { color: var(--text); }
+/* Filtro de tag: lista com busca INLINE no painel (rodada 6 — o popover próprio
+   de tags morreu; busca + lista continuam com os mesmos ids). */
+.task-tag-filter { display: flex; flex-direction: column; gap: 6px; }
 .task-tag-search {
   background: var(--bg-accent); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 7px 10px; font-size: 13px; font-family: inherit;
@@ -2015,7 +1983,12 @@ body.task-dragging .task-col-body { min-height: 90px; }
   .task-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; }
   .task-create-grid { grid-template-columns: 1fr 1fr; }
   .task-modal-dialog { margin: 6vh 16px 0; }
+  .task-toolbar { flex-wrap: wrap; }
   .task-search { flex-basis: 100%; max-width: none; }
-  .task-tag-panel { width: min(240px, calc(100vw - 32px)); }
+  /* Popover em largura de tela no mobile (ancorado à direita do trigger,
+     que vive na ponta direita da toolbar). */
+  .task-filter-panel { width: calc(100vw - 32px); max-width: calc(100vw - 32px); max-height: 60vh; }
+  /* Chips em fita rolável — filtro ativo nunca empurra o board pra baixo demais. */
+  .task-filter-chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 4px; }
 }
 `;

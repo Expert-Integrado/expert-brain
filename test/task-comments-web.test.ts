@@ -161,6 +161,21 @@ describe('comentario do dono pelo console (/app/tasks/comment)', () => {
     expect(det).toContain('cmt-author-owner');
   });
 
+  // back opcional (rodada 6): a resposta rápida do card da home volta pra home;
+  // qualquer valor fora de /app é ignorado (guard anti open redirect).
+  it('back=/app é honrado; back externo cai no default (detalhe da task)', async () => {
+    await seedTask('t1');
+    const c = await cookie();
+    const home = await postForm('/app/tasks/comment', { task_id: 't1', body: 'resposta pela home', back: '/app' }, { cookie: c });
+    expect(home.status).toBe(302);
+    expect(home.headers.get('location')).toBe('/app');
+    for (const evil of ['https://evil.example', '//evil.example', '/login']) {
+      const res = await postForm('/app/tasks/comment', { task_id: 't1', body: 'x', back: evil }, { cookie: c });
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toContain('/app/tasks/t1');
+    }
+  });
+
   it('dono apaga qualquer comentario (moderacao)', async () => {
     await seedTask('t1');
     const c = await cookie();

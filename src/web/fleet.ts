@@ -10,7 +10,6 @@ import {
   moveTaskToColumn,
   lastSeenByUser,
   listAwaitingOwnerBanner,
-  type KanbanColumn,
 } from '../db/queries.js';
 import { getBoardMailboxInfo } from '../db/mailbox.js';
 import {
@@ -37,12 +36,11 @@ import {
 export const FLEET_ACTIVE_WINDOW_MS = 15 * 60 * 1000;
 
 // Coluna de validação achada por LABEL (não é seed — o dono a criou no board),
-// mesmo padrão do update_task stage.
-export const VALIDATION_COLUMN_LABEL = 'validação humana';
-
-export function findValidationColumn(cols: KanbanColumn[]): KanbanColumn | null {
-  return cols.find((c) => c.label.trim().toLowerCase() === VALIDATION_COLUMN_LABEL) ?? null;
-}
+// mesmo padrão do update_task stage. A definição MUDOU pra src/web/pending.ts
+// (rodada 6, 20/07 — módulo folha das pendências, sem risco de ciclo); o
+// re-export preserva os imports existentes.
+import { findValidationColumn } from './pending.js';
+export { VALIDATION_COLUMN_LABEL, findValidationColumn } from './pending.js';
 
 function brtStamp(ms: number): string {
   return new Date(ms).toLocaleString('pt-BR', {
@@ -456,15 +454,23 @@ export async function handleFleetTaskActionPost(req: Request, env: Env): Promise
   const form = await req.formData();
   const taskId = String(form.get('task_id') ?? '');
   const action = String(form.get('action') ?? '');
+  // `back` opcional (rodada 6, 20/07): o card "Pendências com você" da home envia
+  // back=/app pra o 302 sem JS devolver o dono pra home. SÓ caminhos internos do
+  // console ('/app...') são honrados — qualquer outra coisa (URL absoluta, '//',
+  // lixo) é IGNORADA e cai no default (nunca vira open redirect).
+  const backRaw = String(form.get('back') ?? '');
+  const back = backRaw.startsWith('/app') ? backRaw : '/app/tasks';
+  // Erro também respeita o back: quem agiu da home sem JS volta pra home com a
+  // mensagem, não pra /app/tasks (back já passou pelo guard acima).
   if (!taskId || (action !== 'approve' && action !== 'return')) {
-    return formError(req, 'Ação inválida.', { returnTo: '/app/tasks' });
+    return formError(req, 'Ação inválida.', { returnTo: back });
   }
   const target = await defaultColumnForCategory(env, action === 'approve' ? 'done' : 'in_progress');
-  if (!target) return formError(req, 'Nenhuma coluna destino disponível.', { returnTo: '/app/tasks', status: 500 });
+  if (!target) return formError(req, 'Nenhuma coluna destino disponível.', { returnTo: back, status: 500 });
   const moved = await moveTaskToColumn(env, taskId, target.id, Date.now(), `oauth:${session.email}`);
-  if (moved === 'not-found') return formError(req, 'Task não encontrada.', { returnTo: '/app/tasks', status: 404 });
-  if (moved === 'column-not-found') return formError(req, 'Coluna destino não existe mais.', { returnTo: '/app/tasks', status: 500 });
-  return new Response(null, { status: 302, headers: { location: '/app/tasks' } });
+  if (moved === 'not-found') return formError(req, 'Task não encontrada.', { returnTo: back, status: 404 });
+  if (moved === 'column-not-found') return formError(req, 'Coluna destino não existe mais.', { returnTo: back, status: 500 });
+  return new Response(null, { status: 302, headers: { location: back } });
 }
 
 // Resumo pra home ("Frota: N ativos hoje · M esperando você") — acima do grid,

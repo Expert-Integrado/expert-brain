@@ -135,6 +135,7 @@ async function load(): Promise<boolean> {
     render();
     renderPending();
     renderMailboxBadges();
+    syncFilterUI();
     focusTaskFromQuery();
     return true;
   } catch (err) {
@@ -430,14 +431,31 @@ function render() {
 // Bloco "Pendências com você" (19/07): re-renderiza SÓ no load() (dados frescos) —
 // não a cada render() de filtro. Se o dono está no meio de algo ali (digitando uma
 // resposta, "Ver mais" aberto com foco), pula a atualização — o próximo load pega.
-// Container fixo no SSR; vazio → [hidden]. Mesmo contrato do banner antigo.
+// Rodada 6: o bloco mora numa gaveta <details class="task-pending-collapse">
+// FECHADA por default — o re-render atualiza o texto do <summary> e PRESERVA o
+// atributo open (o poll de 90s não pode fechar a gaveta que o dono abriu).
+// Vazio → [hidden] na gaveta inteira.
+function pendingSummaryText(items: PendingItem[]): string {
+  const q = items.filter((i) => i.kind === 'question').length;
+  const a = items.length - q;
+  const kinds: string[] = [];
+  if (q > 0) kinds.push(`${q} pergunta${q === 1 ? '' : 's'}`);
+  if (a > 0) kinds.push(`${a} para aprovar`);
+  return `Pendências com você · ${items.length}${kinds.length ? ` (${kinds.join(', ')})` : ''}`;
+}
+
 function renderPending() {
   const el = document.getElementById('task-pending');
-  if (!el || !board) return;
-  if (el.contains(document.activeElement)) return;
+  const wrap = document.getElementById('task-pending-collapse') as HTMLDetailsElement | null;
+  if (!el || !wrap || !board) return;
+  if (wrap.contains(document.activeElement)) return;
   const items = board.pending ?? [];
+  const wasOpen = wrap.open;
   el.innerHTML = pendingBlockHtml(items);
-  el.toggleAttribute('hidden', items.length === 0);
+  const summary = document.getElementById('task-pending-summary');
+  if (summary) summary.textContent = pendingSummaryText(items);
+  wrap.toggleAttribute('hidden', items.length === 0);
+  wrap.open = wasOpen;
 }
 
 // Ações inline do bloco (delegado no container — sobrevive ao innerHTML):
@@ -788,6 +806,7 @@ function wireProjectFilter() {
     projectFilter = sel.value || 'all';
     persistProjectFilter(projectFilter);
     render();
+    syncFilterUI();
   });
 }
 
@@ -812,6 +831,7 @@ function wirePrioFilter() {
   sel.addEventListener('change', () => {
     prioFilter = sel.value || 'all';
     render();
+    syncFilterUI();
   });
 }
 
@@ -830,6 +850,7 @@ function wireDateFilter() {
     clearBtn.hidden = !active;
     wrap.classList.toggle('has-value', active);
     render();
+    syncFilterUI();
   };
   from.addEventListener('change', apply);
   to.addEventListener('change', apply);
@@ -840,22 +861,10 @@ function wireDateFilter() {
   });
 }
 
-// ── Filtro de tag (P1 audit item T1): popover com busca no lugar do <select>
-// nativo — o vocabulário de tags do dono passa de centenas de itens, inviável sem
-// typeahead. Trigger mostra "Todas as tags" ou o nome da tag ativa (virando chip
-// com × pra limpar, estilo ClickUp); painel tem busca no topo + lista filtrada.
+// ── Filtro de tag (P1 audit item T1, remodelado na rodada 6): a lista com busca
+// vive INLINE dentro do popover "Filtros" — o popover próprio de tags morreu.
+// Busca (#task-tag-search) + lista (#task-tag-list) mantêm os mesmos ids.
 let tagOptionsCache: string[] = [];
-
-function updateTagTriggerUI() {
-  const wrap = document.getElementById('task-tag-filter');
-  const label = document.getElementById('task-tag-trigger-label');
-  const clearBtn = document.getElementById('task-tag-clear') as HTMLButtonElement | null;
-  if (!wrap || !label || !clearBtn) return;
-  const hasValue = tagFilter !== 'all';
-  label.textContent = hasValue ? tagFilter : 'Todas as tags';
-  wrap.classList.toggle('has-value', hasValue);
-  clearBtn.hidden = !hasValue;
-}
 
 function renderTagOptions(query: string) {
   const list = document.getElementById('task-tag-list');
@@ -876,66 +885,16 @@ function renderTagOptions(query: string) {
   list.querySelectorAll<HTMLButtonElement>('.task-tag-opt[data-tag-value]').forEach((btn) => {
     btn.addEventListener('click', () => {
       tagFilter = btn.dataset.tagValue || 'all';
-      updateTagTriggerUI();
-      closeTagPanel();
+      renderTagOptions((document.getElementById('task-tag-search') as HTMLInputElement | null)?.value ?? '');
       render();
+      syncFilterUI();
     });
   });
 }
 
-function onTagOutsideClick(e: MouseEvent) {
-  const wrap = document.getElementById('task-tag-filter');
-  if (wrap && !wrap.contains(e.target as Node)) closeTagPanel();
-}
-
-function onTagPanelKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') {
-    closeTagPanel();
-    document.getElementById('task-tag-trigger')?.focus();
-  }
-}
-
-function openTagPanel() {
-  const panel = document.getElementById('task-tag-panel');
-  const trigger = document.getElementById('task-tag-trigger');
-  const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
-  if (!panel || !trigger) return;
-  panel.hidden = false;
-  trigger.setAttribute('aria-expanded', 'true');
-  if (search) search.value = '';
-  renderTagOptions('');
-  setTimeout(() => search?.focus(), 10);
-  document.addEventListener('click', onTagOutsideClick, true);
-  document.addEventListener('keydown', onTagPanelKeydown);
-}
-
-function closeTagPanel() {
-  const panel = document.getElementById('task-tag-panel');
-  const trigger = document.getElementById('task-tag-trigger');
-  if (!panel || !trigger || panel.hidden) return;
-  panel.hidden = true;
-  trigger.setAttribute('aria-expanded', 'false');
-  document.removeEventListener('click', onTagOutsideClick, true);
-  document.removeEventListener('keydown', onTagPanelKeydown);
-}
-
 function wireTagFilter() {
-  const trigger = document.getElementById('task-tag-trigger');
-  const clearBtn = document.getElementById('task-tag-clear');
   const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
-  const panel = document.getElementById('task-tag-panel');
-  if (!trigger || !clearBtn || !search || !panel) return;
-
-  trigger.addEventListener('click', () => {
-    if (panel.hidden) openTagPanel(); else closeTagPanel();
-  });
-  clearBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    tagFilter = 'all';
-    updateTagTriggerUI();
-    if (!panel.hidden) renderTagOptions(search.value);
-    render();
-  });
+  if (!search) return;
   search.addEventListener('input', () => renderTagOptions(search.value));
   // Enter na busca aplica o único resultado filtrado (fluxo rápido de teclado).
   search.addEventListener('keydown', (e) => {
@@ -944,16 +903,14 @@ function wireTagFilter() {
     const matches = tagOptionsCache.filter((t) => !q || fold(t).includes(q));
     if (matches.length === 1) {
       tagFilter = matches[0];
-      updateTagTriggerUI();
-      closeTagPanel();
+      renderTagOptions(search.value);
       render();
+      syncFilterUI();
     }
   });
-
-  updateTagTriggerUI();
 }
 
-// Re-popula a lista de tags do popover com a união das tags do board recém-carregado
+// Re-popula a lista de tags com a união das tags do board recém-carregado
 // (edição inline muda tags sem reload de página). Preserva a seleção quando a tag
 // ainda existe; senão volta pra 'all'.
 function refreshTagFilterOptions() {
@@ -962,10 +919,186 @@ function refreshTagFilterOptions() {
   for (const col of board.columns) for (const t of col.tasks) for (const tag of t.tags) tags.add(tag);
   tagOptionsCache = [...tags].sort((a, b) => a.localeCompare(b));
   if (tagFilter !== 'all' && !tags.has(tagFilter)) tagFilter = 'all';
-  updateTagTriggerUI();
-  const panel = document.getElementById('task-tag-panel');
-  const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
-  if (panel && !panel.hidden) renderTagOptions(search?.value ?? '');
+  if (isFilterPanelOpen()) {
+    const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
+    renderTagOptions(search?.value ?? '');
+  }
+}
+
+// ── Popover "Filtros" + chips + badge (rodada 6, Linear/Jira/NN-g) ──────────
+// O estado e a LÓGICA de filtragem não mudaram (passesPrio/Tag/DateRange/
+// Project acima) — aqui é só a superfície: botão com badge "Filtros · N",
+// popover com as 4 seções e linha de chips removíveis abaixo da toolbar.
+
+function isFilterPanelOpen(): boolean {
+  const panel = document.getElementById('task-filter-panel');
+  return !!panel && !panel.hidden;
+}
+
+function onFilterOutsideClick(e: MouseEvent) {
+  const wrap = document.getElementById('task-filter-wrap');
+  if (wrap && !wrap.contains(e.target as Node)) closeFilterPanel(false);
+}
+
+function onFilterPanelKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') closeFilterPanel(true);
+}
+
+function openFilterPanel() {
+  const panel = document.getElementById('task-filter-panel');
+  const trigger = document.getElementById('task-filter-trigger');
+  if (!panel || !trigger || !panel.hidden) return;
+  panel.hidden = false;
+  trigger.setAttribute('aria-expanded', 'true');
+  renderTagOptions((document.getElementById('task-tag-search') as HTMLInputElement | null)?.value ?? '');
+  // Foco entra no primeiro controle do painel (teclado nunca fica preso no trigger).
+  setTimeout(() => panel.querySelector<HTMLElement>('input, select, button')?.focus(), 10);
+  document.addEventListener('click', onFilterOutsideClick, true);
+  document.addEventListener('keydown', onFilterPanelKeydown);
+}
+
+// focusTrigger: Esc devolve o foco pro botão; clique-fora não rouba o foco de
+// onde o usuário clicou.
+function closeFilterPanel(focusTrigger: boolean) {
+  const panel = document.getElementById('task-filter-panel');
+  const trigger = document.getElementById('task-filter-trigger');
+  if (!panel || !trigger || panel.hidden) return;
+  panel.hidden = true;
+  trigger.setAttribute('aria-expanded', 'false');
+  document.removeEventListener('click', onFilterOutsideClick, true);
+  document.removeEventListener('keydown', onFilterPanelKeydown);
+  if (focusTrigger) trigger.focus();
+}
+
+function wireFilterPopover() {
+  const trigger = document.getElementById('task-filter-trigger');
+  if (!trigger) return;
+  trigger.addEventListener('click', () => {
+    if (isFilterPanelOpen()) closeFilterPanel(true);
+    else openFilterPanel();
+  });
+}
+
+// Grupos ativos: prazo conta 1 (mesmo com os dois limites), prioridade 1,
+// etiquetas = quantidade selecionada (hoje o filtro é de UMA tag), projeto 1.
+function activeFilterGroups(): number {
+  let n = 0;
+  if (dateFrom || dateTo) n += 1;
+  if (prioFilter !== 'all') n += 1;
+  if (tagFilter !== 'all') n += 1;
+  if (projectFilter !== 'all') n += 1;
+  return n;
+}
+
+function updateFilterBadge() {
+  const trigger = document.getElementById('task-filter-trigger');
+  const label = document.getElementById('task-filter-trigger-label');
+  if (!trigger || !label) return;
+  const n = activeFilterGroups();
+  label.textContent = n > 0 ? `Filtros · ${n}` : 'Filtros';
+  trigger.classList.toggle('has-filters', n > 0);
+}
+
+// Limpa UM grupo (X do chip): reseta o estado E o controle correspondente do
+// painel. `apply` falso segura o re-render pro "Limpar tudo" fazer 1 só.
+function clearFilterGroup(group: string, apply = true) {
+  if (group === 'date') {
+    dateFrom = '';
+    dateTo = '';
+    const from = document.getElementById('task-date-from') as HTMLInputElement | null;
+    const to = document.getElementById('task-date-to') as HTMLInputElement | null;
+    const clearBtn = document.getElementById('task-date-clear') as HTMLButtonElement | null;
+    if (from) from.value = '';
+    if (to) to.value = '';
+    if (clearBtn) clearBtn.hidden = true;
+    document.getElementById('task-date-filter')?.classList.remove('has-value');
+  } else if (group === 'prio') {
+    prioFilter = 'all';
+    const sel = document.getElementById('task-prio-filter') as HTMLSelectElement | null;
+    if (sel) sel.value = 'all';
+  } else if (group === 'tag') {
+    tagFilter = 'all';
+    if (isFilterPanelOpen()) {
+      const search = document.getElementById('task-tag-search') as HTMLInputElement | null;
+      renderTagOptions(search?.value ?? '');
+    }
+  } else if (group === 'project') {
+    projectFilter = 'all';
+    const sel = document.getElementById('task-project-filter') as HTMLSelectElement | null;
+    if (sel) sel.value = 'all';
+    persistProjectFilter('all');
+  }
+  if (apply) {
+    render();
+    syncFilterUI();
+  }
+}
+
+function dateChipLabel(): string {
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split('-');
+    return y && m && d ? `${d}/${m}/${y}` : iso;
+  };
+  if (dateFrom && dateTo) return `Prazo: ${fmt(dateFrom)} até ${fmt(dateTo)}`;
+  if (dateFrom) return `Prazo: a partir de ${fmt(dateFrom)}`;
+  return `Prazo: até ${fmt(dateTo)}`;
+}
+
+function prioChipLabel(): string {
+  if (prioFilter === 'none') return 'Prioridade: Sem prioridade';
+  const m = priorityMeta(Number(prioFilter));
+  return `Prioridade: ${m ? m.label : prioFilter}`;
+}
+
+function projectChipLabel(): string {
+  if (projectFilter === 'none') return 'Projeto: Sem projeto';
+  const p = projectsById.get(projectFilter);
+  return `Projeto: ${p ? p.label : projectFilter}`;
+}
+
+// Chips "Propriedade: valor" abaixo da toolbar (badge nunca sozinho): o corpo
+// reabre o popover, o ✕ remove só aquele filtro, "Limpar tudo" zera os 4 grupos.
+function renderFilterChips() {
+  const el = document.getElementById('task-filter-chips');
+  if (!el) return;
+  const chips: Array<{ group: string; label: string }> = [];
+  if (dateFrom || dateTo) chips.push({ group: 'date', label: dateChipLabel() });
+  if (prioFilter !== 'all') chips.push({ group: 'prio', label: prioChipLabel() });
+  if (tagFilter !== 'all') chips.push({ group: 'tag', label: `Etiqueta: ${tagFilter}` });
+  if (projectFilter !== 'all') chips.push({ group: 'project', label: projectChipLabel() });
+  if (chips.length === 0) {
+    el.innerHTML = '';
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = chips.map((c) =>
+    `<span class="task-filter-chip" data-chip-group="${esc(c.group)}">
+      <button type="button" class="task-filter-chip-body" title="Ajustar este filtro">${esc(c.label)}</button>
+      <button type="button" class="task-filter-chip-x" aria-label="Remover filtro: ${esc(c.label)}" title="Remover filtro">✕</button>
+    </span>`
+  ).join('') + `<button type="button" class="task-filter-chips-clear" id="task-filter-clear-all">Limpar tudo</button>`;
+  el.querySelectorAll<HTMLButtonElement>('.task-filter-chip-body').forEach((btn) => {
+    btn.addEventListener('click', () => openFilterPanel());
+  });
+  el.querySelectorAll<HTMLButtonElement>('.task-filter-chip-x').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const group = btn.closest<HTMLElement>('[data-chip-group]')?.dataset.chipGroup;
+      if (group) clearFilterGroup(group);
+    });
+  });
+  document.getElementById('task-filter-clear-all')?.addEventListener('click', () => {
+    for (const g of ['date', 'prio', 'tag', 'project']) clearFilterGroup(g, false);
+    render();
+    syncFilterUI();
+  });
+}
+
+// Badge + chips andam sempre juntos — chamado por TODO handler que muda um
+// filtro avançado (e no load(), pro chip de projeto resolver o label fresco).
+function syncFilterUI() {
+  renderFilterChips();
+  updateFilterBadge();
 }
 
 wireFilters();
@@ -974,6 +1107,7 @@ wireSearch();
 wirePrioFilter();
 wireDateFilter();
 wireTagFilter();
+wireFilterPopover();
 wireCreateModal();
 wirePendingActions();
 // DnD + card clicável (spec 65): delegado no container, wired UMA vez — os

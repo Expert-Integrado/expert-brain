@@ -1,11 +1,15 @@
-// Client da home /app (spec 50-console-v2/65 §2):
+// Client da home /app (spec 50-console-v2/65 §2 + rodada 6, 20/07):
 // - Quick-complete do card "Hoje" → POST /app/tasks/complete (mesmo endpoint do board).
-// - Manipulação direta das caixas (Onda 9b, spec 72 — "igual ao ClickUp"):
-//   arrastar pelo TÍTULO (.home-box-handle) reordena os filhos da .home-grid ao
-//   vivo; puxar a BORDA DE BAIXO (.home-resize) redimensiona o alvo [data-home-box].
-//   Persistência única no fim do gesto: POST /app/home/prefs { order, heights }.
-// O feed "Atividade" (spec 69) é responsabilidade do journal.bundle.js, também
-// incluído na home — o antigo card "Últimas interações" foi absorvido pelo feed.
+// - MODO DE EDIÇÃO explícito e transacional (rodada 6, padrão Metabase/Grafana):
+//   "Personalizar" liga .home-editing na grid (o CSS revela as alças); os gestos
+//   (arrastar pelo título, puxar a borda, toggle de largura, subir/descer,
+//   ocultar) SÓ mexem no DOM — nada é persistido por gesto. [Salvar] = 1 POST
+//   /app/home/prefs { order, heights, sizes, hidden }; [Cancelar] = restaura o
+//   snapshot tirado ao entrar; [Restaurar padrão] = POST { reset: true } + reload.
+// - Ações inline do card "Pendências com você" (espelho do wirePendingActions do
+//   board): fetch + remoção otimista + toast; sem JS o form navega nativo
+//   (back=/app traz de volta pra home).
+// O feed "Atividade" (spec 69) é responsabilidade do journal.bundle.js.
 
 import { appFetch } from './http.js';
 import { toast } from './toast.js';
@@ -39,17 +43,67 @@ function wireToday(): void {
   });
 }
 
-// ── Manipulação direta (Onda 9b, spec 72) ───────────────────────────────────
+// ── Modo de edição (rodada 6) ───────────────────────────────────────────────
 
 // Movimento mínimo pra armar o drag — clique parado no título continua clique
 // (os links dentro do h2 seguem navegando).
 const DRAG_THRESHOLD = 6;
 
-// Lê o layout ATUAL do DOM e persiste: ordem = filhos da grid com data-home-item;
-// alturas e larguras = só as que diferem do default (chave ausente = default,
-// mesma semântica do servidor). Chamada UMA vez no fim do gesto (drop/solta da
-// borda/clique no toggle de largura), nunca durante.
-async function persistLayout(grid: HTMLElement): Promise<void> {
+const editing = (grid: HTMLElement): boolean => grid.classList.contains('home-editing');
+
+// Snapshot do estado visual ao ENTRAR no modo de edição — é o que o Cancelar
+// devolve, sem servidor: ordem dos itens, valor de --home-card-h de cada alvo
+// e as classes home-card-wide/home-card-hidden de cada item.
+interface LayoutSnapshot {
+  order: HTMLElement[];
+  heights: Array<{ el: HTMLElement; value: string }>;
+  classes: Array<{ el: HTMLElement; wide: boolean; hidden: boolean }>;
+}
+
+function takeSnapshot(grid: HTMLElement): LayoutSnapshot {
+  const items = Array.from(grid.querySelectorAll<HTMLElement>('[data-home-item]'))
+    .filter((el) => el.parentElement === grid);
+  return {
+    order: items,
+    heights: Array.from(document.querySelectorAll<HTMLElement>('[data-home-box]'))
+      .map((el) => ({ el, value: el.style.getPropertyValue('--home-card-h') })),
+    classes: items.map((el) => ({
+      el,
+      wide: el.classList.contains('home-card-wide'),
+      hidden: el.classList.contains('home-card-hidden'),
+    })),
+  };
+}
+
+function restoreSnapshot(grid: HTMLElement, snap: LayoutSnapshot): void {
+  // Ordem: re-append na sequência salva (append move, não duplica). Card que
+  // saiu do DOM durante a edição (ex.: última pendência aprovada removeu o
+  // card) fica fora — re-appendar o nó destacado ressuscitaria uma casca vazia.
+  for (const el of snap.order) {
+    if (el.isConnected) grid.appendChild(el);
+  }
+  for (const { el, value } of snap.heights) {
+    if (!el.isConnected) continue;
+    if (value) el.style.setProperty('--home-card-h', value);
+    else el.style.removeProperty('--home-card-h');
+  }
+  for (const { el, wide, hidden } of snap.classes) {
+    if (!el.isConnected) continue;
+    el.classList.toggle('home-card-wide', wide);
+    el.classList.toggle('home-card-hidden', hidden);
+    syncToggleLabels(el);
+  }
+}
+
+// Lê o layout ATUAL do DOM pro POST em lote do Salvar: ordem = filhos da grid
+// com data-home-item; alturas/larguras = só as que diferem do default (chave
+// ausente = default, mesma semântica do servidor); hidden = itens com a classe.
+function collectLayout(grid: HTMLElement): {
+  order: string[];
+  heights: Record<string, number>;
+  sizes: Record<string, 'wide' | 'normal'>;
+  hidden: string[];
+} {
   const order = Array.from(grid.children)
     .map((el) => (el as HTMLElement).dataset.homeItem)
     .filter((k): k is string => !!k);
@@ -60,8 +114,8 @@ async function persistLayout(grid: HTMLElement): Promise<void> {
     if (!box || Number.isNaN(px)) return;
     if (px !== Number(el.dataset.homeDefault)) heights[box] = px;
   });
-  // Largura (revisão 19/07): só cards COM toggle participam (a Atividade ocupa
-  // a linha inteira por CSS e fica de fora). data-home-wide-default vem do SSR.
+  // Largura: só cards COM toggle participam (a Atividade ocupa a linha inteira
+  // por CSS e fica de fora). data-home-wide-default vem do SSR.
   const sizes: Record<string, 'wide' | 'normal'> = {};
   grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
     const item = btn.closest<HTMLElement>('[data-home-item]');
@@ -71,39 +125,78 @@ async function persistLayout(grid: HTMLElement): Promise<void> {
     const wide = item.classList.contains('home-card-wide');
     if (wide !== wideDefault) sizes[box] = wide ? 'wide' : 'normal';
   });
-  try {
-    const res = await appFetch('/app/home/prefs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ order, heights, sizes }),
-    });
-    if (!res.ok) throw new Error(`prefs ${res.status}`);
-  } catch (err) {
-    console.warn('home: prefs save failed', err);
-    toast('Não deu pra salvar o layout. Tente de novo.');
+  const hidden = Array.from(grid.children)
+    .filter((el) => (el as HTMLElement).dataset.homeItem && el.classList.contains('home-card-hidden'))
+    .map((el) => (el as HTMLElement).dataset.homeItem as string);
+  return { order, heights, sizes, hidden };
+}
+
+// Re-sincroniza aria-label/title dos toggles de largura e de ocultar com as
+// classes ATUAIS do card — o Cancelar restaura classes por fora dos handlers,
+// e sem isso o botão continuaria anunciando o estado descartado.
+function syncToggleLabels(item: HTMLElement): void {
+  const sizeBtn = item.querySelector<HTMLButtonElement>('.home-size-toggle');
+  if (sizeBtn) {
+    const label = item.classList.contains('home-card-wide') ? 'Reduzir card' : 'Expandir card';
+    sizeBtn.setAttribute('aria-label', label);
+    sizeBtn.title = label;
+  }
+  const hideBtn = item.querySelector<HTMLButtonElement>('[data-home-hide]');
+  if (hideBtn) {
+    const label = item.classList.contains('home-card-hidden') ? 'Mostrar card' : 'Ocultar card';
+    hideBtn.setAttribute('aria-label', label);
+    hideBtn.title = label;
   }
 }
 
-// Toggle de LARGURA do card (revisão 19/07): normal (1 coluna) ↔ expandido
-// (linha inteira). O CSS troca o ícone pela classe; aqui só classe + rótulos +
-// persistência (mesmo POST do layout).
+// Toggle de LARGURA do card: normal (1 coluna) ↔ expandido (linha inteira).
+// Só mexe no DOM — a persistência é do Salvar (rodada 6).
 function wireSizeToggles(grid: HTMLElement): void {
   grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
     btn.addEventListener('click', () => {
       const item = btn.closest<HTMLElement>('[data-home-item]');
-      if (!item) return;
+      if (!item || !editing(grid)) return;
       const wide = item.classList.toggle('home-card-wide');
       const label = wide ? 'Reduzir card' : 'Expandir card';
       btn.setAttribute('aria-label', label);
       btn.title = label;
-      void persistLayout(grid);
     });
   });
 }
 
-// Reordenação: ghost segue o ponteiro (o item original fica esmaecido no lugar),
-// e a grid reorganiza AO VIVO — o item é movido pra posição do alvo sob o ponteiro
-// (before/after conforme a direção). Esc cancela e devolve pra posição de origem.
+// Subir/descer (reorder por teclado/touch) + ocultar (olho) — controles novos
+// do edit mode (rodada 6). Só DOM; Salvar persiste.
+function wireEditControls(grid: HTMLElement): void {
+  grid.querySelectorAll<HTMLButtonElement>('[data-home-move]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest<HTMLElement>('[data-home-item]');
+      if (!item || item.parentElement !== grid || !editing(grid)) return;
+      if (btn.dataset.homeMove === 'up') {
+        const prev = item.previousElementSibling;
+        if (prev) prev.before(item);
+      } else {
+        const next = item.nextElementSibling;
+        if (next) next.after(item);
+      }
+      // O foco fica no botão (que viajou junto com o card) — reorder em série
+      // por teclado sem re-tab.
+      btn.focus();
+    });
+  });
+  grid.querySelectorAll<HTMLButtonElement>('[data-home-hide]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest<HTMLElement>('[data-home-item]');
+      if (!item || !editing(grid)) return;
+      const nowHidden = item.classList.toggle('home-card-hidden');
+      const label = nowHidden ? 'Mostrar card' : 'Ocultar card';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
+    });
+  });
+}
+
+// Reordenação por arrasto: ghost segue o ponteiro (o item original fica esmaecido
+// no lugar), e a grid reorganiza AO VIVO. Esc cancela e devolve pra posição de origem.
 function startDrag(grid: HTMLElement, item: HTMLElement, down: PointerEvent): void {
   const startX = down.clientX;
   const startY = down.clientY;
@@ -158,12 +251,13 @@ function startDrag(grid: HTMLElement, item: HTMLElement, down: PointerEvent): vo
     document.removeEventListener('pointerup', onUp);
     document.removeEventListener('pointercancel', onCancel);
     document.removeEventListener('keydown', onKey);
-    if (!armed) return; // clique sem arrastar: nada a desfazer nem salvar
+    if (!armed) return; // clique sem arrastar: nada a desfazer
     ghost?.remove();
     item.classList.remove('home-box-dragging');
     document.documentElement.classList.remove('home-arranging');
-    if (commit) void persistLayout(grid);
-    else restore();
+    // Rodada 6: o drop NÃO persiste mais — o layout novo fica no DOM esperando
+    // o Salvar (ou morre no Cancelar).
+    if (!commit) restore();
   };
 
   const onUp = (): void => finish(true);
@@ -180,6 +274,7 @@ function startDrag(grid: HTMLElement, item: HTMLElement, down: PointerEvent): vo
 
 // Redimensionamento: a alça vive no ITEM, mas o alvo de altura é o elemento com
 // data-home-box (no card é o próprio; na Atividade é a caixa interna do feed).
+// Rodada 6: soltar a alça NÃO persiste — só o Salvar.
 function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): void {
   down.preventDefault();
   const startY = down.clientY;
@@ -203,8 +298,6 @@ function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): 
     rz.removeEventListener('pointerup', onUp);
     rz.removeEventListener('pointercancel', onUp);
     rz.classList.remove('active');
-    const grid = document.querySelector<HTMLElement>('.home-grid');
-    if (grid) void persistLayout(grid);
   };
   rz.addEventListener('pointermove', onMove);
   rz.addEventListener('pointerup', onUp);
@@ -215,9 +308,13 @@ function wireArrange(): void {
   const grid = document.querySelector<HTMLElement>('.home-grid');
   if (!grid) return;
   wireSizeToggles(grid);
+  wireEditControls(grid);
 
   grid.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
+    // Gestos de layout só existem no modo de edição (rodada 6) — em view mode
+    // o título é título e a borda é borda.
+    if (!editing(grid)) return;
     const el = e.target as HTMLElement;
 
     const rz = el.closest<HTMLElement>('.home-resize');
@@ -232,13 +329,160 @@ function wireArrange(): void {
 
     const handle = el.closest<HTMLElement>('.home-box-handle');
     if (!handle) return;
-    // Links dentro do título continuam clicáveis — drag só arma com movimento.
+    // Links e controles dentro do título continuam clicáveis — drag só arma com movimento.
     if (el.closest('a, button, input, form')) return;
     const item = handle.closest<HTMLElement>('[data-home-item]');
     if (!item || item.parentElement !== grid) return;
     startDrag(grid, item, e);
   });
+
+  wireEditMode(grid);
+}
+
+// Liga/desliga o modo + barra Salvar/Cancelar/Restaurar padrão (rodada 6).
+function wireEditMode(grid: HTMLElement): void {
+  const toggle = document.getElementById('home-edit-toggle') as HTMLButtonElement | null;
+  const saveBtn = document.getElementById('home-edit-save') as HTMLButtonElement | null;
+  const cancelBtn = document.getElementById('home-edit-cancel') as HTMLButtonElement | null;
+  const resetBtn = document.getElementById('home-edit-reset') as HTMLButtonElement | null;
+  if (!toggle) return;
+
+  let snapshot: LayoutSnapshot | null = null;
+
+  const enter = (): void => {
+    snapshot = takeSnapshot(grid);
+    grid.classList.add('home-editing');
+    toggle.setAttribute('aria-pressed', 'true');
+  };
+  const exit = (): void => {
+    grid.classList.remove('home-editing');
+    toggle.setAttribute('aria-pressed', 'false');
+    snapshot = null;
+  };
+  const cancel = (): void => {
+    if (snapshot) restoreSnapshot(grid, snapshot);
+    exit();
+  };
+
+  toggle.addEventListener('click', () => {
+    // Clicar no lápis com o modo LIGADO = sair sem salvar (mesmo que Cancelar).
+    if (editing(grid)) cancel();
+    else enter();
+  });
+  cancelBtn?.addEventListener('click', cancel);
+
+  saveBtn?.addEventListener('click', () => {
+    void (async () => {
+      saveBtn.disabled = true;
+      try {
+        const res = await appFetch('/app/home/prefs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(collectLayout(grid)),
+        });
+        if (!res.ok) throw new Error(`prefs ${res.status}`);
+        toast('Layout salvo.', 'ok');
+        exit();
+      } catch (err) {
+        console.warn('home: prefs save failed', err);
+        toast('Não deu pra salvar o layout. Tente de novo.');
+      } finally {
+        saveBtn.disabled = false;
+      }
+    })();
+  });
+
+  resetBtn?.addEventListener('click', () => {
+    void (async () => {
+      resetBtn.disabled = true;
+      try {
+        const res = await appFetch('/app/home/prefs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ reset: true }),
+        });
+        if (!res.ok) throw new Error(`prefs ${res.status}`);
+        // Reload: o SSR remonta tudo no default (o dismiss do "Comece aqui"
+        // sobrevive por contrato do endpoint).
+        location.reload();
+      } catch (err) {
+        console.warn('home: prefs reset failed', err);
+        toast('Não deu pra restaurar o padrão. Tente de novo.');
+        resetBtn.disabled = false;
+      }
+    })();
+  });
+}
+
+// ── Ações inline do card "Pendências com você" (rodada 6) ───────────────────
+// Recalcula o contador do cabeçalho ("· N — X perguntas, Y para aprovar") e o
+// "Ver mais (N)" a partir dos itens que SOBRARAM no DOM — a remoção otimista
+// não pode deixar o número velho no h2 (a home não tem o poll do board).
+// Mesma redação de pendingKindsLabel (src/web/pending.ts).
+function refreshPendingCount(card: HTMLElement): void {
+  const items = card.querySelectorAll<HTMLElement>('.task-pending-item');
+  const q = Array.from(items).filter((el) => el.dataset.kind === 'question').length;
+  const a = items.length - q;
+  const kinds: string[] = [];
+  if (q > 0) kinds.push(`${q} pergunta${q === 1 ? '' : 's'}`);
+  if (a > 0) kinds.push(`${a} para aprovar`);
+  const count = card.querySelector<HTMLElement>('.home-pending-count');
+  if (count) count.textContent = `· ${items.length} — ${kinds.join(', ')}`;
+  const more = card.querySelector<HTMLElement>('.task-pending-more');
+  if (more) {
+    const rest = more.querySelectorAll('.task-pending-item').length;
+    if (rest === 0) more.remove();
+    else {
+      const summary = more.querySelector('summary');
+      if (summary) summary.textContent = `Ver mais (${rest})`;
+    }
+  }
+}
+
+// Espelho do wirePendingActions do board (src/web/client/tasks.ts): submit
+// delegado nos forms data-pending-form do card, fetch + remoção OTIMISTA do
+// item + toast. Sem JS o form navega nativo e o back=/app traz de volta.
+function wirePendingActions(): void {
+  const card = document.querySelector<HTMLElement>('[data-home-item="pending"]');
+  if (!card) return;
+  card.addEventListener('submit', (e) => {
+    const form = e.target instanceof HTMLFormElement ? e.target : null;
+    if (!form || !form.hasAttribute('data-pending-form')) return;
+    e.preventDefault();
+    const submitter = (e as SubmitEvent).submitter as HTMLButtonElement | null;
+    const fd = new FormData(form);
+    // FormData não carrega o botão que submeteu — approve/return viajam por ele.
+    if (submitter?.name) fd.set(submitter.name, submitter.value);
+    const kind = form.dataset.pendingKind;
+    const action = submitter?.value ?? '';
+    const buttons = Array.from(form.querySelectorAll('button'));
+    buttons.forEach((b) => { b.disabled = true; });
+    void (async () => {
+      try {
+        const res = await appFetch(form.getAttribute('action') || '', { method: 'POST', body: fd });
+        if (!res.ok) throw new Error('pending ' + res.status);
+        toast(
+          kind === 'question'
+            ? 'Resposta enviada — o agente foi liberado pra continuar.'
+            : action === 'approve'
+              ? 'Entrega aprovada e concluída.'
+              : 'Entrega devolvida pra execução.',
+          'ok'
+        );
+        // Remoção otimista: o item sai da fila na hora; a fila esvaziou = o
+        // card inteiro some (mesmo contrato do SSR: vazio não renderiza).
+        form.closest('.task-pending-item')?.remove();
+        if (!card.querySelector('.task-pending-item')) card.remove();
+        else refreshPendingCount(card);
+      } catch (err) {
+        console.warn('home: ação de pendência falhou', err);
+        toast('Não deu pra concluir a ação — tenta de novo.');
+        buttons.forEach((b) => { b.disabled = false; });
+      }
+    })();
+  });
 }
 
 wireToday();
 wireArrange();
+wirePendingActions();

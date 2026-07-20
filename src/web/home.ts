@@ -9,10 +9,12 @@ import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 import { JOURNAL_CSS } from './journal.js';
-import { getHomePrefs, HOME_BOX_KEYS, homeBoxAttrs, homeItemAttr, homeWideClass, homeSizeToggleHtml, HOME_RESIZE_HANDLE, type HomeBoxKey, type HomePrefs, type HomeSizes, type HomePrefsState } from './home-prefs.js';
+import { getHomePrefs, HOME_BOX_KEYS, homeBoxAttrs, homeItemAttr, homeWideClass, homeHiddenClass, homeSizeToggleHtml, homeEditControlsHtml, HOME_RESIZE_HANDLE, type HomeBoxKey, type HomePrefs, type HomeSizes, type HomePrefsState } from './home-prefs.js';
 import { renderInsightsCard } from './insights.js';
 import { brtYearMonth, getMonthInsightsCached } from '../db/insights-queries.js';
 import { fleetHomeStripHtml } from './fleet.js';
+import { buildPendingItems, pendingKindsLabel, PENDING_CSS } from './pending.js';
+import { pendingBlockHtml, type PendingItem } from '../util/task-badges.js';
 
 // Home "Hoje" (specs/50-console-v2/65-home-hoje-e-journal.md §2): cards SSR, cada
 // um TOLERANTE a falha isolada — uma query que falha vira um card de ERRO visível
@@ -117,7 +119,6 @@ const HOME_CSS = `
    Arrastar pelo TÍTULO reordena (ghost segue o ponteiro; as demais caixas
    reorganizam ao vivo); puxar a BORDA DE BAIXO redimensiona. Persistência no
    soltar (POST /app/home/prefs). Sem modal. */
-.home-arrange-hint { margin-left: auto; font-size: 12px; color: var(--text-subtle); }
 .home-box-handle { cursor: grab; touch-action: none; }
 .home-box-handle a { cursor: pointer; }
 html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-select: none !important; }
@@ -160,6 +161,53 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
 .start-hint { font-size: 12px; color: var(--text-subtle); overflow-wrap: anywhere; }
 .start-hint code { font-size: 11px; }
 .start-step .btn { flex-shrink: 0; }
+/* ── Modo de edição explícito (rodada 6, padrão Metabase/Grafana): a home em
+   view mode é LIMPA — nenhuma alça visível. O SSR continua emitindo handle/
+   resize/toggle/controles (testes travam o markup); só o CSS os revela sob
+   .home-grid.home-editing (classe togglada pelo botão Personalizar). ── */
+.home-grid:not(.home-editing) .home-resize,
+.home-grid:not(.home-editing) .home-size-toggle,
+.home-grid:not(.home-editing) .home-edit-controls { display: none; }
+.home-grid:not(.home-editing) .home-box-handle { cursor: default; touch-action: auto; }
+/* Borda tracejada nos cards em edição (afford "isto é editável"). */
+.home-grid.home-editing > * { outline: 1px dashed color-mix(in srgb, var(--accent-lav) 55%, transparent); outline-offset: 3px; }
+.home-grid.home-editing > .home-box-dragging { outline: 2px dashed var(--accent-lav); outline-offset: 2px; }
+/* Controles por card no edit mode: subir/descer (teclado/touch) + ocultar (olho). */
+.home-edit-controls { display: inline-flex; gap: 2px; align-items: center; flex: none; }
+.home-activity-title { display: flex; align-items: center; gap: 10px; }
+.home-activity-title .home-edit-controls { margin-left: auto; }
+.home-move-btn, .home-hide-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px; background: none; border: none; border-radius: 6px;
+  color: var(--text-subtle); cursor: pointer;
+  transition: color 140ms var(--ease), background 140ms var(--ease);
+}
+.home-move-btn:hover, .home-hide-toggle:hover { color: var(--accent-lav); background: rgba(var(--accent-lav-rgb), 0.1); }
+/* Olho aberto = card visível; fechado = oculto (a classe do card decide). */
+.home-hide-toggle .home-eye-closed { display: none; }
+.home-card-hidden .home-hide-toggle .home-eye-open { display: none; }
+.home-card-hidden .home-hide-toggle .home-eye-closed { display: inline; }
+/* Card OCULTO: some no view mode; no edit mode fica visível esmaecido
+   (ocultar em vez de remover — padrão Home Assistant Visibility). */
+.home-grid:not(.home-editing) > .home-card-hidden { display: none; }
+.home-grid.home-editing > .home-card-hidden { opacity: .45; }
+/* Botão "Personalizar" (lápis) no topo — aria-pressed marca o modo ativo. */
+#home-edit-toggle { margin-left: auto; }
+#home-edit-toggle[aria-pressed="true"] { color: var(--accent-lav); border-color: var(--accent-lav); }
+/* Barra do modo de edição (rodapé do grid): Salvar/Cancelar; Restaurar padrão
+   à direita. Só aparece em edição (irmã da grid — seletor ~). */
+.home-edit-bar { display: none; }
+.home-grid.home-editing ~ .home-edit-bar { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+.home-edit-bar #home-edit-reset { margin-left: auto; }
+.home-edit-hint { font-size: 12px; color: var(--text-subtle); }
+/* ── Card "Pendências com você" (rodada 6): reusa o bloco do board
+   (pendingBlockHtml + PENDING_CSS). Fallback de altura próprio (320) —
+   MANTER EM SINCRONIA com HOME_BOX_DEFAULTS.pending. ── */
+.home-card[data-home-box="pending"] { max-height: var(--home-card-h, 320px); }
+.home-pending-count { font-size: 12px; font-weight: 500; color: var(--text-dim); white-space: nowrap; }
+/* O h2 do card já é o cabeçalho — o head interno do bloco vira redundância. */
+.home-pending-card .task-pending-head { display: none; }
+.home-pending-card .task-pending { margin-bottom: 0; }
 `;
 
 // Helpers de SSR das caixas (boxAttrs/itemAttr/resizeHandle/size toggle) moram
@@ -238,10 +286,10 @@ function taskWhenHtml(t: TaskRow, now: number): string {
 // Card 1 — Hoje: tasks due hoje/atrasadas, com quick-complete (checkbox → mesmo
 // endpoint do board, POST /app/tasks/complete) + link pro board completo.
 // Exportado: testado isoladamente (sem D1/HTTP) em test/web/home.test.ts.
-export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
+export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
   if (tasks.length === 0) {
-    return `<section class="card home-card${homeWideClass('today', sizes)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}</h2>
+    return `<section class="card home-card${homeWideClass('today', sizes)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}${homeEditControlsHtml('today', hidden)}</h2>
       <p class="home-empty">Nada vencendo nas próximas 24h.</p>
     </section>`;
   }
@@ -255,8 +303,8 @@ export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs 
       </li>`;
     })
     .join('');
-  return `<section class="card home-card${homeWideClass('today', sizes)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}</h2>
+  return `<section class="card home-card${homeWideClass('today', sizes)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}${homeEditControlsHtml('today', hidden)}</h2>
     <ul class="home-list" id="home-today-list">${items}</ul>
   </section>`;
 }
@@ -272,15 +320,15 @@ function firstLine(body: string, max: number): string {
 // inline (nota / tarefa / descartar, mesmos endpoints do /app/inbox). O "ver tudo"
 // leva pra página completa (corpo em markdown, itens além do cap).
 // Exportado: testado isoladamente em test/web/home.test.ts.
-export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
+export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
   const capture = `<form class="home-inbox-capture" method="post" action="/app/inbox/add">
       <input type="text" name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Capturar ideia solta — tria depois" aria-label="Captura rápida pro inbox" autocomplete="off" required />
       <input type="hidden" name="next" value="/app" />
       <button type="submit" class="btn btn-sm">Capturar</button>
     </form>`;
   if (pending === 0) {
-    return `<section class="card home-card${homeWideClass('inbox', sizes)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a>${homeSizeToggleHtml('inbox', sizes)}</h2>
+    return `<section class="card home-card${homeWideClass('inbox', sizes)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a>${homeSizeToggleHtml('inbox', sizes)}${homeEditControlsHtml('inbox', hidden)}</h2>
       ${capture}
       <p class="home-empty">Inbox vazio.</p>
     </section>`;
@@ -298,8 +346,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
       </span>
     </li>`)
     .join('');
-  return `<section class="card home-card${homeWideClass('inbox', sizes)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a>${homeSizeToggleHtml('inbox', sizes)}</h2>
+  return `<section class="card home-card${homeWideClass('inbox', sizes)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a>${homeSizeToggleHtml('inbox', sizes)}${homeEditControlsHtml('inbox', hidden)}</h2>
     ${capture}
     <ul class="home-list home-inbox-list">${rows}</ul>
   </section>`;
@@ -310,9 +358,9 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
 // JSON (data-lazy="1") e injeta — o proxy do Contacts fica FORA do request path.
 // O card "Últimas interações" foi absorvido junto: o feed já traz as interações
 // (chip laranja + filtro próprio), então o card seria informação duplicada.
-function renderActivityFeedSection(prefs: HomePrefs = {}): string {
-  return `<section class="home-activity" id="atividade"${itemAttr('activity')}>${resizeHandle}
-    <h2 class="home-activity-title home-box-handle">Atividade</h2>
+function renderActivityFeedSection(prefs: HomePrefs = {}, hidden: HomeBoxKey[] = []): string {
+  return `<section class="home-activity${homeHiddenClass('activity', hidden)}" id="atividade"${itemAttr('activity')}>${resizeHandle}
+    <h2 class="home-activity-title home-box-handle">Atividade${homeEditControlsHtml('activity', hidden)}</h2>
     <div class="journal-filters">
       <label><input type="checkbox" class="journal-filter" value="note" checked /> Notas</label>
       <label><input type="checkbox" class="journal-filter" value="task" checked /> Tarefas</label>
@@ -327,13 +375,28 @@ function renderActivityFeedSection(prefs: HomePrefs = {}): string {
 
 // Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
 // visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
-function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}, sizes: HomeSizes = {}): string {
+function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
   // A âncora #estatisticas (palette "Ir pras Estatísticas") precisa existir
   // TAMBÉM no card de erro — senão falha da query mensal quebra o link.
   const anchor = box === 'insights' ? ' id="estatisticas"' : '';
-  return `<section class="card home-card${box ? homeWideClass(box, sizes) : ''}"${anchor}${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
-    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}${box ? homeSizeToggleHtml(box, sizes) : ''}</h2>
+  return `<section class="card home-card${box ? homeWideClass(box, sizes) + homeHiddenClass(box, hidden) : ''}"${anchor}${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
+    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}${box ? homeSizeToggleHtml(box, sizes) + homeEditControlsHtml(box, hidden) : ''}</h2>
     <p class="error-state">${esc(msg)}</p>
+  </section>`;
+}
+
+// Card "Pendências com você" (rodada 6, 20/07): as filas que esperam o dono —
+// perguntas de agentes + entregas da coluna Validação humana — na PRIMEIRA
+// posição default da home. Reusa pendingBlockHtml SEM fork (mesmo markup do
+// board); backPath='/app' faz os forms sem JS voltarem pra home no 302. VAZIO =
+// card OMITIDO do grid (padrão digest) — pendência zero não merece caixa vazia.
+// Exportado: testado isolado em test/web/home.test.ts.
+export function renderPendingCard(items: PendingItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
+  if (!items || items.length === 0) return '';
+  const kinds = pendingKindsLabel(items);
+  return `<section class="card home-card home-pending-card${homeWideClass('pending', sizes)}${homeHiddenClass('pending', hidden)}"${itemAttr('pending')}${boxAttrs('pending', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Pendências com você <span class="home-pending-count">· ${items.length} — ${esc(kinds)}</span> <a href="/app/tasks">abrir o board →</a>${homeSizeToggleHtml('pending', sizes)}${homeEditControlsHtml('pending', hidden)}</h2>
+    <div class="task-pending home-pending-body" id="home-pending-body">${pendingBlockHtml(items, '/app')}</div>
   </section>`;
 }
 
@@ -344,12 +407,13 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   const now = Date.now();
 
   // Layout salvo das caixas (Onda 9b) — falha na leitura degrada pros defaults.
-  let prefsState: HomePrefsState = { heights: {}, sizes: {}, order: null, startDismissed: false };
+  let prefsState: HomePrefsState = { heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false };
   try { prefsState = await getHomePrefs(env); } catch (e) {
     console.error('home: falha ao ler home_prefs (defaults aplicados)', e);
   }
   const prefs = prefsState.heights;
   const sizes = prefsState.sizes;
+  const hidden = prefsState.hidden ?? [];
 
   // Card "Comece aqui" (spec 92): acima do grid, fora do sistema de caixas
   // arrastáveis (é temporário por natureza). Falha na derivação NÃO vira card de
@@ -378,15 +442,26 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
+
+  // Card "Pendências com você" (rodada 6): PRIMEIRO na ordem default. Vazio =
+  // omitido (renderPendingCard devolve ''); falha = card de erro visível.
+  let pendingCardHtml = '';
+  try {
+    pendingCardHtml = renderPendingCard(await buildPendingItems(env), prefs, sizes, hidden);
+  } catch (e) {
+    console.error('home: falha ao carregar as pendências (card de erro)', e);
+    pendingCardHtml = renderCardError('Pendências com você <a href="/app/tasks">abrir o board →</a>', 'Não deu pra carregar as pendências agora. Recarregue a página.', 'pending', prefs, sizes, hidden);
+  }
+
   let todayCardHtml = '';
   try {
     // OWNER_TASK_VIS: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
     // convenção do board de tasks e do lembrete diário.
     const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, OWNER_TASK_VIS);
-    todayCardHtml = renderTodayCard(tasks, now, prefs, sizes);
+    todayCardHtml = renderTodayCard(tasks, now, prefs, sizes, hidden);
   } catch (e) {
     console.error('home: falha ao carregar tasks de hoje', e);
-    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs, sizes);
+    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs, sizes, hidden);
   }
 
   let inboxCardHtml = '';
@@ -395,10 +470,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       countPendingInbox(env),
       listInboxItems(env, { pendingOnly: true, limit: INBOX_SCAN_LIMIT }),
     ]);
-    inboxCardHtml = renderInboxCard(pending, items, prefs, sizes);
+    inboxCardHtml = renderInboxCard(pending, items, prefs, sizes, hidden);
   } catch (e) {
     console.error('home: falha ao carregar inbox (spec 63 pode não ter rodado)', e);
-    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs, sizes);
+    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs, sizes, hidden);
   }
 
   let digestCardHtml = '';
@@ -410,15 +485,15 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       // só a FALHA de leitura vira card de erro visível. Onda 9: o card ganhou o
       // MESMO h2 dos vizinhos (era o "card sem título" do feedback do dono) — o
       // renderDigestCard entra em modo bare (sem o <strong> interno duplicado).
-      digestCardHtml = `<section class="card home-card${homeWideClass('digest', sizes)}"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
-        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a>${homeSizeToggleHtml('digest', sizes)}</h2>
+      digestCardHtml = `<section class="card home-card${homeWideClass('digest', sizes)}${homeHiddenClass('digest', hidden)}"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
+        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a>${homeSizeToggleHtml('digest', sizes)}${homeEditControlsHtml('digest', hidden)}</h2>
         ${renderDigestCard(digest, { bare: true })}
       </section>`;
       hasDigestBox = true;
     }
   } catch (e) {
     console.error('home: falha ao ler cache do resurface digest (spec 64 pode não ter rodado)', e);
-    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs, sizes);
+    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs, sizes, hidden);
     hasDigestBox = true;
   }
 
@@ -434,30 +509,46 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       getMonthInsightsCached(env, cur.year, cur.month, now),
       getMonthInsightsCached(env, prev.year, prev.month, now),
     ]);
-    insightsCardHtml = renderInsightsCard(cur.year, cur.month, curData, prevData, prefs, sizes);
+    insightsCardHtml = renderInsightsCard(cur.year, cur.month, curData, prevData, prefs, sizes, hidden);
   } catch (e) {
     console.error('home: falha ao carregar o resumo mensal (spec 99)', e);
-    insightsCardHtml = renderCardError('Estatísticas', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs, sizes);
+    insightsCardHtml = renderCardError('Estatísticas', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs, sizes, hidden);
   }
 
   // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,
   // renderizadas na ordem salva — arrastar pelo título reordena, puxar a borda
   // redimensiona (padrão ClickUp, feedback do dono). Digest ausente é pulado.
   const boxHtml: Record<HomeBoxKey, string> = {
+    pending: pendingCardHtml,
     today: todayCardHtml,
     inbox: inboxCardHtml,
     digest: hasDigestBox ? digestCardHtml : '',
     insights: insightsCardHtml,
-    activity: renderActivityFeedSection(prefs),
+    activity: renderActivityFeedSection(prefs, hidden),
   };
   const gridHtml = (prefsState.order ?? [...HOME_BOX_KEYS]).map((box) => boxHtml[box]).join('\n      ');
 
+  // Modo de edição (rodada 6): "Personalizar" (lápis, aria-pressed) entra em
+  // edit mode; a barra Salvar/Cancelar/Restaurar padrão fica logo após o grid
+  // (visível só em edição — CSS ~). Sem JS o botão é inerte e a home segue
+  // 100% funcional em view mode (aceito por design).
   const body = `
-    <div class="page-header"><h1>Início</h1><span class="home-arrange-hint">arraste pelo título pra reorganizar · puxe a borda de baixo pra redimensionar</span></div>
+    <div class="page-header"><h1>Início</h1>
+      <button type="button" class="btn btn-sm btn-ghost" id="home-edit-toggle" aria-pressed="false" title="Personalizar o layout da home">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.83 2.83 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+        Personalizar
+      </button>
+    </div>
     ${startHereHtml}
     ${fleetStripHtml}
     <div class="home-grid">
       ${gridHtml}
+    </div>
+    <div class="home-edit-bar" id="home-edit-bar">
+      <button type="button" class="btn btn-primary" id="home-edit-save">Salvar</button>
+      <button type="button" class="btn btn-ghost" id="home-edit-cancel">Cancelar</button>
+      <span class="home-edit-hint">arraste pelo título ou use as setas pra reordenar · puxe a borda de baixo pra redimensionar</span>
+      <button type="button" class="btn btn-ghost" id="home-edit-reset">Restaurar padrão</button>
     </div>
     <script src="/app/home/bundle.js?v=${assetVersion('home.bundle.js')}" defer></script>
     <script src="/app/journal/bundle.js?v=${assetVersion('journal.bundle.js')}" defer></script>
@@ -470,7 +561,7 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       email: session.email,
       env,
       body,
-      extraHead: `<style>${HOME_CSS}${JOURNAL_CSS}</style>`,
+      extraHead: `<style>${HOME_CSS}${PENDING_CSS}${JOURNAL_CSS}</style>`,
       sidebarCollapsed: sidebarCollapsedFromReq(req),
     })
   );

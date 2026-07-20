@@ -186,6 +186,11 @@ describe('bloco "Pendências com você" no board (/app/tasks)', () => {
     expect(html).toContain('action="/app/fleet/task"');
     expect(html).toContain('value="approve"');
     expect(html).toContain('value="return"');
+    // Rodada 6: o bloco mora numa gaveta <details> FECHADA por default, com a
+    // contagem no <summary> — o board volta a ser a primeira coisa da página.
+    expect(html).toContain('class="task-pending-collapse"');
+    expect(html).toContain('Pendências com você · 1 (1 para aprovar)');
+    expect(html).not.toMatch(/task-pending-collapse"[^>]*\bopen\b/);
     // O nome antigo do banner sumiu da UI.
     expect(html).not.toContain('Aguardando você');
   });
@@ -208,6 +213,8 @@ describe('bloco "Pendências com você" no board (/app/tasks)', () => {
     // Resposta rápida inline → POST /app/tasks/comment (desarma o bloqueio).
     expect(html).toContain('action="/app/tasks/comment"');
     expect(html.indexOf('Task fq1')).toBeLessThan(html.indexOf('Task fv1'));
+    // Summary da gaveta soma as duas filas (rodada 6).
+    expect(html).toContain('Pendências com você · 2 (1 pergunta, 1 para aprovar)');
   });
 });
 
@@ -272,6 +279,32 @@ describe('POST /app/fleet/task (aprovar/devolver)', () => {
     const anon = await fleetPost({ task_id: 'x', action: 'approve' });
     expect(anon.status).toBe(302);
     expect(anon.headers.get('location')).toMatch(/^\/app\/login/);
+  });
+
+  // O card da home manda back=/app; o guard só honra path interno do console —
+  // qualquer outra coisa cai no default. Cobertura server-side pra regressão
+  // futura não virar open redirect silencioso (rodada 6).
+  it('back=/app é honrado no sucesso E no erro; back externo/fora do console é ignorado', async () => {
+    const c = await cookie();
+    await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
+    await seedTask('fv3', { columnId: 'col_fleettest' });
+
+    const ok = await fleetPost({ task_id: 'fv3', action: 'approve', back: '/app' }, c);
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get('location')).toBe('/app');
+
+    // Erro (task inexistente) também devolve pra onde o dono estava.
+    const err = await fleetPost({ task_id: 'nao-existe', action: 'approve', back: '/app' }, c);
+    expect(err.status).toBe(303);
+    expect(err.headers.get('location')).toMatch(/^\/app\?/);
+
+    // Lixo, URL absoluta e path fora do console: default /app/tasks.
+    for (const evil of ['https://evil.example', '//evil.example', '/login', 'javascript:alert(1)']) {
+      await seedTask('fv4' + evil.length, { columnId: 'col_fleettest' });
+      const res = await fleetPost({ task_id: 'fv4' + evil.length, action: 'approve', back: evil }, c);
+      expect(res.status).toBe(302);
+      expect(res.headers.get('location')).toBe('/app/tasks');
+    }
   });
 });
 

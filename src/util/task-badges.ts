@@ -124,9 +124,14 @@ export interface PendingItem {
 const MAX_PENDING_VISIBLE = 5;
 const MAX_PENDING_BODY = 160;
 
-function pendingRowHtml(it: PendingItem): string {
+// `backPath` (rodada 6, 20/07): quando presente, os forms carregam um hidden
+// `back` — sem JS o 302 do servidor volta pra página de origem (ex.: '/app',
+// o card da home) em vez do default do handler. O servidor SÓ honra valores
+// que começam com '/app' (validação em fleet.ts/tasks.ts).
+function pendingRowHtml(it: PendingItem, backPath?: string): string {
   const body = it.body.length > MAX_PENDING_BODY ? `${it.body.slice(0, MAX_PENDING_BODY)}…` : it.body;
   const who = it.author ? `${it.author} · ` : '';
+  const back = backPath ? `<input type="hidden" name="back" value="${escBadge(backPath)}">` : '';
   const chip = it.kind === 'question'
     ? `<span class="task-pending-chip task-pending-chip-question">Pergunta</span>`
     : `<span class="task-pending-chip task-pending-chip-approval">Para aprovar</span>`;
@@ -138,13 +143,13 @@ function pendingRowHtml(it: PendingItem): string {
     ? `<details class="task-pending-reply">
         <summary>Responder</summary>
         <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-reply-form" data-pending-form data-pending-kind="question">
-          <input type="hidden" name="task_id" value="${escBadge(it.id)}">
+          <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
           <textarea name="body" rows="2" required placeholder="Escreva a resposta — ela libera o agente pra continuar" aria-label="Resposta rápida"></textarea>
           <button type="submit" class="btn btn-sm btn-primary">Enviar resposta</button>
         </form>
       </details>`
     : `<form method="post" action="/app/fleet/task" class="task-pending-form task-pending-actions" data-pending-form data-pending-kind="approval">
-        <input type="hidden" name="task_id" value="${escBadge(it.id)}">
+        <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
         <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>
         <button type="submit" name="action" value="return" class="btn btn-sm btn-ghost">Devolver</button>
       </form>`;
@@ -159,17 +164,17 @@ function pendingRowHtml(it: PendingItem): string {
 // e o resto atrás de "Ver mais (N)" (<details> — expande inline, sem JS).
 // Vazio → string vazia; o CALLER esconde/mostra o container (mesmo contrato do
 // banner antigo).
-export function pendingBlockHtml(items: PendingItem[]): string {
+export function pendingBlockHtml(items: PendingItem[], backPath?: string): string {
   if (!items || items.length === 0) return '';
   const q = items.filter((i) => i.kind === 'question').length;
   const a = items.length - q;
   const kinds: string[] = [];
   if (q > 0) kinds.push(`${q} pergunta${q === 1 ? '' : 's'}`);
   if (a > 0) kinds.push(`${a} para aprovar`);
-  const visible = items.slice(0, MAX_PENDING_VISIBLE).map(pendingRowHtml).join('');
+  const visible = items.slice(0, MAX_PENDING_VISIBLE).map((it) => pendingRowHtml(it, backPath)).join('');
   const rest = items.slice(MAX_PENDING_VISIBLE);
   const more = rest.length > 0
-    ? `<details class="task-pending-more"><summary>Ver mais (${rest.length})</summary><div class="task-pending-list">${rest.map(pendingRowHtml).join('')}</div></details>`
+    ? `<details class="task-pending-more"><summary>Ver mais (${rest.length})</summary><div class="task-pending-list">${rest.map((it) => pendingRowHtml(it, backPath)).join('')}</div></details>`
     : '';
   return `<div class="task-pending-head">Pendências com você <span class="task-pending-count">${items.length}</span><span class="task-pending-kinds">${escBadge(kinds.join(' · '))}</span></div><div class="task-pending-list">${visible}</div>${more}`;
 }
