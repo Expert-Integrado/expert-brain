@@ -205,6 +205,14 @@ function hasPlaceholder(content, placeholder) {
   return content.includes(`"${placeholder}"`);
 }
 
+// Detecta se ainda ha ALGUM placeholder REAL por resolver. Precisa casar so os
+// valores entre aspas ("REPLACE_ME_...") — nunca a palavra solta que aparece no
+// COMENTARIO do wrangler.example.toml ("substitua os placeholders REPLACE_ME_*"),
+// que sobrevive a copia e daria falso-positivo num `toml.includes('REPLACE_ME_')`.
+function hasAnyPlaceholder(content) {
+  return /"REPLACE_ME_[A-Z_]+"/.test(content);
+}
+
 // Setup flow
 function checkNodeVersion() {
   const major = parseInt(process.versions.node.split('.')[0], 10);
@@ -360,7 +368,7 @@ async function main() {
   const forceReinstall = process.argv.includes('--reinstall');
   let isUpdate = false;
   if (!forceReinstall) {
-    if (!toml.includes('REPLACE_ME_')) {
+    if (!hasAnyPlaceholder(toml)) {
       isUpdate = true; // wrangler.toml ja configurado (pasta de uma instalacao previa)
     } else {
       log.info('Procurando uma instalacao Expert Brain existente na sua conta...');
@@ -379,7 +387,7 @@ async function main() {
     console.log(`\n${CYAN}${BOLD}[atualizar]${RESET} ${BOLD}Instalacao existente detectada - modo ATUALIZACAO${RESET}`);
     log.info('Mantenho seus dados (D1/Vectorize), credenciais e login. So atualizo o codigo.');
     ensureVectorize();
-    if (toml.includes('REPLACE_ME_')) {
+    if (hasAnyPlaceholder(toml)) {
       die('Faltou resolver algum ID no wrangler.toml. Rode `npm run setup -- --reinstall` pra reprovisionar do zero.');
     }
     const workerUrl = await buildDeployProvision();
@@ -468,7 +476,10 @@ ${updHooksOk
   const vec = runWrangler(['vectorize', 'create', 'expert-brain-embeddings', '--dimensions=1024', '--metric=cosine'], { allowFail: true });
   if (vec.status !== 0) {
     const combined = (vec.stdout || '') + (vec.stderr || '');
-    if (/already exists/i.test(combined)) {
+    // O wrangler nao devolve "already exists" pra indice duplicado — o erro real
+    // e `duplicate_name` / code 3002. Casar so /already exists/ deixava o setup
+    // morrer num indice que ja existia (re-run / conta com o Brain instalado).
+    if (/already exists|duplicate_name|3002/i.test(combined)) {
       log.info('Vectorize "expert-brain-embeddings" ja existe - reutilizando.');
     } else {
       die(`wrangler vectorize create falhou: ${vec.stderr}`);
@@ -518,7 +529,7 @@ ${updHooksOk
 
   // 5. confirma que nenhum placeholder sobrou
   log.step(5, 'Validando wrangler.toml');
-  if (toml.includes('REPLACE_ME_')) {
+  if (hasAnyPlaceholder(toml)) {
     die('Ainda ha placeholders REPLACE_ME_* no wrangler.toml. Resolve manualmente e tente de novo.');
   }
   log.ok('Todos os placeholders foram substituidos.');
