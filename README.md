@@ -217,18 +217,173 @@ Várias instâncias de Claude (PCs, containers 24/7, outros runtimes) podem cola
 
 ## Desenvolvimento
 
+Esta seção é o guia de **setup de ambiente de dev** — do zero, com o passo a passo por sistema operacional (macOS, Linux, Windows). Se você só quer **usar** o Expert Brain na sua conta, o caminho é a seção [Instalação](#instalação) acima; o de baixo é pra quem vai **rodar o código local, contribuir ou deployar**.
+
+### Versões esperadas (validadas contra este repo)
+
+Toda a stack é a mesma nos três sistemas — o runtime alvo é o Cloudflare Workers, não o SO local. O que importa é a toolchain:
+
+| Ferramenta | Versão | De onde vem | Como conferir |
+|---|---|---|---|
+| **Node.js** | 18+ (mínimo em `package.json` `engines`); **recomendado 20 LTS ou 22 LTS** | [nodejs.org](https://nodejs.org) ou um gerenciador de versão (nvm/fnm/Volta) | `node --version` |
+| **npm** | 10+ (vem com Node 20/22) | junto com o Node | `npm --version` |
+| **Wrangler** | 4.x (fixado em `^4.81.1` nas devDependencies) | instalado por `npm install`; use via `npx wrangler` | `npx wrangler --version` |
+| **TypeScript** | 5.6+ | `npm install` (devDependency) | `npx tsc --version` |
+| **Vitest** | 4.x + `@cloudflare/vitest-pool-workers` 0.18+ | `npm install` | — |
+| **Git** | qualquer versão recente | [git-scm.com](https://git-scm.com) | `git --version` |
+
+> **Não instale o Wrangler global.** O projeto fixa a versão nas devDependencies; rodar `npx wrangler` (ou os scripts `npm run`) garante que todo mundo usa a **mesma** versão. Um `wrangler` global desatualizado é a causa nº 1 de erro de setup.
+
+Além disso você vai precisar de uma **conta Cloudflare gratuita** ([cadastro](https://dash.cloudflare.com/sign-up)) — os recursos de dev (D1, Vectorize, KV) são criados nela, mas o `wrangler dev` roda tudo **local** (Miniflare), sem tocar produção.
+
+### Preparar o SO
+
+O único pré-requisito específico de SO é ter **Node LTS + Git**. Escolha o caminho do seu sistema:
+
+<details open>
+<summary><strong>macOS</strong></summary>
+
+Com [Homebrew](https://brew.sh):
+
 ```bash
-npm install
-npm run dev            # wrangler dev (Miniflare local)
-npm test                # vitest run + vitest run --config vitest.auth.config.ts
-npm run typecheck       # tsc --noEmit na raiz + em src/web/client/tsconfig.json
-npm run build:bundles   # empacota src/web/client → assets/*.bundle.js
-npm run deploy          # build:bundles + wrangler deploy + POST /setup/provision (scripts/deploy.mjs)
+brew install node git          # Node LTS + Git
+node --version                 # confira: v20.x ou v22.x
 ```
 
-Os testes rodam em dois pools: o principal (`vitest.config.ts`, D1 + tools MCP com Vectorize/Workers AI mockados) e um pool node separado (`vitest.auth.config.ts`) pro módulo de hash de senha, isolado das restrições do runtime dos Workers.
+Preferindo múltiplas versões de Node, use [`fnm`](https://github.com/Schniz/fnm) (`brew install fnm`) ou [`nvm`](https://github.com/nvm-sh/nvm) e rode `fnm use --lts` / `nvm install --lts`.
 
-O desenvolvimento é **spec-driven**: toda mudança relevante nasce como uma spec em [`specs/`](specs/README.md), pensada pra um agente de IA executar sem contexto externo. Antes de contribuir, leia `specs/README.md` (o protocolo) e `specs/90-roadmap.md` (a sequência de fases e gates).
+</details>
+
+<details>
+<summary><strong>Linux</strong></summary>
+
+O Node dos repositórios de distro costuma ser antigo — prefira o [NodeSource](https://github.com/nodesource/distributions) ou um gerenciador de versão:
+
+```bash
+# Opção A — nvm (recomendado, não precisa de sudo)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash
+# reabra o terminal, então:
+nvm install --lts
+nvm use --lts
+
+# Opção B — NodeSource (Debian/Ubuntu, Node 22.x)
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+sudo apt-get install -y git    # se ainda não tiver
+node --version
+```
+
+> Distros com `apt`/`dnf`/`pacman` funcionam igual — só garanta Node 18+ (de preferência 20/22).
+
+</details>
+
+<details>
+<summary><strong>Windows</strong></summary>
+
+**Recomendado: PowerShell + [winget](https://learn.microsoft.com/windows/package-manager/).**
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+winget install Git.Git
+# feche e reabra o terminal, então:
+node --version
+```
+
+Para alternar versões de Node no Windows use [`fnm`](https://github.com/Schniz/fnm) (`winget install Schniz.fnm`) ou o [`nvm-windows`](https://github.com/coreybutler/nvm-windows).
+
+**Notas específicas de Windows:**
+- Rode os comandos no **PowerShell** ou no **Terminal do Windows** — os scripts do repo já detectam Windows (usam `shell: true`) e funcionam sem WSL.
+- Alternativamente, **WSL2** (Ubuntu) dá um ambiente Linux completo e é a opção mais confortável se você já mexe com bash — nesse caso siga a aba **Linux** acima, dentro do WSL.
+- Se o `npm install` reclamar de permissão pra criar symlinks/scripts, abra o terminal como Administrador **uma vez** ou habilite o [Modo de Desenvolvedor](https://learn.microsoft.com/windows/apps/get-started/enable-your-device-for-development).
+
+</details>
+
+### Clonar, instalar e autenticar
+
+Estes passos são **idênticos** nos três sistemas (só o terminal muda):
+
+```bash
+git clone https://github.com/Expert-Integrado/expert-brain.git
+cd expert-brain
+npm install                    # respeita o .npmrc (legacy-peer-deps=true) — obrigatório
+npx wrangler login             # abre o browser → clique "Allow"
+npx wrangler whoami            # valida: mostra seu e-mail + account_id
+```
+
+> **Por que `legacy-peer-deps`?** O repo carrega um `.npmrc` com `legacy-peer-deps=true`. É intencional: `agents@0.17.x` declara peers opcionais (`ai`/`chat`/`x402`) que o runtime não usa (só `agents/mcp`), e sem a flag o `npm install` cai em `ERESOLVE`. Como o `.npmrc` está no repo, rodar `npm install` da raiz já pega a flag — não precisa passar nada.
+>
+> **Sem browser na máquina** (servidor headless, CI)? Em vez do `wrangler login`, exporte um API token: crie um em [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens) e defina `CLOUDFLARE_API_TOKEN` no ambiente (`export …` no bash / `$env:CLOUDFLARE_API_TOKEN="…"` no PowerShell).
+
+### Provisionar sua instância (uma vez)
+
+Para ter um Worker real na sua conta (necessário pra testar o fluxo completo, MCP, OAuth), rode o bootstrap — o mesmo da seção [Instalação](#instalação), passo 3:
+
+```bash
+npm run setup                  # cria D1/Vectorize/KV, gera secrets, deploya, roda migrations
+```
+
+É idempotente: reexecutar redescobre os recursos por nome e só redeploya. Detalhes completos (o que ele pergunta, o que cria, `--reinstall`) estão na seção [Instalação](#instalação).
+
+### Rodar local (Miniflare)
+
+```bash
+npm run dev                    # wrangler dev → http://localhost:8787 (Miniflare, tudo local)
+```
+
+O `wrangler dev` simula D1/KV/R2 localmente — você não precisa ter provisionado nada pra subir o servidor. Para **logar no console local** (`/app/login`), o Worker precisa das credenciais de dono em variáveis locais. O Wrangler lê isso de um arquivo **`.dev.vars`** na raiz (formato `.env`, **gitignored** — nunca commite):
+
+```bash
+# .dev.vars  (crie na raiz do repo — NÃO vai pro git)
+OWNER_EMAIL=voce@exemplo.com
+OWNER_PASSWORD_HASH=<hash>      # gere com: node scripts/hash-password.mjs
+SESSION_SECRET=<32 bytes hex>   # gere com: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Para popular o console local com **dados fictícios** (7 kinds de nota, board de tasks, projetos, inbox) pra clicar e testar:
+
+```bash
+npm run seed:dev               # node scripts/seed-dev.mjs --local --force (só D1 LOCAL, nunca produção)
+```
+
+### Testes
+
+```bash
+npm test                       # vitest run + vitest run --config vitest.auth.config.ts
+npm run test:client            # suíte do client web (jsdom)
+npm run test:watch             # vitest em watch mode
+npm run typecheck              # tsc --noEmit na raiz + client + test + e2e
+npm run e2e                    # Playwright contra o wrangler dev local (precisa de E2E_EMAIL/E2E_PASSWORD)
+```
+
+Os testes rodam em pools separados: o principal (`vitest.config.ts`, D1 + tools MCP com Vectorize/Workers AI mockados, tudo dentro do `workerd`), um pool node à parte (`vitest.auth.config.ts`) pro módulo de hash de senha (isolado das restrições do runtime dos Workers) e a suíte de client (`vitest.client.config.ts`, jsdom). O e2e (Playwright) sobe o `wrangler dev`, aplica o seed e loga uma vez — as credenciais vêm de `E2E_EMAIL`/`E2E_PASSWORD` (nunca hardcoded; use as mesmas do seu `.dev.vars`).
+
+> **Playwright no primeiro uso:** `npx playwright install` baixa os navegadores. Em **Linux** pode ainda faltar libs do sistema — rode `npx playwright install-deps` (ou `sudo npx playwright install --with-deps chromium`).
+
+### Build e deploy
+
+```bash
+npm run build:bundles          # empacota src/web/client → assets/*.bundle.js (esbuild)
+npm run deploy                 # build:bundles + wrangler deploy + POST /setup/provision (scripts/deploy.mjs)
+```
+
+Cada deploy vai pro **seu próprio** Worker na sua conta Cloudflare; dados e login vivem no D1/Vectorize (não no código), então redeployar é seguro. Runbook de publicação do **pacote npm** (scaffolder) fica em [`RELEASING.md`](RELEASING.md) — não é o mesmo que deployar sua instância.
+
+### Fluxo de contribuição
+
+O desenvolvimento é **spec-driven**: toda mudança relevante nasce como uma spec em [`specs/`](specs/README.md), pensada pra um agente de IA executar sem contexto externo. Antes de contribuir, leia `specs/README.md` (o protocolo) e `specs/90-roadmap.md` (a sequência de fases e gates). Os git hooks de commit são instalados automaticamente no `npm install` (script `prepare`).
+
+### Troubleshooting rápido
+
+| Sintoma | Causa provável | Correção |
+|---|---|---|
+| `npm install` → `ERESOLVE` | Flag `legacy-peer-deps` não aplicada (instalou fora da raiz, ou `.npmrc` sobrescrito) | Rode `npm install` na raiz do repo, ou `npm install --legacy-peer-deps` |
+| `wrangler: command not found` | Tentou chamar o Wrangler global | Use `npx wrangler …` ou os scripts `npm run` |
+| `wrangler login` não abre browser | Máquina headless/remota | Use `CLOUDFLARE_API_TOKEN` (ver acima) |
+| `/app/login` não deixa entrar em local | Faltou `.dev.vars` com `OWNER_*`/`SESSION_SECRET` | Crie o `.dev.vars` (seção "Rodar local") |
+| e2e/Playwright falha ao iniciar navegador (Linux) | Libs do sistema faltando | `npx playwright install --with-deps chromium` |
+| Erro de symlink/EPERM no `npm install` (Windows) | Permissão de criação de link | Terminal como Admin uma vez, ou habilite o Modo de Desenvolvedor |
+| Cron `10072` no deploy | Limite de 5 cron triggers por conta (free) no total | O repo já usa 1 cron consolidado; remova crons extras de outros Workers |
 
 ---
 
