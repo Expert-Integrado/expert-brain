@@ -62,7 +62,7 @@ function main() {
   state.last_nudge_ts = now;
   try { fs.mkdirSync(LOG_DIR, { recursive: true }); fs.writeFileSync(STATE_PATH, JSON.stringify(state)); } catch { /* */ }
 
-  const reminder = `Varredura de captura: esta sessão já tem ${turns}+ turnos e nada foi salvo no Brain há um bom tempo. Avalie AGORA se surgiu material durável (decisão com motivação, insight, métrica com data, regra/feedback, pessoa nova) — se sim, salve atômico via mcp__expert-brain__save_note / save_task (ou save_person no expert-contacts). Se não houver nada durável, siga normalmente — não salve por salvar.`;
+  const reminder = `Varredura de captura: esta sessão já tem ${turns}+ turnos e nada foi salvo no Brain há um bom tempo. Avalie AGORA se surgiu material durável (decisão com motivação, insight, métrica com data, regra/feedback, pessoa nova) — se sim, salve atômico via mcp__expert-brain__save_note / save_task (ou save_person no expert-contacts). Granularidade: derivado de trabalho que já tem card no board = subtarefa desse card (update_subtask), nunca card novo. Se não houver nada durável, siga normalmente — não salve por salvar.`;
 
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: { hookEventName: 'Stop', additionalContext: reminder },

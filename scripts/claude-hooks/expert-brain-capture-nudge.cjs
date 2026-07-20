@@ -133,7 +133,7 @@ function main() {
 
   const parts = [];
   if (task.length) {
-    parts.push(`ação/pendência com prazo (${task.join(', ')}) → considere mcp__expert-brain__save_task (rode list_tasks ANTES pra não duplicar; to-do do dia = due hoje)`);
+    parts.push(`ação/pendência com prazo (${task.join(', ')}) → considere mcp__expert-brain__save_task OU, se deriva de trabalho que JÁ TEM card no board, subtarefa desse card via update_subtask — derivado nunca vira card novo (rode list_tasks ANTES pra não duplicar; to-do do dia = due hoje)`);
   }
   if (nota.length) {
     parts.push(`conhecimento durável (${nota.join(', ')}) → considere mcp__expert-brain__save_note (atômica, kind correto: decision/insight/fact/principle) — não espere a compactação`);

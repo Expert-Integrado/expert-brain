@@ -2,6 +2,10 @@
 
 Todas as mudanças relevantes do Expert Brain são registradas aqui. Formato inspirado em [Keep a Changelog](https://keepachangelog.com/), adaptado pro ritmo de release deste projeto. Os números de versão são marcos editoriais de release (como tag git, existem `v1.4.0` e `v3.0.0`; a "2.0.0" marca o lançamento do Console v2/v3 em produção).
 
+## [Unreleased]
+
+- **Protocolo de granularidade nos hooks embarcados** (`scripts/claude-hooks/`): o mandato "tudo que o usuário pedir vira task" deu lugar à regra de granularidade — pedido pontual vira task direta e derivados viram subtarefas dela (`update_subtask`); software/iniciativa grande vira projeto com 1 card por módulo, nunca 1 card por ideia; na dúvida entre card e subtask, subtask. Textos atualizados em session-start, capture-nudge, postcompact e stop-sweep; alinha os hooks à filosofia já documentada no registry ("trabalho multi-parte = UM card com subtarefas, nunca N cards irmãos"). Instalações existentes recebem os textos novos ao re-rodar `scripts/install-claude-hooks.mjs`.
+
 ## [3.0.0] — 2026-07-07
 
 Esteira de hardening e polish rodada em sequência contínua no dia seguinte ao lançamento do Console v2/v3: conserto do grafo 2D, share público de notas, edição inline e uma rodada grande de segurança e confiabilidade — cobrindo também o worker irmão de contatos (**expert-contacts**, que gerencia o vault de pessoas e conversa com o Brain via service binding).
