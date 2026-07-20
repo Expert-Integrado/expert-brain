@@ -306,7 +306,10 @@ export const SHELL_CSS = `
 .sidebar .logo {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 19px;
+  /* 16px + nowrap: com a lupa na mesma linha, 19px estourava os 184px úteis
+     da sidebar e "Expert Brain" quebrava em duas linhas. */
+  font-size: 16px;
+  white-space: nowrap;
   letter-spacing: -0.015em;
   margin-bottom: 32px;
   display: flex;
