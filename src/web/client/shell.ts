@@ -438,6 +438,9 @@ function openPalette() {
   const { root, input, list } = ensurePalette();
   open = true;
   root.classList.add('open');
+  // A lupa da sidebar (.side-search) expande na caixinha enquanto a palette
+  // está aberta — o CSS observa body.palette-open.
+  document.body.classList.add('palette-open');
   input.value = '';
   // Dispara a carga do meta na PRIMEIRA abertura da palette (lazy). ensureNotesLoaded
   // re-renderiza a lista quando os dados chegam se a palette ainda estiver aberta.
@@ -451,6 +454,7 @@ function close() {
   if (!root) return;
   open = false;
   root.classList.remove('open');
+  document.body.classList.remove('palette-open');
 }
 
 // Busca unificada da paleta (spec 66): notas + tasks + contatos num request só via

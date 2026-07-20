@@ -4,11 +4,12 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
 
 // Busca no celular (specs/91-experiencia-premium/93-busca-mobile.md): a command
-// palette precisa de gatilho SEM teclado físico — lupa ícone-só no CABEÇALHO da
-// sidebar, na linha da marca (revisão 19/07: o item "Buscar" saiu da lista do
-// menu) e lupa na bottom-nav (mobile), ambos marcados com data-cmd-open
-// (o shell bundle delega o click pra openPalette). Testa o HTML do shell, que é
-// igual em toda página /app/* — a home serve de amostra.
+// palette precisa de gatilho SEM teclado físico — lupa minimizada em linha
+// própria logo abaixo da marca (revisão 19/07 v2: expande na caixinha via
+// body.palette-open quando a palette abre) e lupa na bottom-nav (mobile),
+// ambos marcados com data-cmd-open (o shell bundle delega o click pra
+// openPalette). Testa o HTML do shell, igual em toda página /app/* — a home
+// serve de amostra.
 
 const E = env as any;
 const SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
@@ -25,7 +26,7 @@ async function authCookie(): Promise<string> {
 }
 
 describe('gatilhos da palette sem teclado (spec 93)', () => {
-  it('sidebar tem a lupa no cabeçalho (data-cmd-open na linha da marca), com hint Ctrl+K', async () => {
+  it('sidebar tem a lupa minimizada abaixo da marca (side-search data-cmd-open), com hint Ctrl+K', async () => {
     const res = await SELF.fetch('https://x.test/app', { headers: { cookie: await authCookie() } });
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -34,12 +35,15 @@ describe('gatilhos da palette sem teclado (spec 93)', () => {
     expect(sidebar).toContain('data-cmd-open');
     expect(sidebar).toContain('aria-label="Buscar"');
     expect(sidebar).toContain('Ctrl+K');
-    // A lupa mora DENTRO do cabeçalho (mesma linha do "Expert Brain"), acima
-    // dos itens do menu — e o item de lista "Buscar" morreu (revisão 19/07).
+    // A lupa mora em linha PRÓPRIA entre a marca e os itens do menu (revisão
+    // 19/07 v2): a marca fica sozinha na linha dela (sem quebrar em duas) e o
+    // botão .side-search carrega o rótulo/kbd que só aparecem expandidos.
     const logo = sidebar.slice(sidebar.indexOf('<div class="logo">'), sidebar.indexOf('</div>'));
-    expect(logo).toContain('logo-search');
-    expect(logo).toContain('data-cmd-open');
+    expect(logo).not.toContain('data-cmd-open');
+    expect(sidebar).toMatch(/<button class="side-search"[^>]*data-cmd-open/);
+    expect(sidebar).toContain('side-search-label');
     expect(sidebar).not.toContain('nav-search');
+    expect(sidebar.indexOf('<div class="logo">')).toBeLessThan(sidebar.indexOf('side-search'));
     expect(sidebar.indexOf('data-cmd-open')).toBeLessThan(sidebar.indexOf('href="/app"'));
   });
 

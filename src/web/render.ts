@@ -127,7 +127,8 @@ ${opts.extraHead ?? ''}
 </head><body>
 <div class="shell${collapsed ? ' sidebar-collapsed' : ''}">
   <aside class="sidebar">
-    <div class="logo"><span class="logo-text">Expert Brain</span><button class="logo-search" type="button" data-cmd-open title="Buscar (Ctrl+K)" aria-label="Buscar">${SIDEBAR_ICONS.search}</button></div>
+    <div class="logo"><span class="logo-text">Expert Brain</span></div>
+    <button class="side-search" type="button" data-cmd-open title="Buscar (Ctrl+K)" aria-label="Buscar">${SIDEBAR_ICONS.search}<span class="side-search-label">Buscar</span><kbd class="side-search-kbd">Ctrl K</kbd></button>
     <a class="nav-item${opts.active === 'home' ? ' active' : ''}" href="/app" title="Início">${SIDEBAR_ICONS.home}<span class="nav-label">Início</span></a>
     <a class="nav-item${opts.active === 'graph' ? ' active' : ''}" href="/app/graph" title="Grafo">${SIDEBAR_ICONS.graph}<span class="nav-label">Grafo</span></a>
     <a class="nav-item${opts.active === 'notes' ? ' active' : ''}" href="/app/notes" title="Notas">${SIDEBAR_ICONS.notes}<span class="nav-label">Notas</span></a>

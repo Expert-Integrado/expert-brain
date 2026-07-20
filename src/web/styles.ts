@@ -306,12 +306,10 @@ export const SHELL_CSS = `
 .sidebar .logo {
   font-family: var(--font-display);
   font-weight: 600;
-  /* 16px + nowrap: com a lupa na mesma linha, 19px estourava os 184px úteis
-     da sidebar e "Expert Brain" quebrava em duas linhas. */
-  font-size: 16px;
+  font-size: 19px;
   white-space: nowrap;
   letter-spacing: -0.015em;
-  margin-bottom: 32px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -352,27 +350,50 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-/* Lupa no cabeçalho da sidebar (revisão 19/07): o "Buscar" saiu da lista de
-   itens do menu — virou botão ícone-só na MESMA linha da marca, alinhado à
-   direita. Discreto, hover igual aos nav-items. Dispara a palette (data-cmd-open),
-   Ctrl+K continua valendo. */
-.sidebar .logo-search {
-  margin-left: auto;
-  flex: 0 0 auto;
-  display: inline-flex;
+/* Busca da sidebar (revisão 19/07, v2 minimizada): linha própria abaixo da marca.
+   Em repouso é só a lupa (ícone 34px); quando a palette abre (clique ou Ctrl+K),
+   body ganha .palette-open e o botão se expande na caixinha "Buscar · Ctrl K".
+   max-width anima (px→px); width:100% fixo pro conteúdo não reflowar no meio. */
+.sidebar .side-search {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
+  gap: 8px;
+  width: 100%;
+  max-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  margin: 0 0 20px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--text-dim);
   cursor: pointer;
-  transition: color 180ms var(--ease), background 180ms var(--ease);
+  overflow: hidden;
+  white-space: nowrap;
+  transition: max-width 240ms var(--ease), color 180ms var(--ease), background 180ms var(--ease), border-color 180ms var(--ease);
 }
-.sidebar .logo-search:hover { color: var(--text); background: rgba(167, 139, 250, 0.08); }
+.sidebar .side-search svg { flex: 0 0 auto; }
+.sidebar .side-search:hover { color: var(--text); background: rgba(167, 139, 250, 0.08); }
+.side-search-label { font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 180ms var(--ease); }
+.side-search-kbd {
+  margin-left: auto;
+  font-size: 10px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--text-subtle);
+  opacity: 0;
+  transition: opacity 180ms var(--ease);
+}
+body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search {
+  max-width: 184px;
+  border-color: var(--border);
+  background: var(--surface-1);
+  color: var(--text);
+}
+body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search .side-search-label,
+body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search .side-search-kbd { opacity: 1; }
 
 /* Rodapé da sidebar (redesign 19/07): menu do usuário (botão avatar + nome que
    abre popover pra cima com Configurações/Tema/Trocar foto/Sair) + botão Recolher
@@ -487,9 +508,10 @@ export const SHELL_CSS = `
 .shell.sidebar-collapsed .sidebar .sidebar-email {
   display: none;
 }
-/* Recolhida: a lupa continua visível/clicável — empilha SOB o logo (coluna). */
-.shell.sidebar-collapsed .sidebar .logo { flex-direction: column; justify-content: center; margin-bottom: 28px; gap: 8px; }
-.shell.sidebar-collapsed .sidebar .logo-search { margin-left: 0; }
+/* Recolhida: a lupa segue visível/clicável — centrada, sempre ícone-só (a
+   expansão da caixinha não roda com 60px de largura). */
+.shell.sidebar-collapsed .sidebar .logo { justify-content: center; margin-bottom: 24px; }
+.shell.sidebar-collapsed .sidebar .side-search { margin-left: auto; margin-right: auto; }
 .shell.sidebar-collapsed .sidebar .nav-item {
   justify-content: center;
   padding-left: 0;
