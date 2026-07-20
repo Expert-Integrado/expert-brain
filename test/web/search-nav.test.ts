@@ -4,12 +4,11 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
 
 // Busca no celular (specs/91-experiencia-premium/93-busca-mobile.md): a command
-// palette precisa de gatilho SEM teclado físico — lupa minimizada em linha
-// própria logo abaixo da marca (revisão 19/07 v2: expande na caixinha via
-// body.palette-open quando a palette abre) e lupa na bottom-nav (mobile),
-// ambos marcados com data-cmd-open (o shell bundle delega o click pra
-// openPalette). Testa o HTML do shell, igual em toda página /app/* — a home
-// serve de amostra.
+// palette precisa de gatilho SEM teclado físico — caixinha "Buscar · Ctrl K"
+// fixa em linha própria logo abaixo da marca (revisão 20/07 v2; recolhida vira
+// lupa ícone-só) e lupa na bottom-nav (mobile), ambos marcados com
+// data-cmd-open (o shell bundle delega o click pra openPalette). Testa o HTML
+// do shell, igual em toda página /app/* — a home serve de amostra.
 
 const E = env as any;
 const SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
@@ -35,9 +34,9 @@ describe('gatilhos da palette sem teclado (spec 93)', () => {
     expect(sidebar).toContain('data-cmd-open');
     expect(sidebar).toContain('aria-label="Buscar"');
     expect(sidebar).toContain('Ctrl+K');
-    // A lupa mora em linha PRÓPRIA entre a marca e os itens do menu (revisão
-    // 19/07 v2): a marca fica sozinha na linha dela (sem quebrar em duas) e o
-    // botão .side-search carrega o rótulo/kbd que só aparecem expandidos.
+    // A caixinha mora em linha PRÓPRIA entre a marca e os itens do menu
+    // (revisão 20/07 v2): a marca fica sozinha na linha dela (sem quebrar em
+    // duas) e o botão .side-search carrega rótulo "Buscar" + kbd Ctrl K.
     const logo = sidebar.slice(sidebar.indexOf('<div class="logo">'), sidebar.indexOf('</div>'));
     expect(logo).not.toContain('data-cmd-open');
     expect(sidebar).toMatch(/<button class="side-search"[^>]*data-cmd-open/);

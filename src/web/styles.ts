@@ -350,31 +350,29 @@ export const SHELL_CSS = `
 }
 .sidebar .nav-item.active::before { background: var(--accent-lav); box-shadow: 0 0 10px rgba(167, 139, 250, 0.75); }
 
-/* Busca da sidebar (revisão 19/07, v2 minimizada): linha própria abaixo da marca.
-   Em repouso é só a lupa (ícone 34px); quando a palette abre (clique ou Ctrl+K),
-   body ganha .palette-open e o botão se expande na caixinha "Buscar · Ctrl K".
-   max-width anima (px→px); width:100% fixo pro conteúdo não reflowar no meio. */
+/* Busca da sidebar (revisão 20/07, v2 fixa): caixinha "Buscar · Ctrl K" sempre
+   visível em linha própria abaixo da marca (padrão Notion/Linear). Clique abre
+   a palette; recolhida (60px) ela vira ícone-só. */
 .sidebar .side-search {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  max-width: 34px;
   height: 34px;
-  padding: 0 8px;
+  padding: 0 10px;
   margin: 0 0 20px;
-  background: none;
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-dim);
   cursor: pointer;
   overflow: hidden;
   white-space: nowrap;
-  transition: max-width 240ms var(--ease), color 180ms var(--ease), background 180ms var(--ease), border-color 180ms var(--ease);
+  transition: color 180ms var(--ease), background 180ms var(--ease), border-color 180ms var(--ease);
 }
 .sidebar .side-search svg { flex: 0 0 auto; }
-.sidebar .side-search:hover { color: var(--text); background: rgba(167, 139, 250, 0.08); }
-.side-search-label { font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 180ms var(--ease); }
+.sidebar .side-search:hover { color: var(--text); border-color: var(--accent-lav); background: rgba(167, 139, 250, 0.08); }
+.side-search-label { font-size: 13px; font-weight: 500; }
 .side-search-kbd {
   margin-left: auto;
   font-size: 10px;
@@ -383,17 +381,7 @@ export const SHELL_CSS = `
   border-radius: 4px;
   padding: 1px 5px;
   color: var(--text-subtle);
-  opacity: 0;
-  transition: opacity 180ms var(--ease);
 }
-body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search {
-  max-width: 184px;
-  border-color: var(--border);
-  background: var(--surface-1);
-  color: var(--text);
-}
-body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search .side-search-label,
-body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search .side-search-kbd { opacity: 1; }
 
 /* Rodapé da sidebar (redesign 19/07): menu do usuário (botão avatar + nome que
    abre popover pra cima com Configurações/Tema/Trocar foto/Sair) + botão Recolher
@@ -505,13 +493,22 @@ body.palette-open .shell:not(.sidebar-collapsed) .sidebar .side-search .side-sea
 }
 .shell.sidebar-collapsed .sidebar .logo-text,
 .shell.sidebar-collapsed .sidebar .nav-label,
-.shell.sidebar-collapsed .sidebar .sidebar-email {
+.shell.sidebar-collapsed .sidebar .sidebar-email,
+.shell.sidebar-collapsed .sidebar .side-search-label,
+.shell.sidebar-collapsed .sidebar .side-search-kbd {
   display: none;
 }
-/* Recolhida: a lupa segue visível/clicável — centrada, sempre ícone-só (a
-   expansão da caixinha não roda com 60px de largura). */
+/* Recolhida: a caixinha não cabe em 60px — a busca vira lupa ícone-só centrada. */
 .shell.sidebar-collapsed .sidebar .logo { justify-content: center; margin-bottom: 24px; }
-.shell.sidebar-collapsed .sidebar .side-search { margin-left: auto; margin-right: auto; }
+.shell.sidebar-collapsed .sidebar .side-search {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+  margin-left: auto;
+  margin-right: auto;
+  background: none;
+  border-color: transparent;
+}
 .shell.sidebar-collapsed .sidebar .nav-item {
   justify-content: center;
   padding-left: 0;
