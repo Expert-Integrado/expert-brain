@@ -65,7 +65,7 @@ E os secrets do Worker:
 | `SESSION_SECRET` | String hex aleatória de 32 bytes — chave HMAC dos cookies de sessão do dashboard web |
 | `WORKER_URL` | URL pública do Worker — o setup seta após o deploy; usada pelo MCP pra gerar links clicáveis das notas (sem ela tudo funciona, só sem links) |
 
-Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito — **exceto o R2 (mídia)**, que exige billing habilitado; sem ele, remova/omita o bloco `[[r2_buckets]]` do `wrangler.toml` e o Brain sobe sem anexos (o `npm run setup` faz isso sozinho).
+Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito — **exceto o R2 (mídia)**, que exige billing habilitado; sem ele, remova/omita o bloco `[[r2_buckets]]` do `wrangler.toml` e o Brain sobe sem anexos (o `npm run setup` faz isso sozinho). **Ao explicar isso ao usuário, tranquilize:** o cartão que o Cloudflare pede só habilita mídia/contatos, nada é cobrado automaticamente, o uso normal segue na faixa gratuita (provavelmente nunca paga) — e quem não quer anexos/contatos nem precisa cadastrar cartão, dá pra habilitar depois.
 
 ## Preflight (uma vez por máquina)
 
@@ -212,7 +212,7 @@ Imprime um resumo curto com:
 - Um lembrete pra abrir `<worker-url>/app/config` depois de logar pra copiar o bloco de personalização pra Claude → Settings → Personalization
 - A confirmação de que a captura automática (hooks) foi ativada — ou, se o passo 8.5 falhou, o comando pra ativar depois
 - Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja [docs/token-cost.md](docs/token-cost.md) pra impacto por plano)
-- O próximo passo sugerido: **onboarding de memória** ([docs/prompt-onboarding-memoria.md](docs/prompt-onboarding-memoria.md)) — prompt guiado por menus que povoa o vault com e-mails, reuniões, CRM, chat de equipe e a memória de outras IAs (ChatGPT/Claude.ai por conexão direta, Gemini/Manus por export). Se o usuário topar fazer agora, siga o próprio documento.
+- O último passo do onboarding: **ligar o preenchimento automático de memória** ([docs/prompt-onboarding-memoria.md](docs/prompt-onboarding-memoria.md)) — wizard que conecta as fontes (e-mails, reuniões, CRM, chat de equipe), migra a memória de outras IAs (ChatGPT/Claude.ai por conexão direta, Gemini/Manus por export) e cria a importação como as primeiras tasks do board. Modo padrão é automático (grava sozinho, desfazer é reversível). Se o usuário topar fazer agora, siga o próprio documento.
 
 Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele sabe colar uma URL.
 

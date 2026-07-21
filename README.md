@@ -131,7 +131,7 @@ npm run setup
 
 Isso roda `scripts/setup.mjs`, que faz em um comando o que seria um runbook de 11 passos: verifica a autenticação, copia `wrangler.example.toml` → `wrangler.toml`, pergunta e-mail + senha de dono (12+ caracteres), **cria os recursos na sua conta Cloudflare** (D1, Vectorize, os 2 namespaces KV — pula o que já existir, é idempotente), grava os IDs reais no `wrangler.toml`, gera o hash PBKDF2 da senha + `SESSION_SECRET`, sobe os secrets (`wrangler secret put`), faz `wrangler deploy`, chama `POST /setup/provision` pra rodar as migrations no D1, e instala os hooks de captura automática do Claude Code (se preferir rodar depois: `node scripts/install-claude-hooks.mjs <url>`). Ao final imprime a URL do Worker, o comando MCP e o link do dashboard.
 
-> Sem billing habilitado na Cloudflare (R2 exige, mesmo dentro do free tier)? O setup detecta e sobe **sem mídia** — todo o resto funciona normal.
+> Sem billing habilitado na Cloudflare (R2 exige, mesmo dentro do free tier)? O setup detecta e sobe **sem mídia** — todo o resto funciona normal. E se o Cloudflare pedir um **cartão** pra habilitar mídia/contatos: nada é cobrado automaticamente — o cartão só destrava recursos que seguem na faixa gratuita, e no uso normal você provavelmente nunca paga nada. Não quer anexos nem contatos? Nem precisa cadastrar; dá pra habilitar depois.
 
 Pra reprovisionar do zero (trocar senha, recriar recursos): `npm run setup -- --reinstall`.
 
@@ -149,7 +149,7 @@ claude mcp add --transport http expert-brain https://<seu-worker>.workers.dev/mc
 
 A primeira conexão abre o fluxo OAuth 2.1 no browser. Depois, abra `/app/config` no console e cole o bloco de instruções do dono em *Claude → Settings → Personalization → Custom instructions* — ele entra no handshake de todo agente conectado.
 
-Com o MCP conectado, o próximo passo é **povoar o Brain com a sua memória real** — e-mails, reuniões, CRM, chat de equipe, e a memória que você já construiu no ChatGPT/Claude.ai/Gemini: siga o [onboarding de memória](docs/prompt-onboarding-memoria.md), um prompt guiado por menus que colhe tudo com verificação e só grava o que você aprovar.
+Com o MCP conectado, o último passo é **ligar o preenchimento automático** — o Brain colhe sozinho e-mails, reuniões, CRM, chat de equipe e a memória que você já construiu no ChatGPT/Claude.ai/Gemini, e cria a importação como as primeiras tasks do seu board: siga o [onboarding de memória](docs/prompt-onboarding-memoria.md). Você não aprova entrada por entrada; desfaz o que não quiser (tudo é reversível).
 
 ### 6. (Opcional) O segundo Worker: vault de contatos
 
