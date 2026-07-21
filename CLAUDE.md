@@ -194,7 +194,7 @@ Esperado: `{"configured":true,"notes":0,"edges":0,...}`. Se `configured` vier `f
 
 ### 8.5. Instala a camada cliente (captura automática)
 
-Sem este passo o Brain fica **reativo** (só salva quando o usuário pede). Instala os 7 hooks do Claude Code que fazem o salvar/lembrar proativo:
+Sem este passo o Brain fica **reativo** (só salva quando o usuário pede). Instala os 6 hooks do Claude Code que fazem o salvar/lembrar proativo:
 
 ```bash
 node scripts/install-claude-hooks.mjs "<worker-url>"

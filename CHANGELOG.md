@@ -4,6 +4,7 @@ Todas as mudanças relevantes do Expert Brain são registradas aqui. Formato ins
 
 ## [Unreleased]
 
+- **Fim do `overdue-nudge` + rate-limit no aviso de tasks da abertura** (`scripts/claude-hooks/`): o hook `expert-brain-overdue-nudge.cjs` (que cobrava task vencida DENTRO da sessão a cada 2h depois de 5h de sessão aberta) foi removido do pipeline — eram avisos de task demais. Agora o único aviso de tarefas é o da abertura de sessão, e ele ganhou rate-limit: aparece no máximo 1x por período do dia (manhã/tarde/noite, no fuso local da máquina) e nunca em retomada de sessão (`source=resume`), então abrir várias sessões no mesmo dia não vira cobrança o tempo todo. Pipeline caiu de 7 para 6 hooks; instalações existentes têm o `.cjs` órfão apagado e a entrada purgada do `settings.json` ao re-rodar `scripts/install-claude-hooks.mjs`.
 - **Protocolo de granularidade nos hooks embarcados** (`scripts/claude-hooks/`): o mandato "tudo que o usuário pedir vira task" deu lugar à regra de granularidade — pedido pontual vira task direta e derivados viram subtarefas dela (`update_subtask`); software/iniciativa grande vira projeto com 1 card por módulo, nunca 1 card por ideia; na dúvida entre card e subtask, subtask. Textos atualizados em session-start, capture-nudge, postcompact e stop-sweep; alinha os hooks à filosofia já documentada no registry ("trabalho multi-parte = UM card com subtarefas, nunca N cards irmãos"). Instalações existentes recebem os textos novos ao re-rodar `scripts/install-claude-hooks.mjs`.
 
 ## [3.0.0] — 2026-07-07

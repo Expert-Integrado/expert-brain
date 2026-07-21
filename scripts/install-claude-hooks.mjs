@@ -6,13 +6,12 @@
 // hooks client-side do Claude Code. Este script instala essa camada na maquina do
 // usuario — e o que faz o Brain "salvar sozinho".
 //
-// Pipeline instalado (7 hooks):
+// Pipeline instalado (6 hooks):
 //   SessionStart      -> prime de comportamento (recall-first, save_note na hora, save_task).
-//                        Matcher startup|resume|clear: NAO roda na retomada pos-compactacao —
-//                        cobranca de task vencida e exclusiva da ABERTURA da sessao.
+//                        Matcher startup|resume|clear. O aviso de tasks (list_tasks_due_today)
+//                        tem RATE-LIMIT: 1x por periodo do dia (manha/tarde/noite, fuso local)
+//                        e NUNCA em retomada de sessao (source=resume).
 //   UserPromptSubmit  -> capture-nudge: sinais de prazo/decisao/insight/metrica/contato
-//   UserPromptSubmit  -> overdue-nudge: sessao aberta ha 5h+ -> lembrar SO task VENCIDA
-//                        (nunca "vence hoje"), no maximo 1x a cada 2h
 //   PostToolUse       -> audit: registra cada save_* (alimenta a varredura)
 //   Stop              -> varredura de silencio: sessao longa sem nenhum save -> 1 lembrete
 //   PreCompact        -> ultima chance com contexto inteiro
@@ -50,7 +49,6 @@ const TEMPLATES_DIR = path.join(__dirname, 'claude-hooks');
 const HOOKS = [
   { file: 'expert-brain-session-start.cjs', event: 'SessionStart', matcher: 'startup|resume|clear' },
   { file: 'expert-brain-capture-nudge.cjs', event: 'UserPromptSubmit' },
-  { file: 'expert-brain-overdue-nudge.cjs', event: 'UserPromptSubmit' },
   {
     file: 'expert-brain-audit.cjs',
     event: 'PostToolUse',
@@ -62,7 +60,8 @@ const HOOKS = [
 ];
 
 // arquivos de versoes antigas deste pacote que devem sumir do disco ao atualizar
-const SUPERSEDED_FILES = ['expert-brain-task-nudge.cjs'];
+// (a entrada no settings.json ja e purgada pelo isManagedCommand; isto apaga o .cjs orfao)
+const SUPERSEDED_FILES = ['expert-brain-task-nudge.cjs', 'expert-brain-overdue-nudge.cjs'];
 
 // Uma entrada de hook e NOSSA (gerenciada) se o comando referencia um arquivo
 // `expert-brain-*.cjs` — cobre a forma antiga com `~` e a nova com caminho absoluto.
