@@ -1,5 +1,6 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, it, expect } from 'vitest';
+import type { AuthContext } from '../../src/env.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { registerLink } from '../../src/mcp/tools/link.js';
 
@@ -14,9 +15,9 @@ describe('link', () => {
     await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('a','A','','tl','[]',null,0,0,null)`).run();
     await E.DB.prepare(`INSERT INTO notes (id,title,body,tldr,domains,kind,created_at,updated_at,deleted_at) VALUES ('b','B','','tl','[]',null,0,0,null)`).run();
   });
-  function reg() {
+  function reg(auth?: AuthContext) {
     const r: any = {};
-    registerLink({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+    registerLink({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, auth);
     return r;
   }
 
@@ -57,6 +58,25 @@ describe('link', () => {
     // nenhuma edge criada
     const count = await E.DB.prepare('SELECT count(*) c FROM edges').first();
     expect(count.c).toBe(0);
+  });
+
+  // Fix 21/07/2026 (curadoria): o lookup dos endpoints ignorava o escopo `private`
+  // — nota privada era "not found" MESMO pra credencial com o escopo, então nota
+  // privada nunca podia ganhar edge via MCP (get_note lia, link recusava).
+  it('nota privada: link funciona COM escopo private e segue "not found" sem ele', async () => {
+    await E.DB.prepare(`UPDATE notes SET private = 1 WHERE id = 'b'`).run();
+    const why = 'shared feedback-loop mechanism substantive text';
+
+    const noScope = await reg({ email: 'o@x', loggedInAt: 0, scopes: 'full', keyId: 'k1' })
+      .link({ from_id: 'a', to_id: 'b', relation_type: 'analogous_to', why });
+    expect(noScope.isError).toBe(true);
+    expect(noScope.content[0].text).toContain('not found');
+
+    const withScope = await reg({ email: 'o@x', loggedInAt: 0, scopes: 'full,private', keyId: 'k2' })
+      .link({ from_id: 'a', to_id: 'b', relation_type: 'analogous_to', why });
+    expect(withScope.isError).toBeUndefined();
+    const count = await E.DB.prepare('SELECT count(*) c FROM edges').first();
+    expect(count.c).toBe(1);
   });
 
   it('duplicate returns duplicate:true without id and keeps original why', async () => {

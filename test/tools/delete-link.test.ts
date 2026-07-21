@@ -1,13 +1,14 @@
 import { env } from 'cloudflare:test';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
+import type { AuthContext } from '../../src/env.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { registerDeleteLink } from '../../src/mcp/tools/delete-link.js';
 
 const E = env as any;
 
-function reg() {
+function reg(auth?: AuthContext) {
   const r: any = {};
-  registerDeleteLink({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E);
+  registerDeleteLink({ registerTool: (n: string, _m: any, h: any) => { r[n] = h; } } as any, E, auth);
   return r;
 }
 
@@ -48,6 +49,24 @@ describe('delete_link', () => {
     // → chave nova). invalidateGraphCache virou no-op documentado — não chama mais
     // GRAPH_CACHE.delete. O que importa é que a edge sumiu do D1 (asserção acima).
     expect(E.GRAPH_CACHE.delete).not.toHaveBeenCalled();
+  });
+
+  // Selo de privacidade (21/07/2026, alinhado ao fix do link): endpoint privado
+  // fora do escopo do caller = mesma resposta de edge inexistente (não vaza a
+  // tripla); com escopo, deleta normal.
+  it('edge com endpoint privado: some sem escopo private, deletável com ele', async () => {
+    await seedEdge('a', 'b', 'analogous_to', 'shared feedback loop mechanism here');
+    await E.DB.prepare(`UPDATE notes SET private = 1 WHERE id = 'b'`).run();
+
+    const noScope = await reg({ email: 'o@x', loggedInAt: 0, scopes: 'full', keyId: 'k1' })
+      .delete_link({ from_id: 'a', to_id: 'b', relation_type: 'analogous_to', confirm: true });
+    expect(noScope.isError).toBe(true);
+    expect((await E.DB.prepare(`SELECT count(*) c FROM edges`).first()).c).toBe(1);
+
+    const withScope = await reg({ email: 'o@x', loggedInAt: 0, scopes: 'full,private', keyId: 'k2' })
+      .delete_link({ from_id: 'a', to_id: 'b', relation_type: 'analogous_to', confirm: true });
+    expect(withScope.isError).toBeUndefined();
+    expect((await E.DB.prepare(`SELECT count(*) c FROM edges`).first()).c).toBe(0);
   });
 
   it('nonexistent triple: isError, suggests inverse direction + expand, no DB change', async () => {

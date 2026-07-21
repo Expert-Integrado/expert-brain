@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, canSeePrivate } from '../helpers.js';
 import { EDGE_TYPES, type EdgeType, getNoteById, insertEdge } from '../../db/queries.js';
 import { newId } from '../../util/id.js';
 import { isLazyWhy, lazyWhyError } from '../why-quality.js';
@@ -29,7 +29,13 @@ interface LinkInput {
   why: string;
 }
 
-export function registerLink(server: any, env: Env): void {
+export function registerLink(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 31), corrigido na curadoria de 21/07/2026: o lookup
+  // dos endpoints ignorava o escopo `private` e devolvia "not found" pra nota
+  // privada MESMO quando a credencial podia vê-la (get_note lia, link recusava)
+  // — nota privada nunca podia ganhar edge via MCP. Sem escopo, o "not found"
+  // continua (não vaza que a nota existe).
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'link',
     {
@@ -55,8 +61,8 @@ export function registerLink(server: any, env: Env): void {
         return toolError(lazyWhyError());
       }
       const [from, to] = await Promise.all([
-        getNoteById(env, input.from_id),
-        getNoteById(env, input.to_id),
+        getNoteById(env, input.from_id, false, seePrivate),
+        getNoteById(env, input.to_id, false, seePrivate),
       ]);
       if (!from) {
         return toolError(`Note '${input.from_id}' not found. Call recall() to discover the correct id. Do NOT retry with this id.`);

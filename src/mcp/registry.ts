@@ -104,8 +104,10 @@ export function registerAllTools(server: any, env: Env, auth: AuthContext): void
   registerRecall(reg, env, auth);
   registerExpand(reg, env, auth);
   registerGetNote(reg, env, auth);
-  registerLink(reg, env);
-  registerDeleteLink(reg, env);
+  // Recebem `auth` (fix 21/07/2026): o lookup dos endpoints respeita o escopo
+  // `private` — antes, nota privada era "not found" até pra quem podia vê-la.
+  registerLink(reg, env, auth);
+  registerDeleteLink(reg, env, auth);
   registerStats(reg, env, auth);
   registerReembed(reg, env);
   // Tasks (migração ClickUp → Brain native): mesmo vault, kind='task'.

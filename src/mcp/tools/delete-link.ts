@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import type { Env } from '../../env.js';
-import { safeToolHandler, toolError, toolSuccess } from '../helpers.js';
-import { EDGE_TYPES, type EdgeType, getEdge, deleteEdge } from '../../db/queries.js';
+import type { Env, AuthContext } from '../../env.js';
+import { safeToolHandler, toolError, toolSuccess, canSeePrivate } from '../helpers.js';
+import { EDGE_TYPES, type EdgeType, getEdge, deleteEdge, getNoteById } from '../../db/queries.js';
 import { invalidateGraphCache } from '../../web/graph-data.js';
 
 const inputSchema = {
@@ -31,7 +31,11 @@ interface DeleteLinkInput {
   confirm: true;
 }
 
-export function registerDeleteLink(server: any, env: Env): void {
+export function registerDeleteLink(server: any, env: Env, auth?: AuthContext): void {
+  // Selo de privacidade (spec 31, alinhado ao fix do link em 21/07/2026): edge
+  // com endpoint privado só é visível/deletável pra credencial com escopo
+  // `private`; sem escopo, mesmo "not found" de edge inexistente (não vaza).
+  const seePrivate = canSeePrivate(auth);
   server.registerTool(
     'delete_link',
     {
@@ -49,8 +53,14 @@ export function registerDeleteLink(server: any, env: Env): void {
       // Busca a edge pela tripla pra citar o why na resposta — e pra distinguir
       // "não existe" de "removida". Edge direcional: errar from/to invertidos é o
       // erro mais provável; o texto sugere a direção inversa.
-      const edge = await getEdge(env, input.from_id, input.to_id, input.relation_type);
-      if (!edge) {
+      const [edge, from, to] = await Promise.all([
+        getEdge(env, input.from_id, input.to_id, input.relation_type),
+        getNoteById(env, input.from_id, false, seePrivate),
+        getNoteById(env, input.to_id, false, seePrivate),
+      ]);
+      // Endpoint fora da visão do caller (privado sem escopo) = mesma resposta de
+      // edge inexistente, senão o erro confirmaria que a tripla existe.
+      if (!edge || !from || !to) {
         return toolError(
           `No '${input.relation_type}' edge from '${input.from_id}' to '${input.to_id}'. ` +
           `Edges are directional — try the inverse direction (from_id and to_id swapped), ` +
