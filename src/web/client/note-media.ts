@@ -42,6 +42,14 @@ async function load() {
     if (!res.ok) throw new Error(`media list ${res.status}`);
     const data = await res.json();
     current = (data.media || []) as MediaView[];
+    // Atalho da sidebar do detalhe de task (20/07): contagem acompanha a grade
+    // (upload/remoção re-chamam load()). Página sem o atalho (nota) ignora.
+    const attachLabel = document.querySelector<HTMLElement>('[data-attach-label]');
+    if (attachLabel) {
+      attachLabel.textContent = current.length > 0
+        ? `${current.length} arquivo${current.length === 1 ? '' : 's'}`
+        : 'Adicionar anexo';
+    }
     grid.innerHTML = current.map((m) =>
       `<div class="media-tile" data-id="${esc(m.id)}" title="${esc(m.original_filename || m.kind)}">${tileInner(m)}</div>`
     ).join('');

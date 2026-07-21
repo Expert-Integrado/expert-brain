@@ -37,6 +37,7 @@ import {
 import { validateDomains } from '../db/validation.js';
 import { listTaskActivity } from '../db/task-activity.js';
 import { listTaskSubtasks, subtaskProgress, type TaskSubtask } from '../db/subtasks.js';
+import { listMediaByNote } from '../db/media-queries.js';
 import { reembedNoteIfNeeded } from '../db/note-write.js';
 import { applyMentions } from '../mcp/mentions.js';
 import { newId } from '../util/id.js';
@@ -1253,7 +1254,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
   // endpoint devolve a URL (uma vez). expired = tinha share mas passou da validade.
   // Thread de comentários (spec 53): últimos 500 em ordem cronológica. O dono pode
   // apagar qualquer um (deleteTaskId habilita o botão de moderação por item).
-  const [comments, taxonomy, taskMentions, allUsers, taskAssignees, createdBy, subtasks] = await Promise.all([
+  const [comments, taxonomy, taskMentions, allUsers, taskAssignees, createdBy, subtasks, taskMedia] = await Promise.all([
     listTaskComments(env, task.id, 500, 0),
     getTaxonomyConfig(env),
     // Menções (spec 62): contatos que esta task cita (chips de leitura + link).
@@ -1264,6 +1265,9 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
     resolveActorProfile(env, task.created_by),
     // Subtarefas/checklist (spec 38).
     listTaskSubtasks(env, task.id),
+    // Contagem de anexos pro atalho da sidebar (rodada 20/07, referência
+    // ClickUp) — a seção continua no rodapé; a lateral só resume e ancora.
+    listMediaByNote(env, task.id).catch(() => []),
   ]);
   // Origem (spec 62): nota que originou a task ("Criar task desta nota").
   const originNote = task.origin_note_id
@@ -1617,6 +1621,13 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
             <span class="task-sidebar-lbl">Áreas</span>
             <span class="task-edit-domains">${domainsToBadges(task.domains, taxonomy)}</span>
           </div>
+          <div class="task-sidebar-field">
+            <span class="task-sidebar-lbl">Anexos</span>
+            <a class="task-sidebar-attach" href="#anexos" title="Ir pros anexos">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span data-attach-label>${taskMedia.length > 0 ? `${taskMedia.length} arquivo${taskMedia.length === 1 ? '' : 's'}` : 'Adicionar anexo'}</span>
+            </a>
+          </div>
           ${taskMentions.length ? `
           <div class="task-sidebar-field">
             <span class="task-sidebar-lbl">Contatos</span>
@@ -1636,7 +1647,7 @@ export async function handleTaskDetail(req: Request, env: Env, id: string): Prom
       </div>
     </div>
 
-    <section class="note-media" data-note-id="${esc(task.id)}">
+    <section class="note-media" id="anexos" data-note-id="${esc(task.id)}">
       <h2>Anexos</h2>
       <div id="media-grid" class="media-grid"></div>
       <label id="media-dropzone" class="media-dropzone">
@@ -1830,6 +1841,12 @@ const TASK_DETAIL_CSS = `
 .task-sidebar-field { display:flex; flex-direction:column; gap:7px; }
 .task-sidebar-lbl { font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--text-subtle); font-weight:600; }
 .task-sidebar-val { font-size:13px; color:var(--text); }
+/* Atalho de anexos na lateral (20/07, referência ClickUp): clipe + contagem,
+   pequeno; clique ancora na seção Anexos do rodapé. O client (note-media)
+   atualiza a contagem após upload/remoção. */
+.task-sidebar-attach { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--text-dim); text-decoration:none; transition:color 140ms var(--ease); }
+.task-sidebar-attach:hover { color:var(--accent-lav); }
+.task-sidebar-attach svg { flex:none; }
 .task-sidebar-dates { gap:10px; }
 .task-sidebar-dates > div { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
 /* Responsáveis estilo ClickUp (spec 74): dots (mesma classe do board, spec 37)

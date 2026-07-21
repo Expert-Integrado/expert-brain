@@ -58,6 +58,26 @@ describe('detalhe de task — sidebar de metadados em duas colunas (spec 52)', (
     expect(html).toContain('task-detail-sidebar');
   });
 
+  it('atalho de anexos na sidebar (20/07, referência ClickUp): clipe + contagem ancorando na seção', async () => {
+    await seedTask('t1');
+    const html = await detail('t1');
+    // Sem anexo: rótulo vira convite; a âncora leva pra seção do rodapé.
+    expect(html).toMatch(/<a class="task-sidebar-attach" href="#anexos"/);
+    expect(html).toContain('data-attach-label>Adicionar anexo');
+    expect(html).toContain('<section class="note-media" id="anexos"');
+    // Com anexo: contagem no singular/plural.
+    await E.DB.prepare(
+      `INSERT INTO note_media (id, note_id, kind, r2_key, content_hash, mime_type, size_bytes, original_filename, created_at)
+       VALUES ('m1','t1','image','sha256/x','x','image/png',10,'a.png',1000)`
+    ).run();
+    expect(await detail('t1')).toContain('data-attach-label>1 arquivo<');
+    await E.DB.prepare(
+      `INSERT INTO note_media (id, note_id, kind, r2_key, content_hash, mime_type, size_bytes, original_filename, created_at)
+       VALUES ('m2','t1','document','sha256/y','y','application/pdf',10,'b.pdf',1001)`
+    ).run();
+    expect(await detail('t1')).toContain('data-attach-label>2 arquivos<');
+  });
+
   it('funil de etapas no topo substitui o select de coluna: chevrons por coluna ativa, atual marcada (spec 74)', async () => {
     await seedTask('t1', 'in_progress');
     const html = await detail('t1');

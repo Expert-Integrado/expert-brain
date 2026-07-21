@@ -5,7 +5,7 @@ export const ASSET_HASHES: Record<string, string> = {
   "graph3d.bundle.js": "6a02e91526cf",
   "notes.bundle.js": "5a335a2cc7c2",
   "local-graph.bundle.js": "a488c9001287",
-  "note-media.bundle.js": "bda870b738f5",
+  "note-media.bundle.js": "061e958c60cb",
   "note-edit.bundle.js": "6c24ca7c428c",
   "shell.bundle.js": "24ad12c455e7",
   "tasks.bundle.js": "2e847c84fd0b",
