@@ -188,9 +188,22 @@ interface BoardProject {
   archived: boolean;
 }
 
+// Usuário no payload do board (pedido 21/07): alimenta o select de filtro por
+// responsável no painel de filtros. Ativos sempre; arquivado SÓ quando ainda é
+// responsável de alguma task do board (senão a task dele fica inalcançável pelo
+// filtro — a bolinha segue no card, então a opção precisa existir; mesmo padrão
+// do optgroup "Arquivados" do filtro de projeto).
+interface BoardUser {
+  id: string;
+  name: string;
+  type: 'person' | 'agent';
+  archived: boolean;
+}
+
 interface BoardPayload {
   columns: BoardColumn[];
   projects: BoardProject[];
+  users: BoardUser[];
   // Mailbox (spec 82): contagem de não-lidas por usuário (badge da toolbar).
   mailbox_unread: Array<{ id: string; name: string; count: number }>;
   // "Pendências com você" (19/07, substitui o banner "Aguardando você" da spec 89):
@@ -281,7 +294,28 @@ async function buildBoard(env: Env, now: number): Promise<BoardPayload> {
     color: p.color,
     archived: p.archived_at !== null,
   }));
-  return { columns, projects, mailbox_unread: mailboxInfo.unreadByUser, pending };
+  // Usuários pro filtro por responsável (dono primeiro, depois pessoas, depois
+  // agentes; alfabético dentro do grupo; arquivados por último). Arquivado só
+  // entra se ainda é responsável de task neste board — sem isso a task dele não
+  // seria alcançável por nenhum valor do filtro.
+  const assignedIds = new Set<string>();
+  for (const dots of assigneesById.values()) for (const d of dots) assignedIds.add(d.id);
+  const users: BoardUser[] = allUsers
+    .filter((u) => u.archived_at === null || assignedIds.has(u.id))
+    .sort((a, b) => {
+      const aArch = a.archived_at !== null, bArch = b.archived_at !== null;
+      if (aArch !== bArch) return aArch ? 1 : -1;
+      if (a.is_owner !== b.is_owner) return a.is_owner ? -1 : 1;
+      if (a.type !== b.type) return a.type === 'person' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    })
+    .map((u) => ({
+      id: u.id,
+      name: u.name,
+      type: u.type === 'agent' ? 'agent' as const : 'person' as const,
+      archived: u.archived_at !== null,
+    }));
+  return { columns, projects, users, mailbox_unread: mailboxInfo.unreadByUser, pending };
 }
 
 // Total de tasks abertas (categorias open + in_progress) no board — pro contador do
@@ -308,8 +342,8 @@ export async function handleTasksData(req: Request, env: Env): Promise<Response>
     return json({ now, horizon_hours: horizon, tasks: rows.map((t) => toView(t, now)) });
   }
 
-  const { columns, projects, mailbox_unread, pending } = await buildBoard(env, now);
-  return json({ now, columns, projects, mailbox_unread, pending });
+  const { columns, projects, users, mailbox_unread, pending } = await buildBoard(env, now);
+  return json({ now, columns, projects, users, mailbox_unread, pending });
 }
 
 // POST /app/tasks/move — { id, column_id }. Move um card pra uma coluna do Kanban
@@ -1346,6 +1380,28 @@ function renderProjectFilter(projects: BoardProject[], selected: string): string
   </select>`;
 }
 
+// Select de filtro por responsável (pedido 21/07): Todos | Sem responsável |
+// pessoas | agentes | arquivados-com-task (optgroups). Mesmo padrão visual do
+// filtro de projeto; o estado vive só no client (memória da página, como
+// prioridade/tag). As OPTIONS são re-populadas pelo client a cada load() a
+// partir de payload.users — mantenha o markup em sincronia com
+// refreshAssigneeFilterOptions (src/web/client/tasks.ts).
+function renderAssigneeFilter(users: BoardUser[]): string {
+  const opt = (value: string, label: string) => `<option value="${esc(value)}">${esc(label)}</option>`;
+  const persons = users.filter((u) => !u.archived && u.type === 'person');
+  const agents = users.filter((u) => !u.archived && u.type === 'agent');
+  const archived = users.filter((u) => u.archived);
+  const group = (label: string, items: BoardUser[]) =>
+    items.length ? `<optgroup label="${esc(label)}">${items.map((u) => opt(u.id, u.name)).join('')}</optgroup>` : '';
+  return `<select class="task-project-filter" id="task-assignee-filter" aria-label="Filtrar por responsável">
+    <option value="all" selected>Todos os responsáveis</option>
+    ${opt('none', 'Sem responsável')}
+    ${group('Pessoas', persons)}
+    ${group('Agentes', agents)}
+    ${group('Arquivados', archived)}
+  </select>`;
+}
+
 export async function handleTasksPage(req: Request, env: Env): Promise<Response> {
   const session = await requireSession(req, env);
   if (!session.ok) return session.response;
@@ -1355,8 +1411,8 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
   // catch global do worker e virava a página de erro FATAL inteira. Degrada pro
   // shell com banner + bundle — o "Tentar de novo" (client) recarrega os dados
   // in-place sem perder a navegação. Padrão análogo ao erro-por-card da home.
-  let boardData: { columns: BoardColumn[]; projects: BoardProject[]; pending: PendingItem[] } =
-    { columns: [], projects: [], pending: [] };
+  let boardData: { columns: BoardColumn[]; projects: BoardProject[]; users: BoardUser[]; pending: PendingItem[] } =
+    { columns: [], projects: [], users: [], pending: [] };
   let boardError = false;
   try {
     boardData = await buildBoard(env, now);
@@ -1364,7 +1420,7 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
     console.error('tasks: buildBoard falhou no SSR (degradando pro banner)', e);
     boardError = true;
   }
-  const { columns, projects, pending } = boardData;
+  const { columns, projects, users, pending } = boardData;
   const totalOpen = countOpenOnBoard(columns);
   const projectsById = new Map<string, BoardProject>(projects.map((p) => [p.id, p]));
 
@@ -1445,6 +1501,10 @@ export async function handleTasksPage(req: Request, env: Env): Promise<Response>
           <div class="task-filter-section">
             <span class="task-filter-section-label">Prioridade</span>
             <select class="task-project-filter" id="task-prio-filter" aria-label="Filtrar por prioridade">${prioFilterOptions}</select>
+          </div>
+          <div class="task-filter-section">
+            <span class="task-filter-section-label">Responsável</span>
+            ${renderAssigneeFilter(users)}
           </div>
           <div class="task-filter-section">
             <span class="task-filter-section-label">Etiquetas</span>

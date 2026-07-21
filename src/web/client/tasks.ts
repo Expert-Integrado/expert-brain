@@ -66,6 +66,9 @@ interface BoardData {
   now: number;
   columns: BoardColumn[];
   projects: BoardProject[];
+  // Filtro por responsável (pedido 21/07): ativos + arquivados que ainda têm
+  // task no board — re-popula o select a cada load().
+  users?: Array<{ id: string; name: string; type: 'person' | 'agent'; archived: boolean }>;
   // Mailbox (spec 82): não-lidas por usuário — chips na toolbar.
   mailbox_unread?: Array<{ id: string; name: string; count: number }>;
   // "Pendências com você" (19/07): perguntas de agentes + entregas pra aprovar,
@@ -85,6 +88,9 @@ let projectFilter = 'all';
 let searchQuery = '';
 let tagFilter = 'all';
 let prioFilter = 'all'; // 'all' | '1'..'4' | 'none'
+// Filtro por responsável (pedido 21/07): 'all' | 'none' | '<user_id>'. Mesmo
+// ciclo de vida da prioridade — memória da página, chip + "Limpar tudo".
+let assigneeFilter = 'all';
 // Filtro de vencimento por intervalo (pedido 10/07): "YYYY-MM-DD" ou '' (sem limite).
 // Compara direto com due_date (string ISO, ordem lexicográfica = ordem cronológica).
 let dateFrom = '';
@@ -132,6 +138,7 @@ async function load(): Promise<boolean> {
     projectsById = new Map((board.projects ?? []).map((p) => [p.id, p]));
     hideLoadError();
     refreshTagFilterOptions();
+    refreshAssigneeFilterOptions();
     render();
     renderPending();
     renderMailboxBadges();
@@ -325,6 +332,15 @@ function passesPrio(t: TaskView): boolean {
   return t.priority === Number(prioFilter);
 }
 
+// Filtro por responsável: 'none' = task sem NENHUM responsável; '<user_id>' =
+// o usuário está entre os responsáveis (task com mais de um conta pra cada um).
+function passesAssignee(t: TaskView): boolean {
+  if (assigneeFilter === 'all') return true;
+  const list = t.assignees ?? [];
+  if (assigneeFilter === 'none') return list.length === 0;
+  return list.some((a) => a.id === assigneeFilter);
+}
+
 // Intervalo de vencimento: com qualquer limite setado, task SEM prazo sai do board
 // (o usuário está explicitamente filtrando por data). Aplica em todas as colunas,
 // como busca/tag/projeto — "o que venceu em junho" também vale pra Concluído.
@@ -340,7 +356,7 @@ function passesDateRange(t: TaskView): boolean {
 // canceled mostram sempre o histórico recente, sem filtro. Busca + projeto + tag +
 // prioridade aplicam por cima em TODAS as colunas.
 function columnTasks(col: BoardColumn, now: number): TaskView[] {
-  let items = col.tasks.filter((t) => passesProject(t) && passesSearch(t) && passesTag(t) && passesPrio(t) && passesDateRange(t));
+  let items = col.tasks.filter((t) => passesProject(t) && passesSearch(t) && passesTag(t) && passesPrio(t) && passesAssignee(t) && passesDateRange(t));
   if (col.category === 'open' || col.category === 'in_progress') {
     items = items.filter((t) => passesFilter(t, now));
   }
@@ -835,6 +851,16 @@ function wirePrioFilter() {
   });
 }
 
+function wireAssigneeFilter() {
+  const sel = document.getElementById('task-assignee-filter') as HTMLSelectElement | null;
+  if (!sel) return;
+  sel.addEventListener('change', () => {
+    assigneeFilter = sel.value || 'all';
+    render();
+    syncFilterUI();
+  });
+}
+
 // Filtro de vencimento por intervalo (pedido 10/07): dois <input type="date"> na
 // toolbar + × pra limpar. Compõe por E com os quick-filters/busca/tag/projeto.
 function wireDateFilter() {
@@ -925,10 +951,34 @@ function refreshTagFilterOptions() {
   }
 }
 
+// Re-popula o select de responsável com os users do board recém-carregado
+// (mesmo racional do refreshTagFilterOptions: SSR degradado ou usuário criado/
+// arquivado com a aba aberta). Preserva a seleção quando o usuário ainda existe
+// como opção; senão volta pra 'all'. Markup espelha renderAssigneeFilter do SSR.
+function refreshAssigneeFilterOptions() {
+  const sel = document.getElementById('task-assignee-filter') as HTMLSelectElement | null;
+  const users = board?.users;
+  if (!sel || !users) return;
+  const opt = (value: string, label: string) => `<option value="${esc(value)}">${esc(label)}</option>`;
+  const group = (label: string, items: typeof users) =>
+    items.length ? `<optgroup label="${esc(label)}">${items.map((u) => opt(u.id, u.name)).join('')}</optgroup>` : '';
+  sel.innerHTML = [
+    `<option value="all">Todos os responsáveis</option>`,
+    opt('none', 'Sem responsável'),
+    group('Pessoas', users.filter((u) => !u.archived && u.type === 'person')),
+    group('Agentes', users.filter((u) => !u.archived && u.type === 'agent')),
+    group('Arquivados', users.filter((u) => u.archived)),
+  ].join('');
+  if (assigneeFilter !== 'all' && assigneeFilter !== 'none' && !users.some((u) => u.id === assigneeFilter)) {
+    assigneeFilter = 'all';
+  }
+  sel.value = assigneeFilter;
+}
+
 // ── Popover "Filtros" + chips + badge (rodada 6, Linear/Jira/NN-g) ──────────
 // O estado e a LÓGICA de filtragem não mudaram (passesPrio/Tag/DateRange/
 // Project acima) — aqui é só a superfície: botão com badge "Filtros · N",
-// popover com as 4 seções e linha de chips removíveis abaixo da toolbar.
+// popover com as 5 seções e linha de chips removíveis abaixo da toolbar.
 
 function isFilterPanelOpen(): boolean {
   const panel = document.getElementById('task-filter-panel');
@@ -980,11 +1030,13 @@ function wireFilterPopover() {
 }
 
 // Grupos ativos: prazo conta 1 (mesmo com os dois limites), prioridade 1,
-// etiquetas = quantidade selecionada (hoje o filtro é de UMA tag), projeto 1.
+// responsável 1, etiquetas = quantidade selecionada (hoje o filtro é de UMA
+// tag), projeto 1.
 function activeFilterGroups(): number {
   let n = 0;
   if (dateFrom || dateTo) n += 1;
   if (prioFilter !== 'all') n += 1;
+  if (assigneeFilter !== 'all') n += 1;
   if (tagFilter !== 'all') n += 1;
   if (projectFilter !== 'all') n += 1;
   return n;
@@ -1015,6 +1067,10 @@ function clearFilterGroup(group: string, apply = true) {
   } else if (group === 'prio') {
     prioFilter = 'all';
     const sel = document.getElementById('task-prio-filter') as HTMLSelectElement | null;
+    if (sel) sel.value = 'all';
+  } else if (group === 'assignee') {
+    assigneeFilter = 'all';
+    const sel = document.getElementById('task-assignee-filter') as HTMLSelectElement | null;
     if (sel) sel.value = 'all';
   } else if (group === 'tag') {
     tagFilter = 'all';
@@ -1056,14 +1112,24 @@ function projectChipLabel(): string {
   return `Projeto: ${p ? p.label : projectFilter}`;
 }
 
+// Nome do responsável vem do texto da opção selecionada no select (o SSR já
+// montou a lista de usuários; não há mapa id→nome no estado do client).
+function assigneeChipLabel(): string {
+  if (assigneeFilter === 'none') return 'Responsável: Sem responsável';
+  const sel = document.getElementById('task-assignee-filter') as HTMLSelectElement | null;
+  const label = sel?.selectedOptions[0]?.textContent?.trim();
+  return `Responsável: ${label || assigneeFilter}`;
+}
+
 // Chips "Propriedade: valor" abaixo da toolbar (badge nunca sozinho): o corpo
-// reabre o popover, o ✕ remove só aquele filtro, "Limpar tudo" zera os 4 grupos.
+// reabre o popover, o ✕ remove só aquele filtro, "Limpar tudo" zera os 5 grupos.
 function renderFilterChips() {
   const el = document.getElementById('task-filter-chips');
   if (!el) return;
   const chips: Array<{ group: string; label: string }> = [];
   if (dateFrom || dateTo) chips.push({ group: 'date', label: dateChipLabel() });
   if (prioFilter !== 'all') chips.push({ group: 'prio', label: prioChipLabel() });
+  if (assigneeFilter !== 'all') chips.push({ group: 'assignee', label: assigneeChipLabel() });
   if (tagFilter !== 'all') chips.push({ group: 'tag', label: `Etiqueta: ${tagFilter}` });
   if (projectFilter !== 'all') chips.push({ group: 'project', label: projectChipLabel() });
   if (chips.length === 0) {
@@ -1088,7 +1154,7 @@ function renderFilterChips() {
     });
   });
   document.getElementById('task-filter-clear-all')?.addEventListener('click', () => {
-    for (const g of ['date', 'prio', 'tag', 'project']) clearFilterGroup(g, false);
+    for (const g of ['date', 'prio', 'assignee', 'tag', 'project']) clearFilterGroup(g, false);
     render();
     syncFilterUI();
   });
@@ -1105,6 +1171,7 @@ wireFilters();
 wireProjectFilter();
 wireSearch();
 wirePrioFilter();
+wireAssigneeFilter();
 wireDateFilter();
 wireTagFilter();
 wireFilterPopover();

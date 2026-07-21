@@ -11,6 +11,9 @@ import {
   getProjectById,
   listTaskProjects,
   countTaskProjects,
+  createUser,
+  setUserArchived,
+  setTaskAssignees,
 } from '../src/db/queries.js';
 
 const E = env as any;
@@ -37,6 +40,7 @@ async function reset() {
   await runMigrations(E);
   await E.DB.exec('DELETE FROM notes');
   await E.DB.exec('DELETE FROM task_projects');
+  await E.DB.exec('DELETE FROM users WHERE is_owner = 0');
   await resetKanban();
 }
 
@@ -90,6 +94,34 @@ describe('GET /app/tasks/data — payload de projetos (spec 58)', () => {
     expect(t1.search_text).toContain('task t1');
     expect(t1.search_text).toContain('b');
   });
+
+  it('devolve users[] com ativos + arquivado só se tem task no board (filtro por responsável)', async () => {
+    await createUser(E, { id: 'user_ag', name: 'Zeta Agente', type: 'agent', bio: null, api_key_id: null }, 1);
+    await createUser(E, { id: 'user_p', name: 'Ana', type: 'person', bio: null, api_key_id: null }, 2);
+    await createUser(E, { id: 'user_arq', name: 'Arquivado Sem Task', type: 'person', bio: null, api_key_id: null }, 3);
+    await setUserArchived(E, 'user_arq', 999);
+    // Arquivado que AINDA é responsável de task no board: precisa continuar
+    // alcançável pelo filtro (a bolinha dele segue no card).
+    await createUser(E, { id: 'user_arq_task', name: 'Arquivado Com Task', type: 'person', bio: null, api_key_id: null }, 4);
+    await seedTask('t9', 'open');
+    await setTaskAssignees(E, 't9', ['user_arq_task'], 5);
+    await setUserArchived(E, 'user_arq_task', 999);
+
+    const res = await SELF.fetch('https://x/app/tasks/data', { headers: { accept: 'application/json', cookie: await cookie() } });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as any;
+    expect(Array.isArray(data.users)).toBe(true);
+    const ids = data.users.map((u: any) => u.id);
+    expect(ids).not.toContain('user_arq'); // arquivado sem task não é opção
+    expect(ids).toContain('user_arq_task'); // arquivado com task continua filtrável
+    // Dono (seed user_owner) primeiro; pessoa antes de agente; arquivado por último.
+    expect(ids[0]).toBe('user_owner');
+    expect(ids.indexOf('user_p')).toBeLessThan(ids.indexOf('user_ag'));
+    expect(ids.indexOf('user_ag')).toBeLessThan(ids.indexOf('user_arq_task'));
+    const ag = data.users.find((u: any) => u.id === 'user_ag');
+    expect(ag).toEqual({ id: 'user_ag', name: 'Zeta Agente', type: 'agent', archived: false });
+    expect(data.users.find((u: any) => u.id === 'user_arq_task').archived).toBe(true);
+  });
 });
 
 describe('SSR /app/tasks — filtro e breadcrumb de projeto (spec 58 + Onda 5)', () => {
@@ -118,13 +150,27 @@ describe('SSR /app/tasks — filtro e breadcrumb de projeto (spec 58 + Onda 5)',
     expect(html).toMatch(/id="task-filter-trigger"[^>]*aria-haspopup="true"[^>]*aria-expanded="false"/);
     expect(html).toMatch(/id="task-filter-panel"[^>]*hidden/);
     expect(html).toContain('id="task-filter-chips"');
-    for (const label of ['Prazo', 'Prioridade', 'Etiquetas', 'Projeto']) {
+    for (const label of ['Prazo', 'Prioridade', 'Responsável', 'Etiquetas', 'Projeto']) {
       expect(html).toContain(`<span class="task-filter-section-label">${label}</span>`);
     }
     // Contrato dos ids (getElementById dos wire*): mantidos e SEM duplicar.
-    for (const id of ['task-search', 'task-prio-filter', 'task-tag-filter', 'task-tag-search', 'task-tag-list', 'task-date-filter', 'task-project-filter', 'task-filter-trigger', 'task-filter-panel', 'task-filter-chips']) {
+    for (const id of ['task-search', 'task-prio-filter', 'task-assignee-filter', 'task-tag-filter', 'task-tag-search', 'task-tag-list', 'task-date-filter', 'task-project-filter', 'task-filter-trigger', 'task-filter-panel', 'task-filter-chips']) {
       expect(html.split(`id="${id}"`).length - 1).toBe(1);
     }
+  });
+
+  it('o select de responsável lista usuários ativos em optgroups e o "Sem responsável"', async () => {
+    await createUser(E, { id: 'user_ag', name: 'Agente VPS', type: 'agent', bio: null, api_key_id: null }, 1);
+    await createUser(E, { id: 'user_arq', name: 'Fantasma', type: 'person', bio: null, api_key_id: null }, 2);
+    await setUserArchived(E, 'user_arq', 999);
+    await seedTask('t1', 'open');
+    const res = await SELF.fetch('https://x/app/tasks', { headers: { cookie: await cookie() } });
+    const html = await res.text();
+    expect(html).toContain('Todos os responsáveis');
+    expect(html).toContain('<option value="none">Sem responsável</option>');
+    expect(html).toContain('<optgroup label="Agentes"><option value="user_ag">Agente VPS</option></optgroup>');
+    expect(html).toContain('<option value="user_owner">'); // dono sempre atribuível
+    expect(html).not.toContain('Fantasma'); // arquivado não é opção de filtro
   });
 });
 
