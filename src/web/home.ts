@@ -9,10 +9,9 @@ import { readCachedResurfaceDigest, isDigestEmpty } from '../digest/resurface.js
 import { renderDigestCard } from './notes.js';
 import { relativeDue } from '../util/time.js';
 import { JOURNAL_CSS } from './journal.js';
-import { getHomePrefs, HOME_BOX_KEYS, homeBoxAttrs, homeItemAttr, homeWideClass, homeHiddenClass, homeSizeToggleHtml, homeEditControlsHtml, HOME_RESIZE_HANDLE, type HomeBoxKey, type HomePrefs, type HomeSizes, type HomePrefsState } from './home-prefs.js';
+import { getHomePrefs, HOME_BOX_KEYS, homeBoxAttrs, homeItemAttr, homeSpanClass, homeHiddenClass, homeWidthControlsHtml, homeEditControlsHtml, HOME_RESIZE_HANDLE, resolveSpans, type HomeBoxKey, type HomePrefs, type HomeResolvedSpans, type HomePrefsState } from './home-prefs.js';
 import { renderInsightsCard } from './insights.js';
 import { brtYearMonth, getMonthInsightsCached } from '../db/insights-queries.js';
-import { fleetHomeStripHtml } from './fleet.js';
 import { buildPendingItems, pendingKindsLabel, PENDING_CSS } from './pending.js';
 import { pendingBlockHtml, type PendingItem } from '../util/task-badges.js';
 
@@ -35,7 +34,9 @@ const INBOX_PREVIEW = 20;
 const INBOX_SCAN_LIMIT = 200;
 
 const HOME_CSS = `
-.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 18px; align-items: start; }
+/* Grid em QUARTOS (rodada 6.2): 4 colunas fixas; todo card ocupa 1..4 quartos
+   (classe home-span-N do SSR). Em tela média vira 2 colunas, no mobile 1. */
+.home-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; align-items: start; }
 /* min-width:auto (default de item de grid) deixa o conteúdo min-content INFLAR as
    tracks — a Atividade (span total, chips nowrap no feed) estourava a página na
    horizontal. Todo filho da grid pode encolher abaixo do conteúdo. */
@@ -54,21 +55,32 @@ const HOME_CSS = `
 .home-card h2 { display: flex; align-items: center; justify-content: flex-start; gap: 10px; margin: 0 0 14px; flex: none; }
 .home-card h2 a { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--accent-lav); text-decoration: none; white-space: nowrap; }
 .home-card h2 a:hover { text-decoration: underline; }
-/* ── Largura do card (revisão 19/07): normal = 1 track do grid; expandido =
-   linha inteira. O toggle mora no header; em mobile (1 coluna) ele some. ── */
-.home-grid > .home-card-wide { grid-column: 1 / -1; }
-.home-size-toggle {
+/* ── Largura em quartos (rodada 6.2): home-span-N = N quartos; span 4 leva o
+   alias home-card-wide (CSS/testes legados). Controles ‹ › no header mudam um
+   quarto por clique; a alça do canto também muda arrastando pro lado. ── */
+.home-grid > .home-span-1 { grid-column: span 1; }
+.home-grid > .home-span-2 { grid-column: span 2; }
+.home-grid > .home-span-3 { grid-column: span 3; }
+.home-grid > .home-span-4, .home-grid > .home-card-wide { grid-column: 1 / -1; }
+@media (max-width: 1100px) {
+  .home-grid { grid-template-columns: repeat(2, 1fr); }
+  /* 3 quartos não existem com 2 colunas — vira linha inteira. */
+  .home-grid > .home-span-3 { grid-column: 1 / -1; }
+}
+@media (max-width: 767px) {
+  .home-grid { grid-template-columns: 1fr; }
+  .home-grid > .home-span-1, .home-grid > .home-span-2, .home-grid > .home-span-3 { grid-column: 1 / -1; }
+}
+.home-width-controls { flex: none; display: inline-flex; gap: 2px; align-items: center; margin-left: auto; }
+.home-card h2 a ~ .home-width-controls { margin-left: 0; }
+.home-width-btn {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
-  margin-left: auto; padding: 4px; background: none; border: none; border-radius: 6px;
+  padding: 4px; background: none; border: none; border-radius: 6px;
   color: var(--text-subtle); cursor: pointer;
   transition: color 140ms var(--ease), background 140ms var(--ease);
 }
-.home-card h2 a ~ .home-size-toggle { margin-left: 0; }
-.home-size-toggle:hover { color: var(--accent-lav); background: rgba(var(--accent-lav-rgb), 0.1); }
-/* Um ícone por estado — a classe do card decide, o client só troca a classe. */
-.home-card-wide .home-size-icon-expand { display: none; }
-.home-card:not(.home-card-wide) .home-size-icon-reduce { display: none; }
-@media (max-width: 767px) { .home-size-toggle { display: none; } }
+.home-width-btn:hover { color: var(--accent-lav); background: rgba(var(--accent-lav-rgb), 0.1); }
+@media (max-width: 767px) { .home-width-controls { display: none; } }
 /* Captura rápida do inbox DENTRO do card (Onda 8): o inbox saiu do menu — cria por aqui */
 .home-inbox-capture { display: flex; gap: 8px; margin: 0 0 12px; flex: none; }
 .home-inbox-capture input[type="text"] {
@@ -166,7 +178,7 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
    resize/toggle/controles (testes travam o markup); só o CSS os revela sob
    .home-grid.home-editing (classe togglada pelo botão Personalizar). ── */
 .home-grid:not(.home-editing) .home-resize,
-.home-grid:not(.home-editing) .home-size-toggle,
+.home-grid:not(.home-editing) .home-width-controls,
 .home-grid:not(.home-editing) .home-edit-controls { display: none; }
 .home-grid:not(.home-editing) .home-box-handle { cursor: default; touch-action: auto; }
 /* Borda tracejada nos cards em edição (afford "isto é editável"). */
@@ -297,10 +309,10 @@ function taskWhenHtml(t: TaskRow, now: number): string {
 // Card 1 — Hoje: tasks due hoje/atrasadas, com quick-complete (checkbox → mesmo
 // endpoint do board, POST /app/tasks/complete) + link pro board completo.
 // Exportado: testado isoladamente (sem D1/HTTP) em test/web/home.test.ts.
-export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
+export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs = {}, spans: HomeResolvedSpans = resolveSpans({ sizes: {} }), hidden: HomeBoxKey[] = []): string {
   if (tasks.length === 0) {
-    return `<section class="card home-card${homeWideClass('today', sizes)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}${homeEditControlsHtml('today', hidden)}</h2>
+    return `<section class="card home-card${homeSpanClass('today', spans)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeWidthControlsHtml('today')}${homeEditControlsHtml('today', hidden)}</h2>
       <p class="home-empty">Nada vencendo nas próximas 24h.</p>
     </section>`;
   }
@@ -314,8 +326,8 @@ export function renderTodayCard(tasks: TaskRow[], now: number, prefs: HomePrefs 
       </li>`;
     })
     .join('');
-  return `<section class="card home-card${homeWideClass('today', sizes)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeSizeToggleHtml('today', sizes)}${homeEditControlsHtml('today', hidden)}</h2>
+  return `<section class="card home-card${homeSpanClass('today', spans)}${homeHiddenClass('today', hidden)}"${itemAttr('today')}${boxAttrs('today', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Hoje <a href="/app/tasks">board completo →</a>${homeWidthControlsHtml('today')}${homeEditControlsHtml('today', hidden)}</h2>
     <ul class="home-list" id="home-today-list">${items}</ul>
   </section>`;
 }
@@ -331,15 +343,15 @@ function firstLine(body: string, max: number): string {
 // inline (nota / tarefa / descartar, mesmos endpoints do /app/inbox). O "ver tudo"
 // leva pra página completa (corpo em markdown, itens além do cap).
 // Exportado: testado isoladamente em test/web/home.test.ts.
-export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
+export function renderInboxCard(pending: number, items: InboxItem[], prefs: HomePrefs = {}, spans: HomeResolvedSpans = resolveSpans({ sizes: {} }), hidden: HomeBoxKey[] = []): string {
   const capture = `<form class="home-inbox-capture" method="post" action="/app/inbox/add">
       <input type="text" name="text" maxlength="${INBOX_BODY_MAX}" placeholder="Capturar ideia solta — tria depois" aria-label="Captura rápida pro inbox" autocomplete="off" required />
       <input type="hidden" name="next" value="/app" />
       <button type="submit" class="btn btn-sm">Capturar</button>
     </form>`;
   if (pending === 0) {
-    return `<section class="card home-card${homeWideClass('inbox', sizes)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a>${homeSizeToggleHtml('inbox', sizes)}${homeEditControlsHtml('inbox', hidden)}</h2>
+    return `<section class="card home-card${homeSpanClass('inbox', spans)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+      <h2 class="home-box-handle">Inbox <a href="/app/inbox">ver tudo →</a>${homeWidthControlsHtml('inbox')}${homeEditControlsHtml('inbox', hidden)}</h2>
       ${capture}
       <p class="home-empty">Inbox vazio.</p>
     </section>`;
@@ -357,8 +369,8 @@ export function renderInboxCard(pending: number, items: InboxItem[], prefs: Home
       </span>
     </li>`)
     .join('');
-  return `<section class="card home-card${homeWideClass('inbox', sizes)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a>${homeSizeToggleHtml('inbox', sizes)}${homeEditControlsHtml('inbox', hidden)}</h2>
+  return `<section class="card home-card${homeSpanClass('inbox', spans)}${homeHiddenClass('inbox', hidden)}"${itemAttr('inbox')}${boxAttrs('inbox', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Inbox <a href="/app/inbox">${pending} pendente${pending === 1 ? '' : 's'} →</a>${homeWidthControlsHtml('inbox')}${homeEditControlsHtml('inbox', hidden)}</h2>
     ${capture}
     <ul class="home-list home-inbox-list">${rows}</ul>
   </section>`;
@@ -386,12 +398,12 @@ function renderActivityFeedSection(prefs: HomePrefs = {}, hidden: HomeBoxKey[] =
 
 // Falha numa fonte NÃO some mais o card (Onda 5, spec 66): vira um .error-state
 // visível — o dono percebe que a fonte quebrou em vez de achar que não há dados.
-function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
+function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs: HomePrefs = {}, spans: HomeResolvedSpans = resolveSpans({ sizes: {} }), hidden: HomeBoxKey[] = []): string {
   // A âncora #estatisticas (palette "Ir pras Estatísticas") precisa existir
   // TAMBÉM no card de erro — senão falha da query mensal quebra o link.
   const anchor = box === 'insights' ? ' id="estatisticas"' : '';
-  return `<section class="card home-card${box ? homeWideClass(box, sizes) + homeHiddenClass(box, hidden) : ''}"${anchor}${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
-    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}${box ? homeSizeToggleHtml(box, sizes) + homeEditControlsHtml(box, hidden) : ''}</h2>
+  return `<section class="card home-card${box ? homeSpanClass(box, spans) + homeHiddenClass(box, hidden) : ''}"${anchor}${box ? itemAttr(box) + boxAttrs(box, prefs) : ''}>${box ? resizeHandle : ''}
+    <h2${box ? ' class="home-box-handle"' : ''}>${titleHtml}${box ? homeWidthControlsHtml(box) + homeEditControlsHtml(box, hidden) : ''}</h2>
     <p class="error-state">${esc(msg)}</p>
   </section>`;
 }
@@ -402,11 +414,11 @@ function renderCardError(titleHtml: string, msg: string, box?: HomeBoxKey, prefs
 // board); backPath='/app' faz os forms sem JS voltarem pra home no 302. VAZIO =
 // card OMITIDO do grid (padrão digest) — pendência zero não merece caixa vazia.
 // Exportado: testado isolado em test/web/home.test.ts.
-export function renderPendingCard(items: PendingItem[], prefs: HomePrefs = {}, sizes: HomeSizes = {}, hidden: HomeBoxKey[] = []): string {
+export function renderPendingCard(items: PendingItem[], prefs: HomePrefs = {}, spans: HomeResolvedSpans = resolveSpans({ sizes: {} }), hidden: HomeBoxKey[] = []): string {
   if (!items || items.length === 0) return '';
   const kinds = pendingKindsLabel(items);
-  return `<section class="card home-card home-pending-card${homeWideClass('pending', sizes)}${homeHiddenClass('pending', hidden)}"${itemAttr('pending')}${boxAttrs('pending', prefs)}>${resizeHandle}
-    <h2 class="home-box-handle">Pendências com você <span class="home-pending-count">· ${items.length} — ${esc(kinds)}</span> <a href="/app/tasks">abrir o board →</a>${homeSizeToggleHtml('pending', sizes)}${homeEditControlsHtml('pending', hidden)}</h2>
+  return `<section class="card home-card home-pending-card${homeSpanClass('pending', spans)}${homeHiddenClass('pending', hidden)}"${itemAttr('pending')}${boxAttrs('pending', prefs)}>${resizeHandle}
+    <h2 class="home-box-handle">Pendências com você <span class="home-pending-count">· ${items.length} — ${esc(kinds)}</span> <a href="/app/tasks">abrir o board →</a>${homeWidthControlsHtml('pending')}${homeEditControlsHtml('pending', hidden)}</h2>
     <div class="task-pending home-pending-body" id="home-pending-body">${pendingBlockHtml(items, '/app')}</div>
   </section>`;
 }
@@ -418,12 +430,12 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   const now = Date.now();
 
   // Layout salvo das caixas (Onda 9b) — falha na leitura degrada pros defaults.
-  let prefsState: HomePrefsState = { heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false };
+  let prefsState: HomePrefsState = { heights: {}, sizes: {}, spans: {}, order: null, hidden: [], startDismissed: false };
   try { prefsState = await getHomePrefs(env); } catch (e) {
     console.error('home: falha ao ler home_prefs (defaults aplicados)', e);
   }
   const prefs = prefsState.heights;
-  const sizes = prefsState.sizes;
+  const spans = resolveSpans(prefsState);
   const hidden = prefsState.hidden ?? [];
 
   // Card "Comece aqui" (spec 92): acima do grid, fora do sistema de caixas
@@ -438,18 +450,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     }
   }
 
-  // Faixa da frota (spec 80/92): linha de navegação acima do grid, fora das
-  // caixas arrastáveis. Instância sem agentes não ganha faixa; falha só omite.
-  let fleetStripHtml = '';
-  try {
-    fleetStripHtml = await fleetHomeStripHtml(env, now);
-  } catch (e) {
-    // Falha NÃO pode ser 100% silenciosa (revisão 19/07): a faixa carrega a fila
-    // de "Validação humana"/bloqueios — sumir sem sinal esconde trabalho parado.
-    // Linha discreta no lugar, com rota pro board (as pendências moram lá).
-    console.error('home: falha ao montar a faixa da frota (linha de aviso)', e);
-    fleetStripHtml = '<p class="config-subtitle" role="status">Não deu pra carregar a faixa dos agentes agora — <a href="/app/tasks">abrir as Tarefas</a>.</p>';
-  }
+  // A faixa da frota SAIU da home (rodada 6.2): "Frota: N de M ativos" não era
+  // acionável nem claro pro dono, e o clique caía no board sem relação direta.
+  // A fila de trabalho mora no card "Pendências com você"; saúde da frota fica
+  // pra uma superfície própria quando houver demanda.
 
   // Cada card é buscado/renderizado de forma isolada — falha numa fonte vira um
   // card de erro visível SÓ nela, nunca derruba a home inteira (critério de aceite).
@@ -458,10 +462,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
   // omitido (renderPendingCard devolve ''); falha = card de erro visível.
   let pendingCardHtml = '';
   try {
-    pendingCardHtml = renderPendingCard(await buildPendingItems(env), prefs, sizes, hidden);
+    pendingCardHtml = renderPendingCard(await buildPendingItems(env), prefs, spans, hidden);
   } catch (e) {
     console.error('home: falha ao carregar as pendências (card de erro)', e);
-    pendingCardHtml = renderCardError('Pendências com você <a href="/app/tasks">abrir o board →</a>', 'Não deu pra carregar as pendências agora. Recarregue a página.', 'pending', prefs, sizes, hidden);
+    pendingCardHtml = renderCardError('Pendências com você <a href="/app/tasks">abrir o board →</a>', 'Não deu pra carregar as pendências agora. Recarregue a página.', 'pending', prefs, spans, hidden);
   }
 
   let todayCardHtml = '';
@@ -469,10 +473,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
     // OWNER_TASK_VIS: a home é superfície de SESSÃO do dono (spec 65 §4), mesma
     // convenção do board de tasks e do lembrete diário.
     const tasks = await listTasksDueBefore(env, now + TODAY_HORIZON_MS, OWNER_TASK_VIS);
-    todayCardHtml = renderTodayCard(tasks, now, prefs, sizes, hidden);
+    todayCardHtml = renderTodayCard(tasks, now, prefs, spans, hidden);
   } catch (e) {
     console.error('home: falha ao carregar tasks de hoje', e);
-    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs, sizes, hidden);
+    todayCardHtml = renderCardError('Hoje <a href="/app/tasks">board completo →</a>', 'Não deu pra carregar as tasks agora. Recarregue a página.', 'today', prefs, spans, hidden);
   }
 
   let inboxCardHtml = '';
@@ -481,10 +485,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       countPendingInbox(env),
       listInboxItems(env, { pendingOnly: true, limit: INBOX_SCAN_LIMIT }),
     ]);
-    inboxCardHtml = renderInboxCard(pending, items, prefs, sizes, hidden);
+    inboxCardHtml = renderInboxCard(pending, items, prefs, spans, hidden);
   } catch (e) {
     console.error('home: falha ao carregar inbox (spec 63 pode não ter rodado)', e);
-    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs, sizes, hidden);
+    inboxCardHtml = renderCardError('Inbox <a href="/app/inbox">ver tudo →</a>', 'Não deu pra carregar o inbox agora. Recarregue a página.', 'inbox', prefs, spans, hidden);
   }
 
   let digestCardHtml = '';
@@ -496,15 +500,15 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       // só a FALHA de leitura vira card de erro visível. Onda 9: o card ganhou o
       // MESMO h2 dos vizinhos (era o "card sem título" do feedback do dono) — o
       // renderDigestCard entra em modo bare (sem o <strong> interno duplicado).
-      digestCardHtml = `<section class="card home-card${homeWideClass('digest', sizes)}${homeHiddenClass('digest', hidden)}"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
-        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a>${homeSizeToggleHtml('digest', sizes)}${homeEditControlsHtml('digest', hidden)}</h2>
+      digestCardHtml = `<section class="card home-card${homeSpanClass('digest', spans)}${homeHiddenClass('digest', hidden)}"${itemAttr('digest')}${boxAttrs('digest', prefs)}>${resizeHandle}
+        <h2 class="home-box-handle">Do seu cérebro <a href="/app/notes">notas →</a>${homeWidthControlsHtml('digest')}${homeEditControlsHtml('digest', hidden)}</h2>
         ${renderDigestCard(digest, { bare: true })}
       </section>`;
       hasDigestBox = true;
     }
   } catch (e) {
     console.error('home: falha ao ler cache do resurface digest (spec 64 pode não ter rodado)', e);
-    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs, sizes, hidden);
+    digestCardHtml = renderCardError('Do seu cérebro', 'Não deu pra ler o digest agora. Recarregue a página.', 'digest', prefs, spans, hidden);
     hasDigestBox = true;
   }
 
@@ -520,10 +524,10 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       getMonthInsightsCached(env, cur.year, cur.month, now),
       getMonthInsightsCached(env, prev.year, prev.month, now),
     ]);
-    insightsCardHtml = renderInsightsCard(cur.year, cur.month, curData, prevData, prefs, sizes, hidden);
+    insightsCardHtml = renderInsightsCard(cur.year, cur.month, curData, prevData, prefs, spans, hidden);
   } catch (e) {
     console.error('home: falha ao carregar o resumo mensal (spec 99)', e);
-    insightsCardHtml = renderCardError('Estatísticas', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs, sizes, hidden);
+    insightsCardHtml = renderCardError('Estatísticas', 'Não deu pra carregar o resumo do mês agora. Recarregue a página.', 'insights', prefs, spans, hidden);
   }
 
   // Onda 9b (spec 72): TODAS as caixas (atividade inclusa) são filhas do grid,
@@ -551,7 +555,6 @@ export async function handleHomePage(req: Request, env: Env): Promise<Response> 
       </button>
     </div>
     ${startHereHtml}
-    ${fleetStripHtml}
     <div class="home-grid">
       ${gridHtml}
     </div>

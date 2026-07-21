@@ -131,7 +131,7 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(clear.status).toBe(200);
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false });
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, spans: {}, order: null, hidden: [], startDismissed: false });
   });
 
   it('hidden (rodada 6): salva, reflete a classe home-card-hidden no SSR; POST sem o campo preserva', async () => {
@@ -143,7 +143,7 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(res.status).toBe(200);
     const html = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
-    expect(html).toMatch(/class="card home-card home-card-hidden"[^>]*data-home-item="today"/);
+    expect(html).toMatch(/class="card home-card home-span-2 home-card-hidden"[^>]*data-home-item="today"/);
     // As demais caixas seguem sem a classe.
     expect(html).not.toMatch(/home-card-hidden"[^>]*data-home-item="inbox"/);
 
@@ -180,22 +180,22 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(res.status).toBe(200);
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false });
+    expect(JSON.parse(row.value)).toEqual({ heights: {}, sizes: {}, spans: {}, order: null, hidden: [], startDismissed: false });
   });
 
-  it('largura (19/07): salva sizes, reflete a classe home-card-wide no SSR; default = insights expandido', async () => {
+  it('largura em quartos (rodada 6.2): spans no SSR, legado sizes ainda vale, spans vence sizes', async () => {
     const ck = await cookie();
 
-    // Sem pref salva: insights nasce expandido (default wide), today normal —
-    // e todo card com toggle expõe o botão acessível.
+    // Sem pref salva: insights nasce na linha inteira (span 4 + alias wide),
+    // today em meia linha (span 2) — e todo card com controles expõe ‹ ›.
     const before = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
-    expect(before).toMatch(/class="card home-card home-card-wide" id="estatisticas"/);
-    expect(before).toMatch(/class="card home-card"[^>]*data-home-item="today"/);
-    expect(before).toContain('class="home-size-toggle"');
-    expect(before).toContain('aria-label="Expandir card"');
-    expect(before).toContain('aria-label="Reduzir card"');
+    expect(before).toMatch(/class="card home-card home-span-4 home-card-wide" id="estatisticas"/);
+    expect(before).toMatch(/class="card home-card home-span-2"[^>]*data-home-item="today"/);
+    expect(before).toContain('class="home-width-btn"');
+    expect(before).toContain('aria-label="Diminuir largura (um quarto a menos)"');
+    expect(before).toContain('aria-label="Aumentar largura (um quarto a mais)"');
 
-    // Inverte: today expandido, insights normal.
+    // Legado: blob com sizes (pré-6.2) segue lido — wide=4, normal=2.
     const res = await SELF.fetch('https://x.test/app/home/prefs', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ck },
@@ -203,26 +203,36 @@ describe('POST /app/home/prefs + reflexo no SSR (spec 72)', () => {
     });
     expect(res.status).toBe(200);
     const html = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
-    expect(html).toMatch(/class="card home-card home-card-wide"[^>]*data-home-item="today"/);
-    expect(html).toMatch(/class="card home-card" id="estatisticas"/);
+    expect(html).toMatch(/class="card home-card home-span-4 home-card-wide"[^>]*data-home-item="today"/);
+    expect(html).toMatch(/class="card home-card home-span-2" id="estatisticas"/);
 
-    // POST de layout SEM o campo sizes (cliente antigo) preserva as larguras salvas.
+    // spans VENCE sizes; POST sem o campo spans (cliente antigo) preserva os salvos.
+    await SELF.fetch('https://x.test/app/home/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ck },
+      body: JSON.stringify({ spans: { today: 1, inbox: 3 } }),
+    });
+    const withSpans = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
+    expect(withSpans).toMatch(/class="card home-card home-span-1"[^>]*data-home-item="today"/);
+    expect(withSpans).toMatch(/class="card home-card home-span-3"[^>]*data-home-item="inbox"/);
     await SELF.fetch('https://x.test/app/home/prefs', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ck },
       body: JSON.stringify({ heights: { inbox: 500 } }),
     });
     const row = await E.DB.prepare('SELECT value FROM meta WHERE key = ?').bind(HOME_PREFS_META_KEY).first();
-    expect(JSON.parse(row.value).sizes).toEqual({ today: 'wide', insights: 'normal' });
+    expect(JSON.parse(row.value).spans).toEqual({ today: 1, inbox: 3 });
 
-    // limpar: sizes vazio volta todo mundo pro default.
+    // O Salvar do modelo novo manda sizes:{} — o legado é LIMPO e span ausente
+    // volta pro default da caixa (não pro wide antigo).
     await SELF.fetch('https://x.test/app/home/prefs', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ck },
-      body: JSON.stringify({ heights: {}, sizes: {} }),
+      body: JSON.stringify({ heights: {}, sizes: {}, spans: {} }),
     });
     const after = await (await SELF.fetch('https://x.test/app', { headers: { cookie: ck } })).text();
-    expect(after).toMatch(/class="card home-card home-card-wide" id="estatisticas"/);
+    expect(after).toMatch(/class="card home-card home-span-4 home-card-wide" id="estatisticas"/);
+    expect(after).toMatch(/class="card home-card home-span-2"[^>]*data-home-item="today"/);
   });
 
   it('body inválido → 400', async () => {

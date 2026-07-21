@@ -9,6 +9,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
 import { monthWindowBrt, getMonthInsights } from '../../src/db/insights-queries.js';
 import { renderInsightsCard } from '../../src/web/insights.js';
+import { resolveSpans } from '../../src/web/home-prefs.js';
 
 const E = env as any;
 const SECRET = 'test-secret-0123456789abcdef0123456789abcdef';
@@ -185,10 +186,12 @@ describe('card "Estatísticas" da home (dashboard completo, fusão 19/07)', () =
     expect(html).toContain('data-home-item="insights"');
     expect(html).toContain('class="home-resize"');
     expect(html).toContain('home-card-wide');
-    // Pref explícita 'normal' vence o default wide.
-    const normal = renderInsightsCard(2026, 7, cur, prev, {}, { insights: 'normal' });
+    // Largura em quartos (rodada 6.2): span explícito vence o default wide;
+    // os botões ‹ › de largura estão no header.
+    const normal = renderInsightsCard(2026, 7, cur, prev, {}, resolveSpans({ sizes: {}, spans: { insights: 2 } }));
     expect(normal).not.toContain('home-card-wide');
-    expect(normal).toContain('aria-label="Expandir card"');
+    expect(normal).toContain('home-span-2');
+    expect(normal).toContain('aria-label="Aumentar largura (um quarto a mais)"');
   });
 
   it('nota privada NUNCA aparece nomeada', async () => {

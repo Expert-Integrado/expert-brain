@@ -140,14 +140,21 @@ function pendingRowHtml(it: PendingItem, backPath?: string): string {
   // Entrega: Aprovar/Devolver inline — REUSA o endpoint da antiga fleet
   // (POST /app/fleet/task, mantido vivo pra isto).
   const actions = it.kind === 'question'
-    ? `<details class="task-pending-reply">
+    ? `<div class="task-pending-question-actions">
+      <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-quick" data-pending-form data-pending-kind="question">
+        <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
+        <button type="submit" name="body" value="Sim" class="btn btn-sm btn-primary">Sim</button>
+        <button type="submit" name="body" value="Não" class="btn btn-sm btn-ghost">Não</button>
+      </form>
+      <details class="task-pending-reply">
         <summary>Responder</summary>
         <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-reply-form" data-pending-form data-pending-kind="question">
           <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
           <textarea name="body" rows="2" required placeholder="Escreva a resposta — ela libera o agente pra continuar" aria-label="Resposta rápida"></textarea>
           <button type="submit" class="btn btn-sm btn-primary">Enviar resposta</button>
         </form>
-      </details>`
+      </details>
+    </div>`
     : `<form method="post" action="/app/fleet/task" class="task-pending-form task-pending-actions" data-pending-form data-pending-kind="approval">
         <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
         <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>

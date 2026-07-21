@@ -473,26 +473,7 @@ export async function handleFleetTaskActionPost(req: Request, env: Env): Promise
   return new Response(null, { status: 302, headers: { location: back } });
 }
 
-// Resumo pra home ("Frota: N ativos hoje · M esperando você") — acima do grid,
-// fora do sistema de caixas (é uma linha de navegação, não um card arrastável).
-// Best-effort no caller; retorna '' quando não há frota (home de instância nova
-// não ganha faixa vazia). Aponta pro BOARD (a tela de Agentes virou redirect,
-// 19/07): as entregas esperando o dono moram no "Pendências com você" de lá.
-export async function fleetHomeStripHtml(env: Env, nowMs: number): Promise<string> {
-  const [agents, lastSeen] = await Promise.all([
-    listFleetAgents(env),
-    lastSeenByUser(env),
-  ]);
-  if (agents.length === 0) return '';
-  const dayStart = startOfTodayBrt(nowMs);
-  const activeToday = agents.filter((a) => (lastSeen.get(a.id) ?? 0) >= dayStart).length;
-  // Rodada 6.1: a faixa NÃO conta mais "esperando você" — o número morava em 2
-  // lugares com definições diferentes (aqui: só a coluna Validação humana;
-  // no card: perguntas + entregas com dedupe) e os totais divergentes
-  // confundiam o dono. Fonte única da fila = card "Pendências com você" logo
-  // abaixo; a faixa vira só saúde da frota.
-  return `<a class="card card--interactive" href="/app/tasks" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:12px 16px;font-size:13.5px;text-decoration:none;color:var(--text)">
-    <span class="status-dot${activeToday > 0 ? ' is-on' : ''}" aria-hidden="true"></span>
-    Frota: ${activeToday} de ${agents.length} agente${agents.length === 1 ? '' : 's'} ativo${activeToday === 1 ? '' : 's'} hoje
-  </a>`;
-}
+// A faixa da frota na home foi REMOVIDA na rodada 6.2 (20/07): "Frota: N de M
+// ativos" não era acionável nem claro pro dono, e o clique caía no board sem
+// relação com o texto. A fila de trabalho mora no card "Pendências com você";
+// saúde da frota volta numa superfície própria se houver demanda.

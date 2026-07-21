@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { runMigrations } from '../../src/db/migrate.js';
 import { signSession } from '../../src/web/session.js';
 import { renderTodayCard, renderInboxCard, renderPendingCard } from '../../src/web/home.js';
+import { resolveSpans } from '../../src/web/home-prefs.js';
 import type { TaskRow, InboxItem } from '../../src/db/queries.js';
 import type { PendingItem } from '../../src/util/task-badges.js';
 
@@ -89,7 +90,7 @@ describe('renderTodayCard (spec 65 §2, card "Hoje")', () => {
     expect(noHidden).toContain('aria-label="Mover card pra cima"');
     expect(noHidden).toContain('aria-label="Ocultar card"');
     expect(noHidden).not.toContain('home-card-hidden');
-    const hiddenCard = renderTodayCard([], Date.now(), {}, {}, ['today']);
+    const hiddenCard = renderTodayCard([], Date.now(), {}, resolveSpans({ sizes: {} }), ['today']);
     expect(hiddenCard).toContain('home-card-hidden');
     expect(hiddenCard).toContain('aria-label="Mostrar card"');
   });
@@ -122,14 +123,14 @@ describe('renderPendingCard (rodada 6: Pendências com você na home)', () => {
     // Handles SSR completos como as demais caixas.
     expect(html).toContain('class="home-resize"');
     expect(html).toContain('home-box-handle');
-    expect(html).toContain('home-size-toggle');
+    expect(html).toContain('home-width-btn');
     expect(html).toContain('data-home-move="up"');
     // O nome antigo do banner não existe aqui.
     expect(html).not.toContain('Aguardando você');
   });
 
   it('ocultável como as demais caixas (classe via prefs.hidden)', () => {
-    expect(renderPendingCard(items, {}, {}, ['pending'])).toContain('home-card-hidden');
+    expect(renderPendingCard(items, {}, resolveSpans({ sizes: {} }), ['pending'])).toContain('home-card-hidden');
   });
 });
 

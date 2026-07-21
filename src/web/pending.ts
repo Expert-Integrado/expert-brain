@@ -132,6 +132,11 @@ export const PENDING_CSS = `
 .task-pending-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
 .task-pending-body { font-size: 12px; color: var(--text-dim); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* Resposta rápida da pergunta: <details> expande inline (funciona sem JS). */
+/* Resposta rápida Sim/Não (rodada 6.2): pergunta ganha dois botões de 1 clique
+   ao lado do "Responder" de texto livre — mesma paridade de fricção do
+   Aprovar/Devolver das entregas. */
+.task-pending-question-actions { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.task-pending-quick { display: inline-flex; gap: 6px; margin: 0; }
 .task-pending-reply > summary {
   list-style: none; cursor: pointer; font-size: 12px; color: var(--accent-lav);
   width: fit-content; padding: 2px 0;

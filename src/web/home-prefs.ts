@@ -69,12 +69,47 @@ export interface HomePrefsState {
   // Opcional por retrocompat (blob antigo não tem o campo); sanitize normaliza
   // ausente pra [] — consumidores podem ler `hidden ?? []`.
   hidden?: HomeBoxKey[];
+  // Larguras em quartos (rodada 6.2). Opcional por retrocompat; chave ausente
+  // cai no legado `sizes` e depois no default (resolveSpans).
+  spans?: HomeSpans;
   startDismissed: boolean;
 }
 
 // A caixa está expandida? (pref salva vence; ausente = default da caixa)
 export const isBoxWide = (box: HomeBoxKey, sizes: HomeSizes): boolean =>
   (sizes[box] ?? (HOME_BOX_WIDE_DEFAULTS[box] ? 'wide' : 'normal')) === 'wide';
+
+// ── Larguras em QUARTOS (rodada 6.2, pedido do dono: "pensa que a tela tá
+// sempre dividida em quartos") ───────────────────────────────────────────────
+// Todo card ocupa 1..4 quartos da linha; o grid da home tem 4 colunas fixas.
+// Substitui o par normal|wide na PRÁTICA — `sizes` continua aceito no schema
+// por retrocompat de blob antigo (wide=4, normal=2 na leitura via resolveSpans).
+export type HomeBoxSpan = 1 | 2 | 3 | 4;
+export type HomeSpans = Partial<Record<HomeBoxKey, HomeBoxSpan>>;
+
+// Defaults de largura em quartos. Atividade ocupa a linha inteira por CSS e
+// fica fora dos controles (como sempre).
+export const HOME_BOX_SPAN_DEFAULTS: Record<HomeBoxKey, HomeBoxSpan> = {
+  pending: 4,
+  today: 2,
+  inbox: 2,
+  digest: 2,
+  insights: 4,
+  activity: 4,
+};
+
+// Largura EFETIVA por caixa: span salvo vence; sem span, blob antigo com
+// sizes ainda vale (wide=4, normal=2); sem nada, default da caixa.
+export type HomeResolvedSpans = Record<HomeBoxKey, HomeBoxSpan>;
+export function resolveSpans(state: { spans?: HomeSpans; sizes: HomeSizes }): HomeResolvedSpans {
+  const out = {} as HomeResolvedSpans;
+  for (const box of HOME_BOX_KEYS) {
+    const legacy = state.sizes[box];
+    out[box] = state.spans?.[box]
+      ?? (legacy === 'wide' ? 4 : legacy === 'normal' ? 2 : HOME_BOX_SPAN_DEFAULTS[box]);
+  }
+  return out;
+}
 
 // ── Helpers de SSR das caixas (compartilhados entre home.ts e insights.ts — o
 // card de Estatísticas é renderizado em insights.ts e importar de home.ts
@@ -91,9 +126,10 @@ export function homeBoxAttrs(box: HomeBoxKey, heights: HomePrefs): string {
 // Atributo do ITEM REORDENÁVEL (filho direto da .home-grid).
 export const homeItemAttr = (box: HomeBoxKey): string => ` data-home-item="${box}"`;
 
-// Classe extra do card expandido (linha inteira). Vazia quando normal.
-export const homeWideClass = (box: HomeBoxKey, sizes: HomeSizes): string =>
-  isBoxWide(box, sizes) ? ' home-card-wide' : '';
+// Classe de largura do card (rodada 6.2): sempre um home-span-N; span 4 também
+// carrega o alias home-card-wide (CSS/testes legados leem por ele).
+export const homeSpanClass = (box: HomeBoxKey, spans: HomeResolvedSpans): string =>
+  ` home-span-${spans[box]}${spans[box] === 4 ? ' home-card-wide' : ''}`;
 
 // Classe do card OCULTO (rodada 6): display:none no view mode; visível
 // esmaecido no edit mode (CSS da home decide — aqui só a marca no SSR).
@@ -125,17 +161,20 @@ export function homeEditControlsHtml(box: HomeBoxKey, hidden: HomeBoxKey[] | und
 // de ponteiro; o teclado tem o fallback natural (o conteúdo rola de qualquer jeito).
 export const HOME_RESIZE_HANDLE = '<div class="home-resize" aria-hidden="true"></div>';
 
-// Botão de LARGURA no header do card (revisão 19/07): alterna normal ↔ linha
-// inteira. Os DOIS ícones vão no markup e o CSS mostra um por estado (a classe
-// .home-card-wide do card decide) — o client só troca classe + aria-label/title.
-// data-home-wide-default informa o client qual estado é o default da caixa
-// (só diferença do default é persistida, mesma semântica das alturas).
-export function homeSizeToggleHtml(box: HomeBoxKey, sizes: HomeSizes): string {
-  const label = isBoxWide(box, sizes) ? 'Reduzir card' : 'Expandir card';
-  return `<button type="button" class="home-size-toggle" data-home-wide-default="${HOME_BOX_WIDE_DEFAULTS[box] ? '1' : '0'}" aria-label="${label}" title="${label}">
-    <svg class="home-size-icon-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-    <svg class="home-size-icon-reduce" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-  </button>`;
+// Controles de LARGURA no header do card (rodada 6.2): dois botões ‹ › que
+// diminuem/aumentam a largura em quartos (1..4). A MESMA alça do canto também
+// muda a largura arrastando na horizontal (snap por quarto, no client).
+// data-home-span-default informa o client o default da caixa (só diferença do
+// default é persistida, mesma semântica das alturas).
+export function homeWidthControlsHtml(box: HomeBoxKey): string {
+  return `<span class="home-width-controls" data-home-span-default="${HOME_BOX_SPAN_DEFAULTS[box]}">
+    <button type="button" class="home-width-btn" data-home-width="minus" aria-label="Diminuir largura (um quarto a menos)" title="Diminuir largura">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <button type="button" class="home-width-btn" data-home-width="plus" aria-label="Aumentar largura (um quarto a mais)" title="Aumentar largura">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </span>`;
 }
 
 const clampBox = (v: unknown): number | null => {
@@ -153,14 +192,16 @@ export function sanitizeHomePrefs(raw: unknown): HomePrefsState | null {
   if (!raw || typeof raw !== 'object') return null;
   const heightsRaw = (raw as Record<string, unknown>).heights;
   const sizesRaw = (raw as Record<string, unknown>).sizes;
+  const spansRaw = (raw as Record<string, unknown>).spans;
   const orderRaw = (raw as Record<string, unknown>).order;
   const hiddenRaw = (raw as Record<string, unknown>).hidden;
   const startDismissed = (raw as Record<string, unknown>).startDismissed === true;
   const hasHeights = !!heightsRaw && typeof heightsRaw === 'object';
   const hasSizes = !!sizesRaw && typeof sizesRaw === 'object';
+  const hasSpans = !!spansRaw && typeof spansRaw === 'object';
   const hasOrder = Array.isArray(orderRaw);
   const hasHidden = Array.isArray(hiddenRaw);
-  if (!hasHeights && !hasSizes && !hasOrder && !hasHidden && !startDismissed) return null;
+  if (!hasHeights && !hasSizes && !hasSpans && !hasOrder && !hasHidden && !startDismissed) return null;
 
   const heights: HomePrefs = {};
   if (hasHeights) {
@@ -176,6 +217,15 @@ export function sanitizeHomePrefs(raw: unknown): HomePrefsState | null {
     for (const key of HOME_BOX_KEYS) {
       const v = (sizesRaw as Record<string, unknown>)[key];
       if (v === 'wide' || v === 'normal') sizes[key] = v;
+    }
+  }
+
+  // Larguras em quartos (rodada 6.2): inteiro 1..4 em chave conhecida.
+  const spans: HomeSpans = {};
+  if (hasSpans) {
+    for (const key of HOME_BOX_KEYS) {
+      const v = (spansRaw as Record<string, unknown>)[key];
+      if (v === 1 || v === 2 || v === 3 || v === 4) spans[key] = v;
     }
   }
 
@@ -221,12 +271,12 @@ export function sanitizeHomePrefs(raw: unknown): HomePrefsState | null {
     }
   }
 
-  return { heights, sizes, order, hidden, startDismissed };
+  return { heights, sizes, spans, order, hidden, startDismissed };
 }
 
 // Lê as prefs salvas; estado vazio (defaults) se nada salvo/ilegível.
 export async function getHomePrefs(env: Env): Promise<HomePrefsState> {
-  const empty: HomePrefsState = { heights: {}, sizes: {}, order: null, hidden: [], startDismissed: false };
+  const empty: HomePrefsState = { heights: {}, sizes: {}, spans: {}, order: null, hidden: [], startDismissed: false };
   const row = await env.DB.prepare(`SELECT value FROM meta WHERE key = ?`)
     .bind(HOME_PREFS_META_KEY).first<{ value: string }>();
   if (!row?.value) return empty;
@@ -250,7 +300,7 @@ export async function handleHomePrefsPost(req: Request, env: Env): Promise<Respo
   const b = body as Record<string, unknown>;
   if (b && typeof b === 'object' && b.reset === true) {
     const saved = await getHomePrefs(env);
-    const cleared: HomePrefsState = { heights: {}, sizes: {}, order: null, hidden: [], startDismissed: saved.startDismissed };
+    const cleared: HomePrefsState = { heights: {}, sizes: {}, spans: {}, order: null, hidden: [], startDismissed: saved.startDismissed };
     await env.DB.prepare(
       `INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`
     ).bind(HOME_PREFS_META_KEY, JSON.stringify(cleared)).run();
@@ -264,11 +314,12 @@ export async function handleHomePrefsPost(req: Request, env: Env): Promise<Respo
   // do "Comece aqui" já salvo (spec 92), senão arrastar uma caixa ressuscitava o
   // card. Mesmo racional pro `sizes`/`hidden` ausentes (cliente antigo/cacheado
   // não pode zerar o que não conhece).
-  if (b.startDismissed === undefined || b.sizes === undefined || b.hidden === undefined) {
+  if (b.startDismissed === undefined || b.sizes === undefined || b.hidden === undefined || b.spans === undefined) {
     const saved = await getHomePrefs(env);
     if (b.startDismissed === undefined) state.startDismissed = saved.startDismissed;
     if (b.sizes === undefined) state.sizes = saved.sizes;
     if (b.hidden === undefined) state.hidden = saved.hidden ?? [];
+    if (b.spans === undefined) state.spans = saved.spans ?? {};
   }
   await env.DB.prepare(
     `INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`

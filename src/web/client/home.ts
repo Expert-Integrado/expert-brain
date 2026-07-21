@@ -4,7 +4,7 @@
 //   "Personalizar" liga .home-editing na grid (o CSS revela as alças); os gestos
 //   (arrastar pelo título, puxar a borda, toggle de largura, subir/descer,
 //   ocultar) SÓ mexem no DOM — nada é persistido por gesto. [Salvar] = 1 POST
-//   /app/home/prefs { order, heights, sizes, hidden }; [Cancelar] = restaura o
+//   /app/home/prefs { order, heights, spans, hidden }; [Cancelar] = restaura o
 //   snapshot tirado ao entrar; [Restaurar padrão] = POST { reset: true } + reload.
 // - Ações inline do card "Pendências com você" (espelho do wirePendingActions do
 //   board): fetch + remoção otimista + toast; sem JS o form navega nativo
@@ -49,15 +49,35 @@ function wireToday(): void {
 // (os links dentro do h2 seguem navegando).
 const DRAG_THRESHOLD = 6;
 
+// Bloco de altura do resize (px): o arrasto vertical anda em saltos fixos —
+// tamanhos "em bloco", não pixel a pixel (rodada 6.2, pedido do dono).
+const HEIGHT_BLOCK = 80;
+
 const editing = (grid: HTMLElement): boolean => grid.classList.contains('home-editing');
 
 // Snapshot do estado visual ao ENTRAR no modo de edição — é o que o Cancelar
-// devolve, sem servidor: ordem dos itens, valor de --home-card-h de cada alvo
-// e as classes home-card-wide/home-card-hidden de cada item.
+// devolve, sem servidor: ordem dos itens, valor de --home-card-h de cada alvo,
+// a largura em quartos (home-span-N) e a classe home-card-hidden de cada item.
 interface LayoutSnapshot {
   order: HTMLElement[];
   heights: Array<{ el: HTMLElement; value: string }>;
-  classes: Array<{ el: HTMLElement; wide: boolean; hidden: boolean }>;
+  classes: Array<{ el: HTMLElement; span: number; hidden: boolean }>;
+}
+
+// ── Largura em quartos (rodada 6.2): home-span-1..4; span 4 leva o alias
+// home-card-wide (CSS legado). Helpers únicos de leitura/escrita da classe. ──
+const SPAN_CLASSES = ['home-span-1', 'home-span-2', 'home-span-3', 'home-span-4'];
+
+function currentSpan(item: HTMLElement): number {
+  for (let n = 4; n >= 1; n--) if (item.classList.contains('home-span-' + n)) return n;
+  return item.classList.contains('home-card-wide') ? 4 : 2;
+}
+
+function setSpan(item: HTMLElement, n: number): void {
+  const span = Math.min(4, Math.max(1, Math.round(n)));
+  for (const c of SPAN_CLASSES) item.classList.remove(c);
+  item.classList.add('home-span-' + span);
+  item.classList.toggle('home-card-wide', span === 4);
 }
 
 function takeSnapshot(grid: HTMLElement): LayoutSnapshot {
@@ -69,7 +89,7 @@ function takeSnapshot(grid: HTMLElement): LayoutSnapshot {
       .map((el) => ({ el, value: el.style.getPropertyValue('--home-card-h') })),
     classes: items.map((el) => ({
       el,
-      wide: el.classList.contains('home-card-wide'),
+      span: currentSpan(el),
       hidden: el.classList.contains('home-card-hidden'),
     })),
   };
@@ -87,9 +107,9 @@ function restoreSnapshot(grid: HTMLElement, snap: LayoutSnapshot): void {
     if (value) el.style.setProperty('--home-card-h', value);
     else el.style.removeProperty('--home-card-h');
   }
-  for (const { el, wide, hidden } of snap.classes) {
+  for (const { el, span, hidden } of snap.classes) {
     if (!el.isConnected) continue;
-    el.classList.toggle('home-card-wide', wide);
+    setSpan(el, span);
     el.classList.toggle('home-card-hidden', hidden);
     syncToggleLabels(el);
   }
@@ -101,7 +121,7 @@ function restoreSnapshot(grid: HTMLElement, snap: LayoutSnapshot): void {
 function collectLayout(grid: HTMLElement): {
   order: string[];
   heights: Record<string, number>;
-  sizes: Record<string, 'wide' | 'normal'>;
+  spans: Record<string, number>;
   hidden: string[];
 } {
   const order = Array.from(grid.children)
@@ -114,33 +134,27 @@ function collectLayout(grid: HTMLElement): {
     if (!box || Number.isNaN(px)) return;
     if (px !== Number(el.dataset.homeDefault)) heights[box] = px;
   });
-  // Largura: só cards COM toggle participam (a Atividade ocupa a linha inteira
-  // por CSS e fica de fora). data-home-wide-default vem do SSR.
-  const sizes: Record<string, 'wide' | 'normal'> = {};
-  grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
-    const item = btn.closest<HTMLElement>('[data-home-item]');
+  // Largura em quartos: só cards COM controles participam (a Atividade ocupa a
+  // linha inteira por CSS e fica de fora). data-home-span-default vem do SSR.
+  const spans: Record<string, number> = {};
+  grid.querySelectorAll<HTMLElement>('.home-width-controls').forEach((ctl) => {
+    const item = ctl.closest<HTMLElement>('[data-home-item]');
     const box = item?.dataset.homeItem;
     if (!item || !box) return;
-    const wideDefault = btn.dataset.homeWideDefault === '1';
-    const wide = item.classList.contains('home-card-wide');
-    if (wide !== wideDefault) sizes[box] = wide ? 'wide' : 'normal';
+    const span = currentSpan(item);
+    if (span !== Number(ctl.dataset.homeSpanDefault)) spans[box] = span;
   });
   const hidden = Array.from(grid.children)
     .filter((el) => (el as HTMLElement).dataset.homeItem && el.classList.contains('home-card-hidden'))
     .map((el) => (el as HTMLElement).dataset.homeItem as string);
-  return { order, heights, sizes, hidden };
+  return { order, heights, spans, hidden };
 }
 
-// Re-sincroniza aria-label/title dos toggles de largura e de ocultar com as
-// classes ATUAIS do card — o Cancelar restaura classes por fora dos handlers,
-// e sem isso o botão continuaria anunciando o estado descartado.
+// Re-sincroniza aria-label/title do toggle de ocultar com as classes ATUAIS do
+// card — o Cancelar restaura classes por fora dos handlers, e sem isso o botão
+// continuaria anunciando o estado descartado. (Os botões de largura ‹ › são
+// stateless: sempre "um quarto a menos/a mais".)
 function syncToggleLabels(item: HTMLElement): void {
-  const sizeBtn = item.querySelector<HTMLButtonElement>('.home-size-toggle');
-  if (sizeBtn) {
-    const label = item.classList.contains('home-card-wide') ? 'Reduzir card' : 'Expandir card';
-    sizeBtn.setAttribute('aria-label', label);
-    sizeBtn.title = label;
-  }
   const hideBtn = item.querySelector<HTMLButtonElement>('[data-home-hide]');
   if (hideBtn) {
     const label = item.classList.contains('home-card-hidden') ? 'Mostrar card' : 'Ocultar card';
@@ -149,17 +163,14 @@ function syncToggleLabels(item: HTMLElement): void {
   }
 }
 
-// Toggle de LARGURA do card: normal (1 coluna) ↔ expandido (linha inteira).
-// Só mexe no DOM — a persistência é do Salvar (rodada 6).
-function wireSizeToggles(grid: HTMLElement): void {
-  grid.querySelectorAll<HTMLButtonElement>('.home-size-toggle').forEach((btn) => {
+// Botões ‹ › de LARGURA (rodada 6.2): um quarto a menos/a mais por clique.
+// Só mexe no DOM — a persistência é do Salvar.
+function wireWidthButtons(grid: HTMLElement): void {
+  grid.querySelectorAll<HTMLButtonElement>('[data-home-width]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const item = btn.closest<HTMLElement>('[data-home-item]');
       if (!item || !editing(grid)) return;
-      const wide = item.classList.toggle('home-card-wide');
-      const label = wide ? 'Reduzir card' : 'Expandir card';
-      btn.setAttribute('aria-label', label);
-      btn.title = label;
+      setSpan(item, currentSpan(item) + (btn.dataset.homeWidth === 'plus' ? 1 : -1));
     });
   });
 }
@@ -283,10 +294,13 @@ function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, do
   const startH = parseInt(getComputedStyle(target).maxHeight, 10) || fallback;
   const min = Number(target.dataset.homeMin) || 220;
   const max = Number(target.dataset.homeMax) || 960;
-  // Rodada 6.1 ("quero diminuir pro lado"): a MESMA alça responde na
-  // horizontal — arrastou ~110px pro lado, o card alterna entre largura normal
-  // e linha inteira (as duas larguras que o grid tem). Só em card com toggle.
-  const canToggleWidth = !!item.querySelector('.home-size-toggle');
+  // Rodada 6.2 ("pensa que a tela tá sempre dividida em quartos"): a MESMA
+  // alça responde na horizontal com snap por QUARTO do grid — cada quarto
+  // cruzado soma/subtrai 1 no span (1..4). Só em card com controles de largura.
+  const canToggleWidth = !!item.querySelector('.home-width-controls');
+  const gridWidth = item.parentElement?.getBoundingClientRect().width ?? 0;
+  const quarter = gridWidth / 4;
+  const startSpan = currentSpan(item);
   rz.classList.add('active');
   // Captura mantém o gesto vivo mesmo com o ponteiro fora da alça (guardado:
   // jsdom não implementa Pointer Capture).
@@ -295,17 +309,14 @@ function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, do
   }
 
   const onMove = (e: PointerEvent): void => {
-    const h = Math.min(max, Math.max(min, Math.round(startH + (e.clientY - startY))));
+    // Altura em BLOCOS de 80px (rodada 6.2: "escolhe um bloco de pixels e só
+    // deixa personalizar nessa estrutura") — o arrasto salta de bloco em bloco.
+    const raw = startH + (e.clientY - startY);
+    const h = Math.min(max, Math.max(min, Math.round(raw / HEIGHT_BLOCK) * HEIGHT_BLOCK));
     target.style.setProperty('--home-card-h', `${h}px`);
-    if (canToggleWidth) {
+    if (canToggleWidth && quarter > 0) {
       const dx = e.clientX - startX;
-      if (dx > 110 && !item.classList.contains('home-card-wide')) {
-        item.classList.add('home-card-wide');
-        syncToggleLabels(item);
-      } else if (dx < -110 && item.classList.contains('home-card-wide')) {
-        item.classList.remove('home-card-wide');
-        syncToggleLabels(item);
-      }
+      setSpan(item, startSpan + Math.round(dx / quarter));
     }
   };
   const onUp = (): void => {
@@ -322,7 +333,7 @@ function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, do
 function wireArrange(): void {
   const grid = document.querySelector<HTMLElement>('.home-grid');
   if (!grid) return;
-  wireSizeToggles(grid);
+  wireWidthButtons(grid);
   wireEditControls(grid);
 
   grid.addEventListener('pointerdown', (e) => {
@@ -402,7 +413,10 @@ function wireEditMode(grid: HTMLElement): void {
         const res = await appFetch('/app/home/prefs', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(collectLayout(grid)),
+          // sizes:{} LIMPA o legado normal|wide no servidor — depois do 1o Salvar
+          // do modelo de quartos, spans é a única verdade de largura (senão um
+          // wide antigo ressuscitaria quando o span voltasse ao default).
+          body: JSON.stringify({ ...collectLayout(grid), sizes: {} }),
         });
         if (!res.ok) throw new Error(`prefs ${res.status}`);
         toast('Layout salvo.', 'ok');

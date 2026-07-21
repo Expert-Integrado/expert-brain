@@ -308,25 +308,17 @@ describe('POST /app/fleet/task (aprovar/devolver)', () => {
   });
 });
 
-describe('faixa da frota na home', () => {
-  it('home mostra "Frota: N ... ativo hoje" e linka o board; sem agentes, sem faixa', async () => {
+describe('faixa da frota na home (REMOVIDA na rodada 6.2)', () => {
+  it('home não mostra a faixa "Frota:" nem com agentes ativos; a fila mora no card Pendências', async () => {
     const c = await cookie();
-    let html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
-    expect(html).not.toContain('Frota:');
-
     await seedAgent('fa_a', 'PC Test');
     await touch('key_fa_a', Date.now() - 60_000);
-    html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
-    expect(html).toContain('Frota: 1 de 1 agente ativo hoje');
-    // A faixa aponta pro board — a tela de Agentes virou redirect (19/07).
-    expect(html).toMatch(/<a class="card card--interactive" href="\/app\/tasks"/);
-
-    // Rodada 6.1: a faixa NÃO conta mais "esperando você" — dois números com
-    // definições diferentes (faixa: coluna Validação; card: perguntas +
-    // entregas) confundiam. A fila mora só no card "Pendências com você".
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     await seedTask('fv1', { columnId: 'col_fleettest' });
-    html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
+    const html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
+    // "Frota: N de M ativos" não era acionável nem claro (dono, 20/07) e o
+    // número divergia do card (definições diferentes de "esperando você").
+    expect(html).not.toContain('Frota:');
     expect(html).not.toContain('esperando você');
     expect(html).toContain('Pendências com você');
   });
