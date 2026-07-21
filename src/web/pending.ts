@@ -68,7 +68,10 @@ export async function buildPendingItems(env: Env, activeCols?: KanbanColumn[]): 
           kind: 'approval' as const,
           id: v.id,
           title: v.title,
-          body: v.tldr && v.tldr !== v.title ? v.tldr : '',
+          // O que está sendo entregue (Eric, 21/07): o corpo do último
+          // comentário [entrega] — mesmo papel do [bloqueio] na pergunta.
+          // Sem comentário, cai no tldr (quando não repete o título).
+          body: v.deliveredBody || (v.tldr && v.tldr !== v.title ? v.tldr : ''),
           author: v.deliveredBy,
           since_brt: formatBrtShort(v.updatedAt),
         },
@@ -116,34 +119,32 @@ export const PENDING_CSS = `
 .task-pending-kinds { font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--text-dim); margin-left: auto; }
 .task-pending-list { display: flex; flex-direction: column; gap: 4px; }
 .task-pending-item {
-  display: flex; flex-direction: column; gap: 3px;
+  position: relative; display: flex; flex-direction: column; gap: 3px;
   padding: 8px; border-radius: var(--radius-sm); transition: background 140ms var(--ease);
 }
 .task-pending-item:hover { background: rgba(251,191,36,0.08); }
-.task-pending-row { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.task-pending-chip {
-  font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-  border-radius: 999px; padding: 1px 8px; white-space: nowrap; flex: none; align-self: center;
-}
-.task-pending-chip-question { color: var(--warning); border: 1px solid rgba(251,191,36,0.45); background: rgba(251,191,36,0.12); }
-.task-pending-chip-approval { color: var(--accent-lav); border: 1px solid rgba(167,139,250,0.45); background: rgba(167,139,250,0.12); }
+/* Duas linhas (Eric, 21/07 — sem etiquetas de tipo): título + ações na de cima,
+   descrição + meta na de baixo. Ações e meta empilham no canto direito. */
+.task-pending-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .task-pending-title { font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; text-decoration: none; }
 .task-pending-title:hover { color: var(--accent-lav); }
-.task-pending-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; }
-.task-pending-body { font-size: 12px; color: var(--text-dim); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-/* Resposta rápida da pergunta: <details> expande inline (funciona sem JS). */
-/* Resposta rápida Sim/Não (rodada 6.2): pergunta ganha dois botões de 1 clique
-   ao lado do "Responder" de texto livre — mesma paridade de fricção do
-   Aprovar/Devolver das entregas. */
-.task-pending-question-actions { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.task-pending-sub { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.task-pending-meta { font-size: 11px; color: var(--text-subtle); white-space: nowrap; flex: none; margin-left: auto; }
+.task-pending-body { font-size: 12px; color: var(--text-dim); line-height: 1.45; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; flex: 1 1 auto; min-width: 0; }
+/* Ações no canto direito da primeira linha — em cima da meta. */
+.task-pending-actions { display: flex; gap: 8px; align-items: center; flex: none; margin-left: auto; }
 .task-pending-quick { display: inline-flex; gap: 6px; margin: 0; }
-.task-pending-reply > summary {
-  list-style: none; cursor: pointer; font-size: 12px; color: var(--accent-lav);
-  width: fit-content; padding: 2px 0;
+/* "Responder" (texto livre): checkbox oculto controla o form de largura total
+   abaixo do item — CSS puro, funciona sem JS (mesma garantia do <details> que
+   ele substitui). O input fica focável pro teclado (não usa display:none). */
+.task-pending-toggle { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
+.task-pending-reply-toggle {
+  cursor: pointer; font-size: 12px; color: var(--accent-lav); white-space: nowrap; padding: 2px 0;
 }
-.task-pending-reply > summary::-webkit-details-marker { display: none; }
-.task-pending-reply > summary:hover { color: var(--text); }
-.task-pending-reply-form { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.task-pending-reply-toggle:hover { color: var(--text); }
+.task-pending-toggle:focus-visible ~ .task-pending-row .task-pending-reply-toggle { outline: 2px solid var(--accent-lav); outline-offset: 2px; border-radius: 3px; }
+.task-pending-reply-form { display: none; flex-direction: column; gap: 6px; margin-top: 4px; }
+.task-pending-toggle:checked ~ .task-pending-reply-form { display: flex; }
 .task-pending-reply-form textarea {
   width: 100%; resize: vertical; min-height: 48px;
   background: var(--surface); border: 1px solid var(--border); color: var(--text);
@@ -151,7 +152,6 @@ export const PENDING_CSS = `
 }
 .task-pending-reply-form textarea:focus { outline: none; border-color: var(--accent-lav); }
 .task-pending-reply-form .btn { align-self: flex-start; }
-.task-pending-actions { display: flex; gap: 6px; align-items: center; margin-top: 2px; }
 /* "Ver mais (N)": o resto da fila expande inline, sem navegar. */
 .task-pending-more { margin-top: 4px; }
 .task-pending-more > summary {
@@ -163,8 +163,10 @@ export const PENDING_CSS = `
 .task-pending-more > summary:hover { color: var(--text); background: rgba(251,191,36,0.08); }
 .task-pending-more[open] > summary { margin-bottom: 4px; }
 @media (max-width: 767px) {
-  .task-pending-row { flex-wrap: wrap; row-gap: 2px; }
-  .task-pending-title { white-space: normal; flex-basis: 100%; order: 3; }
-  .task-pending-meta { margin-left: auto; }
+  /* Estreito: título quebra em linha própria; ações descem pra baixo dele,
+     ainda à direita; meta segue no fim. */
+  .task-pending-row { flex-wrap: wrap; row-gap: 4px; }
+  .task-pending-title { white-space: normal; flex-basis: 100%; }
+  .task-pending-sub { flex-wrap: wrap; row-gap: 2px; }
 }
 `;

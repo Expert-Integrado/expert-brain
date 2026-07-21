@@ -128,42 +128,51 @@ const MAX_PENDING_BODY = 160;
 // `back` — sem JS o 302 do servidor volta pra página de origem (ex.: '/app',
 // o card da home) em vez do default do handler. O servidor SÓ honra valores
 // que começam com '/app' (validação em fleet.ts/tasks.ts).
+//
+// Layout do item (Eric, 21/07): sem etiqueta Pergunta/Para aprovar — o tipo se
+// lê pelos próprios botões. Ações no canto direito, EM CIMA da meta (quem/quando):
+//   [título ..............................] [Sim] [Não] Responder
+//   [descrição ...........................]   PC Desktop · 11/07 22:04
+// "Responder" abre o textarea em largura total via checkbox oculto (CSS puro —
+// um <details> não consegue pôr o summary na linha de ações E o form fora dela).
 function pendingRowHtml(it: PendingItem, backPath?: string): string {
   const body = it.body.length > MAX_PENDING_BODY ? `${it.body.slice(0, MAX_PENDING_BODY)}…` : it.body;
   const who = it.author ? `${it.author} · ` : '';
   const back = backPath ? `<input type="hidden" name="back" value="${escBadge(backPath)}">` : '';
-  const chip = it.kind === 'question'
-    ? `<span class="task-pending-chip task-pending-chip-question">Pergunta</span>`
-    : `<span class="task-pending-chip task-pending-chip-approval">Para aprovar</span>`;
-  // Pergunta: resposta rápida inline (POST /app/tasks/comment — comentário do
-  // dono desarma o bloqueio por definição). <details> expande sem JS.
+  const toggleId = `pending-reply-${escBadge(it.id)}`;
+  // Pergunta: Sim/Não de 1 clique (POST /app/tasks/comment — comentário do dono
+  // desarma o bloqueio por definição) + "Responder" de texto livre.
   // Entrega: Aprovar/Devolver inline — REUSA o endpoint da antiga fleet
   // (POST /app/fleet/task, mantido vivo pra isto).
   const actions = it.kind === 'question'
-    ? `<div class="task-pending-question-actions">
+    ? `<div class="task-pending-actions">
       <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-quick" data-pending-form data-pending-kind="question">
         <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
         <button type="submit" name="body" value="Sim" class="btn btn-sm btn-primary">Sim</button>
         <button type="submit" name="body" value="Não" class="btn btn-sm btn-ghost">Não</button>
       </form>
-      <details class="task-pending-reply">
-        <summary>Responder</summary>
-        <form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-reply-form" data-pending-form data-pending-kind="question">
-          <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
-          <textarea name="body" rows="2" required placeholder="Escreva a resposta — ela libera o agente pra continuar" aria-label="Resposta rápida"></textarea>
-          <button type="submit" class="btn btn-sm btn-primary">Enviar resposta</button>
-        </form>
-      </details>
+      <label class="task-pending-reply-toggle" for="${toggleId}">Responder</label>
     </div>`
     : `<form method="post" action="/app/fleet/task" class="task-pending-form task-pending-actions" data-pending-form data-pending-kind="approval">
         <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
         <button type="submit" name="action" value="approve" class="btn btn-sm btn-primary">Aprovar</button>
         <button type="submit" name="action" value="return" class="btn btn-sm btn-ghost">Devolver</button>
       </form>`;
+  const toggle = it.kind === 'question'
+    ? `<input type="checkbox" id="${toggleId}" class="task-pending-toggle" aria-label="Abrir resposta em texto livre">`
+    : '';
+  const reply = it.kind === 'question'
+    ? `<form method="post" action="/app/tasks/comment" class="task-pending-form task-pending-reply-form" data-pending-form data-pending-kind="question">
+        <input type="hidden" name="task_id" value="${escBadge(it.id)}">${back}
+        <textarea name="body" rows="2" required placeholder="Escreva a resposta — ela libera o agente pra continuar" aria-label="Resposta rápida"></textarea>
+        <button type="submit" class="btn btn-sm btn-primary">Enviar resposta</button>
+      </form>`
+    : '';
   return `<div class="task-pending-item" data-kind="${it.kind}" data-task="${escBadge(it.id)}">
-    <div class="task-pending-row">${chip}<a class="task-pending-title" href="/app/tasks/${escBadge(it.id)}">${escBadge(it.title)}</a><span class="task-pending-meta">${escBadge(who)}${escBadge(it.since_brt)}</span></div>
-    ${body ? `<div class="task-pending-body">${escBadge(body)}</div>` : ''}
-    ${actions}
+    ${toggle}
+    <div class="task-pending-row"><a class="task-pending-title" href="/app/tasks/${escBadge(it.id)}">${escBadge(it.title)}</a>${actions}</div>
+    <div class="task-pending-sub">${body ? `<div class="task-pending-body">${escBadge(body)}</div>` : ''}<span class="task-pending-meta">${escBadge(who)}${escBadge(it.since_brt)}</span></div>
+    ${reply}
   </div>`;
 }
 

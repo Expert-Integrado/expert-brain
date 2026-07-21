@@ -1141,7 +1141,8 @@ function safeToRefresh(): boolean {
   if (document.querySelector('#task-board [data-editpanel]:not([hidden])')) return false;
   // Resposta rápida aberta no "Pendências com você" = mesma regra (o renderPending
   // já pula com foco dentro, mas um reply aberto sem foco também não é atropelado).
-  if (document.querySelector('#task-pending .task-pending-reply[open]')) return false;
+  // 21/07: o reply virou checkbox-toggle (.task-pending-toggle) — checar :checked.
+  if (document.querySelector('#task-pending .task-pending-toggle:checked')) return false;
   const a = document.activeElement as HTMLElement | null;
   if (a && (a.closest('#task-board') || a.closest('#task-pending')) && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return false;
   return true;

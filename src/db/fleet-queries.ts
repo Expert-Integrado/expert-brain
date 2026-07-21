@@ -116,6 +116,9 @@ export interface ValidationTask {
   priority: number | null;
   /** Autor do último comentário [entrega] — quem entregou pro dono validar. */
   deliveredBy: string | null;
+  /** Corpo do último comentário [entrega] — o QUE está sendo entregue. Sem ele
+   *  o dono via só o título e não sabia o que aprovar (Eric, 21/07). */
+  deliveredBody: string | null;
   /** Projeto (pasta) da task. */
   projectLabel: string | null;
   projectColor: string | null;
@@ -129,12 +132,15 @@ export async function listValidationTasks(env: Env, columnId: string): Promise<V
     `SELECT n.id, n.title, n.tldr, n.updated_at, n.priority, p.label AS project_label, p.color AS project_color,
             (SELECT u.name FROM task_comments tc JOIN users u ON u.id = tc.author_user_id
               WHERE tc.task_id = n.id AND tc.kind = 'entrega'
-              ORDER BY tc.created_at DESC, tc.id DESC LIMIT 1) AS delivered_by
+              ORDER BY tc.created_at DESC, tc.id DESC LIMIT 1) AS delivered_by,
+            (SELECT tc.body FROM task_comments tc
+              WHERE tc.task_id = n.id AND tc.kind = 'entrega'
+              ORDER BY tc.created_at DESC, tc.id DESC LIMIT 1) AS delivered_body
      FROM notes n
      LEFT JOIN task_projects p ON p.id = n.project_id
      WHERE n.kind = 'task' AND n.column_id = ? AND n.deleted_at IS NULL
      ORDER BY n.updated_at ASC`
-  ).bind(columnId).all<{ id: string; title: string; tldr: string; updated_at: number; priority: number | null; project_label: string | null; project_color: string | null; delivered_by: string | null }>();
+  ).bind(columnId).all<{ id: string; title: string; tldr: string; updated_at: number; priority: number | null; project_label: string | null; project_color: string | null; delivered_by: string | null; delivered_body: string | null }>();
   return (r.results ?? []).map((row) => ({
     id: row.id,
     title: row.title,
@@ -142,6 +148,7 @@ export async function listValidationTasks(env: Env, columnId: string): Promise<V
     updatedAt: row.updated_at,
     priority: row.priority,
     deliveredBy: row.delivered_by,
+    deliveredBody: row.delivered_body,
     projectLabel: row.project_label,
     projectColor: row.project_color,
   }));

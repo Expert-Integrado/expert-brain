@@ -168,7 +168,7 @@ function boardGet(c: string): Promise<Response> {
 }
 
 describe('bloco "Pendências com você" no board (/app/tasks)', () => {
-  it('entrega da coluna Validação humana vira item "Para aprovar" com quem entregou e ações inline', async () => {
+  it('entrega da coluna Validação humana vira item com descrição da entrega e ações inline (sem etiqueta)', async () => {
     await seedAgent('fa_a', 'PC Test');
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     await seedTask('fv1', { columnId: 'col_fleettest' });
@@ -179,9 +179,12 @@ describe('bloco "Pendências com você" no board (/app/tasks)', () => {
 
     const html = await (await boardGet(await cookie())).text();
     expect(html).toContain('Pendências com você');
-    expect(html).toContain('Para aprovar');
     expect(html).toContain('Task fv1');
     expect(html).toContain('PC Test ·');
+    // Descrição do QUE aprovar = corpo do último comentário [entrega] (Eric, 21/07).
+    expect(html).toContain('[entrega] pronto');
+    // Etiquetas Pergunta/Para aprovar morreram — o tipo se lê pelos botões.
+    expect(html).not.toContain('task-pending-chip');
     // Ações inline reusam o endpoint da antiga fleet.
     expect(html).toContain('action="/app/fleet/task"');
     expect(html).toContain('value="approve"');
@@ -195,7 +198,7 @@ describe('bloco "Pendências com você" no board (/app/tasks)', () => {
     expect(html).not.toContain('Aguardando você');
   });
 
-  it('pergunta (bloqueio sem resposta) vira item "Pergunta" com resposta rápida; quem espera há mais tempo vem primeiro', async () => {
+  it('pergunta (bloqueio sem resposta) vira item com Sim/Não + Responder; quem espera há mais tempo vem primeiro', async () => {
     await seedAgent('fa_a', 'PC Test');
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     // Pergunta esperando desde t=1000; entrega parada desde t=5000 → pergunta primeiro.
@@ -208,10 +211,14 @@ describe('bloco "Pendências com você" no board (/app/tasks)', () => {
     await E.DB.prepare(`UPDATE notes SET updated_at = 5000 WHERE id = 'fv1'`).run();
 
     const html = await (await boardGet(await cookie())).text();
-    expect(html).toContain('Pergunta');
     expect(html).toContain('Preciso do OK pro deploy');
     // Resposta rápida inline → POST /app/tasks/comment (desarma o bloqueio).
     expect(html).toContain('action="/app/tasks/comment"');
+    expect(html).toContain('name="body" value="Sim"');
+    expect(html).toContain('name="body" value="Não"');
+    // "Responder" = label + checkbox oculto que expande o textarea (CSS puro, sem JS).
+    expect(html).toContain('class="task-pending-reply-toggle" for="pending-reply-fq1"');
+    expect(html).toContain('id="pending-reply-fq1" class="task-pending-toggle"');
     expect(html.indexOf('Task fq1')).toBeLessThan(html.indexOf('Task fv1'));
     // Summary da gaveta soma as duas filas (rodada 6).
     expect(html).toContain('Pendências com você · 2 (1 pergunta, 1 para aprovar)');
