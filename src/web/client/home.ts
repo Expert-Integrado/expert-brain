@@ -275,13 +275,18 @@ function startDrag(grid: HTMLElement, item: HTMLElement, down: PointerEvent): vo
 // Redimensionamento: a alça vive no ITEM, mas o alvo de altura é o elemento com
 // data-home-box (no card é o próprio; na Atividade é a caixa interna do feed).
 // Rodada 6: soltar a alça NÃO persiste — só o Salvar.
-function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): void {
+function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, down: PointerEvent): void {
   down.preventDefault();
+  const startX = down.clientX;
   const startY = down.clientY;
   const fallback = Number(target.dataset.homeDefault) || 420;
   const startH = parseInt(getComputedStyle(target).maxHeight, 10) || fallback;
   const min = Number(target.dataset.homeMin) || 220;
   const max = Number(target.dataset.homeMax) || 960;
+  // Rodada 6.1 ("quero diminuir pro lado"): a MESMA alça responde na
+  // horizontal — arrastou ~110px pro lado, o card alterna entre largura normal
+  // e linha inteira (as duas larguras que o grid tem). Só em card com toggle.
+  const canToggleWidth = !!item.querySelector('.home-size-toggle');
   rz.classList.add('active');
   // Captura mantém o gesto vivo mesmo com o ponteiro fora da alça (guardado:
   // jsdom não implementa Pointer Capture).
@@ -292,6 +297,16 @@ function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): 
   const onMove = (e: PointerEvent): void => {
     const h = Math.min(max, Math.max(min, Math.round(startH + (e.clientY - startY))));
     target.style.setProperty('--home-card-h', `${h}px`);
+    if (canToggleWidth) {
+      const dx = e.clientX - startX;
+      if (dx > 110 && !item.classList.contains('home-card-wide')) {
+        item.classList.add('home-card-wide');
+        syncToggleLabels(item);
+      } else if (dx < -110 && item.classList.contains('home-card-wide')) {
+        item.classList.remove('home-card-wide');
+        syncToggleLabels(item);
+      }
+    }
   };
   const onUp = (): void => {
     rz.removeEventListener('pointermove', onMove);
@@ -323,15 +338,15 @@ function wireArrange(): void {
       const target = container?.matches('[data-home-box]')
         ? container
         : container?.querySelector<HTMLElement>('[data-home-box]');
-      if (target) startResize(rz, target, e);
+      if (container && target) startResize(rz, target, container, e);
       return;
     }
 
-    const handle = el.closest<HTMLElement>('.home-box-handle');
-    if (!handle) return;
-    // Links e controles dentro do título continuam clicáveis — drag só arma com movimento.
-    if (el.closest('a, button, input, form')) return;
-    const item = handle.closest<HTMLElement>('[data-home-item]');
+    // Rodada 6.1: em edição o card INTEIRO arrasta — o título era alvo pequeno
+    // demais. Links, botões e forms continuam clicáveis (drag só arma com
+    // movimento, e pointerdown neles é ignorado).
+    if (el.closest('a, button, input, textarea, select, form')) return;
+    const item = el.closest<HTMLElement>('[data-home-item]');
     if (!item || item.parentElement !== grid) return;
     startDrag(grid, item, e);
   });
@@ -351,6 +366,15 @@ function wireEditMode(grid: HTMLElement): void {
 
   const enter = (): void => {
     snapshot = takeSnapshot(grid);
+    // Prima --home-card-h com o default onde não há altura salva: em edição a
+    // altura é REAL (min-height no CSS) e todo card responde à alça, inclusive
+    // os de conteúdo curto. O collectLayout descarta o que for igual ao default
+    // e o Cancelar devolve o inline original do snapshot.
+    document.querySelectorAll<HTMLElement>('[data-home-box]').forEach((el) => {
+      if (!el.style.getPropertyValue('--home-card-h') && el.dataset.homeDefault) {
+        el.style.setProperty('--home-card-h', `${el.dataset.homeDefault}px`);
+      }
+    });
     grid.classList.add('home-editing');
     toggle.setAttribute('aria-pressed', 'true');
   };

@@ -172,6 +172,17 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
 /* Borda tracejada nos cards em edição (afford "isto é editável"). */
 .home-grid.home-editing > * { outline: 1px dashed color-mix(in srgb, var(--accent-lav) 55%, transparent); outline-offset: 3px; }
 .home-grid.home-editing > .home-box-dragging { outline: 2px dashed var(--accent-lav); outline-offset: 2px; }
+/* Em edição o card INTEIRO é alça de arrasto (rodada 6.1: só o título era um
+   alvo pequeno demais e cheio de botões — "arrastar tá difícil"). Links e
+   botões continuam clicáveis: o client ignora pointerdown neles. */
+.home-grid.home-editing > [data-home-item] { cursor: grab; touch-action: none; }
+/* Em edição a altura vira REAL (min + max na mesma var): card de conteúdo
+   curto (inbox vazio) também responde à alça — max-height sozinho não dá
+   feedback nenhum (rodada 6.1). O client injeta --home-card-h do default ao
+   entrar no modo, então o fallback aqui raramente decide. */
+.home-grid.home-editing .home-card { min-height: var(--home-card-h, 420px); }
+.home-grid.home-editing .home-card[data-home-box="pending"] { min-height: var(--home-card-h, 320px); }
+.home-grid.home-editing .home-activity-box { min-height: var(--home-card-h, 560px); }
 /* Controles por card no edit mode: subir/descer (teclado/touch) + ocultar (olho). */
 .home-edit-controls { display: inline-flex; gap: 2px; align-items: center; flex: none; }
 .home-activity-title { display: flex; align-items: center; gap: 10px; }

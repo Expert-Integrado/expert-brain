@@ -318,13 +318,16 @@ describe('faixa da frota na home', () => {
     await touch('key_fa_a', Date.now() - 60_000);
     html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
     expect(html).toContain('Frota: 1 de 1 agente ativo hoje');
-    expect(html).toContain('nada esperando você');
     // A faixa aponta pro board — a tela de Agentes virou redirect (19/07).
     expect(html).toMatch(/<a class="card card--interactive" href="\/app\/tasks"/);
 
+    // Rodada 6.1: a faixa NÃO conta mais "esperando você" — dois números com
+    // definições diferentes (faixa: coluna Validação; card: perguntas +
+    // entregas) confundiam. A fila mora só no card "Pendências com você".
     await createKanbanColumn(E, { id: 'col_fleettest', label: 'Validação humana', color: null, category: 'in_progress' });
     await seedTask('fv1', { columnId: 'col_fleettest' });
     html = await (await SELF.fetch('https://example.com/app', { headers: { cookie: c }, redirect: 'manual' })).text();
-    expect(html).toContain('1 esperando você');
+    expect(html).not.toContain('esperando você');
+    expect(html).toContain('Pendências com você');
   });
 });

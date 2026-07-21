@@ -479,21 +479,20 @@ export async function handleFleetTaskActionPost(req: Request, env: Env): Promise
 // não ganha faixa vazia). Aponta pro BOARD (a tela de Agentes virou redirect,
 // 19/07): as entregas esperando o dono moram no "Pendências com você" de lá.
 export async function fleetHomeStripHtml(env: Env, nowMs: number): Promise<string> {
-  const [agents, lastSeen, cols] = await Promise.all([
+  const [agents, lastSeen] = await Promise.all([
     listFleetAgents(env),
     lastSeenByUser(env),
-    listKanbanColumns(env),
   ]);
   if (agents.length === 0) return '';
   const dayStart = startOfTodayBrt(nowMs);
   const activeToday = agents.filter((a) => (lastSeen.get(a.id) ?? 0) >= dayStart).length;
-  const valCol = findValidationColumn(cols);
-  const waiting = valCol ? (await listValidationTasks(env, valCol.id)).length : 0;
-  const waitingHtml = waiting > 0
-    ? `<strong>${waiting} esperando você</strong>`
-    : 'nada esperando você';
+  // Rodada 6.1: a faixa NÃO conta mais "esperando você" — o número morava em 2
+  // lugares com definições diferentes (aqui: só a coluna Validação humana;
+  // no card: perguntas + entregas com dedupe) e os totais divergentes
+  // confundiam o dono. Fonte única da fila = card "Pendências com você" logo
+  // abaixo; a faixa vira só saúde da frota.
   return `<a class="card card--interactive" href="/app/tasks" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:12px 16px;font-size:13.5px;text-decoration:none;color:var(--text)">
     <span class="status-dot${activeToday > 0 ? ' is-on' : ''}" aria-hidden="true"></span>
-    Frota: ${activeToday} de ${agents.length} agente${agents.length === 1 ? '' : 's'} ativo${activeToday === 1 ? '' : 's'} hoje · ${waitingHtml}
+    Frota: ${activeToday} de ${agents.length} agente${agents.length === 1 ? '' : 's'} ativo${activeToday === 1 ? '' : 's'} hoje
   </a>`;
 }
