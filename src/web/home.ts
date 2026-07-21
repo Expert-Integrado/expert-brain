@@ -151,6 +151,19 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
 }
 .home-card:hover .home-resize::after, .home-activity:hover .home-resize::after,
 .home-resize.active::after { opacity: .9; background: var(--accent-lav); }
+/* Alça LATERAL de largura (rodada 6.3): barrinha vertical na borda direita —
+   arrasta pro lado e a largura salta de quarto em quarto. A Atividade é sempre
+   linha inteira e não ganha a alça. */
+.home-resize-w {
+  position: absolute; top: 12px; bottom: 12px; right: -2px; width: 14px; z-index: 2;
+  cursor: ew-resize; touch-action: none; display: flex; align-items: center; justify-content: center;
+}
+.home-resize-w::after {
+  content: ''; height: 44px; width: 4px; border-radius: 2px;
+  background: var(--border-strong); opacity: 0; transition: opacity 140ms var(--ease);
+}
+.home-card:hover .home-resize-w::after, .home-resize-w.active::after { opacity: .9; background: var(--accent-lav); }
+.home-activity .home-resize-w { display: none; }
 /* Card "Comece aqui" (spec 92): checklist de ativação acima do grid. */
 .start-here { margin-bottom: 18px; }
 .start-here h2 { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; }
@@ -178,6 +191,7 @@ html.home-arranging, html.home-arranging * { cursor: grabbing !important; user-s
    resize/toggle/controles (testes travam o markup); só o CSS os revela sob
    .home-grid.home-editing (classe togglada pelo botão Personalizar). ── */
 .home-grid:not(.home-editing) .home-resize,
+.home-grid:not(.home-editing) .home-resize-w,
 .home-grid:not(.home-editing) .home-width-controls,
 .home-grid:not(.home-editing) .home-edit-controls { display: none; }
 .home-grid:not(.home-editing) .home-box-handle { cursor: default; touch-action: auto; }

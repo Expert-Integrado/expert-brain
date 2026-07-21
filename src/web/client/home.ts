@@ -286,21 +286,13 @@ function startDrag(grid: HTMLElement, item: HTMLElement, down: PointerEvent): vo
 // Redimensionamento: a alça vive no ITEM, mas o alvo de altura é o elemento com
 // data-home-box (no card é o próprio; na Atividade é a caixa interna do feed).
 // Rodada 6: soltar a alça NÃO persiste — só o Salvar.
-function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, down: PointerEvent): void {
+function startResize(rz: HTMLElement, target: HTMLElement, down: PointerEvent): void {
   down.preventDefault();
-  const startX = down.clientX;
   const startY = down.clientY;
   const fallback = Number(target.dataset.homeDefault) || 420;
   const startH = parseInt(getComputedStyle(target).maxHeight, 10) || fallback;
   const min = Number(target.dataset.homeMin) || 220;
   const max = Number(target.dataset.homeMax) || 960;
-  // Rodada 6.2 ("pensa que a tela tá sempre dividida em quartos"): a MESMA
-  // alça responde na horizontal com snap por QUARTO do grid — cada quarto
-  // cruzado soma/subtrai 1 no span (1..4). Só em card com controles de largura.
-  const canToggleWidth = !!item.querySelector('.home-width-controls');
-  const gridWidth = item.parentElement?.getBoundingClientRect().width ?? 0;
-  const quarter = gridWidth / 4;
-  const startSpan = currentSpan(item);
   rz.classList.add('active');
   // Captura mantém o gesto vivo mesmo com o ponteiro fora da alça (guardado:
   // jsdom não implementa Pointer Capture).
@@ -314,10 +306,31 @@ function startResize(rz: HTMLElement, target: HTMLElement, item: HTMLElement, do
     const raw = startH + (e.clientY - startY);
     const h = Math.min(max, Math.max(min, Math.round(raw / HEIGHT_BLOCK) * HEIGHT_BLOCK));
     target.style.setProperty('--home-card-h', `${h}px`);
-    if (canToggleWidth && quarter > 0) {
-      const dx = e.clientX - startX;
-      setSpan(item, startSpan + Math.round(dx / quarter));
-    }
+  };
+  const onUp = (): void => {
+    rz.removeEventListener('pointermove', onMove);
+    rz.removeEventListener('pointerup', onUp);
+    rz.removeEventListener('pointercancel', onUp);
+    rz.classList.remove('active');
+  };
+  rz.addEventListener('pointermove', onMove);
+  rz.addEventListener('pointerup', onUp);
+  rz.addEventListener('pointercancel', onUp);
+}
+
+// Alça LATERAL (rodada 6.3, "não dá para arrastar para os lados"): barrinha na
+// borda direita do card arrasta a LARGURA com snap por quarto do grid (1..4).
+function startResizeWidth(rz: HTMLElement, item: HTMLElement, down: PointerEvent): void {
+  down.preventDefault();
+  const startX = down.clientX;
+  const quarter = (item.parentElement?.getBoundingClientRect().width ?? 0) / 4;
+  const startSpan = currentSpan(item);
+  rz.classList.add('active');
+  if (typeof rz.setPointerCapture === 'function') {
+    try { rz.setPointerCapture(down.pointerId); } catch { /* noop */ }
+  }
+  const onMove = (e: PointerEvent): void => {
+    if (quarter > 0) setSpan(item, startSpan + Math.round((e.clientX - startX) / quarter));
   };
   const onUp = (): void => {
     rz.removeEventListener('pointermove', onMove);
@@ -343,13 +356,20 @@ function wireArrange(): void {
     if (!editing(grid)) return;
     const el = e.target as HTMLElement;
 
+    const rzw = el.closest<HTMLElement>('.home-resize-w');
+    if (rzw) {
+      const container = rzw.closest<HTMLElement>('[data-home-item]');
+      if (container && container.querySelector('.home-width-controls')) startResizeWidth(rzw, container, e);
+      return;
+    }
+
     const rz = el.closest<HTMLElement>('.home-resize');
     if (rz) {
       const container = rz.closest<HTMLElement>('[data-home-item]');
       const target = container?.matches('[data-home-box]')
         ? container
         : container?.querySelector<HTMLElement>('[data-home-box]');
-      if (container && target) startResize(rz, target, container, e);
+      if (target) startResize(rz, target, e);
       return;
     }
 

@@ -157,9 +157,11 @@ export function homeEditControlsHtml(box: HomeBoxKey, hidden: HomeBoxKey[] | und
   </span>`;
 }
 
-// Alça de redimensionamento de ALTURA (borda de baixo). aria-hidden: interação
-// de ponteiro; o teclado tem o fallback natural (o conteúdo rola de qualquer jeito).
-export const HOME_RESIZE_HANDLE = '<div class="home-resize" aria-hidden="true"></div>';
+// Alças de redimensionamento: ALTURA (barrinha na borda de baixo) + LARGURA
+// (barrinha na borda direita, rodada 6.3 — salta de quarto em quarto; a
+// Atividade esconde a lateral via CSS). aria-hidden: interação de ponteiro;
+// o teclado tem os botões ‹ › e o conteúdo rola de qualquer jeito.
+export const HOME_RESIZE_HANDLE = '<div class="home-resize" aria-hidden="true"></div><div class="home-resize-w" aria-hidden="true"></div>';
 
 // Controles de LARGURA no header do card (rodada 6.2): dois botões ‹ › que
 // diminuem/aumentam a largura em quartos (1..4). A MESMA alça do canto também
