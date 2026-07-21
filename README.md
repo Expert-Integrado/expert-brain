@@ -149,6 +149,8 @@ claude mcp add --transport http expert-brain https://<seu-worker>.workers.dev/mc
 
 A primeira conexão abre o fluxo OAuth 2.1 no browser. Depois, abra `/app/config` no console e cole o bloco de instruções do dono em *Claude → Settings → Personalization → Custom instructions* — ele entra no handshake de todo agente conectado.
 
+Com o MCP conectado, o próximo passo é **povoar o Brain com a sua memória real** — e-mails, reuniões, CRM, chat de equipe, e a memória que você já construiu no ChatGPT/Claude.ai/Gemini: siga o [onboarding de memória](docs/prompt-onboarding-memoria.md), um prompt guiado por menus que colhe tudo com verificação e só grava o que você aprovar.
+
 ### 6. (Opcional) O segundo Worker: vault de contatos
 
 Contatos moram num Worker separado de propósito — banco próprio (D1 dele), privacidade própria, ciclo de deploy próprio. O Brain fala com ele por **service binding** (Worker-a-Worker, dentro da Cloudflare, sem token no browser). É o que liga: menções `@contato` em notas e tasks, a aba **Contatos** do console com dossiê e timeline, e os painéis de integração (WhatsApp, Instagram, Pipedrive) em `/app/config`.

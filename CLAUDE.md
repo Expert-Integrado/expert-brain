@@ -212,6 +212,7 @@ Imprime um resumo curto com:
 - Um lembrete pra abrir `<worker-url>/app/config` depois de logar pra copiar o bloco de personalização pra Claude → Settings → Personalization
 - A confirmação de que a captura automática (hooks) foi ativada — ou, se o passo 8.5 falhou, o comando pra ativar depois
 - Um lembrete de que o custo de token de conectar o MCP é ~2.400 tokens por requisição (veja [docs/token-cost.md](docs/token-cost.md) pra impacto por plano)
+- O próximo passo sugerido: **onboarding de memória** ([docs/prompt-onboarding-memoria.md](docs/prompt-onboarding-memoria.md)) — prompt guiado por menus que povoa o vault com e-mails, reuniões, CRM, chat de equipe e a memória de outras IAs (ChatGPT/Claude.ai por conexão direta, Gemini/Manus por export). Se o usuário topar fazer agora, siga o próprio documento.
 
 Não guia o usuário pela conexão do lado do Claude a menos que ele peça. Ele sabe colar uma URL.
 
