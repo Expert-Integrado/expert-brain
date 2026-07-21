@@ -44,7 +44,7 @@
     "@playwright/test": "^1.61.1",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.0.0",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "esbuild": "^0.28.0",
     "graphology-types": "^0.24.8",
     "jsdom": "^29.1.1",
