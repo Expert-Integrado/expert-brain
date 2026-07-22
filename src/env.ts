@@ -44,6 +44,27 @@ export interface Env {
   // DIFERENTE do CONTACTS_PROXY_TOKEN (read-only) — o contacts autoriza esse token
   // SOMENTE nesse 1 path (allowlist do lado de lá). MESMO valor nos dois Workers.
   CONTACTS_WRITE_TOKEN?: string;
+  // ── Módulo de contatos FUNDIDO (F2, plano joyful-petting-alpaca) ──
+  // O código do antigo worker expert-contacts vive vendorizado em src/contacts/ e
+  // roda IN-PROCESS quando estes bindings existem (src/contacts-gateway.ts).
+  // Instalação sem contatos: tudo ausente → degradação 503 idêntica à de sempre.
+  // Modo dual: se o service binding CONTACTS (acima) estiver presente, ele VENCE
+  // e o gateway não ativa — rollback do cutover é só configuração.
+  DB_CONTACTS?: D1Database;          // D1 do vault de contatos (11 tabelas próprias)
+  KV_CONTACTS?: KVNamespace;         // KV CACHE do contacts (grafo, cursores de cron, gsync:client)
+  VECTORIZE_CONTACTS?: VectorizeIndex; // índice 1024/cosine próprio do contacts
+  MEDIA_CONTACTS?: R2Bucket;         // R2 de fotos/backup do contacts
+  CONTACTS_OWNER_TOKEN?: string;     // Bearer full da API de entidades (ex-OWNER_TOKEN do worker antigo)
+  // Secrets das integrações do módulo de contatos (mesmos nomes/semântica do worker antigo):
+  PIPEDRIVE_API_KEY?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  WHATSAPP_SYNC_TOKEN?: string;
+  INSTAGRAM_SYNC_TOKEN?: string;
+  GSYNC_MAX_PERSONS?: string;
+  GSYNC_PUSH_MAX?: string;
+  GSYNC_REDIRECT_AFTER?: string;
+  MAINT_MAX_PERSONS?: string;
   // Auto-cancel de tasks mortas (spec 30-features/32 §4). Ausente/vazia = DESLIGADO
   // (default). Setada com N > 0: o cron diário cancela task open vencida há mais de
   // N dias E sem update há mais de N dias (reversível via update_task).

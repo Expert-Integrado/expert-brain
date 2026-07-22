@@ -7,6 +7,7 @@ import type { Env, AuthContext } from '../env.js';
 import { buildServerInstructions } from './instructions.js';
 import { registerAllTools } from './registry.js';
 import { readPersonalizationPrompt, readOwnerInstructions } from '../db/meta.js';
+import { ensureContactsBinding } from '../contacts-gateway.js';
 
 export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthContext> {
   server!: McpServer;
@@ -14,6 +15,11 @@ export class ExpertBrainMCP extends McpAgent<Env, Record<string, never>, AuthCon
   async init(): Promise<void> {
     const auth = (this as any).props as AuthContext | undefined;
     if (!auth) throw new Error('ExpertBrainMCP: missing auth props');
+
+    // Fusão (F2): o Durable Object recebe env PRÓPRIO do runtime — a costura do
+    // entry (src/index.ts) não alcança aqui. Injeta o módulo de contatos
+    // in-process ANTES do handshake, pra hasContacts e as tools enxergarem.
+    ensureContactsBinding(this.env);
 
     // Leitura do prompt de personalização (tabela `meta`) roda 1x por instância
     // do Durable Object — init() só executa uma vez (initRun guard na lib

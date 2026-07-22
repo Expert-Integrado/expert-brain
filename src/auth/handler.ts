@@ -11,9 +11,10 @@ import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFoun
 import { handleMailboxSummary, handleMailboxWait, handleWhoami } from '../web/mailbox-api.js';
 import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from '../web/project-share.js';
 import { notFoundResponse, internalErrorResponse } from '../web/error-pages.js';
+import { handleContactsApi } from '../contacts-gateway.js';
 
 export const authHandler = {
-  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
 
     if (url.pathname.startsWith('/app')) {
@@ -136,6 +137,13 @@ export const authHandler = {
       }
       return renderLogin(null, url.search, 200, undefined, await twoFactorEnabled(env));
     }
+
+    // Fusão (F2): rotas públicas do módulo de contatos no worker único — os
+    // namespaces de integração (/google|/whatsapp|/instagram|/pipedrive, paths
+    // idênticos aos do worker antigo) e a API de entidades sob /contacts/*.
+    // Só ativa com o módulo bound (DB_CONTACTS+KV_CONTACTS); null = segue pro 404.
+    const contactsRes = await handleContactsApi(req, env, ctx);
+    if (contactsRes) return contactsRes;
 
     // 404 com marca pra navegação HTML; texto puro pro resto (spec 97).
     return notFoundResponse(req);

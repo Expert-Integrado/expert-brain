@@ -10,9 +10,13 @@ import { handleSharePage, handleShareCommentPost, handleShareMedia, shareNotFoun
 import { handleMailboxSummary, handleMailboxWait, handleWhoami } from './mailbox-api.js';
 import { handleProjectSharePage, handleProjectShareCommentPost, PROJECT_SHARE_TOKEN_RE } from './project-share.js';
 import { notFoundResponse, internalErrorResponse } from './error-pages.js';
+import { ensureContactsBinding, handleContactsApi } from '../contacts-gateway.js';
 
 export default {
-  async fetch(req: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Espelha a costura do entry de prod (src/index.ts): módulo de contatos
+    // in-process quando DB_CONTACTS/KV_CONTACTS estão bound (suíte do gateway).
+    ensureContactsBinding(env, ctx);
     const url = new URL(req.url);
     if (url.pathname.startsWith('/s/')) {
       const rest = url.pathname.slice('/s/'.length);
@@ -69,6 +73,9 @@ export default {
     } catch (err) {
       return internalErrorResponse(req, err);
     }
+    // Espelha o mount público do módulo de contatos (prod: auth/handler.ts).
+    const contactsRes = await handleContactsApi(req, env, ctx);
+    if (contactsRes) return contactsRes;
     return notFoundResponse(req);
   },
 };

@@ -350,9 +350,13 @@ const GOOGLE_POST_PATHS = {
 // "https://contacts". O service binding despacha pelo binding e ignora o hostname,
 // mas o contacts deriva a origin do request pra montar a redirect URI do OAuth e a
 // callback_uri do status — com host fake o Google recusa (redirect_uri_mismatch).
+// Fusão (F2): no worker único não existe CONTACTS_PUBLIC_URL — a origin certa é a
+// do PRÓPRIO Brain (WORKER_URL). Em modo dual a CONTACTS_PUBLIC_URL existe e VENCE
+// (aponta pro worker antigo, dono da redirect URI registrada no Google).
 function contactsPublicBase(env: Env): string {
-  if (!env.CONTACTS_PUBLIC_URL) return 'https://contacts';
-  try { return new URL(env.CONTACTS_PUBLIC_URL).origin; } catch { return 'https://contacts'; }
+  const configured = env.CONTACTS_PUBLIC_URL || env.WORKER_URL;
+  if (!configured) return 'https://contacts';
+  try { return new URL(configured).origin; } catch { return 'https://contacts'; }
 }
 
 export async function handleContactsGoogleGet(req: Request, env: Env, action: keyof typeof GOOGLE_GET_PATHS): Promise<Response> {

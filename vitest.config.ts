@@ -35,7 +35,7 @@ export default defineConfig({
     // vitest da árvore principal globa e roda essas cópias, poluindo o resultado.
     // test/client/** roda em jsdom pela suíte própria (vitest.client.config.ts) —
     // dentro do workerd não há DOM. e2e/** é Playwright, nunca vitest.
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/test/auth.test.ts', '**/test/manifest.test.ts', '**/test/client/**', '**/test/contacts/**', '**/e2e/**'],
+    exclude: ['**/node_modules/**', '**/.claude/**', '**/test/auth.test.ts', '**/test/manifest.test.ts', '**/test/client/**', '**/test/contacts/**', '**/test/gateway/**', '**/e2e/**'],
     // Default de 5s flaka sob carga: os testes rodam DENTRO do workerd (import
     // caro) e alguns fazem dezenas de writes D1 num loop. 20s é folga, não licença.
     testTimeout: 20000,

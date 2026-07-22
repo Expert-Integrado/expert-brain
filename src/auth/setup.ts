@@ -1,5 +1,6 @@
 import type { Env } from '../env.js';
 import { runMigrations } from '../db/migrate.js';
+import { provisionContacts } from '../contacts-gateway.js';
 import { renderNotConfigured } from '../static/wizard.js';
 import { refreshSimilarEdges, SIMILARITY_TOP_K, SIMILARITY_MIN_SCORE } from '../web/similarity.js';
 import { isAuthorizedForSetup } from './setup-auth.js';
@@ -205,5 +206,9 @@ export async function handleProvision(req: Request, env: Env): Promise<Response>
   // deleted_at inexistente). Re-rodar é inofensivo (no máximo alguns SELECTs em
   // _migrations).
   await runMigrations(env);
+  // Fusão (F2): com o módulo de contatos bound, o MESMO provision aplica também
+  // o schema do vault de contatos — cada runner na sua tabela _migrations, em
+  // D1s separados. Sem o módulo, no-op.
+  await provisionContacts(env);
   return new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } });
 }

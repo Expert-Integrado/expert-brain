@@ -3,6 +3,7 @@ import { ExpertBrainMCP } from './mcp/agent.js';
 import { authHandler } from './auth/handler.js';
 import { validateApiKey } from './auth/api-keys.js';
 import { runScheduled } from './scheduled.js';
+import { ensureContactsBinding } from './contacts-gateway.js';
 import type { Env } from './env.js';
 
 export { ExpertBrainMCP };
@@ -21,6 +22,10 @@ const oauthProvider = new OAuthProvider({
 
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // Fusão (F2): injeta o módulo de contatos in-process quando bound (no-op em
+    // modo dual/instalação sem contatos). Antes de qualquer roteamento — o mesmo
+    // env flui pro OAuth provider, authHandler, web e digest.
+    ensureContactsBinding(env, ctx);
     const url = new URL(req.url);
     if (url.pathname === '/mcp') {
       const auth = req.headers.get('Authorization') || '';
@@ -52,6 +57,7 @@ export default {
   // semanal de backup D1→R2 (segunda 02:00 BRT, spec 67). O dispatch por
   // controller.cron vive em src/scheduled.ts — testável sem o OAuth provider.
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ensureContactsBinding(env, ctx);
     runScheduled(controller.cron, env, ctx);
   },
 };
