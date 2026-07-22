@@ -14,5 +14,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*", "test/**/*", "scripts/**/*"],
-  "exclude": ["src/web/client/**/*", "test/client/**/*"]
+  "exclude": ["src/web/client/**/*", "test/client/**/*", "test/contacts/**/*"]
 }

@@ -128,7 +128,7 @@ export function registerContactsTools(server: any, env: Env, auth: AuthContext):
     'get_contact_by_phone',
     {
       description: `Deterministic EXACT lookup of a contact by phone (handles the BR mobile 9th digit). Unlike search_contacts (semantic/approximate), this returns the EXACT phone match — use it to cross-reference or dedupe by phone. Accepts +, spaces and dashes. Returns { match, results, variants }.`,
-      inputSchema: { phone: z.string().min(8).describe('Phone E.164 without + (e.g. 5511996647492).') },
+      inputSchema: { phone: z.string().min(8).describe('Phone E.164 without + (e.g. 5511987654321).') },
       annotations: { title: 'Get contact by phone', resource: 'contacts', readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
     safeToolHandler(async (input: { phone: string }) => {
