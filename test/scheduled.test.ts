@@ -142,6 +142,19 @@ describe('runScheduled — trigger consolidado "*/30 * * * *" (spec 80-frota-age
     expect(await E.GRAPH_CACHE.get('cron:due-reminder:consecutive_failures')).toBe('0');
     expect(await lastBackupValue()).toBeNull();
   });
+
+  it('horários do módulo de contatos (09:00 / seg 05:30) são no-op SEM o módulo bound (F3)', async () => {
+    // Esta suíte roda sem DB_CONTACTS/KV_CONTACTS (instalação sem contatos):
+    // os braços da fusão não podem lançar nem sujar contadores.
+    for (const when of [Date.UTC(2026, 6, 14, 9, 0), Date.UTC(2026, 6, 13, 5, 30)]) {
+      const { ctx, settle } = fakeCtx();
+      runScheduled('*/30 * * * *', E, ctx, when);
+      await settle();
+    }
+    for (const job of ['contacts-maint', 'contacts-gsync', 'contacts-backup']) {
+      expect(await E.GRAPH_CACHE.get(`cron:${job}:consecutive_failures`)).toBeNull();
+    }
+  });
 });
 
 describe('trackCronOutcome — contador de falhas POR JOB + alerta (spec 70-grafo-higiene/76)', () => {

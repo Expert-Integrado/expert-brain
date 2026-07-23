@@ -70,7 +70,9 @@ export async function handleRoot(_req: Request, env: Env): Promise<Response> {
 // Jobs observados por trackCronOutcome (spec 70-grafo-higiene/76) — mesma lista
 // dos braços wireados em src/scheduled.ts (task-autocancel fica de fora, é
 // no-op opcional sem instrumentação). fleet-watchdog = spec 80-frota-agentes/89.
-const CRON_JOBS = ['backup', 'similar-repass', 'hygiene-digest', 'due-reminder', 'fleet-watchdog'] as const;
+// contacts-* = braços do módulo de contatos (fusão F3); sem o módulo bound eles
+// nunca rodam e aparecem aqui com o default 0/null — inofensivo.
+const CRON_JOBS = ['backup', 'similar-repass', 'hygiene-digest', 'due-reminder', 'fleet-watchdog', 'contacts-maint', 'contacts-gsync', 'contacts-backup'] as const;
 
 interface CronJobStatus { consecutive_failures: number; last_error: string | null; }
 

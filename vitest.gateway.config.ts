@@ -17,7 +17,7 @@ export default defineConfig({
         compatibilityFlags: ['nodejs_compat'],
         d1Databases: ['DB', 'DB_CONTACTS'],
         kvNamespaces: ['OAUTH_KV', 'GRAPH_CACHE', 'KV_CONTACTS'],
-        r2Buckets: ['MEDIA'],
+        r2Buckets: ['MEDIA', 'MEDIA_CONTACTS'],
         bindings: {
           SESSION_SECRET: 'test-secret-0123456789abcdef0123456789abcdef',
           OWNER_EMAIL: 'owner@example.com',

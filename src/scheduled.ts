@@ -6,6 +6,11 @@ import { REPASS_CRON, runSimilarRepass } from './graph/repass.js';
 import { shouldSendHygieneDigest, buildHygieneDigest } from './digest/hygiene.js';
 import { runPushDigest } from './web/push.js';
 import { WATCHDOG_CRON, runFleetWatchdog } from './fleet-watchdog.js';
+import { hasContactsModule, contactsEnvFrom } from './contacts-gateway.js';
+import { handleMaintenanceSync, trackMaintOutcome } from './contacts/index.js';
+import { drainGooglePushQueue } from './contacts/google/push.js';
+import { runGoogleSync, trackGsyncOutcome } from './contacts/google/sync.js';
+import { runSnapshotRecorded } from './contacts/backup/snapshot.js';
 
 // Dispatch do cron (specs/50-console-v2/67-backup-export.md, consolidado no spec
 // 80-frota-agentes/89): o Worker decide pelo controller.cron. Vive fora de
@@ -165,6 +170,78 @@ function dispatchDaily(cron: string, env: Env, ctx: ExecutionContext, nowMs: num
   );
 }
 
+// ── Fusão (F3, plano joyful-petting-alpaca): crons do antigo worker de contatos ──
+// Braços do dispatcher consolidado (horários UTC idênticos aos [triggers] do
+// worker antigo: diário 09:00, snapshot segunda 05:30 — o */30 cobre os dois).
+// Só disparam com o módulo bound (hasContactsModule); em modo dual o worker
+// antigo ainda roda os próprios crons, e instalação sem contatos = no-op.
+// Dupla contabilidade DELIBERADA nas falhas: os contadores internos do contacts
+// (maint:*/gsync:* no KV_CONTACTS, expostos em /contacts/health) continuam como
+// no worker antigo, e o trackCronOutcome do Brain soma os jobs ao /status +
+// alerta Telegram (2+ falhas seguidas) de graça.
+function dispatchContactsDaily(env: Env, ctx: ExecutionContext): void {
+  if (!hasContactsModule(env)) return;
+  const cEnv = contactsEnvFrom(env);
+  // Sem PIPEDRIVE_API_KEY a integração está DESLIGADA — o braço nem conta como
+  // job (o {ok:false} de secret ausente viraria alerta diário eterno pra quem
+  // não usa Pipedrive). Com o secret, r.ok decide: handleMaintenanceSync engole
+  // as falhas tratadas (retorna ok:false) e o catch cobre exceção inesperada.
+  if (cEnv.PIPEDRIVE_API_KEY) {
+    ctx.waitUntil(
+      handleMaintenanceSync(cEnv)
+        .then(async (r) => {
+          console.log('contacts-maint', JSON.stringify(r));
+          const ok = r?.ok !== false;
+          await trackCronOutcome(env, 'contacts-maint', ok, ok ? undefined : String(r?.error ?? 'maint failed'));
+        })
+        .catch(async (e) => {
+          console.error('contacts-maint failed', e);
+          await trackMaintOutcome(cEnv, false, String((e as Error)?.message ?? e));
+          await trackCronOutcome(env, 'contacts-maint', false, String((e as Error)?.message ?? e));
+        })
+    );
+  }
+  // SEQUENCIAL de propósito (mesma ordem do worker antigo): o drain do write-back
+  // roda ANTES do pull — edição pendente na fila suspende o "Google vence" dela
+  // (anti-clobber), então drenar primeiro devolve o pull ao comportamento pleno
+  // na mesma rodada. Independente do maint. Google desconectado/sem grupos =
+  // { ok:true, skipped } — conta como sucesso (integração opcional, não falha).
+  ctx.waitUntil(
+    drainGooglePushQueue(cEnv)
+      .then((r) => console.log('contacts-gpush', JSON.stringify(r)))
+      .catch((e) => console.error('contacts-gpush failed', e))
+      .then(() => runGoogleSync(cEnv))
+      .then(async (r) => {
+        console.log('contacts-gsync', JSON.stringify(r));
+        const ok = r?.ok !== false;
+        await trackCronOutcome(env, 'contacts-gsync', ok, ok ? undefined : String((r as any)?.error ?? 'gsync failed'));
+      })
+      .catch(async (e) => {
+        console.error('contacts-gsync failed', e);
+        await trackGsyncOutcome(cEnv, false, String((e as Error)?.message ?? e));
+        await trackCronOutcome(env, 'contacts-gsync', false, String((e as Error)?.message ?? e));
+      })
+  );
+}
+
+function dispatchContactsSnapshot(env: Env, ctx: ExecutionContext): void {
+  if (!hasContactsModule(env)) return;
+  const cEnv = contactsEnvFrom(env);
+  // runSnapshotRecorded já grava o desfecho no KV do contacts (backup:last);
+  // r.ok vindo dele conta como o resultado do job pro Brain também.
+  ctx.waitUntil(
+    runSnapshotRecorded(cEnv)
+      .then(async (r) => {
+        console.log('contacts-backup', JSON.stringify(r));
+        await trackCronOutcome(env, 'contacts-backup', r.ok, r.ok ? undefined : JSON.stringify(r));
+      })
+      .catch(async (e) => {
+        console.error('contacts-backup failed', e);
+        await trackCronOutcome(env, 'contacts-backup', false, String((e as Error)?.message ?? e));
+      })
+  );
+}
+
 export function runScheduled(cron: string, env: Env, ctx: ExecutionContext, nowMs: number = Date.now()): void {
   if (cron === BACKUP_CRON) {
     dispatchBackup(env, ctx);
@@ -180,9 +257,17 @@ export function runScheduled(cron: string, env: Env, ctx: ExecutionContext, nowM
     if (d.getUTCMinutes() === 0) {
       if (d.getUTCHours() === 5 && d.getUTCDay() === 1) dispatchBackup(env, ctx);
       if (d.getUTCHours() === 8) dispatchRepass(env, ctx, nowMs);
+      // Fusão (F3): fluxo diário do módulo de contatos — 09:00 UTC, mesmo
+      // horário do [triggers] do worker antigo. No-op sem o módulo bound.
+      if (d.getUTCHours() === 9) dispatchContactsDaily(env, ctx);
       // Passa DAILY_CRON (não o */30) pro gate do hygiene digest enxergar o
       // fluxo diário legítimo — shouldSendHygieneDigest compara com a expressão.
       if (d.getUTCHours() === 11) dispatchDaily(DAILY_CRON, env, ctx, nowMs);
+    }
+    // Fusão (F3): snapshot semanal do contacts — segunda 05:30 UTC (firing :30
+    // do */30, por isso fora do bloco de minuto :00 acima).
+    if (d.getUTCMinutes() === 30 && d.getUTCHours() === 5 && d.getUTCDay() === 1) {
+      dispatchContactsSnapshot(env, ctx);
     }
     return;
   }
