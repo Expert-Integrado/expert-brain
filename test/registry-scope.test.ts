@@ -43,10 +43,16 @@ const TASKS = [
 ];
 const TASKS_SHARE = ['share_task', 'unshare_task'];
 const CONTACTS = ['list_contacts', 'search_contacts', 'get_contact', 'get_contact_by_phone'];
+// Escrita no vault de contatos (fusão F6): resource:'contacts', readOnlyHint:false
+// — só presets full as veem (read + contacts:none as suprimem, provado abaixo).
+const CONTACTS_WRITE = [
+  'save_contact', 'connect_contacts', 'log_contact_event',
+  'delete_contact', 'delete_contact_connection', 'merge_contacts',
+];
 const MAILBOX = ['check_mailbox', 'ack_mailbox'];
 const USERS = ['list_users'];
 
-const ALL_38 = [...NOTES, ...NOTES_MEDIA, ...TASKS, ...TASKS_SHARE, ...CONTACTS, ...MAILBOX, ...USERS].sort();
+const ALL_44 = [...NOTES, ...NOTES_MEDIA, ...TASKS, ...TASKS_SHARE, ...CONTACTS, ...CONTACTS_WRITE, ...MAILBOX, ...USERS].sort();
 
 // readOnlyHint:true — o que o escopo base 'read' enxerga (spec 17, intocado).
 const READ_ONLY_14 = [
@@ -61,21 +67,21 @@ const FLEET_15 = [...TASKS, ...TASKS_SHARE, ...MAILBOX, ...USERS].sort();
 const TASK_WORKER_13 = [...TASKS, ...MAILBOX, ...USERS].sort();
 
 describe('registerAllTools — snapshot literal por preset (spec 91)', () => {
-  it('sanidade: as famílias somam exatamente 38 tools sem duplicata', () => {
-    expect(ALL_38).toHaveLength(38);
-    expect(new Set(ALL_38).size).toBe(38);
+  it('sanidade: as famílias somam exatamente 44 tools sem duplicata', () => {
+    expect(ALL_44).toHaveLength(44);
+    expect(new Set(ALL_44).size).toBe(44);
   });
 
-  it("preset 'personal-full' (full,private) registra as 38", () => {
-    expect(toolsFor(presetById('personal-full')!.scopes).names).toEqual(ALL_38);
+  it("preset 'personal-full' (full,private) registra as 44", () => {
+    expect(toolsFor(presetById('personal-full')!.scopes).names).toEqual(ALL_44);
   });
 
-  it("preset 'personal' (full) registra as 38", () => {
-    expect(toolsFor(presetById('personal')!.scopes).names).toEqual(ALL_38);
+  it("preset 'personal' (full) registra as 44", () => {
+    expect(toolsFor(presetById('personal')!.scopes).names).toEqual(ALL_44);
   });
 
-  it('sessão OAuth (scopes ausente) = personal-full: 38', () => {
-    expect(toolsFor(undefined).names).toEqual(ALL_38);
+  it('sessão OAuth (scopes ausente) = personal-full: 44', () => {
+    expect(toolsFor(undefined).names).toEqual(ALL_44);
   });
 
   it("preset 'reader' (read) registra as 14 readOnlyHint:true", () => {
