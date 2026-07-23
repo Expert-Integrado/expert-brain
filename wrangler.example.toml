@@ -58,17 +58,40 @@ index_name = "expert-brain-embeddings"
 binding = "MEDIA"
 bucket_name = "expert-brain-media"
 
-# (Opcional) Vault de contatos — segundo Worker (github.com/Expert-Integrado/expert-contacts).
-# Depois de deploya-lo na MESMA conta, descomente pra ligar as mencoes @contato, a aba
-# Contatos do console e os paineis de integracao. W2W via service binding (sem token no
-# browser; fetch global entre Workers da mesma conta da erro 1042). Complete com os
-# secrets CONTACTS_PROXY_TOKEN / CONTACTS_WRITE_TOKEN (mesmo valor nos dois Workers)
-# e adicione ao bloco [vars] acima a URL PUBLICA do seu expert-contacts (o painel do
-# Google Contatos precisa dela pra montar a redirect URI do OAuth):
-#   CONTACTS_PUBLIC_URL = "https://expert-contacts.<seu-subdominio>.workers.dev"
-# [[services]]
-# binding = "CONTACTS"
-# service = "expert-contacts"
+# Vault de contatos — MÓDULO embutido neste MESMO Worker (vendorizado em
+# src/contacts/), não um segundo deploy. `npm run setup` cria os quatro recursos
+# abaixo automaticamente; contatos vem SEMPRE junto, sem passo separado — quem
+# não quiser usar, simplesmente não usa (a aba Contatos nasce com empty state).
+# D1/KV são obrigatórios (sem eles o módulo fica em modo dual/desligado);
+# Vectorize e R2 são opcionais — sem eles o vault degrada graciosamente (busca
+# vira sql_like, anexos ficam desativados), igual ao padrão do MEDIA acima.
+[[d1_databases]]
+binding = "DB_CONTACTS"
+database_name = "expert-contacts-db"
+database_id = "REPLACE_ME_CONTACTS_D1_ID"
+
+[[vectorize]]
+binding = "VECTORIZE_CONTACTS"
+index_name = "expert-contacts-vec"
+
+[[kv_namespaces]]
+binding = "KV_CONTACTS"
+id = "REPLACE_ME_CONTACTS_KV_ID"
+
+# Bucket R2 do vault de contatos (avatares/mídia + snapshot de backup próprio —
+# schema separado do MEDIA acima, sem colisão de prefixo). Mesma degradação sem
+# billing: `npm run setup` detecta e sobe sem mídia de contatos.
+[[r2_buckets]]
+binding = "MEDIA_CONTACTS"
+bucket_name = "expert-contacts-media"
+
+# Secrets do módulo (via `wrangler secret put`, gerados pelo setup):
+#   CONTACTS_OWNER_TOKEN  — Bearer interno das rotas autenticadas do módulo
+#   CONTACTS_PROXY_TOKEN  — Bearer read-only do proxy console (grafo/detalhe/timeline)
+#   CONTACTS_WRITE_TOKEN  — Bearer de escrita escopada (registro de evento de timeline)
+# Opcionais, configure quando for ligar a integração (não bloqueiam o setup):
+#   PIPEDRIVE_API_KEY, WHATSAPP_SYNC_TOKEN, INSTAGRAM_SYNC_TOKEN,
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET (sync do Google Contacts)
 
 [ai]
 binding = "AI"
