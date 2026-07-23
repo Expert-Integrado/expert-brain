@@ -15,7 +15,7 @@ Habilitado no `wrangler.toml` (`[observability] enabled = true`, `head_sampling_
 Notifications **não são configuráveis via `wrangler.toml`** — vivem na conta Cloudflare. Criar via dashboard (ou API), **com OK do dono da conta**:
 
 1. Dashboard → **Notifications** → **Add** → categoria **Workers**. Os nomes exatos dos tipos mudam com o tempo — confira na doc oficial: https://developers.cloudflare.com/notifications/
-2. Criar, para CADA worker (`expert-brain` e `expert-contacts`):
+2. Criar, para o worker `expert-brain` (um só desde a fusão — inclui o módulo de contatos):
    - alerta de **error-rate / exceções** do Worker;
    - alerta de **CPU / resource limit** (é o tipo que cobre o Error 1102).
 3. Destino: o canal configurado na conta (e-mail ou webhook). O destino concreto fica fora deste repo.
@@ -38,9 +38,9 @@ O monitor roda FORA deste repo (infra pessoal do dono). Contrato:
 | Worker | Endpoint | Saudável quando | Frequência |
 |---|---|---|---|
 | expert-brain | `GET /status` | HTTP 200 + JSON com campo `configured` presente (`true`/`false` são ambos saudáveis) e `cron.consecutive_failures < 2` | a cada 5 min |
-| expert-contacts | `GET /health` | HTTP 200 + JSON `ok: true` e `maint.consecutive_failures < 2` | a cada 5 min |
+| expert-brain (contatos) | `GET /contacts/health` | HTTP 200 + JSON `ok: true` e `maint.consecutive_failures < 2` | a cada 5 min |
 
-Regra de alerta do monitor: notificar após **2 falhas consecutivas** (evita flap de rede). Falha = timeout, HTTP != 200, JSON inválido ou threshold estourado. Os dois endpoints são públicos e read-only — o script externo não precisa de credencial.
+Regra de alerta do monitor: notificar após **2 falhas consecutivas** (evita flap de rede). Falha = timeout, HTTP != 200, JSON inválido ou threshold estourado. Os dois endpoints são públicos e read-only — o script externo não precisa de credencial. (Os dois vivem no MESMO Worker desde a fusão do vault de contatos — `/contacts/health` é o antigo `/health` do worker expert-contacts, agora sob o prefixo `/contacts`.)
 
 ## Contador de falhas do cron (como funciona)
 

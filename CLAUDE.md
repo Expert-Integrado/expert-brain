@@ -45,7 +45,7 @@ Pré-requisito: o host precisa do `wrangler` autenticado na conta certa (mesmo d
 
 ## O que o Expert Brain precisa
 
-Um único Cloudflare Worker com cinco recursos vinculados a ele:
+Um único Cloudflare Worker com estes recursos vinculados a ele — o núcleo do Brain:
 
 | Recurso | Tipo | Nome do binding |
 |---|---|---|
@@ -56,6 +56,15 @@ Um único Cloudflare Worker com cinco recursos vinculados a ele:
 | Workers AI | Embeddings multilíngues (`@cf/baai/bge-m3`) | `AI` |
 | Bucket R2 *(opcional)* | Anexos de mídia nas notas (`expert-brain-media`) | `MEDIA` |
 
+E o **módulo de contatos** (vendorizado em `src/contacts/`, roda no MESMO Worker) traz os recursos próprios — o `npm run setup` cria todos, contatos vêm sempre junto:
+
+| Recurso | Tipo | Nome do binding |
+|---|---|---|
+| Banco D1 | SQL (SQLite) | `DB_CONTACTS` (nome `expert-contacts-db`) |
+| Índice Vectorize *(opcional)* | 1024-dim cosine | `VECTORIZE_CONTACTS` (nome `expert-contacts-vec`; sem ele a busca degrada pra SQL LIKE) |
+| Namespace KV | Estado/cache do módulo | `KV_CONTACTS` |
+| Bucket R2 *(opcional)* | Avatares/mídia + backup do vault (`expert-contacts-media`) | `MEDIA_CONTACTS` |
+
 E os secrets do Worker:
 
 | Secret | Propósito |
@@ -64,8 +73,9 @@ E os secrets do Worker:
 | `OWNER_PASSWORD_HASH` | Hash PBKDF2-SHA256 (100k iter) da passphrase do usuário |
 | `SESSION_SECRET` | String hex aleatória de 32 bytes — chave HMAC dos cookies de sessão do dashboard web |
 | `WORKER_URL` | URL pública do Worker — o setup seta após o deploy; usada pelo MCP pra gerar links clicáveis das notas (sem ela tudo funciona, só sem links) |
+| `CONTACTS_OWNER_TOKEN`, `CONTACTS_PROXY_TOKEN`, `CONTACTS_WRITE_TOKEN` | Bearers internos do módulo de contatos (gerados pelo `npm run setup` só na 1ª vez). Opcionais, pra ligar integrações: `PIPEDRIVE_API_KEY`, `WHATSAPP_SYNC_TOKEN`, `INSTAGRAM_SYNC_TOKEN`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` |
 
-Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito — **exceto o R2 (mídia)**, que exige billing habilitado; sem ele, remova/omita o bloco `[[r2_buckets]]` do `wrangler.toml` e o Brain sobe sem anexos (o `npm run setup` faz isso sozinho). **Ao explicar isso ao usuário, tranquilize:** o cartão que o Cloudflare pede só habilita mídia/contatos, nada é cobrado automaticamente, o uso normal segue na faixa gratuita (provavelmente nunca paga) — e quem não quer anexos/contatos nem precisa cadastrar cartão, dá pra habilitar depois.
+Tudo roda no free tier da Cloudflare. Não precisa de cartão de crédito — **exceto o R2 (mídia)**, que exige billing habilitado; sem ele, remova/omita o bloco `[[r2_buckets]]` do `wrangler.toml` e o Brain sobe sem anexos (o `npm run setup` faz isso sozinho). **Ao explicar isso ao usuário, tranquilize:** o cartão que o Cloudflare pede só habilita as mídias no R2 (anexos das notas e fotos dos contatos), nada é cobrado automaticamente, o uso normal segue na faixa gratuita (provavelmente nunca paga) — e quem não quer anexos/fotos nem precisa cadastrar cartão, dá pra habilitar depois (os contatos em si já vêm no setup e funcionam no free tier).
 
 ## Preflight (uma vez por máquina)
 
@@ -106,22 +116,33 @@ NÃO segue em frente sem os dois valores.
 
 ### 2. Cria os recursos Cloudflare
 
-Roda esses quatro comandos e captura os IDs do output:
+> **O caminho recomendado é `npm run setup`** (Preflight acima): ele cria TODOS os recursos abaixo — núcleo do Brain E módulo de contatos — resolve os placeholders, gera os secrets e deploya, de forma idempotente. Faça o passo a passo manual só se o usuário pedir explicitamente. Se for manual, crie os recursos dos DOIS blocos abaixo (senão o `wrangler deploy` falha, porque o `wrangler.toml` já referencia os bindings de contatos).
+
+Recursos do núcleo do Brain:
 
 ```bash
 npx wrangler d1 create expert-brain
 npx wrangler vectorize create expert-brain-embeddings --dimensions=1024 --metric=cosine
 npx wrangler kv namespace create OAUTH_KV
 npx wrangler kv namespace create GRAPH_CACHE
-npx wrangler r2 bucket create expert-brain-media   # opcional — se falhar (conta sem R2/billing), remova o bloco [[r2_buckets]] do wrangler.toml e siga sem mídia
+npx wrangler r2 bucket create expert-brain-media   # opcional — se falhar (conta sem R2/billing), remova o bloco [[r2_buckets]] binding="MEDIA" do wrangler.toml e siga sem mídia
 ```
 
-Cada comando imprime um ID. Faz o parse do output e extrai:
+Recursos do módulo de contatos (mesmo Worker; contatos vêm sempre junto):
 
-- `database_id` do `wrangler d1 create`
-- dois valores de `id` das duas rodadas de `kv namespace create` (o output do comando labela qual é qual)
+```bash
+npx wrangler d1 create expert-contacts-db
+npx wrangler vectorize create expert-contacts-vec --dimensions=1024 --metric=cosine   # opcional — sem ele a busca de contatos degrada pra SQL LIKE
+npx wrangler kv namespace create KV_CONTACTS
+npx wrangler r2 bucket create expert-contacts-media   # opcional — se falhar, remova o bloco [[r2_buckets]] binding="MEDIA_CONTACTS" do wrangler.toml
+```
 
-O Vectorize não retorna ID — ele é referenciado pelo nome no `wrangler.toml`.
+Cada comando de D1/KV imprime um ID. Faz o parse do output e extrai:
+
+- `database_id` de cada `wrangler d1 create` (`expert-brain` → `REPLACE_ME_D1_ID`; `expert-contacts-db` → `REPLACE_ME_CONTACTS_D1_ID`)
+- os `id` dos `kv namespace create` (o output labela qual é qual: OAUTH_KV, GRAPH_CACHE, KV_CONTACTS → `REPLACE_ME_OAUTH_KV_ID`/`REPLACE_ME_GRAPH_CACHE_ID`/`REPLACE_ME_CONTACTS_KV_ID`)
+
+Os índices Vectorize não retornam ID — são referenciados pelo nome no `wrangler.toml`.
 
 ### 3. Atualiza o `wrangler.toml`
 

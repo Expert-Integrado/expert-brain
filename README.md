@@ -16,7 +16,7 @@ Você conversa com o Claude sobre uma ideia. Ele chama `recall`, varre o vault a
 
 Single-user, self-hosted, sem terceiros: seus dados vivem no D1/Vectorize/R2 da sua própria conta Cloudflare, não numa API de alguém.
 
-- **~32 tools MCP** — conhecimento (`save_note`, `recall`, `expand`, `link`, `get_note`, `update_note`, `delete_note`/`restore_note`, `reembed`, `stats`), tasks em kanban (`save_task`, `list_tasks`, `list_tasks_due_today`, `update_task`, `complete_task`, `comment_task`, `share_task`/`unshare_task`), captura rápida (`capture`, `list_inbox`, `resolve_inbox`), digest de resurfacing, mídia em notas (opcional, via R2) e leitura de um vault de contatos separado (opcional, via service binding).
+- **~32 tools MCP** — conhecimento (`save_note`, `recall`, `expand`, `link`, `get_note`, `update_note`, `delete_note`/`restore_note`, `reembed`, `stats`), tasks em kanban (`save_task`, `list_tasks`, `list_tasks_due_today`, `update_task`, `complete_task`, `comment_task`, `share_task`/`unshare_task`), captura rápida (`capture`, `list_inbox`, `resolve_inbox`), digest de resurfacing, mídia em notas (opcional, via R2) e um vault de contatos embutido (módulo `src/contacts/`, roda no mesmo Worker).
 - **Console web (`/app`)** — home, busca global Ctrl+K, grafo interativo 2D (Sigma.js + d3-force em Web Worker) e 3D, kanban de tasks com colunas e projetos customizáveis, journal, notas com comentários, contatos com dossiê/timeline, página de configuração (domínios, instruções do dono, API keys com escopo, backup manual).
 - **Grafo com 9 tipos de edge** (`analogous_to`, `same_mechanism_as`, `causes`, `contradicts`, `refines`, …) e **7 kinds de nota** (`concept`, `decision`, `insight`, `fact`, `pattern`, `principle`, `question`) — `task` mora na mesma tabela mas fica fora do grafo e do recall (decisão de design, não bug: task é operacional, não conhecimento — ver specs `10-backend/12` e `10-backend/15`).
 - **Recall híbrido balanceado por domínio**: embedding (`bge-m3` via Workers AI, multilíngue) + FTS5, no máximo 3 notas por domínio até 5 domínios distintos — o objetivo é trazer a conexão inesperada, não só o hit mais óbvio. Isso é só pra **notas** (conhecimento); para achar uma **task** sem saber o id, use `list_tasks({ query: "..." })` (busca textual dedicada, sem teto de tempo, cobre título+corpo, abertas e fechadas) — nunca `recall`.
@@ -68,7 +68,10 @@ Um único Worker (`src/index.ts`) serve as três superfícies acima na mesma URL
 | `OAUTH_KV` | KV | Grants/tokens/registros de cliente OAuth |
 | `GRAPH_CACHE` | KV | Layout pré-computado do grafo, cacheado |
 | `MEDIA` *(opcional)* | R2 | Anexos de nota — exige billing habilitado; sem ele o Brain sobe sem mídia |
-| `CONTACTS` *(opcional)* | Service binding | Leitura de um Worker de contatos separado — sem ele, as tools de contato continuam listadas mas respondem com um erro explicando que o vault de contatos não está configurado |
+| `DB_CONTACTS` | D1 | Vault de contatos: pessoas, empresas, timeline (obrigatório pro módulo) |
+| `VECTORIZE_CONTACTS` *(opcional)* | Vectorize | Índice `expert-contacts-vec`; sem ele a busca de contatos degrada pra SQL LIKE |
+| `KV_CONTACTS` | KV | Estado/cache do módulo de contatos (obrigatório pro módulo) |
+| `MEDIA_CONTACTS` *(opcional)* | R2 | Avatares/mídia + backup do vault de contatos — exige billing; sem ele degrada sem mídia |
 | `MCP_OBJECT` | Durable Object | Estado da sessão MCP (`ExpertBrainMCP`) |
 
 Dois crons (`[triggers]` no `wrangler.toml`): digest diário de tasks vencendo/atrasadas (dormente até você configurar `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`) e snapshot semanal de backup pro R2.
@@ -95,10 +98,7 @@ Clone https://github.com/Expert-Integrado/expert-brain e faça a instalação gu
 5. TESTE FINAL: conecte o MCP (claude mcp add --transport http expert-brain <worker-url>/mcp), salve uma nota de teste e faça um recall que a encontre, provando o ciclo de ponta a ponta. Termine com um resumo: URL do Worker, endpoint MCP, o que ficou configurado e próximos passos.
 ```
 
-O Expert Brain completo são **dois Workers** na sua conta Cloudflare, os dois dentro do free tier:
-
-1. **`expert-brain`** (este repo) — notas, grafo, tasks, MCP e console. É o essencial; sozinho já entrega tudo menos contatos.
-2. **`expert-contacts`** ([repo próprio](https://github.com/Expert-Integrado/expert-contacts)) — **opcional**: o vault de contatos (pessoas, empresas, timeline, menções `@` nas notas). Instale depois, quando quiser — o passo 6 abaixo explica.
+O Expert Brain roda num **único Worker** na sua conta Cloudflare, dentro do free tier. Notas, grafo, tasks, MCP, console web e o vault de contatos (pessoas, empresas, timeline, menções `@` nas notas) vivem todos no mesmo deploy — o módulo de contatos é vendorizado em `src/contacts/` e roda in-process. Não há segundo Worker nem repo separado pra instalar: o `npm run setup` provisiona tudo de uma vez. Contatos vêm sempre junto; quem não usa, ignora (a aba **Contatos** nasce com empty state).
 
 **Pré-requisitos:**
 - Node.js 18+ (recomendado 20+) ([nodejs.org](https://nodejs.org))
@@ -129,9 +129,9 @@ npx wrangler login    # abre o browser, clica "Allow"
 npm run setup
 ```
 
-Isso roda `scripts/setup.mjs`, que faz em um comando o que seria um runbook de 11 passos: verifica a autenticação, copia `wrangler.example.toml` → `wrangler.toml`, pergunta e-mail + senha de dono (12+ caracteres), **cria os recursos na sua conta Cloudflare** (D1, Vectorize, os 2 namespaces KV — pula o que já existir, é idempotente), grava os IDs reais no `wrangler.toml`, gera o hash PBKDF2 da senha + `SESSION_SECRET`, sobe os secrets (`wrangler secret put`), faz `wrangler deploy`, chama `POST /setup/provision` pra rodar as migrations no D1, e instala os hooks de captura automática do Claude Code (se preferir rodar depois: `node scripts/install-claude-hooks.mjs <url>`). Ao final imprime a URL do Worker, o comando MCP e o link do dashboard.
+Isso roda `scripts/setup.mjs`, que faz em um comando o que seria um runbook de 11 passos: verifica a autenticação, copia `wrangler.example.toml` → `wrangler.toml`, pergunta e-mail + senha de dono (12+ caracteres), **cria os recursos na sua conta Cloudflare** (D1, Vectorize e os 2 namespaces KV do Brain, mais os recursos do módulo de contatos embutido — D1 `expert-contacts-db`, Vectorize `expert-contacts-vec`, `KV_CONTACTS` e R2 `expert-contacts-media`; pula o que já existir, é idempotente), grava os IDs reais no `wrangler.toml`, gera o hash PBKDF2 da senha + `SESSION_SECRET`, sobe os secrets (`wrangler secret put`), faz `wrangler deploy`, chama `POST /setup/provision` pra rodar as migrations no D1, e instala os hooks de captura automática do Claude Code (se preferir rodar depois: `node scripts/install-claude-hooks.mjs <url>`). Ao final imprime a URL do Worker, o comando MCP e o link do dashboard.
 
-> Sem billing habilitado na Cloudflare (R2 exige, mesmo dentro do free tier)? O setup detecta e sobe **sem mídia** — todo o resto funciona normal. E se o Cloudflare pedir um **cartão** pra habilitar mídia/contatos: nada é cobrado automaticamente — o cartão só destrava recursos que seguem na faixa gratuita, e no uso normal você provavelmente nunca paga nada. Não quer anexos nem contatos? Nem precisa cadastrar; dá pra habilitar depois.
+> Sem billing habilitado na Cloudflare (R2 exige, mesmo dentro do free tier)? O setup detecta e sobe **sem mídia** — todo o resto funciona normal. E se o Cloudflare pedir um **cartão** pra habilitar a mídia (R2): nada é cobrado automaticamente — o cartão só destrava recursos que seguem na faixa gratuita, e no uso normal você provavelmente nunca paga nada. Não quer anexos? Nem precisa cadastrar cartão; dá pra habilitar depois — notas, tasks e contatos sobem sem ele.
 
 Pra reprovisionar do zero (trocar senha, recriar recursos): `npm run setup -- --reinstall`.
 
@@ -151,17 +151,11 @@ A primeira conexão abre o fluxo OAuth 2.1 no browser. Depois, abra `/app/config
 
 Com o MCP conectado, o último passo é **ligar o preenchimento automático** — o Brain colhe sozinho e-mails, reuniões, CRM, chat de equipe e a memória que você já construiu no ChatGPT/Claude.ai/Gemini, e cria a importação como as primeiras tasks do seu board: siga o [onboarding de memória](docs/prompt-onboarding-memoria.md). Você não aprova entrada por entrada; desfaz o que não quiser (tudo é reversível).
 
-### 6. (Opcional) O segundo Worker: vault de contatos
+### 6. Contatos (já incluído)
 
-Contatos moram num Worker separado de propósito — banco próprio (D1 dele), privacidade própria, ciclo de deploy próprio. O Brain fala com ele por **service binding** (Worker-a-Worker, dentro da Cloudflare, sem token no browser). É o que liga: menções `@contato` em notas e tasks, a aba **Contatos** do console com dossiê e timeline, e os painéis de integração (WhatsApp, Instagram, Pipedrive) em `/app/config`.
+O vault de contatos — pessoas, empresas, timeline, menções `@contato` em notas e tasks, a aba **Contatos** do console com dossiê e timeline, e os painéis de integração (WhatsApp, Instagram, Pipedrive) em `/app/config` — vem embutido no mesmo Worker (módulo `src/contacts/`, rodando in-process). O `npm run setup` do passo 3 já criou os recursos (D1 `expert-contacts-db`, Vectorize `expert-contacts-vec`, `KV_CONTACTS`, R2 `expert-contacts-media`) e gerou os tokens internos do módulo — não há segundo deploy nem repo separado pra configurar.
 
-Setup no [repo do expert-contacts](https://github.com/Expert-Integrado/expert-contacts) (mesma conta Cloudflare, mesmo free tier). Depois de deployá-lo, conecte os dois lados:
-
-1. No `wrangler.toml` **deste** repo, descomente/adicione o service binding `CONTACTS` apontando pro Worker `expert-contacts`, e redeploye.
-2. Crie dois tokens (strings aleatórias longas) e suba **o mesmo valor nos dois Workers**: `CONTACTS_PROXY_TOKEN` (leitura) e `CONTACTS_WRITE_TOKEN` (escrita escopada — só registra eventos de timeline). No lado do contacts eles são validados contra uma allowlist de rotas; qualquer outra rota responde 401.
-3. (Opcional) `SSO_SECRET` igual nos dois pra abrir o console de contatos já logado a partir do Brain.
-
-Sem esse passo, nada quebra: as tools de contato respondem com um erro explicando que o vault não está configurado, e o resto do Brain funciona normal.
+Quem não usa, ignora: a aba Contatos nasce com empty state e nada mais no Brain depende dela. Uma instalação anterior à fusão (só Brain) ganha os contatos no próximo `npm run setup` — ele detecta que faltam os recursos, cria, e não re-pergunta e-mail/senha.
 
 ### Atualizando
 
